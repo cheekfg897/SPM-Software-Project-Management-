@@ -1,0 +1,80 @@
+"""SQLAlchemy models owned by the auth module.
+
+Other modules must **not** import ``User`` directly; they go through the
+functions in :mod:`app.modules.auth.services`.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Any
+
+from sqlalchemy import DateTime, Enum, Integer, String, func
+from sqlalchemy.orm import Mapped, mapped_column
+from werkzeug.security import check_password_hash, generate_password_hash
+
+from app.extensions import db
+from app.modules.auth.permissions import Role
+
+
+class User(db.Model):  # type: ignore[name-defined]
+    """A registered user of any of the five roles.
+
+    ``password_hash`` is the only credential stored. It is written via
+    :meth:`set_password` (Werkzeug scrypt) and never serialised.
+    """
+
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    full_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    role: Mapped[Role] = mapped_column(
+        Enum(
+            Role,
+            name="user_role",
+            # Store the enum *values* (snake_case), not the member names.
+            values_callable=lambda enum_cls: [m.value for m in enum_cls],
+        ),
+        nullable=False,
+    )
+    #: Optional — relevant to Event Organisers / Attendees.
+    organisation: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    # -- credentials -----------------------------------------------------
+
+    def set_password(self, password: str) -> None:
+        """Hash ``password`` and store the hash. Plaintext is never kept."""
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password: str) -> bool:
+        """Return ``True`` if ``password`` matches the stored hash."""
+        if not self.password_hash:
+            return False
+        return check_password_hash(self.password_hash, password)
+
+    # -- serialisation ---------------------------------------------------
+
+    def to_dict(self) -> dict[str, Any]:
+        """Public representation. Deliberately excludes ``password_hash``."""
+        return {
+            "id": self.id,
+            "email": self.email,
+            "full_name": self.full_name,
+            "role": self.role.value if isinstance(self.role, Role) else self.role,
+            "organisation": self.organisation,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging aid
+        return f"<User id={self.id} email={self.email!r} role={getattr(self.role, 'value', self.role)!r}>"
