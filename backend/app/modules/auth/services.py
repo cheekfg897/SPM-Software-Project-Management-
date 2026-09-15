@@ -22,10 +22,11 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from app.common.decorators import ROLE_CLAIM
 from app.common.errors import AuthenticationError, ConflictError, NotFoundError
+from app.common.validation import load_or_raise
 from app.extensions import db
 from app.modules.auth.models import User
 from app.modules.auth.permissions import Role
-from app.modules.auth.schemas import RegisterSchema, load_or_raise
+from app.modules.auth.schemas import RegisterSchema
 
 #: The one message used for *every* login failure so that responses cannot be
 #: used to discover which emails are registered.

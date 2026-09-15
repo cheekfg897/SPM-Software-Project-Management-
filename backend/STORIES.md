@@ -58,3 +58,33 @@ Each story maps to a pytest marker in `pytest.ini` so tests can be traced back t
 - [ ] The pattern is demonstrated by `GET /api/auth/me` (any authenticated user) and `GET /api/auth/internal-only` (only `event_coordinator`, `venue_staff`, `technical_support_staff`).
 - [ ] Permission logic lives in one place (`app/common/decorators.py` + `app/modules/auth/permissions.py`) and is not duplicated per route.
 - [ ] Failed authorization attempts are logged with the role attempted, the endpoint, and a timestamp (groundwork for the Auditability requirement).
+
+---
+
+# Events
+
+## SCRUM-19 — Submit an event request
+**Marker:** `scrum_19`
+
+**As an** Event Organiser,
+**I want to** submit an event request describing what my event needs,
+**so that** ConnectSphere can start planning it.
+
+### Acceptance criteria
+- [x] Can supply event name, purpose, description, proposed date, start and end time, expected attendance, venue requirements, accessibility needs, equipment requirements, and whether attendee registration is needed.
+- [x] Cannot submit unless event name, proposed date, start time, end time and expected attendance are present.
+- [x] Cannot submit a proposed date in the past.
+- [x] Cannot submit an end time earlier than the start time.
+- [x] After submission the request appears in the Organiser's event list with status Submitted and a reference it can be identified by.
+
+### Decisions (see `docs/adr/`)
+- **ADR-0001:** "past" means before today in Singapore time (`APP_TIMEZONE`). Today is allowed.
+- **ADR-0002:** the event must end strictly after it starts. Overnight events use an optional `end_date`, which defaults to the proposed date.
+- **ADR-0003:** expected attendance is a whole number of at least 1, with no upper limit.
+- **ADR-0004:** the reference looks like `EVR-7K2QX9AB`. It is random, unique, and retried up to 3 times if it collides.
+
+### API
+| Route | Access | Result |
+|---|---|---|
+| `POST /api/events/requests` | `event_organiser` | `201` with the request, including `reference` and `status: "submitted"` |
+| `GET /api/events/requests` | `event_organiser` | `200` with `{"event_requests": [...]}`, containing only the caller's own requests, newest first |

@@ -14,8 +14,9 @@ from __future__ import annotations
 from flask import Blueprint, Response, g, jsonify, request
 
 from app.common.decorators import requires_auth, requires_role
+from app.common.validation import load_or_raise
 from app.modules.auth.permissions import INTERNAL_ROLES
-from app.modules.auth.schemas import LoginSchema, UserSchema, load_or_raise
+from app.modules.auth.schemas import LoginSchema, UserSchema
 from app.modules.auth.services import authenticate_user, get_user_by_id, register_user
 
 bp = Blueprint("auth", __name__, url_prefix="/api/auth")
