@@ -65,6 +65,7 @@ def _register_modules(app: Flask) -> None:
     sprints by importing their ``register`` function. Nothing else in the
     app needs to change.
     """
-    from app.modules import auth
+    from app.modules import auth, events
 
     auth.register(app)
+    events.register(app)
