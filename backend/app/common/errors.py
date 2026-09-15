@@ -1,0 +1,132 @@
+"""Centralised error handling.
+
+Every error the API returns has the same JSON shape::
+
+    {"error": "<machine_readable_code>", "message": "<human readable>", "details": {...}}
+
+``details`` is optional and only present when there is structured information
+to return (e.g. per-field validation messages).
+
+Services raise the :class:`AppError` subclasses below; the Flask error handlers
+registered by :func:`register_error_handlers` turn them into responses. Routes
+never build error responses by hand.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from flask import Flask, Response, jsonify
+from werkzeug.exceptions import HTTPException
+
+
+class AppError(Exception):
+    """Base class for all application-level errors.
+
+    Attributes:
+        status_code: HTTP status to return.
+        error_code: Short machine-readable identifier.
+        message: Human-readable explanation, safe to show to a client.
+        details: Optional structured payload (e.g. field errors).
+    """
+
+    status_code: int = 500
+    error_code: str = "internal_error"
+
+    def __init__(
+        self,
+        message: str | None = None,
+        *,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message or self.__class__.__doc__ or "Error")
+        self.message: str = message or "An unexpected error occurred."
+        self.details: dict[str, Any] | None = details
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialise into the standard error body."""
+        body: dict[str, Any] = {"error": self.error_code, "message": self.message}
+        if self.details:
+            body["details"] = self.details
+        return body
+
+
+class ValidationError(AppError):
+    """Request payload failed validation (400)."""
+
+    status_code = 400
+    error_code = "validation_error"
+
+
+class AuthenticationError(AppError):
+    """Missing, invalid or expired credentials/token (401)."""
+
+    status_code = 401
+    error_code = "authentication_error"
+
+
+class AuthorizationError(AppError):
+    """Authenticated, but not permitted to perform this action (403)."""
+
+    status_code = 403
+    error_code = "authorization_error"
+
+
+class NotFoundError(AppError):
+    """Requested resource does not exist (404)."""
+
+    status_code = 404
+    error_code = "not_found"
+
+
+class ConflictError(AppError):
+    """Request conflicts with existing state, e.g. duplicate email (409)."""
+
+    status_code = 409
+    error_code = "conflict"
+
+
+def error_response(
+    status_code: int,
+    error_code: str,
+    message: str,
+    details: dict[str, Any] | None = None,
+) -> tuple[Response, int]:
+    """Build a response in the standard error shape.
+
+    Used by the handlers below and by the JWT callbacks so that token errors
+    raised inside Flask-JWT-Extended look identical to our own errors.
+    """
+    body: dict[str, Any] = {"error": error_code, "message": message}
+    if details:
+        body["details"] = details
+    return jsonify(body), status_code
+
+
+def register_error_handlers(app: Flask) -> None:
+    """Attach JSON error handlers to ``app``.
+
+    The handler bodies below are only reachable through the HTTP layer, so they
+    are deliberately not covered by this sprint's unit suite; they will be
+    exercised by the integration tests planned for next sprint.
+    """
+
+    @app.errorhandler(AppError)
+    def _handle_app_error(exc: AppError) -> tuple[Response, int]:
+        return jsonify(exc.to_dict()), exc.status_code
+
+    @app.errorhandler(HTTPException)
+    def _handle_http_exception(exc: HTTPException) -> tuple[Response, int]:
+        # Werkzeug errors (404 for unknown routes, 405, malformed JSON, ...)
+        code = exc.code or 500
+        return error_response(
+            code,
+            (exc.name or "http_error").lower().replace(" ", "_"),
+            exc.description or exc.name or "HTTP error",
+        )
+
+    @app.errorhandler(Exception)
+    def _handle_unexpected(exc: Exception) -> tuple[Response, int]:  # pragma: no cover
+        # Anything not anticipated. Log the traceback, hide it from the client.
+        app.logger.exception("Unhandled exception: %s", exc)
+        return error_response(500, "internal_error", "An unexpected error occurred.")

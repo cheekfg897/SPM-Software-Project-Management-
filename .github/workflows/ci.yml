@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    name: Backend — migrate + unit tests
+    runs-on: ubuntu-latest
+
+    # Postgres is started and migrated on every run even though the current
+    # unit suite mocks the DB, so integration tests can be dropped in next
+    # sprint without touching the pipeline.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: connectsphere
+          POSTGRES_PASSWORD: ci-password
+          POSTGRES_DB: connectsphere_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U connectsphere -d connectsphere_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      FLASK_APP: wsgi
+      FLASK_ENV: development
+      SECRET_KEY: ci-secret
+      JWT_SECRET_KEY: ci-jwt-secret
+      DATABASE_URL: postgresql+psycopg2://connectsphere:ci-password@localhost:5432/connectsphere_ci
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run database migrations
+        run: flask db upgrade
+
+      - name: Verify migrations are complete (no pending model changes)
+        run: flask db check
+
+      - name: Run unit tests with coverage
+        run: pytest --cov=app --cov-report=term-missing --cov-report=xml
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: backend/coverage.xml

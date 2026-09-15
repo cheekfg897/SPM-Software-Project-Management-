@@ -1,0 +1,46 @@
+# Local development stack: PostgreSQL + the Flask backend.
+#
+# All credentials come from backend/.env (copy backend/.env.example). Nothing
+# is hardcoded here. The backend service runs straight from the official
+# python image with the source bind-mounted, so no Dockerfile is needed yet;
+# a proper image build is a later-sprint concern.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: connectsphere-postgres
+    env_file:
+      - ./backend/.env            # POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    image: python:3.12-slim
+    container_name: connectsphere-backend
+    working_dir: /app
+    env_file:
+      - ./backend/.env
+    environment:
+      POSTGRES_HOST: postgres     # inside the compose network the DB is reachable by service name
+      FLASK_APP: wsgi
+    volumes:
+      - ./backend:/app
+    ports:
+      - "5000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: >
+      sh -c "pip install --quiet --no-cache-dir -r requirements.txt
+             && flask db upgrade
+             && flask run --host=0.0.0.0 --port=5000"
+
+volumes:
+  postgres_data:
