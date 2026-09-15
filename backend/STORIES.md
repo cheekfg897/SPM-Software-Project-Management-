@@ -58,3 +58,94 @@ Each story maps to a pytest marker in `pytest.ini` so tests can be traced back t
 - [ ] The pattern is demonstrated by `GET /api/auth/me` (any authenticated user) and `GET /api/auth/internal-only` (only `event_coordinator`, `venue_staff`, `technical_support_staff`).
 - [ ] Permission logic lives in one place (`app/common/decorators.py` + `app/modules/auth/permissions.py`) and is not duplicated per route.
 - [ ] Failed authorization attempts are logged with the role attempted, the endpoint, and a timestamp (groundwork for the Auditability requirement).
+
+---
+
+# User Stories — Sprint 2 (Venue Management)
+
+Same format and marker convention as Sprint 1. Roles/permissions are reused
+from `app/modules/auth/permissions.py` (`Role`, `INTERNAL_ROLES`); nothing
+new is defined for this module.
+
+## Story 4 — Update venue catalogue
+**Marker:** `story_venue_catalogue`
+
+**As a** Venue Staff member,
+**I want to** update the record of each ConnectSphere venue,
+**so that** Event Coordinators can plan against accurate venue information rather than asking us.
+
+### Acceptance criteria
+- [ ] Venue Staff can edit a venue's name, location, maximum capacity, supported room layouts, facilities, accessibility features and operating hours, and save the changes.
+- [ ] Required fields (name, location, capacity) cannot be saved blank, and invalid values (e.g. negative or zero capacity) are rejected with a clear error message.
+- [ ] Once saved, updated venue details are immediately visible to Event Coordinators browsing or opening that venue.
+- [ ] Venue details remain read-only for anyone who is not Venue Staff.
+- [ ] Venue Staff can deactivate a venue; a deactivated venue no longer appears in venue search but stays attached to bookings already made against it.
+- [ ] Venue Staff can reactivate a previously deactivated venue.
+
+### Assumptions / open questions
+- Reading a venue (`GET /api/venues`, `GET /api/venues/<id>`) is available to **any authenticated user**, not just Venue Staff — the AC says details are read-only for non-staff, implying they can still be read. Only create/update/deactivate/reactivate are Venue-Staff-only.
+
+---
+
+## Story 5 — View a venue's availability calendar
+**Marker:** `story_venue_calendar`
+
+**As an** internal user,
+**I want to** see a venue's bookings and unavailable periods across a date range,
+**so that** I can tell at a glance when that venue could be used.
+
+### Acceptance criteria
+- [ ] Can choose a venue and a date range and see, for each day, the periods that are booked or otherwise unavailable.
+- [ ] Confirmed bookings and blocked periods both appear as unavailable.
+- [ ] Each unavailable period shows its start time, end time and reason at the level of detail the viewer's role permits.
+- [ ] Event Organisers and Attendees cannot open the venue availability calendar.
+
+### Assumptions / open questions
+- "Level of detail the viewer's role permits": Venue Staff see the full reason text; `event_coordinator` and `technical_support_staff` (the only other roles that can open the calendar at all) see a coarse category only (`"booking"` / `"maintenance"`), no free text.
+- There is no story yet for *creating* a booking or a block — an Events module doesn't exist. A minimal `POST /api/venues/<id>/blocks` (Venue Staff only) is included purely so this story's "blocked periods" AC has a path to exercise via the API; it is not itself a requested story.
+
+---
+
+## Story 6 — Search and filter venues against event requirements
+**Marker:** `story_venue_search`
+
+**As an** Event Coordinator,
+**I want to** search venues using the requirements of a specific event,
+**so that** I can shortlist the venues worth requesting instead of checking each one by hand.
+
+### Acceptance criteria
+- [ ] Can filter by date, start and end time, minimum capacity, location, required room layout, accessibility requirement and required facilities.
+- [ ] Only venues free for the requested period, allowing for any configured setup and turnaround time, are returned as available.
+- [ ] Each result shows venue name, capacity, location and which requested requirements it satisfies.
+- [ ] A clear message is shown when nothing matches.
+- [ ] The search can be opened from an event with its filters already populated from that event's recorded requirements.
+
+### Assumptions / open questions
+- The last AC ("opened from an event with its filters already populated") is a frontend/event-integration concern — there is no Events module yet to source those requirements from. The backend just exposes `POST /api/venues/search`; pre-population is out of scope here.
+- Search is available to any authenticated user (`requires_auth`), not restricted to Event Coordinators specifically — the AC doesn't restrict it the way the calendar story does.
+
+---
+
+## Story 7 — Record setup and turnaround time for a venue
+**Marker:** `story_venue_setup_turnaround`
+
+**As a** Venue Staff member,
+**I want to** record the setup and turnaround time a venue needs,
+**so that** conflict detection and venue search leave enough time between consecutive events.
+
+Raised because Story 6 refuses bookings that violate "any configured setup and turnaround time", and search filters "allowing for any configured setup and turnaround time" — but Story 4's venue record didn't originally capture either field.
+
+### Acceptance criteria
+- [ ] A venue records a setup time required before an event and a turnaround time required after it.
+- [ ] Both default to a defined value when not set explicitly.
+- [ ] Venue availability, venue search and conflict detection all treat the booked period as the event period extended by setup and turnaround time.
+- [ ] Changing a venue's turnaround time does not retrospectively invalidate bookings already confirmed, but any resulting overlap is reported to Venue Staff.
+- [ ] Only Venue Staff can change these values.
+
+### Open question for the customer
+Is turnaround time fixed company-wide, set per venue, or dependent on event type or room layout? What is the default?
+
+**Current implementation**: per-venue (`setup_minutes` / `turnaround_minutes` on the venue record), defaulting to `DEFAULT_VENUE_SETUP_MINUTES` / `DEFAULT_VENUE_TURNAROUND_MINUTES` (30 minutes each) when unset — configurable via environment, not yet configurable per event type or room layout.
+
+### Assumptions / open questions
+- "Reported to Venue Staff" — there's no notification system yet (that's its own unbuilt story). The `PATCH /api/venues/<id>` response itself includes an `overlap_warnings` list of confirmed bookings that now overlap under the new buffer, visible to the Venue Staff member who made the change.

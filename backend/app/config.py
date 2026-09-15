@@ -56,6 +56,13 @@ class BaseConfig:
     # without touching service code.
     PASSWORD_MIN_LENGTH: int = int(os.getenv("PASSWORD_MIN_LENGTH", "8"))
 
+    # Venue setup/turnaround buffer defaults (SCRUM-67). Applied whenever a
+    # venue doesn't set its own value. Whether this should ever vary by
+    # event type or room layout is an open question for the customer — see
+    # backend/STORIES.md.
+    DEFAULT_VENUE_SETUP_MINUTES: int = int(os.getenv("DEFAULT_VENUE_SETUP_MINUTES", "30"))
+    DEFAULT_VENUE_TURNAROUND_MINUTES: int = int(os.getenv("DEFAULT_VENUE_TURNAROUND_MINUTES", "30"))
+
 
 class DevelopmentConfig(BaseConfig):
     """Local development."""

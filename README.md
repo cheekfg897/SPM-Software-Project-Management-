@@ -2,7 +2,7 @@
 
 Backend for ConnectSphere's event planning and venue booking platform (IS212 scrum project), built as a **modularised monolith**: one Flask app, internally split into self-contained modules that only talk through service functions.
 
-Sprint 1 scope: the auth foundation — account creation, login, and role-based permission enforcement. See [backend/STORIES.md](backend/STORIES.md) for the user stories and acceptance criteria.
+Sprint 1 scope: the auth foundation — account creation, login, and role-based permission enforcement. Sprint 2 scope: venue management — catalogue CRUD, availability calendar, search, and setup/turnaround buffer times. See [backend/STORIES.md](backend/STORIES.md) for the user stories and acceptance criteria.
 
 ## Repository layout
 
@@ -14,6 +14,7 @@ backend/            Flask application (see below)
     extensions.py   db, migrate, jwt instances
     common/         cross-cutting: error handlers, requires_auth / requires_role
     modules/auth/   models, routes, schemas, services, permissions
+    modules/venue/  models, routes, schemas, services (venue catalogue, calendar, search)
   tests/            unit tests (pytest), one marker per story
   migrations/       Alembic migrations (Flask-Migrate)
 frontend/           placeholder only — framework not yet decided
@@ -97,6 +98,15 @@ curl http://localhost:5000/api/auth/internal-only -H "Authorization: Bearer <tok
 | `POST /api/auth/login`         | public                                                          |
 | `GET  /api/auth/me`            | any authenticated user                                          |
 | `GET  /api/auth/internal-only` | `event_coordinator`, `venue_staff`, `technical_support_staff`   |
+| `POST   /api/venues`                    | `venue_staff`                                                  |
+| `GET    /api/venues`                    | any authenticated user                                         |
+| `GET    /api/venues/<id>`               | any authenticated user                                         |
+| `PATCH  /api/venues/<id>`               | `venue_staff`                                                  |
+| `POST   /api/venues/<id>/deactivate`    | `venue_staff`                                                  |
+| `POST   /api/venues/<id>/reactivate`    | `venue_staff`                                                  |
+| `POST   /api/venues/<id>/blocks`        | `venue_staff`                                                  |
+| `GET    /api/venues/<id>/calendar`      | `event_coordinator`, `venue_staff`, `technical_support_staff`  |
+| `POST   /api/venues/search`             | any authenticated user                                         |
 
 Roles: `event_organiser`, `attendee`, `event_coordinator`, `venue_staff`, `technical_support_staff`.
 
@@ -106,7 +116,7 @@ All errors share one shape: `{"error": "<code>", "message": "<text>", "details":
 
 ## 5. Run the tests
 
-The Sprint 1 suite is unit tests only. The database is mocked, so **Postgres does not need to be running**.
+The test suite (Sprint 1 + Sprint 2) is unit tests only. The database is mocked, so **Postgres does not need to be running**.
 
 ```bash
 cd backend
@@ -119,6 +129,10 @@ Run a single story's tests via its marker:
 pytest -m story_create_account
 pytest -m story_login
 pytest -m story_permissions
+pytest -m story_venue_catalogue
+pytest -m story_venue_calendar
+pytest -m story_venue_search
+pytest -m story_venue_setup_turnaround
 ```
 
 ## Database migrations
