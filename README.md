@@ -14,9 +14,11 @@ backend/            Flask application (see below)
     extensions.py   db, migrate, jwt instances
     common/         cross-cutting: error handlers, requires_auth / requires_role
     modules/auth/   models, routes, schemas, services, permissions
+    modules/events/ event requests (SCRUM-19)
     modules/venue/  models, routes, schemas, services (venue catalogue, calendar, search)
   tests/            unit tests (pytest), one marker per story
   migrations/       Alembic migrations (Flask-Migrate)
+docs/adr/           Architecture Decision Records: choices made where requirements were silent
 frontend/           placeholder only — framework not yet decided
 docker-compose.yml  Postgres + backend for local development
 .github/workflows/  CI: migrate against Postgres, run unit tests
@@ -98,6 +100,8 @@ curl http://localhost:5000/api/auth/internal-only -H "Authorization: Bearer <tok
 | `POST /api/auth/login`         | public                                                          |
 | `GET  /api/auth/me`            | any authenticated user                                          |
 | `GET  /api/auth/internal-only` | `event_coordinator`, `venue_staff`, `technical_support_staff`   |
+| `POST /api/events/requests`    | `event_organiser` — submit an event request                     |
+| `GET  /api/events/requests`    | `event_organiser` — list your own event requests                |
 | `POST   /api/venues`                    | `venue_staff`                                                  |
 | `GET    /api/venues`                    | any authenticated user                                         |
 | `GET    /api/venues/<id>`               | any authenticated user                                         |
@@ -129,6 +133,7 @@ Run a single story's tests via its marker:
 pytest -m story_create_account
 pytest -m story_login
 pytest -m story_permissions
+pytest -m scrum_19
 pytest -m story_venue_catalogue
 pytest -m story_venue_calendar
 pytest -m story_venue_search

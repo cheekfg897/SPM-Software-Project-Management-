@@ -61,6 +61,36 @@ Each story maps to a pytest marker in `pytest.ini` so tests can be traced back t
 
 ---
 
+# Events
+
+## SCRUM-19 — Submit an event request
+**Marker:** `scrum_19`
+
+**As an** Event Organiser,
+**I want to** submit an event request describing what my event needs,
+**so that** ConnectSphere can start planning it.
+
+### Acceptance criteria
+- [x] Can supply event name, purpose, description, proposed date, start and end time, expected attendance, venue requirements, accessibility needs, equipment requirements, and whether attendee registration is needed.
+- [x] Cannot submit unless event name, proposed date, start time, end time and expected attendance are present.
+- [x] Cannot submit a proposed date in the past.
+- [x] Cannot submit an end time earlier than the start time.
+- [x] After submission the request appears in the Organiser's event list with status Submitted and a reference it can be identified by.
+
+### Decisions (see `docs/adr/`)
+- **ADR-0001:** "past" means before today in Singapore time (`APP_TIMEZONE`). Today is allowed.
+- **ADR-0002:** the event must end strictly after it starts. Overnight events use an optional `end_date`, which defaults to the proposed date.
+- **ADR-0003:** expected attendance is a whole number of at least 1, with no upper limit.
+- **ADR-0004:** the reference looks like `EVR-7K2QX9AB`. It is random, unique, and retried up to 3 times if it collides.
+
+### API
+| Route | Access | Result |
+|---|---|---|
+| `POST /api/events/requests` | `event_organiser` | `201` with the request, including `reference` and `status: "submitted"` |
+| `GET /api/events/requests` | `event_organiser` | `200` with `{"event_requests": [...]}`, containing only the caller's own requests, newest first |
+
+---
+
 # User Stories — Sprint 2 (Venue Management)
 
 Same format and marker convention as Sprint 1. Roles/permissions are reused
@@ -102,7 +132,7 @@ new is defined for this module.
 
 ### Assumptions / open questions
 - "Level of detail the viewer's role permits": Venue Staff see the full reason text; `event_coordinator` and `technical_support_staff` (the only other roles that can open the calendar at all) see a coarse category only (`"booking"` / `"maintenance"`), no free text.
-- There is no story yet for *creating* a booking or a block — an Events module doesn't exist. A minimal `POST /api/venues/<id>/blocks` (Venue Staff only) is included purely so this story's "blocked periods" AC has a path to exercise via the API; it is not itself a requested story.
+- There is no story yet for *creating* a booking or a block — SCRUM-19 (events module) only captures a submitted event request, with no venue-matching/confirmation workflow that would turn one into a booking. A minimal `POST /api/venues/<id>/blocks` (Venue Staff only) is included purely so this story's "blocked periods" AC has a path to exercise via the API; it is not itself a requested story.
 
 ---
 
@@ -121,7 +151,7 @@ new is defined for this module.
 - [ ] The search can be opened from an event with its filters already populated from that event's recorded requirements.
 
 ### Assumptions / open questions
-- The last AC ("opened from an event with its filters already populated") is a frontend/event-integration concern — there is no Events module yet to source those requirements from. The backend just exposes `POST /api/venues/search`; pre-population is out of scope here.
+- The last AC ("opened from an event with its filters already populated") is a frontend/event-integration concern — SCRUM-19's `EventRequest` does capture venue/accessibility/equipment requirements as free text, not structured filter values, so there's no direct field mapping to source from yet. The backend just exposes `POST /api/venues/search`; pre-population is out of scope here.
 - Search is available to any authenticated user (`requires_auth`), not restricted to Event Coordinators specifically — the AC doesn't restrict it the way the calendar story does.
 
 ---

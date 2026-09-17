@@ -3,12 +3,13 @@
 Other modules must **not** import these directly; they go through the
 functions in :mod:`app.modules.venue.services`.
 
-``Booking`` is a minimal stand-in: no Events module exists yet (Sprint 1 only
-built auth), but the calendar (SCRUM-26) and search (SCRUM-35) stories both
-need to know what a venue's confirmed/tentative bookings are. Once an Events
-module lands with a real "submit an event request" workflow, booking
-creation should move there and this table should move with it (or become a
-read-mirror) rather than staying owned by venues.
+``Booking`` is a minimal stand-in: the events module (SCRUM-19) only captures
+a submitted event *request* so far, with no venue-matching or confirmation
+workflow yet, but the calendar (SCRUM-26) and search (SCRUM-35) stories both
+need to know what a venue's confirmed/tentative bookings are. Once "an event
+request becomes a confirmed booking" is built, booking creation should move
+to whichever module owns that workflow, and this table should move with it
+(or become a read-mirror) rather than staying owned by venues.
 """
 
 from __future__ import annotations
@@ -108,8 +109,9 @@ class Venue(db.Model):  # type: ignore[name-defined]
 class Booking(db.Model):  # type: ignore[name-defined]
     """A (tentative or confirmed) booking against a venue.
 
-    ``event_id`` is a bare nullable int rather than a foreign key: there is
-    no Events module/table to reference yet.
+    ``event_id`` is a bare nullable int rather than a foreign key: the events
+    module (SCRUM-19) has ``EventRequest``, not yet a confirmed "Event" that
+    a booking would properly reference.
     """
 
     __tablename__ = "bookings"

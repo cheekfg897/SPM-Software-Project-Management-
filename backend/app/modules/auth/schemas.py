@@ -1,19 +1,18 @@
 """Request/response validation for the auth module (marshmallow).
 
 Schemas describe the *shape* of a payload. They raise marshmallow errors,
-which :func:`load_or_raise` converts into the project's
+which :func:`app.common.validation.load_or_raise` converts into the project's
 :class:`~app.common.errors.ValidationError` (HTTP 400) with per-field details.
 """
 
 from __future__ import annotations
 
 import re
-from typing import Any, Mapping
+from typing import Any
 
 from flask import current_app, has_app_context
 from marshmallow import Schema, ValidationError as MarshmallowValidationError, fields, validate
 
-from app.common.errors import ValidationError
 from app.modules.auth.permissions import Role
 
 # Password policy (Story 1). See STORIES.md for the stated rule.
@@ -89,25 +88,3 @@ class UserSchema(Schema):
         """Serialise the role enum to its string value."""
         role = getattr(obj, "role", None)
         return role.value if isinstance(role, Role) else str(role)
-
-
-def load_or_raise(schema: Schema, payload: Mapping[str, Any] | None) -> dict[str, Any]:
-    """Validate ``payload`` with ``schema`` or raise the project ``ValidationError``.
-
-    Args:
-        schema: A marshmallow schema instance.
-        payload: The decoded JSON body (may be ``None`` if the body was empty).
-
-    Returns:
-        The cleaned, validated data.
-
-    Raises:
-        ValidationError: HTTP 400, ``details`` maps field name → list of messages.
-    """
-    if payload is None or not isinstance(payload, Mapping):
-        raise ValidationError("Request body must be a JSON object.")
-    try:
-        return dict(schema.load(payload))
-    except MarshmallowValidationError as exc:
-        messages = exc.normalized_messages()
-        raise ValidationError("Invalid request.", details=messages) from exc

@@ -1,13 +1,15 @@
 """Create venue module tables (venues, bookings, venue_blocks).
 
-Revision ID: 0002_create_venue_tables
-Revises: 0001_create_users
+Revision ID: 0003_create_venue_tables
+Revises: 0002_create_event_requests
 Create Date: 2026-09-15
 
 Schema for SCRUM-25 (venue catalogue), SCRUM-26 (availability calendar),
 SCRUM-35 (search) and SCRUM-67 (setup/turnaround buffers). ``bookings`` is a
-minimal stand-in until an Events module owns real booking creation — see
-``app/modules/venue/models.py``.
+minimal stand-in: SCRUM-19 (events module) only captures a submitted event
+*request* so far, with no venue-matching or confirmation workflow yet. Once
+that lands, whichever module owns "an event request becomes a confirmed
+booking" should own booking creation — see ``app/modules/venue/models.py``.
 """
 
 from __future__ import annotations
@@ -16,8 +18,8 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision = "0002_create_venue_tables"
-down_revision = "0001_create_users"
+revision = "0003_create_venue_tables"
+down_revision = "0002_create_event_requests"
 branch_labels = None
 depends_on = None
 

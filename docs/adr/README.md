@@ -1,0 +1,41 @@
+# Architecture Decision Records
+
+Short records of decisions we made where the requirements were silent or ambiguous. We choose a decision so we can move forward, and revisit it when new requirements arrive.
+
+To change a decision, don't rewrite history. Add a new ADR that **supersedes** the old one, and set the old one's status to `Superseded by ADR-XXXX`.
+
+## Statuses
+- **Proposed**: drafted, not yet agreed by the team.
+- **Accepted**: agreed; code follows it.
+- **Superseded**: replaced by a later ADR.
+
+## Index
+
+| ADR | Title | Status | Story |
+|---|---|---|---|
+| [0001](0001-proposed-date-not-in-past.md) | "Past" proposed date means before today, Singapore time | Accepted | SCRUM-19 |
+| [0002](0002-event-time-window.md) | Event time window: end must be strictly after start; overnight allowed through `end_date` | Accepted | SCRUM-19 |
+| [0003](0003-expected-attendance-minimum.md) | Expected attendance must be at least 1, with no upper limit | Accepted | SCRUM-19 |
+| [0004](0004-event-request-reference-format.md) | Event request reference is a random code like `EVR-XXXXXXXX` | Accepted | SCRUM-19 |
+
+## Template
+
+```markdown
+# ADR-NNNN: Title
+
+- **Status:** Proposed | Accepted | Superseded by ADR-XXXX
+- **Date:** YYYY-MM-DD
+- **Story:** <user story name / Jira ID>
+
+## Context
+What is ambiguous or undecided, and why it matters.
+
+## Decision
+What we chose.
+
+## Consequences
+What this makes easier or harder; what code/tests depend on it.
+
+## Revisit when
+The signal that should make us reopen this.
+```

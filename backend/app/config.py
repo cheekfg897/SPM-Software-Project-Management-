@@ -56,6 +56,9 @@ class BaseConfig:
     # without touching service code.
     PASSWORD_MIN_LENGTH: int = int(os.getenv("PASSWORD_MIN_LENGTH", "8"))
 
+    # Business timezone: decides what "today" means for date rules (ADR-0001).
+    APP_TIMEZONE: str = os.getenv("APP_TIMEZONE", "Asia/Singapore")
+
     # Venue setup/turnaround buffer defaults (SCRUM-67). Applied whenever a
     # venue doesn't set its own value. Whether this should ever vary by
     # event type or room layout is an open question for the customer — see
