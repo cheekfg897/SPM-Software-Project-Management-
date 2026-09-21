@@ -1,4 +1,6 @@
-"""Unit tests for SCRUM-19 "Submit an event request" — saving, references, listing and routes.
+"""Unit tests for SCRUM-19 "Submit an event request".
+
+Saving, references, listing and routes.
 
 Covers AC1 (every field is saved) and AC5 (status Submitted, a reference, and
 the request shows up in the organiser's list). Payload rules for AC1-AC4 are
@@ -9,9 +11,10 @@ handling follow ADR-0004.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from datetime import date, time
 from types import SimpleNamespace
-from typing import Any, Callable
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -43,7 +46,7 @@ REQUESTS_PATH = "/api/events/requests"
 
 
 class _DriverError(Exception):
-    """Stands in for a psycopg2 error, which names the violated constraint on ``diag``."""
+    """Stands in for a psycopg2 error, which names the constraint on ``diag``."""
 
     def __init__(self, constraint_name: str | None, message: str = "integrity error") -> None:
         super().__init__(message)
@@ -127,8 +130,12 @@ def test_invalid_submission_is_not_saved(
 def test_each_submission_gets_its_own_reference(
     mock_session: MagicMock, valid_event_request_payload: dict[str, Any], today: date
 ) -> None:
-    first = submit_event_request("7", valid_event_request_payload, session=mock_session, today=today)
-    second = submit_event_request("7", valid_event_request_payload, session=mock_session, today=today)
+    first = submit_event_request(
+        "7", valid_event_request_payload, session=mock_session, today=today
+    )
+    second = submit_event_request(
+        "7", valid_event_request_payload, session=mock_session, today=today
+    )
 
     assert first.reference != second.reference
 

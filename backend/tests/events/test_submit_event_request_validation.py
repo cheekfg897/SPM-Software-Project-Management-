@@ -248,7 +248,8 @@ def test_local_today_uses_singapore_time(utc_now: datetime, expected_today: date
 
 def test_local_today_rejects_naive_datetime() -> None:
     with pytest.raises(ValueError):
-        local_today(datetime(2026, 9, 15, 12, 0))
+        # Naive on purpose: rejecting it is what this test asserts.
+        local_today(datetime(2026, 9, 15, 12, 0))  # noqa: DTZ001
 
 
 # --------------------------------------------------------------------------
@@ -291,7 +292,7 @@ def test_overnight_event_with_next_day_end_date_is_accepted(
 def test_overnight_times_without_end_date_are_rejected(
     valid_event_request_payload: dict[str, Any], today: date
 ) -> None:
-    """Without ``end_date`` the event is same-day, so 22:00 → 02:00 ends before it starts."""
+    """Without ``end_date`` the event is same-day, so 22:00 → 02:00 ends early."""
     valid_event_request_payload.update(start_time="22:00", end_time="02:00")
     assert "end_time" in _errors_for(valid_event_request_payload, today)
 

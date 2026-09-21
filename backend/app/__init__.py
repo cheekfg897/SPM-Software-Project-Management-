@@ -14,6 +14,7 @@ import logging
 from flask import Flask
 
 from app.common.errors import register_error_handlers
+from app.common.health import register_health_check
 from app.config import get_config
 from app.extensions import db, jwt, migrate
 
@@ -36,6 +37,7 @@ def create_app(config_name: str | None = None) -> Flask:
     _init_extensions(app)
     _register_modules(app)
     register_error_handlers(app)
+    register_health_check(app)
 
     return app
 
@@ -44,9 +46,7 @@ def _configure_logging(app: Flask) -> None:
     """Ensure INFO-level logs (incl. authorization failures) reach the console."""
     if not app.logger.handlers:
         handler = logging.StreamHandler()
-        handler.setFormatter(
-            logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
-        )
+        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
         app.logger.addHandler(handler)
     app.logger.setLevel(logging.DEBUG if app.debug else logging.INFO)
 

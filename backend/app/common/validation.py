@@ -7,7 +7,8 @@ Every module validates request bodies with marshmallow schemas and uses
 
 from __future__ import annotations
 
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 from marshmallow import Schema, ValidationError as MarshmallowValidationError
 

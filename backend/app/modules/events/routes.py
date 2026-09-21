@@ -25,7 +25,10 @@ _event_request_schema = EventRequestSchema()
 @bp.post("/requests")
 @requires_role(Role.EVENT_ORGANISER)
 def submit_request() -> tuple[Response, int]:
-    """Submit an event request (SCRUM-19). Returns ``201`` with its reference and status."""
+    """Submit an event request (SCRUM-19).
+
+    Returns ``201`` with the new request's reference and status.
+    """
     # The organiser is always the caller; the body cannot choose it.
     event_request = submit_event_request(g.current_user_id, request.get_json(silent=True))
     return jsonify(_event_request_schema.dump(event_request)), 201

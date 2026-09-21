@@ -77,4 +77,5 @@ class User(db.Model):  # type: ignore[name-defined]
         }
 
     def __repr__(self) -> str:  # pragma: no cover - debugging aid
-        return f"<User id={self.id} email={self.email!r} role={getattr(self.role, 'value', self.role)!r}>"
+        role = getattr(self.role, "value", self.role)
+        return f"<User id={self.id} email={self.email!r} role={role!r}>"

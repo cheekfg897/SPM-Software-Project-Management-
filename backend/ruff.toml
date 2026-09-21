@@ -1,0 +1,73 @@
+# Lint and format settings for the backend.
+#
+# Enforced by the `lint` job in .github/workflows/ci.yml; run the same checks
+# locally with `ruff check .` and `ruff format .` from this directory.
+
+line-length = 100
+# Kept in step with backend/.python-version (which actions/setup-python and
+# pyenv both read) and docker-compose's python:3.12-slim image.
+target-version = "py312"
+
+# Flask-Migrate's generated bootstrap file. Left exactly as the tool writes it
+# so it stays diffable against the upstream template; the hand-written
+# migration scripts under migrations/versions/ are linted normally.
+extend-exclude = ["migrations/env.py"]
+
+[lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings, incl. W505 against max-doc-length below
+    "F",   # pyflakes
+    "I",   # import sorting (replaces isort)
+    "B",   # bugbear — likely bugs
+    "C4",  # comprehension style
+    "SIM", # simplifications
+    "UP",  # pyupgrade — modern syntax for the target version
+    "S",   # flake8-bandit security rules; makes a separate bandit job unnecessary
+    "D",   # pydocstyle — every public module, class and function is documented
+    "DTZ", # flake8-datetimez — see the note below; this one enforces ADR-0001
+    "RUF", # ruff's own rules
+]
+ignore = [
+    # Docstrings and API messages use typographic dashes on purpose.
+    "RUF001",
+    # `timezone.utc` reads more plainly than `datetime.UTC`, and app/common/clock.py
+    # is the file people go to when they need to understand the timezone rules.
+    "UP017",
+    # PEP 695 (`def f[T](...)`) is valid on 3.12 but unfamiliar; the explicit
+    # TypeVar spelling stays.
+    "UP047",
+    # A magic method and an __init__ are covered by their class docstring.
+    "D105",
+    "D107",
+]
+
+# DTZ011 rejects `date.today()` and DTZ005 rejects a naive `datetime.now()`,
+# which is ADR-0001's rule — business dates come from
+# app.common.clock.local_today(), never from the server clock — enforced
+# statically instead of hoping a test happens to run on a day where the two
+# disagree.
+
+[lint.pycodestyle]
+# Prose wraps tighter than code: 100-character columns are fine for an
+# expression and tiring for a paragraph. Applies to docstrings and comments
+# (W505); code keeps the 100 above.
+max-doc-length = 88
+
+[lint.pydocstyle]
+# Google style — Args:/Returns:/Raises:, as the existing docstrings already use.
+convention = "google"
+
+[lint.isort]
+# One `from x import a, b as c` statement rather than splitting the aliased
+# name onto its own line.
+combine-as-imports = true
+
+[lint.per-file-ignores]
+# Tests assert (S101) and their fixtures use obvious throwaway passwords
+# (S105/S106/S107). Nested `with pytest.raises(...)` blocks read better kept
+# apart than merged (SIM117). A test's name is its documentation (D103/D104).
+"tests/**" = ["S101", "S105", "S106", "S107", "SIM117", "D103", "D104"]
+# Alembic's upgrade()/downgrade() pair is self-describing, and each script
+# already carries a module docstring naming the revision.
+"migrations/versions/**" = ["D103"]

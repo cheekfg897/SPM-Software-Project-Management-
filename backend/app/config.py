@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 from datetime import timedelta
+from typing import ClassVar
 
 from dotenv import load_dotenv
 
@@ -47,7 +48,7 @@ class BaseConfig:
     JWT_ACCESS_TOKEN_EXPIRES: timedelta = timedelta(
         seconds=int(os.getenv("JWT_ACCESS_TOKEN_EXPIRES_SECONDS", "3600"))
     )
-    JWT_TOKEN_LOCATION: list[str] = ["headers"]
+    JWT_TOKEN_LOCATION: ClassVar[list[str]] = ["headers"]
     JWT_HEADER_NAME: str = "Authorization"
     JWT_HEADER_TYPE: str = "Bearer"
     # TODO: refresh tokens are a future story (see STORIES.md, Story 2).
@@ -71,7 +72,8 @@ class TestingConfig(BaseConfig):
 
     TESTING: bool = True
     SQLALCHEMY_DATABASE_URI: str = os.getenv("TEST_DATABASE_URL", "sqlite:///:memory:")
-    JWT_SECRET_KEY: str = "test-jwt-secret-must-be-at-least-32-bytes-long"
+    # Fixed, and only ever loaded by TestingConfig — nothing it signs leaves a test.
+    JWT_SECRET_KEY: str = "test-jwt-secret-must-be-at-least-32-bytes-long"  # noqa: S105
     JWT_ACCESS_TOKEN_EXPIRES: timedelta = timedelta(seconds=60)
 
 
