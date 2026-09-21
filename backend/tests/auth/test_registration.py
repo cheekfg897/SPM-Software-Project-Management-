@@ -148,7 +148,9 @@ def test_missing_required_field_is_rejected(
     mock_session.add.assert_not_called()
 
 
-@pytest.mark.parametrize("bad_email", ["not-an-email", "missing@tld", "@example.com", "a b@example.com"])
+@pytest.mark.parametrize(
+    "bad_email", ["not-an-email", "missing@tld", "@example.com", "a b@example.com"]
+)
 def test_invalid_email_format_is_rejected(
     bad_email: str, mock_session: MagicMock, valid_registration_payload: dict[str, Any]
 ) -> None:

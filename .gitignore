@@ -39,6 +39,7 @@ venv/
 .coverage
 .coverage.*
 coverage.xml
+junit.xml
 htmlcov/
 .mypy_cache/
 .ruff_cache/

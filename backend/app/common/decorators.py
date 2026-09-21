@@ -26,9 +26,10 @@ from __future__ import annotations
 
 import functools
 import logging
+from collections.abc import Callable, Iterable
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Callable, Iterable, TypeVar
+from typing import Any, TypeVar
 
 from flask import g, request
 from flask_jwt_extended import get_jwt, verify_jwt_in_request
@@ -147,9 +148,7 @@ def requires_role(*roles: Any) -> Callable[[F], F]:
             role = _role_value(claims.get(ROLE_CLAIM))
             if role not in allowed:
                 log_authorization_failure(reason="forbidden_role", role=role)
-                raise AuthorizationError(
-                    "You do not have permission to perform this action."
-                )
+                raise AuthorizationError("You do not have permission to perform this action.")
             return func(*args, **kwargs)
 
         # Exposed for introspection/tests: which roles this route allows.

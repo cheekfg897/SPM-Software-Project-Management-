@@ -11,8 +11,9 @@ instead of a real database session. In production the default
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any
 
 from flask_jwt_extended import create_access_token
 from sqlalchemy import select

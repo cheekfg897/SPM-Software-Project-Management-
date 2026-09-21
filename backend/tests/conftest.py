@@ -8,7 +8,8 @@ creation and the password policy read from ``app.config``.
 
 from __future__ import annotations
 
-from typing import Any, Callable, Iterator
+from collections.abc import Callable, Iterator
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -52,7 +53,6 @@ def mock_session() -> MagicMock:
 @pytest.fixture()
 def make_user() -> Callable[..., User]:
     """Factory for in-memory ``User`` objects (never persisted)."""
-
     counter = {"id": 0}
 
     def _make(
