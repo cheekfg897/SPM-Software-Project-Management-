@@ -133,7 +133,9 @@ def test_unknown_email_and_wrong_password_produce_identical_errors(
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(("email", "password"), [("", "Password123"), ("alice@example.com", ""), ("", "")])
+@pytest.mark.parametrize(
+    ("email", "password"), [("", "Password123"), ("alice@example.com", ""), ("", "")]
+)
 def test_empty_credentials_fail_generically(
     email: str, password: str, mock_session: MagicMock, make_user
 ) -> None:

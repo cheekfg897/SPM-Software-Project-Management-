@@ -1,19 +1,99 @@
 name: CI
 
+# Backend code, the compose file and this pipeline are the only things these
+# jobs can be affected by, so a commit touching nothing else does not start a
+# run.
+#
+# The paths list is repeated under both triggers because GitHub Actions does
+# not support YAML anchors; keep the two copies in step.
+#
+# Caveat once branch protection is turned on: a workflow skipped by a paths
+# filter never reports a status at all, so requiring "CI" would leave a
+# frontend-only pull request waiting forever. Require the JOBS instead —
+# "Lint + static checks" and "Backend — migrate + unit tests". The PR title
+# check lives in pr-title.yml precisely so it runs on every pull request,
+# filtered or not.
 on:
   push:
     branches: [main]
+    paths:
+      - "backend/**"
+      - "docker-compose.yml"
+      - ".github/workflows/ci.yml"
   pull_request:
     branches: [main]
+    paths:
+      - "backend/**"
+      - "docker-compose.yml"
+      - ".github/workflows/ci.yml"
+
+  # Lets anyone re-run the pipeline from the Actions tab, on any branch.
+  workflow_dispatch:
+
+# Narrower than the default token scope. Nothing here writes to the repo.
+permissions:
+  contents: read
+
+# A second push to a pull request makes the first run pointless, so cancel it.
+# Pushes to main are never cancelled: each commit on main keeps its own result.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  lint:
+    name: Lint + static checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: backend/.python-version
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      # Rules and exemptions live in backend/ruff.toml. Two of the rulesets
+      # enabled there replace jobs this pipeline would otherwise need: `S`
+      # (bandit) is the security lint, and `DTZ` is what holds ADR-0001 —
+      # it rejects date.today() and naive datetime.now() outright, so no test
+      # run has to gamble on the calendar to catch a stray server-clock read.
+      # --output-format=github turns each finding into an inline annotation on
+      # the pull request.
+      - name: Lint
+        run: ruff check --output-format=github .
+
+      - name: Check formatting
+        run: ruff format --check .
+
+      # Catches a requirements pin that contradicts another package's metadata
+      # before it becomes a confusing runtime import error.
+      - name: Check for conflicting dependency pins
+        run: pip check
+
   backend:
     name: Backend — migrate + unit tests
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     # Postgres is started and migrated on every run even though the current
     # unit suite mocks the DB, so integration tests can be dropped in next
-    # sprint without touching the pipeline.
+    # sprint without touching the pipeline. When they arrive, point
+    # TEST_DATABASE_URL at this same container: TestingConfig reads it and
+    # otherwise falls back to an in-memory SQLite database.
     services:
       postgres:
         image: postgres:16-alpine
@@ -47,14 +127,27 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version-file: backend/.python-version
           cache: pip
-          cache-dependency-path: backend/requirements.txt
+          cache-dependency-path: backend/requirements*.txt
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      # Two people branching off the same revision and each adding a migration
+      # leaves Alembic with two heads once both merge, and every later
+      # `flask db upgrade` fails for the whole team. `flask db check` does not
+      # catch this. Alembic logs to stderr, so stdout is just the revisions.
+      - name: Exactly one migration head
+        run: |
+          heads=$(flask db heads | grep -c .)
+          if [ "$heads" -ne 1 ]; then
+            flask db heads
+            echo "::error::$heads migration heads — merge them with 'flask db merge'"
+            exit 1
+          fi
 
       - name: Run database migrations
         run: flask db upgrade
@@ -62,12 +155,90 @@ jobs:
       - name: Verify migrations are complete (no pending model changes)
         run: flask db check
 
-      - name: Run unit tests with coverage
-        run: pytest --cov=app --cov-report=term-missing --cov-report=xml
+      # Every downgrade so far hand-drops the Postgres enum type that
+      # drop_table leaves behind. Nothing proved that care survives the next
+      # migration, so replay the whole history backwards and forwards.
+      - name: Verify migrations are reversible
+        run: |
+          flask db downgrade base
+          flask db upgrade
 
-      - name: Upload coverage report
+      # Ahead of the test suite on purpose: the suite mocks the database and
+      # builds no test client, so a blueprint registered under the wrong
+      # prefix or an extension that fails to initialise is invisible to it.
+      # This is the only step that proves the app serves, and it answers in
+      # seconds — no reason to spend a full test run before finding out.
+      - name: Boot the app and smoke-test /health
+        run: |
+          flask run --host 127.0.0.1 --port 5000 &
+          app_pid=$!
+          # Not named `status`: that is read-only in zsh, so the snippet would
+          # fail for anyone pasting it into a macOS terminal to debug it.
+          smoke_status=0
+          curl --retry 20 --retry-delay 1 --retry-connrefused -fsS \
+            http://127.0.0.1:5000/health || smoke_status=$?
+          kill "$app_pid" 2>/dev/null || true
+          exit "$smoke_status"
+
+      # No TZ is pinned here. Business dates come from
+      # app.common.clock.local_today(), which converts from UTC through
+      # APP_TIMEZONE and never reads the server clock, and ruff's DTZ rules
+      # fail the lint job if anything reaches for date.today() instead. The
+      # runner's UTC clock already disagrees with Asia/Singapore for most of
+      # the day, so this run doubles as the check that nothing depends on the
+      # two matching.
+      - name: Run unit tests with coverage
+        run: pytest --cov=app --cov-report=term-missing --cov-report=xml --cov-fail-under=90 --junitxml=junit.xml
+
+      # Puts the coverage table on the run's summary page, so nobody has to
+      # download the artifact to see where a number moved.
+      - name: Publish coverage summary
+        if: always()
+        run: |
+          echo "## Backend coverage" >> "$GITHUB_STEP_SUMMARY"
+          coverage report --format=markdown >> "$GITHUB_STEP_SUMMARY" || true
+
+      - name: Upload test and coverage reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-xml
-          path: backend/coverage.xml
+          name: backend-reports
+          path: |
+            backend/coverage.xml
+            backend/junit.xml
+
+  audit:
+    name: Dependency vulnerability audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Advisory on purpose. A CVE published against Flask mid-sprint should be
+    # visible on the run, not a wall between a finished story and the demo.
+    # Drop this line once someone owns triaging the findings.
+    continue-on-error: true
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: backend/.python-version
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+
+      # pip-audit reads the requirements file rather than the installed
+      # environment, so this job needs the tool and nothing else. The version
+      # still comes from requirements-dev.txt, so there is one place to bump.
+      - name: Install pip-audit
+        run: pip install "$(grep -E '^pip-audit==' requirements-dev.txt)"
+
+      # The production dependency set is what ships; the dev tools are only
+      # ever on a runner or a laptop. Add requirements-dev.txt here too if that
+      # stops being true.
+      - name: Audit production dependencies
+        run: pip-audit -r requirements.txt

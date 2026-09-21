@@ -2,7 +2,11 @@
 
 Every error the API returns has the same JSON shape::
 
-    {"error": "<machine_readable_code>", "message": "<human readable>", "details": {...}}
+    {
+        "error": "<machine_readable_code>",
+        "message": "<human readable>",
+        "details": {...},
+    }
 
 ``details`` is optional and only present when there is structured information
 to return (e.g. per-field validation messages).

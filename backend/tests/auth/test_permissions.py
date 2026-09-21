@@ -10,8 +10,9 @@ header. No HTTP client is involved.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from datetime import timedelta
-from typing import Any, Callable
+from typing import Any
 
 import pytest
 from flask import Flask, g
@@ -56,7 +57,9 @@ def test_requires_auth_passes_through_with_valid_token(app: Flask, make_user, to
     user = make_user(role=Role.ATTENDEE, user_id=7)
     wrapped = requires_auth(_protected_view)
 
-    with app.test_request_context(PROTECTED_PATH, headers={"Authorization": f"Bearer {token_for(user)}"}):
+    with app.test_request_context(
+        PROTECTED_PATH, headers={"Authorization": f"Bearer {token_for(user)}"}
+    ):
         assert wrapped() == "ok"
         # Identity + role exposed to the route body.
         assert g.current_user_id == "7"
@@ -107,7 +110,9 @@ def test_requires_auth_wrong_scheme_is_401(app: Flask, token_for) -> None:
     wrapped = requires_auth(_protected_view)
 
     with pytest.raises(AuthenticationError):
-        with app.test_request_context(PROTECTED_PATH, headers={"Authorization": f"Basic {token_for(role=Role.ATTENDEE)}"}):
+        with app.test_request_context(
+            PROTECTED_PATH, headers={"Authorization": f"Basic {token_for(role=Role.ATTENDEE)}"}
+        ):
             wrapped()
 
 
@@ -267,7 +272,7 @@ def test_successful_call_is_not_logged_as_failure(
 def test_role_groups_partition_all_roles() -> None:
     assert INTERNAL_ROLES | EXTERNAL_ROLES == ALL_ROLES
     assert not (INTERNAL_ROLES & EXTERNAL_ROLES)
-    assert ALL_ROLES == frozenset(Role)
+    assert frozenset(Role) == ALL_ROLES
     assert len(Role) == 5
 
 

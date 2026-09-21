@@ -38,7 +38,7 @@ services:
       postgres:
         condition: service_healthy
     command: >
-      sh -c "pip install --quiet --no-cache-dir -r requirements.txt
+      sh -c "pip install --quiet --no-cache-dir -r requirements-dev.txt
              && flask db upgrade
              && flask run --host=0.0.0.0 --port=5000"
 

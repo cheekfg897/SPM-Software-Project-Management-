@@ -31,7 +31,7 @@ class Role(str, enum.Enum):
         return [member.value for member in cls]
 
     @classmethod
-    def from_value(cls, value: str) -> "Role":
+    def from_value(cls, value: str) -> Role:
         """Look up a member by its string value.
 
         Raises:

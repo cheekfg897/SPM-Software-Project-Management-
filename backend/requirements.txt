@@ -18,7 +18,3 @@ python-dotenv==1.2.3
 
 # Timezone database for zoneinfo (missing on Windows and slim images)
 tzdata==2026.4
-
-# Testing
-pytest==9.1.1
-pytest-cov==7.1.0

@@ -1,0 +1,39 @@
+name: PR title
+
+# Its own workflow rather than a job in ci.yml: that file is paths-filtered,
+# and traceability should be checked on every pull request — including one
+# that only touches the frontend or the docs.
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  title-format:
+    name: PR title is a conventional commit with a story ID
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check the title
+        env:
+          # Passed as an environment variable, never interpolated into the
+          # script below: a pull request title containing $(...) or backticks
+          # would otherwise execute on the runner.
+          TITLE: ${{ github.event.pull_request.title }}
+          # Conventional Commits, with the Jira story as the scope:
+          #   feat(SCRUM-19): submit an event request
+          # The scope is required — a pull request nobody can trace to a story
+          # is the thing this check exists to catch. If the team decides some
+          # work legitimately has no story, make the group optional by writing
+          # \(SCRUM-[0-9]+\)? instead.
+          PATTERN: '^(feat|fix|docs|chore|refactor|test|ci|build|perf|style|revert)\(SCRUM-[0-9]+\): .+'
+        run: |
+          echo "Title: $TITLE"
+          if ! printf '%s' "$TITLE" | grep -Eq "$PATTERN"; then
+            echo "::error::Title must read like 'feat(SCRUM-19): submit an event request' — one of feat|fix|docs|chore|refactor|test|ci|build|perf|style|revert, then (SCRUM-<id>), then a colon, a space and a summary."
+            exit 1
+          fi

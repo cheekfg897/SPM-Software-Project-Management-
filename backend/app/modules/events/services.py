@@ -13,8 +13,9 @@ from __future__ import annotations
 
 import logging
 import secrets
+from collections.abc import Callable, Mapping
 from datetime import date
-from typing import Any, Callable, Mapping
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
