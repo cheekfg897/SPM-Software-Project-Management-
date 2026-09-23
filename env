@@ -1,5 +1,0 @@
-# Fill in your REAL values below. This file must stay local —
-# it should be listed in .gitignore and never pushed to GitHub.
-
-TELEGRAM_BOT_TOKEN=replace_with_your_actual_bot_token
-TELEGRAM_CHAT_ID=-5540230258
