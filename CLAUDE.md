@@ -104,5 +104,6 @@ flask db heads                # must print exactly one head
     `ci: cache pip downloads`. If they give a scope, it must be a story (`ci(SCRUM-5): ...`),
     never a free-form one like `build(deps)`.
 - **Layered commits** (`backend/CONVENTIONS.md` §15): one logical change per commit, each
-  passing lint and tests on its own, stacked in dependency order.
+  passing lint and tests on its own, stacked in dependency order. Merge with **Rebase and
+  merge**, never squash.
 - Branch off `main`; never commit `backend/.env` or real secrets.
