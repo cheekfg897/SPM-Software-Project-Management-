@@ -4,6 +4,8 @@ AC1: a block is saved with its reason and period, and the calendar shows it.
 AC2: a block over a confirmed booking is still saved, and the response lists the
 confirmed bookings it cuts into, padded by setup and turnaround (ADR-0016, ADR-0011).
 AC3: search doesn't offer a blocked venue for the blocked period.
+AC4: a removed block is deleted, and the venue can be found again. Staff find a
+block's id through the staff-only list of a venue's blocks (ADR-0016).
 
 The services run against ``db_session`` with ``today`` pinned. Routes can't pin
 ``today``, so they're called through the registered view with the services mocked.
@@ -102,7 +104,17 @@ class BlockRoute(NamedTuple):
 BLOCK_VENUE_ROUTE = BlockRoute(
     "venue.block_venue", "POST", "/api/venues/1/blocks", {"venue_id": 1}, "block_venue"
 )
-BLOCK_ROUTES = [BLOCK_VENUE_ROUTE]
+LIST_BLOCKS_ROUTE = BlockRoute(
+    "venue.list_venue_blocks", "GET", "/api/venues/1/blocks", {"venue_id": 1}, "list_venue_blocks"
+)
+REMOVE_BLOCK_ROUTE = BlockRoute(
+    "venue.remove_venue_block",
+    "DELETE",
+    "/api/venues/1/blocks/7",
+    {"venue_id": 1, "block_id": 7},
+    "remove_venue_block",
+)
+BLOCK_ROUTES = [BLOCK_VENUE_ROUTE, LIST_BLOCKS_ROUTE, REMOVE_BLOCK_ROUTE]
 
 
 def _call_route(app: Flask, route: BlockRoute, token: str | None) -> tuple[Response, int]:
@@ -124,7 +136,11 @@ def mock_block_services(
     conflict = services.ConflictingBooking(
         booking_id=12, event_id=42, start_time=_at(3, 10, 30), end_time=_at(3, 12, 30)
     )
-    returns: dict[str, Any] = {"block_venue": (block, [conflict])}
+    returns: dict[str, Any] = {
+        "block_venue": (block, [conflict]),
+        "list_venue_blocks": [block],
+        "remove_venue_block": None,
+    }
     mocks = {}
     for name, value in returns.items():
         mock = MagicMock(return_value=value)
@@ -399,6 +415,119 @@ def test_a_blocked_venue_cannot_be_found_for_that_period(
     _block(venue)
 
     assert _search(start, end) == found
+
+
+# --------------------------------------------------------------------------
+# AC4 — a block can be removed, after which the venue is available again
+# --------------------------------------------------------------------------
+
+
+def test_a_removed_block_makes_the_venue_available_again(db_session: Session, venue: Venue) -> None:
+    block, _ = _block(venue)
+
+    services.remove_venue_block(venue.id, block.id)
+
+    assert _search(_at(3, 11), _at(3, 12)) == ["Main Hall"]
+
+
+def test_removing_a_block_deletes_only_that_block(
+    db_session: Session, venue: Venue, make_block: MakeBlock, save: Save
+) -> None:
+    removed, kept = (
+        make_block(venue, _at(3, 9), _at(3, 10)),
+        make_block(venue, _at(4, 9), _at(4, 10)),
+    )
+    save(removed, kept)
+
+    services.remove_venue_block(venue.id, removed.id)
+
+    assert _stored_blocks(db_session) == [(venue.id, _at(4, 9), _at(4, 10), "Maintenance")]
+
+
+def test_removing_an_unknown_block_is_not_found(db_session: Session, venue: Venue) -> None:
+    with pytest.raises(NotFoundError) as exc_info:
+        services.remove_venue_block(venue.id, 999)
+
+    assert exc_info.value.message == "Block not found."
+
+
+@pytest.mark.parametrize(
+    ("other_venue_id", "message"),
+    [(2, "Block not found."), (999, "Venue not found.")],
+    ids=["through-another-venue", "through-an-unknown-venue"],
+)
+def test_a_block_can_only_be_removed_through_its_own_venue(
+    db_session: Session,
+    make_venue: MakeVenue,
+    make_block: MakeBlock,
+    save: Save,
+    other_venue_id: int,
+    message: str,
+) -> None:
+    venue, other = make_venue(venue_id=1), make_venue(name="Other Hall", venue_id=2)
+    block = make_block(venue, BLOCK_START, BLOCK_END)
+    save(venue, other)
+    save(block)
+
+    with pytest.raises(NotFoundError) as exc_info:
+        services.remove_venue_block(other_venue_id, block.id)
+
+    assert exc_info.value.message == message
+    assert _stored_blocks(db_session) == [(1, BLOCK_START, BLOCK_END, "Maintenance")]
+
+
+def test_the_remove_route_returns_no_content(
+    app: Flask, token_for: Callable[..., str], mock_block_services: dict[str, MagicMock]
+) -> None:
+    response, status = _call_route(app, REMOVE_BLOCK_ROUTE, token_for(role=Role.VENUE_STAFF))
+
+    assert status == 204
+    assert response.get_data() == b""
+    mock_block_services["remove_venue_block"].assert_called_once_with(1, 7)
+
+
+# --------------------------------------------------------------------------
+# Listing a venue's blocks, so staff can find the one to remove (ADR-0016)
+# --------------------------------------------------------------------------
+
+
+def test_a_venues_blocks_are_listed_in_start_order(
+    db_session: Session, venue: Venue, make_venue: MakeVenue, make_block: MakeBlock, save: Save
+) -> None:
+    other = make_venue(name="Other Hall")
+    save(other)
+    later, earlier = (
+        make_block(venue, _at(4, 9), _at(4, 10)),
+        make_block(venue, _at(3, 9), _at(3, 10)),
+    )
+    save(later, earlier, make_block(other, _at(3, 8), _at(3, 9)))
+
+    blocks = services.list_venue_blocks(venue.id)
+
+    assert [block.id for block in blocks] == [earlier.id, later.id]
+
+
+def test_listing_blocks_of_an_unknown_venue_is_not_found(db_session: Session) -> None:
+    with pytest.raises(NotFoundError):
+        services.list_venue_blocks(999)
+
+
+def test_the_list_route_shows_each_block_in_business_time(
+    app: Flask, token_for: Callable[..., str], mock_block_services: dict[str, MagicMock]
+) -> None:
+    response, status = _call_route(app, LIST_BLOCKS_ROUTE, token_for(role=Role.VENUE_STAFF))
+
+    assert status == 200
+    mock_block_services["list_venue_blocks"].assert_called_once_with(1)
+    assert response.get_json() == [
+        {
+            "id": 7,
+            "venue_id": 1,
+            "start_time": "2026-10-03T18:00:00+08:00",
+            "end_time": "2026-10-03T21:00:00+08:00",
+            "reason": "Repainting",
+        }
+    ]
 
 
 # --------------------------------------------------------------------------
