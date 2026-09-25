@@ -12,16 +12,18 @@ registered view function directly (``tests/venue/test_venue_permissions.py``).
 
 from __future__ import annotations
 
-from flask import Blueprint, Response, jsonify, request
+from flask import Blueprint, Response, g, jsonify, request
 
 from app.common.decorators import requires_auth, requires_role
-from app.modules.auth.permissions import Role
+from app.common.validation import load_or_raise
+from app.modules.auth.permissions import INTERNAL_ROLES, Role
 from app.modules.venue import services
-from app.modules.venue.schemas import VenueSchema
+from app.modules.venue.schemas import CalendarEntrySchema, CalendarQuerySchema, VenueSchema
 
 bp = Blueprint("venue", __name__, url_prefix="/api/venues")
 
 _venue_schema = VenueSchema()
+_calendar_entry_schema = CalendarEntrySchema()
 
 
 # --------------------------------------------------------------------------
@@ -75,3 +77,22 @@ def reactivate_venue(venue_id: int) -> tuple[Response, int]:
     """Reactivate a previously deactivated venue (AC6)."""
     venue = services.reactivate_venue(venue_id)
     return jsonify(_venue_schema.dump(venue)), 200
+
+
+# --------------------------------------------------------------------------
+# SCRUM-26 — View a venue's availability calendar
+# --------------------------------------------------------------------------
+
+
+@bp.get("/<int:venue_id>/calendar")
+@requires_role(*INTERNAL_ROLES)
+def get_calendar(venue_id: int) -> tuple[Response, int]:
+    """A venue's bookings and blocked periods in a range. Internal roles only (AC4)."""
+    query = load_or_raise(CalendarQuerySchema(), request.args)
+    entries = services.get_venue_calendar(
+        venue_id,
+        query["range_start"],
+        query["range_end"],
+        viewer_role=Role(g.current_user_role),
+    )
+    return jsonify(_calendar_entry_schema.dump(entries, many=True)), 200

@@ -9,7 +9,7 @@ the project's 400 ``ValidationError`` with per-field details. Output schemas are
 from __future__ import annotations
 
 from datetime import time
-from typing import Any
+from typing import Any, ClassVar
 
 from marshmallow import (
     Schema,
@@ -21,10 +21,13 @@ from marshmallow import (
     validates_schema,
 )
 
+from app.common.clock import as_utc
+from app.common.fields import BusinessDateTime
 from app.modules.venue.models import (
     LIST_ITEM_MAX_LENGTH,
     LIST_MAX_ITEMS,
     LIST_SEPARATOR,
+    CalendarEntryKind,
     LayoutType,
     Venue,
     Weekday,
@@ -206,3 +209,47 @@ class VenueSchema(Schema):
             }
             for p in periods
         ]
+
+
+class _TimeRangeSchema(Schema):
+    """Base for payloads with a start and an end time (ADR-0009).
+
+    Both ends are converted to UTC before they're compared (a time with no offset is
+    read as business time), so mixing the two forms can't fail, and the loaded values
+    are always timezone-aware UTC. Subclasses declare the two fields and name them.
+    """
+
+    start_field: ClassVar[str] = "start_time"
+    end_field: ClassVar[str] = "end_time"
+
+    @validates_schema
+    def _ends_after_it_starts(self, data: dict[str, Any], **_: Any) -> None:
+        if as_utc(data[self.end_field]) <= as_utc(data[self.start_field]):
+            raise MarshmallowValidationError(
+                f"{self.end_field} must be after {self.start_field}.", field_name=self.end_field
+            )
+
+    @post_load
+    def _to_utc(self, data: dict[str, Any], **_: Any) -> dict[str, Any]:
+        for key in (self.start_field, self.end_field):
+            data[key] = as_utc(data[key])
+        return data
+
+
+class CalendarQuerySchema(_TimeRangeSchema):
+    """Query parameters for ``GET /api/venues/<id>/calendar`` (SCRUM-26)."""
+
+    start_field = "range_start"
+    end_field = "range_end"
+
+    range_start = fields.DateTime(required=True)
+    range_end = fields.DateTime(required=True)
+
+
+class CalendarEntrySchema(Schema):
+    """One unavailable period on a venue's calendar, in business time (ADR-0009)."""
+
+    start_time = BusinessDateTime(dump_only=True)
+    end_time = BusinessDateTime(dump_only=True)
+    kind = fields.Enum(CalendarEntryKind, by_value=True, dump_only=True)
+    reason = fields.String(dump_only=True)

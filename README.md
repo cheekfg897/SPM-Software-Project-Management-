@@ -15,7 +15,7 @@ backend/            Flask application (see below)
     common/         cross-cutting: error handlers, requires_auth / requires_role
     modules/auth/   models, routes, schemas, services, permissions
     modules/events/ event requests (SCRUM-19)
-    modules/venue/  venue catalogue (SCRUM-25)
+    modules/venue/  venue catalogue (SCRUM-25), availability calendar (SCRUM-26)
   tests/            unit tests (pytest), one marker per story
   migrations/       Alembic migrations (Flask-Migrate)
 docs/adr/           Architecture Decision Records: choices made where requirements were silent
@@ -111,12 +111,15 @@ curl http://localhost:5000/api/auth/internal-only -H "Authorization: Bearer <tok
 | `PATCH /api/venues/<id>`       | `venue_staff` — change only the fields sent                     |
 | `POST /api/venues/<id>/deactivate` | `venue_staff` — hide from listing and search            |
 | `POST /api/venues/<id>/reactivate` | `venue_staff` — show again                              |
+| `GET  /api/venues/<id>/calendar?range_start=…&range_end=…` | internal roles — bookings and blocked periods in the range |
 
 Roles: `event_organiser`, `attendee`, `event_coordinator`, `venue_staff`, `technical_support_staff`.
 
 Password policy: at least 8 characters, with at least one letter and one digit.
 
 All errors share one shape: `{"error": "<code>", "message": "<text>", "details": {...}}` (`details` only for validation errors).
+
+Date-times (bookings, blocks, calendar ranges) should carry an offset, such as `Z` or `+08:00`. One sent without an offset is read as business time (`APP_TIMEZONE`, Singapore by default). They're stored in UTC and come back in business time, e.g. `2026-10-01T17:00:00+08:00` ([ADR-0009](docs/adr/0009-booking-times-in-utc.md)).
 
 ## 5. Run the tests
 
@@ -135,6 +138,7 @@ pytest -m scrum_6    # log in
 pytest -m scrum_21   # enforce permissions
 pytest -m scrum_19   # submit an event request
 pytest -m scrum_25   # update venue catalogue
+pytest -m scrum_26   # view a venue's availability calendar
 ```
 
 ## Database migrations
