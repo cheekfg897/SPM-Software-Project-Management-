@@ -29,7 +29,7 @@ from app.modules.venue.models import (
     join_list_field,
 )
 from app.modules.venue.opening_hours import Period
-from app.modules.venue.schemas import EditVenueSchema
+from app.modules.venue.schemas import EditVenueSchema, VenueSearchSchema
 
 _LIST_FIELDS = ("facilities", "accessibility_features", "supported_layouts")
 
@@ -223,3 +223,79 @@ def get_venue_calendar(
             CalendarEntry(block.start_time, block.end_time, CalendarEntryKind.BLOCK, reason)
         )
     return sorted(entries, key=lambda entry: entry.start_time)
+
+
+# --------------------------------------------------------------------------
+# SCRUM-35 — search and filter venues against event requirements
+# --------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class VenueMatch:
+    """A venue that meets a search, and what it offers of each requested requirement."""
+
+    venue: Venue
+    facilities: list[str]
+    accessibility_features: list[str]
+    layout: str | None
+
+
+def _match_requirements(venue: Venue, data: Mapping[str, Any]) -> VenueMatch | None:
+    """What the venue offers of each requested requirement; ``None`` if it lacks any."""
+    facilities = [item for item in data["required_facilities"] if item in venue.facilities_list()]
+    accessibility = [
+        item for item in data["required_accessibility"] if item in venue.accessibility_list()
+    ]
+    if len(facilities) < len(data["required_facilities"]):
+        return None
+    if len(accessibility) < len(data["required_accessibility"]):
+        return None
+    layout = data["required_layout"]
+    if layout is not None and layout not in venue.layouts_list():
+        return None
+    return VenueMatch(venue, facilities, accessibility, layout)
+
+
+def search_venues(
+    payload: Mapping[str, Any] | None, *, session: Session | None = None
+) -> list[VenueMatch]:
+    """Active venues that meet an event's requirements and are free for its period.
+
+    One query selects venues by capacity and location and leaves out any with an
+    overlapping non-cancelled booking or blocked period (AC1, AC2). Facilities,
+    accessibility and layout are stored as joined strings, so they're checked on the
+    venues that query returns. Results are ordered by name.
+
+    Raises:
+        ValidationError: 400 — missing or invalid filters.
+    """
+    data = load_or_raise(VenueSearchSchema(), payload)
+    start, end = data["start_time"], data["end_time"]
+
+    conflicting_booking = select(Booking.id).where(
+        Booking.venue_id == Venue.id,
+        Booking.status != BookingStatus.CANCELLED,
+        _overlaps(Booking, start, end),
+    )
+    conflicting_block = select(VenueBlock.id).where(
+        VenueBlock.venue_id == Venue.id, _overlaps(VenueBlock, start, end)
+    )
+    stmt = (
+        select(Venue)
+        .where(
+            Venue.is_active.is_(True),
+            Venue.capacity >= data["min_capacity"],
+            ~conflicting_booking.exists(),
+            ~conflicting_block.exists(),
+        )
+        .order_by(Venue.name)
+    )
+    if data["location"] is not None:
+        stmt = stmt.where(Venue.location.icontains(data["location"], autoescape=True))
+
+    matches: list[VenueMatch] = []
+    for venue in resolve_session(session).scalars(stmt):
+        match = _match_requirements(venue, data)
+        if match is not None:
+            matches.append(match)
+    return matches
