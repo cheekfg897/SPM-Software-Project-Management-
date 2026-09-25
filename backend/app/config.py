@@ -60,6 +60,12 @@ class BaseConfig:
     # Business timezone: decides what "today" means for date rules (ADR-0001).
     APP_TIMEZONE: str = os.getenv("APP_TIMEZONE", "Asia/Singapore")
 
+    # Setup and turnaround a venue needs around each event, in minutes, for a venue
+    # created without its own values (SCRUM-67 AC2, ADR-0011). Changing these later
+    # doesn't change existing venues.
+    DEFAULT_VENUE_SETUP_MINUTES: int = int(os.getenv("DEFAULT_VENUE_SETUP_MINUTES", "30"))
+    DEFAULT_VENUE_TURNAROUND_MINUTES: int = int(os.getenv("DEFAULT_VENUE_TURNAROUND_MINUTES", "30"))
+
 
 class DevelopmentConfig(BaseConfig):
     """Local development."""

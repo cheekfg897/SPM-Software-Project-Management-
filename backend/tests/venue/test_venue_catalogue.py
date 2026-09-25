@@ -47,6 +47,8 @@ def test_create_venue_saves_every_editable_field(
         "facilities": ["projector", "stage"],
         "accessibility_features": ["wheelchair_access"],
         "supported_layouts": ["theatre", "banquet"],
+        "setup_minutes": 15,
+        "turnaround_minutes": 10,
         "opening_hours": [
             {
                 "open": {"day": "monday", "time": "08:00"},
@@ -66,6 +68,8 @@ def test_create_venue_saves_every_editable_field(
         "accessibility_features": ["wheelchair_access"],
         "supported_layouts": ["theatre", "banquet"],
         "opening_hours": payload["opening_hours"],
+        "setup_minutes": 15,
+        "turnaround_minutes": 10,
         "is_active": True,
     }
 

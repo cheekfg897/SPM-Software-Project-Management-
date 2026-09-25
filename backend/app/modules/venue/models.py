@@ -112,6 +112,12 @@ class Venue(db.Model):  # type: ignore[name-defined]
     """A ConnectSphere venue (SCRUM-25)."""
 
     __tablename__ = "venues"
+    __table_args__ = (
+        CheckConstraint("setup_minutes >= 0", name="ck_venues_setup_minutes_not_negative"),
+        CheckConstraint(
+            "turnaround_minutes >= 0", name="ck_venues_turnaround_minutes_not_negative"
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
@@ -134,6 +140,11 @@ class Venue(db.Model):  # type: ignore[name-defined]
     opening_periods: Mapped[list[VenueOpeningPeriod]] = relationship(
         back_populates="venue", cascade="all, delete-orphan", lazy="selectin"
     )
+
+    #: SCRUM-67 — minutes a venue needs before and after each event. A booking holds
+    #: the venue from ``start - setup`` to ``end + turnaround`` (ADR-0011).
+    setup_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
+    turnaround_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
 
     #: SCRUM-25 AC5/AC6 — deactivate/reactivate. A deactivated venue is
     #: excluded from listing and search; the row itself is never deleted.

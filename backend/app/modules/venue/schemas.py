@@ -151,6 +151,13 @@ class EditVenueSchema(Schema):
             max=len(LayoutType), error=f"At most {len(LayoutType)} layouts are allowed."
         ),
     )
+    #: SCRUM-67. Left out on create, they take the configured defaults (in the service).
+    setup_minutes = fields.Integer(
+        validate=validate.Range(min=0, error="Setup time cannot be negative.")
+    )
+    turnaround_minutes = fields.Integer(
+        validate=validate.Range(min=0, error="Turnaround time cannot be negative.")
+    )
     #: The whole weekly schedule. On update it replaces the stored schedule,
     #: so each request is checked on its own and never against saved hours.
     opening_hours = fields.List(
@@ -197,6 +204,8 @@ class VenueSchema(Schema):
     accessibility_features = fields.Function(Venue.accessibility_list, dump_only=True)
     supported_layouts = fields.Function(Venue.layouts_list, dump_only=True)
     opening_hours = fields.Method("get_opening_hours", dump_only=True)
+    setup_minutes = fields.Integer(dump_only=True)
+    turnaround_minutes = fields.Integer(dump_only=True)
     is_active = fields.Boolean(dump_only=True)
 
     def get_opening_hours(self, venue: Venue) -> list[dict[str, dict[str, str]]]:
@@ -251,8 +260,18 @@ class CalendarEntrySchema(Schema):
 
     start_time = BusinessDateTime(dump_only=True)
     end_time = BusinessDateTime(dump_only=True)
+    event_start = BusinessDateTime(dump_only=True, allow_none=True)
+    event_end = BusinessDateTime(dump_only=True, allow_none=True)
     kind = fields.Enum(CalendarEntryKind, by_value=True, dump_only=True)
     reason = fields.String(dump_only=True)
+
+
+class OverlapWarningSchema(Schema):
+    """Two confirmed bookings whose padded periods overlap after a buffer change."""
+
+    booking_ids = fields.List(fields.Integer(), dump_only=True)
+    overlap_start = BusinessDateTime(dump_only=True)
+    overlap_end = BusinessDateTime(dump_only=True)
 
 
 class VenueSearchSchema(_TimeRangeSchema):
