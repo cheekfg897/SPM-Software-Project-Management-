@@ -20,7 +20,7 @@ from collections.abc import Callable, Mapping
 from datetime import date, datetime, timezone
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import ColumnElement
@@ -47,6 +47,12 @@ REFERENCE_PREFIX = "EVR-"
 REFERENCE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"
 REFERENCE_LENGTH = 8
 MAX_REFERENCE_ATTEMPTS = 3
+
+#: Statuses in which an assigned coordinator is still working a request, so they count
+#: towards the coordinator's load (ADR-0018).
+OPEN_STATUSES: frozenset[EventRequestStatus] = frozenset(
+    {EventRequestStatus.SUBMITTED, EventRequestStatus.UNDER_REVIEW}
+)
 
 
 class ReferenceGenerationError(AppError):
@@ -138,17 +144,49 @@ def _organisation_of_organiser(organiser_id: int | str, session: Session) -> int
     return organiser.organisation_id
 
 
-def _notify_coordinators_of_submission(event_request: EventRequest, session: Session) -> None:
+def _open_request_counts(coordinator_ids: list[int], session: Session) -> dict[int, int]:
+    """How many open requests each coordinator holds; 0 for those holding none."""
+    stmt = (
+        select(EventRequest.coordinator_id, func.count())
+        .where(
+            EventRequest.coordinator_id.in_(coordinator_ids),
+            EventRequest.status.in_(OPEN_STATUSES),
+        )
+        .group_by(EventRequest.coordinator_id)
+    )
+    counts = dict.fromkeys(coordinator_ids, 0)
+    for coordinator_id, count in session.execute(stmt):
+        counts[coordinator_id] = count
+    return counts
+
+
+def _least_loaded_coordinator(coordinator_ids: list[int], session: Session) -> int | None:
+    """The Event Coordinator with the fewest open requests (SCRUM-30 AC1, ADR-0018).
+
+    The lowest user id wins a tie. ``None`` when there is no Event Coordinator at all.
+    """
+    if not coordinator_ids:
+        return None
+    counts = _open_request_counts(coordinator_ids, session)
+
+    def load_then_id(coordinator_id: int) -> tuple[int, int]:
+        return counts[coordinator_id], coordinator_id
+
+    return min(coordinator_ids, key=load_then_id)
+
+
+def _notify_about_submission(
+    event_request: EventRequest, coordinator_ids: list[int], session: Session
+) -> None:
     """Tell every Event Coordinator a request was submitted (SCRUM-28 AC3).
 
     Runs after the request's own commit, so the notifications refer to a saved row
-    (ADR-0015). Coordinators aren't assigned to requests yet (SCRUM-30), so every
-    coordinator is one the request is relevant to.
-
-    If the notifications can't be saved, only they are lost: the request is already
+    (ADR-0015). If they can't be saved, only they are lost: the request is already
     saved, and failing the submission would invite the organiser to submit it again.
+
+    With no coordinator to assign (ADR-0018) the request stays unassigned; that is
+    logged so someone can pick it up.
     """
-    coordinator_ids = list_user_ids_with_role(Role.EVENT_COORDINATOR, session=session)
     event = EventSummary(
         id=event_request.id, reference=event_request.reference, name=event_request.name
     )
@@ -159,6 +197,8 @@ def _notify_coordinators_of_submission(event_request: EventRequest, session: Ses
     except SQLAlchemyError:
         session.rollback()
         logger.warning("event_request_notification_failed reference=%s", event.reference)
+    if event_request.coordinator_id is None:
+        logger.warning("event_request_unassigned reference=%s", event_request.reference)
 
 
 def submit_event_request(
@@ -173,10 +213,13 @@ def submit_event_request(
 
     Validates the payload (AC1-AC4), then saves it with status ``submitted``
     and a fresh reference (AC5), filed under the organiser's client
-    organisation (SCRUM-66 AC4). If the reference is already taken, the save
-    is rolled back and retried with a new one, up to
-    :data:`MAX_REFERENCE_ATTEMPTS` times. Once saved, every Event Coordinator
-    is notified (SCRUM-28 AC3).
+    organisation (SCRUM-66 AC4). It is assigned to the Event Coordinator with
+    the fewest open requests, and the assignment is written to its event history
+    (:data:`EventHistoryKind.COORDINATOR_ASSIGNED`) in the same commit (SCRUM-30
+    AC1, AC2, ADR-0018); with no Event Coordinator it is saved unassigned. If the
+    reference is already taken, the save is rolled back and retried with a new
+    one, up to :data:`MAX_REFERENCE_ATTEMPTS` times. Once saved, every Event
+    Coordinator is notified (SCRUM-28 AC3).
 
     Args:
         organiser_id: The caller's user id, taken from their token.
@@ -200,16 +243,30 @@ def submit_event_request(
     data = load_or_raise(SubmitEventRequestSchema(today=today), payload)
     sess = resolve_session(session)
     organisation_id = _organisation_of_organiser(organiser_id, sess)
+    # Read once: one set of coordinators is both assigned from and notified, and
+    # nothing a retry changes affects anyone's load.
+    coordinator_ids = list_user_ids_with_role(Role.EVENT_COORDINATOR, session=sess)
+    coordinator_id = _least_loaded_coordinator(coordinator_ids, sess)
 
     for attempt in range(1, MAX_REFERENCE_ATTEMPTS + 1):
         event_request = EventRequest(
             organiser_id=int(organiser_id),
             organisation_id=organisation_id,
+            coordinator_id=coordinator_id,
             reference=reference_factory(),
             status=EventRequestStatus.SUBMITTED,
             **data,
         )
         sess.add(event_request)
+        if coordinator_id is not None:
+            # Same commit as the request: a rolled-back attempt leaves no entry (AC2).
+            record_event_history(
+                event_request,
+                EventHistoryKind.COORDINATOR_ASSIGNED,
+                actor_id=None,
+                details={"coordinator_id": coordinator_id},
+                session=sess,
+            )
         try:
             sess.commit()
         except IntegrityError as exc:
@@ -223,7 +280,7 @@ def submit_event_request(
             )
             continue
         # Outside the try: a failed notification commit is not a reference collision.
-        _notify_coordinators_of_submission(event_request, sess)
+        _notify_about_submission(event_request, coordinator_ids, sess)
         return event_request
 
     raise ReferenceGenerationError("Could not create the event request. Please try again.")

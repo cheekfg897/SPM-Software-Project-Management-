@@ -25,6 +25,7 @@ from app.modules.events.models import (
     EventRequest,
     EventRequestStatus,
 )
+from app.modules.events.services import submit_event_request
 
 MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "migrations" / "versions"
 
@@ -57,7 +58,7 @@ def valid_event_request_payload() -> dict[str, Any]:
 def make_event_request() -> Callable[..., EventRequest]:
     """Factory for in-memory ``EventRequest`` objects.
 
-    Add one to ``db_session`` to persist it. Everything but the three parameters is
+    Add one to ``db_session`` to persist it. Everything but the four parameters is
     fixed; tests about the other fields go through ``submit_event_request`` with
     ``valid_event_request_payload``.
     """
@@ -67,11 +68,13 @@ def make_event_request() -> Callable[..., EventRequest]:
         reference: str = "EVR-AAAAAAAA",
         status: EventRequestStatus = EventRequestStatus.SUBMITTED,
         organiser_id: int = 7,
+        coordinator_id: int | None = None,
     ) -> EventRequest:
         return EventRequest(
             reference=reference,
             status=status,
             organiser_id=organiser_id,
+            coordinator_id=coordinator_id,
             name="Partner Summit",
             proposed_date=date(2026, 10, 15),
             end_date=date(2026, 10, 15),
@@ -82,6 +85,30 @@ def make_event_request() -> Callable[..., EventRequest]:
         )
 
     return _make
+
+
+@pytest.fixture()
+def submit_valid_request(
+    db_session: Session, valid_event_request_payload: dict[str, Any], today: date
+) -> Callable[..., EventRequest]:
+    """Submit ``valid_event_request_payload`` as organiser 7 on ``db_session``.
+
+    Hands out the given references in order (``EVR-AAAAAAAA`` if none are given), so
+    a test can force a reference collision. The payload is the fixture's own dict, so
+    a test may change it before submitting.
+    """
+
+    def _submit(*references: str) -> EventRequest:
+        remaining = iter(references or ("EVR-AAAAAAAA",))
+        return submit_event_request(
+            7,
+            valid_event_request_payload,
+            session=db_session,
+            today=today,
+            reference_factory=lambda: next(remaining),
+        )
+
+    return _submit
 
 
 @pytest.fixture()
