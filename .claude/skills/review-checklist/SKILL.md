@@ -69,8 +69,12 @@ From `backend/` (activate `.venv` if it exists):
 ```bash
 ruff check .
 ruff format --check .
-pytest --cov=app --cov-branch --cov-report=term-missing --cov-fail-under=90
+pytest --cov=app --cov-branch --cov-report=term-missing --cov-report=xml --cov-fail-under=90
+diff-cover coverage.xml --compare-branch=origin/main --fail-under=100
 ```
+
+For a PR, compare against its base branch instead of `origin/main` if it differs. CI runs the
+same `diff-cover` check, so a failure here will fail the PR.
 
 If the change touches `models.py` or `migrations/`, also run `flask db heads` (must be exactly
 one) and, **only if Postgres is running**, `flask db check`. If a check can't run (no venv, no
@@ -79,12 +83,14 @@ DB), say so in the report — never report it as passing.
 Don't repeat what these tools report as hand-review findings; list their failures once in the
 report.
 
-**Coverage of changed code must be 100%, lines and branches.** Match the `Missing` column
-(line numbers, and `a->b` for a branch not taken) against the lines this change added or
-modified. For each miss in changed code:
+**Coverage of changed code must be 100%, lines and branches.** `diff-cover` lists the changed
+lines left uncovered. It can't see branches, so also match the `a->b` entries in pytest's
+`Missing` column (a branch not taken) against the lines this change added or modified. For
+each miss in changed code:
 
-- There's a `# pragma: no cover - <reason>` or a docstring note saying why it isn't
-  unit-tested, and the reason holds up → list it under **Coverage gaps** in the report.
+- There's a `# pragma: no cover - <reason>` and the reason holds up → list it under
+  **Coverage gaps** in the report. (A docstring note alone doesn't exclude a line, so
+  `diff-cover` and CI still count it as a miss.)
 - There's no reason, or the reason doesn't hold (it could be unit-tested) → **must** finding.
 
 Misses in code this change didn't touch aren't findings.

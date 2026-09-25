@@ -28,8 +28,10 @@ the work is finished before the last one:
 1. **Tests were written first** and seen failing before the implementation existed.
 2. `ruff check .`, `ruff format .` and
    `pytest --cov=app --cov-branch --cov-report=term-missing` pass (from `backend/`).
-3. **Full coverage of changed code:** every line and branch you added or changed is covered.
-   Any gap has a `# pragma: no cover - <reason>` or a docstring note saying why.
+3. **Full coverage of changed code:** every line and branch you added or changed is covered,
+   and any gap has a `# pragma: no cover - <reason>`. Check the lines with `diff-cover`
+   (below), which CI also runs on every PR; check the branches yourself in the `Missing`
+   column, since `diff-cover` can't see them.
 4. **Self-review:** run the `review-checklist` skill on your own changes. Fix every **must** and
    **should** finding, then re-run step 2.
 5. Report what the self-review found and fixed, anything left open (with why), and every
@@ -53,7 +55,8 @@ ruff check .                  # lint (includes security, docstring and timezone 
 ruff format .                 # format; CI runs `ruff format --check .`
 pytest                        # unit tests — Postgres NOT needed, the DB is mocked
 pytest -m scrum_19            # one story's tests
-pytest --cov=app --cov-branch --cov-report=term-missing   # changed code: 100%; CI floor: 90%
+pytest --cov=app --cov-branch --cov-report=term-missing --cov-report=xml   # CI floor: 90%
+diff-cover coverage.xml --compare-branch=origin/main --fail-under=100     # changed lines: 100%
 flask db migrate -m "..."     # autogenerate a migration — then review and rename it
 flask db upgrade && flask db check   # apply, and confirm models match migrations
 flask db heads                # must print exactly one head

@@ -16,8 +16,9 @@ Don't review by hand what CI already checks. Confirm these are green (or run the
 - [ ] **Lint**: `ruff check .` — style, imports, docstrings present, bandit security rules,
       no `date.today()` / naive `datetime.now()`
 - [ ] **Format**: `ruff format --check .`
-- [ ] **Tests + coverage**: `pytest --cov=app` passes and coverage ≥ 90% overall (changed
-      code needs 100% — checked by hand in section 10)
+- [ ] **Tests + coverage**: `pytest --cov=app` passes and coverage ≥ 90% overall
+- [ ] **Changed lines covered**: the *Changed lines are fully covered* step (`diff-cover`)
+      passes. It checks lines only; changed branches are checked by hand in section 10.
 - [ ] **Migrations**: one Alembic head; `flask db check` clean; downgrade → upgrade replays
 - [ ] **App boots**: `/health` smoke test passes
 
@@ -165,8 +166,9 @@ finding, not a nit.
 - [ ] **No decorative tests:** each test asserts an observable outcome (value, error + status,
       saved fields, log line), states the expected value literally, and would fail if the key
       line were deleted or its condition inverted. Try it on the most important ones.
-- [ ] **Full coverage of changed code:** `pytest --cov=app --cov-branch --cov-report=term-missing`
-      shows no missed line or branch in the changed code, or each gap has a stated reason.
+- [ ] **Full coverage of changed code:** CI's `diff-cover` step holds the lines; check the
+      branches by hand. `pytest --cov=app --cov-branch --cov-report=term-missing` shows no
+      `a->b` miss in the changed code, or each gap has a `# pragma: no cover - <reason>`.
 - [ ] Test names describe the behaviour in a sentence.
 - [ ] Deterministic: no real clock, no real randomness, no sleeps, no dependence on test order.
 - [ ] Side effects that matter are asserted (`add`, `commit`, `rollback` calls).
