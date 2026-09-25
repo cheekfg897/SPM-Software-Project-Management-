@@ -139,8 +139,8 @@ class SubmitEventRequestSchema(Schema):
 class EventRequestSchema(Schema):
     """Public representation of an event request (AC5).
 
-    The internal ``id`` and ``organiser_id`` are not exposed: ``reference`` is
-    the identifier clients use (ADR-0004).
+    The internal ``id``, ``organiser_id`` and ``coordinator_id`` are not exposed:
+    ``reference`` is the identifier clients use (ADR-0004).
     """
 
     reference = fields.String(dump_only=True)
@@ -158,3 +158,13 @@ class EventRequestSchema(Schema):
     equipment_requirements = fields.String(dump_only=True, allow_none=True)
     registration_required = fields.Boolean(dump_only=True)
     created_at = fields.DateTime(dump_only=True, allow_none=True)
+
+
+class CoordinatorContactSchema(Schema):
+    """The assigned coordinator as the organiser sees them (SCRUM-30 AC3).
+
+    Name and contact details only: never their id or role.
+    """
+
+    full_name = fields.String(dump_only=True)
+    email = fields.Email(dump_only=True)

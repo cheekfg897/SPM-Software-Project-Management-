@@ -151,12 +151,23 @@ def saved_users(db_session: Session, make_user: Callable[..., User]) -> list[Use
     """Users of several roles, saved to ``db_session``.
 
     Event Coordinators 9 and 3 (saved in that order, so a query has to sort them),
-    Venue Staff 4 and Event Organiser 7, who belongs to client organisation 3 so they
-    can submit event requests (SCRUM-66).
+    each with their own name so a test can tell which one it got (SCRUM-30), Venue
+    Staff 4 and Event Organiser 7, who belongs to client organisation 3 so they can
+    submit event requests (SCRUM-66).
     """
     users = [
-        make_user(email="coordinator9@example.com", role=Role.EVENT_COORDINATOR, user_id=9),
-        make_user(email="coordinator3@example.com", role=Role.EVENT_COORDINATOR, user_id=3),
+        make_user(
+            email="coordinator9@example.com",
+            full_name="Coordinator Nine",
+            role=Role.EVENT_COORDINATOR,
+            user_id=9,
+        ),
+        make_user(
+            email="coordinator3@example.com",
+            full_name="Coordinator Three",
+            role=Role.EVENT_COORDINATOR,
+            user_id=3,
+        ),
         make_user(email="staff4@example.com", role=Role.VENUE_STAFF, user_id=4),
         make_user(
             email="organiser7@example.com",
