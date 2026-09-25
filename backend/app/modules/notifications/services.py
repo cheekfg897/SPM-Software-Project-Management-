@@ -15,10 +15,11 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.common.database import resolve_session
+from app.common.errors import NotFoundError
 from app.modules.notifications.models import Notification, NotificationKind
 
 
@@ -88,3 +89,59 @@ def list_notifications_for_recipient(
         .order_by(Notification.created_at.desc(), Notification.id.desc())
     )
     return list(resolve_session(session).scalars(stmt))
+
+
+def count_unread_notifications(recipient_id: int | str, *, session: Session | None = None) -> int:
+    """Return how many of the recipient's notifications are unread (SCRUM-28 AC5)."""
+    stmt = (
+        select(func.count())
+        .select_from(Notification)
+        .where(
+            Notification.recipient_id == int(recipient_id),
+            Notification.read_at.is_(None),
+        )
+    )
+    return resolve_session(session).scalars(stmt).one()
+
+
+def mark_notification_read(
+    notification_id: int,
+    recipient_id: int | str,
+    *,
+    session: Session | None = None,
+    now: datetime | None = None,
+) -> Notification:
+    """Mark one of the recipient's own notifications read (SCRUM-28 AC4).
+
+    Marking it again keeps the first read time and writes nothing (ADR-0015).
+
+    Args:
+        notification_id: The notification to mark.
+        recipient_id: The caller's user id, taken from their token.
+        session: Database session; defaults to ``db.session``.
+        now: When it was read; defaults to the current instant.
+
+    Returns:
+        The notification, with ``read_at`` set.
+
+    Raises:
+        NotFoundError: 404 — no such notification, or it is someone else's. Both get
+            the same answer, so the response never confirms another user's id exists
+            (ADR-0015).
+    """
+    sess = resolve_session(session)
+    stmt = select(Notification).where(
+        Notification.id == notification_id,
+        Notification.recipient_id == int(recipient_id),
+    )
+    notification = sess.scalar(stmt)
+    if notification is None:
+        raise NotFoundError("Notification not found.")
+    if notification.read_at is not None:
+        return notification
+
+    if now is None:
+        now = datetime.now(timezone.utc)
+    notification.read_at = now
+    sess.commit()
+    return notification
