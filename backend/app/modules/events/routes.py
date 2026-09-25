@@ -14,6 +14,7 @@ from app.modules.auth.permissions import Role
 from app.modules.events.schemas import (
     EQUIPMENT_EVENT_FIELDS,
     CoordinatorContactSchema,
+    EquipmentAwaitingActionSchema,
     EquipmentLineSchema,
     EventRequestDetailSchema,
     EventRequestSchema,
@@ -22,6 +23,7 @@ from app.modules.events.services import (
     add_equipment_line,
     get_event_record_for_organiser,
     list_equipment_lines,
+    list_equipment_requests_awaiting_action,
     list_event_requests_for_coordinator,
     list_event_requests_for_organiser,
     reassign_coordinator,
@@ -37,6 +39,7 @@ _coordinator_contact_schema = CoordinatorContactSchema()
 _event_request_detail_schema = EventRequestDetailSchema()
 _equipment_line_schema = EquipmentLineSchema()
 _equipment_event_schema = EventRequestSchema(only=EQUIPMENT_EVENT_FIELDS)
+_equipment_awaiting_action_schema = EquipmentAwaitingActionSchema()
 
 
 @bp.post("/requests")
@@ -66,8 +69,9 @@ def list_my_requests() -> tuple[Response, int]:
     )
 
 
-# Declared before ``/requests/<reference>`` for readers; Werkzeug matches the static
-# segment first either way, so "assigned" is never taken for a reference.
+# The two static ``/requests/...`` paths are declared before ``/requests/<reference>``
+# for readers; Werkzeug matches a static segment first either way, so "assigned" and
+# "awaiting-equipment" are never taken for a reference.
 @bp.get("/requests/assigned")
 @requires_role(Role.EVENT_COORDINATOR)
 def list_assigned_requests() -> tuple[Response, int]:
@@ -77,6 +81,18 @@ def list_assigned_requests() -> tuple[Response, int]:
         jsonify({"event_requests": _event_request_schema.dump(event_requests, many=True)}),
         200,
     )
+
+
+@bp.get("/requests/awaiting-equipment")
+@requires_role(Role.TECHNICAL_SUPPORT_STAFF)
+def list_equipment_awaiting_action() -> tuple[Response, int]:
+    """Equipment still awaiting Technical Support, soonest event first (SCRUM-38).
+
+    One list for all Technical Support Staff (ADR-0022).
+    """
+    awaiting = list_equipment_requests_awaiting_action()
+    body = {"equipment_requests": _equipment_awaiting_action_schema.dump(awaiting, many=True)}
+    return jsonify(body), 200
 
 
 @bp.get("/requests/<reference>")
