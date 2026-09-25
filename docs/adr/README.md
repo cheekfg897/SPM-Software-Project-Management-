@@ -28,6 +28,7 @@ To change a decision, don't rewrite history. Add a new ADR that **supersedes** t
 | [0013](0013-client-organisations-recorded-by-internal-users.md) | Client organisations are recorded by internal users; organisers are linked at registration | Accepted | SCRUM-66 |
 | [0014](0014-equipment-type-location-and-quantity.md) | An equipment type is one uniquely named record, held at one venue or one named store | Accepted | SCRUM-27 |
 | [0015](0015-in-app-notifications.md) | Notifications are in-app rows, one per recipient, that snapshot their event | Accepted | SCRUM-28 |
+| [0016](0016-venue-block-warns-not-refuses.md) | A venue block is saved even over a confirmed booking, and reports what it cuts into | Accepted | SCRUM-34 |
 
 ## Template
 
