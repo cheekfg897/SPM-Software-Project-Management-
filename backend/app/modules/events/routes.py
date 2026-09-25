@@ -11,9 +11,9 @@ from flask import Blueprint, Response, g, jsonify, request
 
 from app.common.decorators import requires_role
 from app.modules.auth.permissions import Role
-from app.modules.events.schemas import EventRequestSchema
+from app.modules.events.schemas import CoordinatorContactSchema, EventRequestSchema
 from app.modules.events.services import (
-    get_event_request_for_organiser,
+    get_event_record_for_organiser,
     list_event_requests_for_organiser,
     submit_event_request,
 )
@@ -21,6 +21,7 @@ from app.modules.events.services import (
 bp = Blueprint("events", __name__, url_prefix="/api/events")
 
 _event_request_schema = EventRequestSchema()
+_coordinator_contact_schema = CoordinatorContactSchema()
 
 
 @bp.post("/requests")
@@ -49,6 +50,15 @@ def list_my_requests() -> tuple[Response, int]:
 @bp.get("/requests/<reference>")
 @requires_role(Role.EVENT_ORGANISER)
 def get_my_request(reference: str) -> tuple[Response, int]:
-    """One of the caller's own event requests, with its current status (SCRUM-22)."""
-    event_request = get_event_request_for_organiser(g.current_user_id, reference)
-    return jsonify(_event_request_schema.dump(event_request)), 200
+    """One of the caller's own event requests: its status and its coordinator.
+
+    The current status is SCRUM-22's; the assigned coordinator's name and email are
+    SCRUM-30 AC3's, ``null`` until one is assigned (ADR-0018).
+    """
+    event_request, coordinator = get_event_record_for_organiser(g.current_user_id, reference)
+    body = _event_request_schema.dump(event_request)
+    if coordinator is None:
+        body["coordinator"] = None
+    else:
+        body["coordinator"] = _coordinator_contact_schema.dump(coordinator)
+    return jsonify(body), 200

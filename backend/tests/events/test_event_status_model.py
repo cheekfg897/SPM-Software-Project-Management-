@@ -156,7 +156,7 @@ def test_other_roles_cannot_open_a_request(
     app: Flask, token_for: Callable[..., str], monkeypatch: pytest.MonkeyPatch, role: Role
 ) -> None:
     service = MagicMock()
-    monkeypatch.setattr(routes, "get_event_request_for_organiser", service)
+    monkeypatch.setattr(routes, "get_event_record_for_organiser", service)
 
     with pytest.raises(AuthorizationError) as exc_info:
         _open_request(app, token_for(role=role))
@@ -167,7 +167,7 @@ def test_other_roles_cannot_open_a_request(
 
 def test_detail_without_a_token_is_401(app: Flask, monkeypatch: pytest.MonkeyPatch) -> None:
     service = MagicMock()
-    monkeypatch.setattr(routes, "get_event_request_for_organiser", service)
+    monkeypatch.setattr(routes, "get_event_record_for_organiser", service)
 
     with pytest.raises(AuthenticationError) as exc_info:
         _open_request(app, None)
@@ -186,11 +186,12 @@ def test_detail_route_returns_the_callers_request_with_its_status(
     organiser = make_user(role=Role.EVENT_ORGANISER, user_id=7)
     calls: list[tuple[Any, Any]] = []
 
-    def fake_get(organiser_id: Any, reference: Any) -> EventRequest:
+    def fake_get(organiser_id: Any, reference: Any) -> tuple[EventRequest, None]:
         calls.append((organiser_id, reference))
-        return make_event_request(reference=REFERENCE, status=EventRequestStatus.CONFIRMED)
+        event_request = make_event_request(reference=REFERENCE, status=EventRequestStatus.CONFIRMED)
+        return event_request, None  # no coordinator assigned (SCRUM-30)
 
-    monkeypatch.setattr(routes, "get_event_request_for_organiser", fake_get)
+    monkeypatch.setattr(routes, "get_event_record_for_organiser", fake_get)
 
     response, status = _open_request(app, token_for(organiser))
 

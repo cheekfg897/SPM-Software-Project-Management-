@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 import secrets
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from typing import Any
 
@@ -67,6 +68,17 @@ class OrganiserWithoutOrganisationError(AppError):
 
     status_code = 403
     error_code = "organiser_without_organisation"
+
+
+@dataclass(frozen=True)
+class CoordinatorContact:
+    """The assigned coordinator as the organiser sees them (SCRUM-30 AC3).
+
+    Users record no phone number, so the contact details are the email address.
+    """
+
+    full_name: str
+    email: str
 
 
 def generate_reference() -> str:
@@ -349,3 +361,37 @@ def get_event_request_for_organiser(
     if event_request is None:
         raise NotFoundError("Event request not found.")
     return event_request
+
+
+def _coordinator_contact(
+    event_request: EventRequest, session: Session
+) -> CoordinatorContact | None:
+    """The request's assigned coordinator, or ``None`` while it has none (ADR-0018)."""
+    if event_request.coordinator_id is None:
+        return None
+    coordinator = get_user_by_id(event_request.coordinator_id, session=session)
+    return CoordinatorContact(full_name=coordinator.full_name, email=coordinator.email)
+
+
+def get_event_record_for_organiser(
+    organiser_id: int | str, reference: str, *, session: Session | None = None
+) -> tuple[EventRequest, CoordinatorContact | None]:
+    """One of the organiser's own requests and its assigned coordinator (SCRUM-30 AC3).
+
+    Same lookup and scope as :func:`get_event_request_for_organiser`; the coordinator
+    is ``None`` until one is assigned (ADR-0018).
+
+    Args:
+        organiser_id: The caller's user id, taken from their token.
+        reference: The ``EVR-…`` reference; case and surrounding spaces are ignored.
+        session: Database session; defaults to ``db.session``.
+
+    Returns:
+        The request, and its coordinator's name and email or ``None``.
+
+    Raises:
+        NotFoundError: 404 — no such request among the caller's own.
+    """
+    sess = resolve_session(session)
+    event_request = get_event_request_for_organiser(organiser_id, reference, session=sess)
+    return event_request, _coordinator_contact(event_request, sess)
