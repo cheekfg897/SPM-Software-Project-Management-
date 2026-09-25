@@ -2,10 +2,10 @@
 
 Event Coordinators add, edit and remove an event's equipment lines (AC1, AC2);
 coordinators and Technical Support Staff read them, with the event's date and times
-so Technical Support know by when it is needed (AC4, ADR-0019). The *registered*
-view functions are called inside a request context, so the real decorators run. The
-services are replaced with mocks: a refused request must be stopped before any
-service call happens.
+so Technical Support know by when it is needed, and the organiser sees them on
+their own event record (AC4, ADR-0019). The *registered* view functions are called
+inside a request context, so the real decorators run. The services are replaced
+with mocks: a refused request must be stopped before any service call happens.
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ import pytest
 from flask import Flask
 
 from app.common.errors import AuthenticationError, AuthorizationError
+from app.modules.auth.models import User
 from app.modules.auth.permissions import ALL_ROLES, Role
 from app.modules.equipment.models import EquipmentType
 from app.modules.events import routes
@@ -235,3 +236,28 @@ def test_the_list_route_shows_the_lines_and_when_the_event_is(
     assert status == 200
     assert response.get_json() == {"event": SHOWN_EVENT, "equipment_lines": [SHOWN]}
     mock_services[LIST.service].assert_called_once_with(REFERENCE)
+
+
+def test_the_organisers_detail_route_shows_the_equipment_lines(
+    call_route: CallRoute,
+    token_for: TokenFor,
+    make_user: Callable[..., User],
+    replace_services: ReplaceServices,
+    make_event_request: Callable[..., EventRequest],
+    shown_line: EventEquipmentLine,
+) -> None:
+    event_request = make_event_request()
+    event_request.equipment_lines = [shown_line]
+    replace_services(routes, {"get_event_record_for_organiser": (event_request, None)})
+    organiser = make_user(role=Role.EVENT_ORGANISER, user_id=7)
+
+    response, status = call_route(
+        "events.get_my_request",
+        "GET",
+        f"/api/events/requests/{REFERENCE}",
+        {"reference": REFERENCE},
+        token_for(organiser),
+    )
+
+    assert status == 200
+    assert response.get_json()["equipment_lines"] == [SHOWN]
