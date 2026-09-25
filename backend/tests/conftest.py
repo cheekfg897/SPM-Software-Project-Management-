@@ -10,6 +10,7 @@ pushed because JWT creation and several rules read from ``app.config``.
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
+from types import ModuleType
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -37,6 +38,45 @@ def app_context(app: Flask) -> Iterator[None]:
     """Push an application context around every test."""
     with app.app_context():
         yield
+
+
+@pytest.fixture()
+def call_route(app: Flask) -> Callable[..., Any]:
+    """Call a registered view function as Flask would for one request.
+
+    The route's real decorators run, so permission tests check the actual wiring.
+    ``token`` of ``None`` sends no ``Authorization`` header. The body is always ``{}``:
+    tests that call routes replace the services, so its contents don't matter.
+    """
+
+    def _call(
+        endpoint: str, method: str, path: str, view_kwargs: dict[str, Any], token: str | None
+    ) -> Any:
+        headers = {"Authorization": f"Bearer {token}"} if token is not None else {}
+        with app.test_request_context(path, method=method, headers=headers, json={}):
+            return app.view_functions[endpoint](**view_kwargs)
+
+    return _call
+
+
+@pytest.fixture()
+def replace_services(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Callable[[ModuleType, dict[str, Any]], dict[str, MagicMock]]:
+    """Replace functions of a services module with mocks returning the given values.
+
+    Returns the mocks by function name, so a test can check which were called.
+    """
+
+    def _replace(module: ModuleType, returns: dict[str, Any]) -> dict[str, MagicMock]:
+        mocks = {}
+        for name, value in returns.items():
+            mock = MagicMock(return_value=value)
+            monkeypatch.setattr(module, name, mock)
+            mocks[name] = mock
+        return mocks
+
+    return _replace
 
 
 @pytest.fixture()
