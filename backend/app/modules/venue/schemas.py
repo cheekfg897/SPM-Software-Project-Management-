@@ -271,16 +271,13 @@ class OverlapWarningSchema(Schema):
     overlap_end = BusinessDateTime(dump_only=True)
 
 
-class VenueSearchSchema(_TimeRangeSchema):
-    """Payload for ``POST /api/venues/search`` (SCRUM-35)."""
+class _RequirementsSchema(Schema):
+    """Base for payloads that say what an event asks of a venue (SCRUM-35, SCRUM-36).
 
-    start_time = fields.DateTime(required=True)
-    end_time = fields.DateTime(required=True)
-    min_capacity = fields.Integer(
-        required=True,
-        validate=validate.Range(min=1, error="min_capacity must be a positive number."),
-    )
-    location = fields.String(load_default=None, allow_none=True)
+    Search and the suitability check load requirements through this one schema, so
+    they validate and normalise them the same way.
+    """
+
     required_layout = fields.String(
         load_default=None, allow_none=True, validate=validate.OneOf(LayoutType.values())
     )
@@ -292,6 +289,22 @@ class VenueSearchSchema(_TimeRangeSchema):
         # Stored items are trimmed and lower case; requests are compared the same way.
         for key in ("required_facilities", "required_accessibility"):
             data[key] = [_normalised_item(item) for item in data[key]]
+        return data
+
+
+class VenueSearchSchema(_RequirementsSchema, _TimeRangeSchema):
+    """Payload for ``POST /api/venues/search`` (SCRUM-35)."""
+
+    start_time = fields.DateTime(required=True)
+    end_time = fields.DateTime(required=True)
+    min_capacity = fields.Integer(
+        required=True,
+        validate=validate.Range(min=1, error="min_capacity must be a positive number."),
+    )
+    location = fields.String(load_default=None, allow_none=True)
+
+    @post_load
+    def _normalise_location(self, data: dict[str, Any], **_: Any) -> dict[str, Any]:
         if data["location"] is not None:
             # A blank location means "anywhere", not "a location containing nothing".
             data["location"] = data["location"].strip() or None
