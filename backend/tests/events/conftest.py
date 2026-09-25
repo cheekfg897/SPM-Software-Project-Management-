@@ -14,10 +14,17 @@ from unittest.mock import MagicMock
 import pytest
 from alembic.operations import Operations
 from alembic.runtime.migration import MigrationContext
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.modules.auth.models import User
 from app.modules.auth.permissions import Role
-from app.modules.events.models import EventRequest, EventRequestStatus
+from app.modules.events.models import (
+    EventHistoryEntry,
+    EventHistoryKind,
+    EventRequest,
+    EventRequestStatus,
+)
 
 MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "migrations" / "versions"
 
@@ -75,6 +82,32 @@ def make_event_request() -> Callable[..., EventRequest]:
         )
 
     return _make
+
+
+@pytest.fixture()
+def history_of(
+    db_session: Session,
+) -> Callable[[int], list[tuple[EventHistoryKind, int | None, dict[str, Any] | None]]]:
+    """The saved history of an event request, oldest first (ADR-0018).
+
+    Each entry as ``(kind, actor_id, details)``, read back from the database.
+    """
+
+    def _history(
+        event_request_id: int,
+    ) -> list[tuple[EventHistoryKind, int | None, dict[str, Any] | None]]:
+        db_session.expire_all()
+        stmt = (
+            select(EventHistoryEntry)
+            .where(EventHistoryEntry.event_request_id == event_request_id)
+            .order_by(EventHistoryEntry.occurred_at, EventHistoryEntry.id)
+        )
+        entries = []
+        for entry in db_session.scalars(stmt):
+            entries.append((entry.kind, entry.actor_id, entry.details))
+        return entries
+
+    return _history
 
 
 @pytest.fixture()

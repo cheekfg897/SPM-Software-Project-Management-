@@ -4,6 +4,9 @@ These functions are the module's public API: routes call them, tests call
 them directly, and future modules that need event request data call them
 instead of touching :class:`~app.modules.events.models.EventRequest`.
 
+What happens to a request is written to its event history with
+:func:`record_event_history`, which only this module calls (ADR-0018).
+
 Every function takes an optional ``session`` so unit tests can pass a mock
 instead of a real database session. In production the default
 ``db.session`` is used.
@@ -14,7 +17,7 @@ from __future__ import annotations
 import logging
 import secrets
 from collections.abc import Callable, Mapping
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Any
 
 from sqlalchemy import select
@@ -29,6 +32,8 @@ from app.modules.auth.permissions import Role
 from app.modules.auth.services import get_user_by_id, list_user_ids_with_role
 from app.modules.events.models import (
     REFERENCE_UNIQUE_CONSTRAINT,
+    EventHistoryEntry,
+    EventHistoryKind,
     EventRequest,
     EventRequestStatus,
 )
@@ -77,6 +82,44 @@ def is_reference_collision(exc: IntegrityError) -> bool:
         return constraint == REFERENCE_UNIQUE_CONSTRAINT
     message = str(exc.orig)
     return REFERENCE_UNIQUE_CONSTRAINT in message or "event_requests.reference" in message
+
+
+def record_event_history(
+    event_request: EventRequest,
+    kind: EventHistoryKind,
+    *,
+    actor_id: int | None,
+    details: dict[str, Any] | None = None,
+    session: Session | None = None,
+    now: datetime | None = None,
+) -> EventHistoryEntry:
+    """Add a history entry for ``event_request`` without committing (ADR-0018).
+
+    The entry rides in the caller's transaction, so it is saved with the change it
+    records or not at all. ``event_request`` need not be flushed yet.
+
+    Args:
+        event_request: The request the entry is about.
+        kind: What happened.
+        actor_id: The user who did it, or ``None`` when the system did.
+        details: Anything the kind needs to say, e.g. ``{"coordinator_id": 3}``.
+        session: Database session; defaults to ``db.session``.
+        now: When it happened; defaults to the current instant.
+
+    Returns:
+        The new entry, added to the session but not yet committed.
+    """
+    if now is None:
+        now = datetime.now(timezone.utc)
+    entry = EventHistoryEntry(
+        event_request=event_request,
+        kind=kind,
+        actor_id=actor_id,
+        details=details,
+        occurred_at=now,
+    )
+    resolve_session(session).add(entry)
+    return entry
 
 
 def _organisation_of_organiser(organiser_id: int | str, session: Session) -> int:
