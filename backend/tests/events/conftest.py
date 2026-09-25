@@ -28,7 +28,11 @@ from app.modules.events.models import (
     EventRequest,
     EventRequestStatus,
 )
-from app.modules.events.services import submit_event_request
+from app.modules.events.services import (
+    CoordinatorContact,
+    reassign_coordinator,
+    submit_event_request,
+)
 from app.modules.notifications.services import list_notifications_for_recipient
 
 MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "migrations" / "versions"
@@ -313,3 +317,51 @@ def reload_equipment_line(db_session: Session) -> Callable[[int], EventEquipment
         return line
 
     return _reload
+
+
+@pytest.fixture()
+def reassign(
+    saved_users: list[User], saved_event_request: EventRequest
+) -> Callable[[int, str], tuple[EventRequest, CoordinatorContact]]:
+    """Reassign ``saved_event_request`` to the user with this email (SCRUM-87).
+
+    The request, ``EVR-AAAAAAAA``, starts with Event Coordinator 3; ``actor_id`` is
+    who reassigns it. Runs on ``db_session`` with ``saved_users``.
+    """
+
+    def _reassign(actor_id: int, coordinator_email: str) -> tuple[EventRequest, CoordinatorContact]:
+        payload = {"coordinator_email": coordinator_email}
+        return reassign_coordinator(actor_id, "EVR-AAAAAAAA", payload)
+
+    return _reassign
+
+
+@pytest.fixture()
+def reassignment_lookups(
+    mock_session: MagicMock,
+    make_event_request: Callable[..., EventRequest],
+    make_user: Callable[..., User],
+) -> EventRequest:
+    """Make ``mock_session`` find what a reassignment from coordinator 3 to 9 looks up.
+
+    The request ``EVR-AAAAAAAA`` (id 1, with coordinator 3) by its reference, then
+    coordinator 9 by email; either coordinator by id, for their name and email.
+    Returns the request.
+    """
+    event_request = make_event_request(coordinator_id=3)
+    event_request.id = 1
+    coordinators = {}
+    for user_id, name in [(3, "Three"), (9, "Nine")]:
+        coordinators[user_id] = make_user(
+            email=f"coordinator{user_id}@example.com",
+            full_name=f"Coordinator {name}",
+            role=Role.EVENT_COORDINATOR,
+            user_id=user_id,
+        )
+
+    def get_coordinator(_model: type, user_id: int) -> User:
+        return coordinators[user_id]
+
+    mock_session.scalar.side_effect = [event_request, coordinators[9]]
+    mock_session.get.side_effect = get_coordinator
+    return event_request

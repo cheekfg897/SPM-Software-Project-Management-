@@ -8,7 +8,8 @@ were ambiguous, the choice is recorded as an ADR in ``docs/adr/``:
   the optional ``end_date``.
 * ADR-0003: expected attendance is a whole number of at least 1.
 
-SCRUM-37 adds the equipment lines recorded on a request (ADR-0019).
+SCRUM-37 adds the equipment lines recorded on a request (ADR-0019), and SCRUM-87
+the coordinator a request is reassigned to (ADR-0021).
 """
 
 from __future__ import annotations
@@ -183,6 +184,16 @@ EQUIPMENT_EVENT_FIELDS = (
     "start_time",
     "end_time",
 )
+
+
+class ReassignCoordinatorSchema(Schema):
+    """Payload for ``POST /api/events/requests/<reference>/reassign`` (SCRUM-87).
+
+    The new coordinator is named by email, since user ids are never shown to other
+    users (ADR-0021).
+    """
+
+    coordinator_email = fields.Email(required=True)
 
 
 class EditEquipmentLineSchema(Schema):
