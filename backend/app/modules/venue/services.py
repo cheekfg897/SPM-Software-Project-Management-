@@ -470,3 +470,41 @@ def block_venue(
     sess.add(block)
     sess.commit()
     return block, _bookings_cut_by(venue, block, sess)
+
+
+def list_venue_blocks(venue_id: int, *, session: Session | None = None) -> list[VenueBlock]:
+    """A venue's blocks, with their ids and reasons, in start order (ADR-0016).
+
+    Venue Staff use it to find the block to remove (SCRUM-34 AC4); the calendar
+    shows blocks without ids.
+
+    Raises:
+        NotFoundError: 404 — no such venue.
+    """
+    sess = resolve_session(session)
+    venue = get_venue(venue_id, session=sess)
+    stmt = (
+        select(VenueBlock)
+        .where(VenueBlock.venue_id == venue.id)
+        .order_by(VenueBlock.start_time, VenueBlock.id)
+    )
+    return list(sess.scalars(stmt))
+
+
+def remove_venue_block(venue_id: int, block_id: int, *, session: Session | None = None) -> None:
+    """Delete a venue's block, making the period available again (SCRUM-34 AC4).
+
+    The block must belong to the venue in the request (ADR-0016).
+
+    Raises:
+        NotFoundError: 404 — no such venue, or no such block on that venue.
+    """
+    sess = resolve_session(session)
+    venue = get_venue(venue_id, session=sess)
+    block = sess.scalar(
+        select(VenueBlock).where(VenueBlock.id == block_id, VenueBlock.venue_id == venue.id)
+    )
+    if block is None:
+        raise NotFoundError("Block not found.")
+    sess.delete(block)
+    sess.commit()
