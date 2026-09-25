@@ -1,10 +1,8 @@
-"""Unit tests for Story 3 — enforce permissions (``requires_auth`` / ``requires_role``).
+"""Unit tests for SCRUM-21 — enforce permissions (``requires_auth``, ``requires_role``).
 
 The decorators are exercised directly: a dummy function is wrapped and called
 inside a ``test_request_context`` carrying (or lacking) an ``Authorization``
 header. No HTTP client is involved.
-
-# TODO: replace marker/story name with the actual Jira story ID once assigned
 """
 
 from __future__ import annotations
@@ -28,7 +26,7 @@ from app.modules.auth.permissions import (
     is_internal_role,
 )
 
-pytestmark = pytest.mark.story_permissions
+pytestmark = pytest.mark.scrum_21
 
 # A real route path so ``request.endpoint`` resolves during URL matching
 # (needed to assert on the audit log line).

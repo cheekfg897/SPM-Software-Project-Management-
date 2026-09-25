@@ -75,7 +75,7 @@ def get_user_by_id(user_id: int | str, *, session: Session | None = None) -> Use
 
 
 def register_user(payload: Mapping[str, Any] | None, *, session: Session | None = None) -> User:
-    """Create a new account (Story 1).
+    """Create a new account (SCRUM-65).
 
     Validates the payload against :class:`RegisterSchema` (required fields,
     email format, role, password policy), checks the email is not already in
@@ -123,7 +123,7 @@ def register_user(payload: Mapping[str, Any] | None, *, session: Session | None 
 
 
 def authenticate_user(email: str, password: str, *, session: Session | None = None) -> AuthResult:
-    """Verify credentials and issue an access token (Story 2).
+    """Verify credentials and issue an access token (SCRUM-6).
 
     Args:
         email: The login email (case-insensitive).

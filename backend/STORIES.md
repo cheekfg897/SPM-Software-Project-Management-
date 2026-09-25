@@ -3,12 +3,15 @@
 Format: As a / I want / So that + acceptance criteria.
 Each story maps to a pytest marker in `pytest.ini` so tests can be traced back to it.
 
-<!-- TODO: replace marker/story name with the actual Jira story ID once assigned -->
+> **Jira is the source of truth.** This file is the team's Sprint 1 working copy. The acceptance
+> criteria for SCRUM-65, SCRUM-6 and SCRUM-21 below were written before the Jira stories were
+> finalised and **no longer match them** (e.g. Jira's SCRUM-65 forbids self-registering internal
+> roles; SCRUM-6 adds logout). Check the story in Jira before relying on anything here.
 
 ---
 
-## Story 1 — Create an account
-**Marker:** `story_create_account`
+## SCRUM-65 — Create an account
+**Marker:** `scrum_65`
 
 **As a** new user,
 **I want to** create an account by providing my email, password, name, and role,
@@ -28,8 +31,8 @@ Each story maps to a pytest marker in `pytest.ini` so tests can be traced back t
 
 ---
 
-## Story 2 — Log in to the system
-**Marker:** `story_login`
+## SCRUM-6 — Log in to the system
+**Marker:** `scrum_6`
 
 **As a** registered user,
 **I want to** log in with my email and password,
@@ -44,8 +47,8 @@ Each story maps to a pytest marker in `pytest.ini` so tests can be traced back t
 
 ---
 
-## Story 3 — Enforce permissions for every role
-**Marker:** `story_permissions`
+## SCRUM-21 — Enforce permissions for every role
+**Marker:** `scrum_21`
 
 **As** ConnectSphere,
 **I want** every protected action to check the caller's role,

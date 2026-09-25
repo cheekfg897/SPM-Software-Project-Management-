@@ -1,7 +1,4 @@
-"""Unit tests for Story 1 — create an account (``register_user``).
-
-# TODO: replace marker/story name with the actual Jira story ID once assigned
-"""
+"""Unit tests for SCRUM-65 — create an account (``register_user``)."""
 
 from __future__ import annotations
 
@@ -18,7 +15,7 @@ from app.modules.auth.permissions import Role
 from app.modules.auth.schemas import UserSchema
 from app.modules.auth.services import register_user
 
-pytestmark = pytest.mark.story_create_account
+pytestmark = pytest.mark.scrum_65
 
 
 # --------------------------------------------------------------------------

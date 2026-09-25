@@ -26,7 +26,7 @@ _user_schema = UserSchema()
 
 @bp.post("/register")
 def register() -> tuple[Response, int]:
-    """Create an account (Story 1). Returns ``201`` with the public user shape."""
+    """Create an account (SCRUM-65). Returns ``201`` with the public user shape."""
     # TODO(product): confirm internal-role provisioning with customer.
     # Currently every role — including event_coordinator, venue_staff and
     # technical_support_staff — can self-register here. If the customer wants
@@ -38,7 +38,7 @@ def register() -> tuple[Response, int]:
 
 @bp.post("/login")
 def login() -> tuple[Response, int]:
-    """Exchange email + password for a JWT access token (Story 2)."""
+    """Exchange email + password for a JWT access token (SCRUM-6)."""
     data = load_or_raise(LoginSchema(), request.get_json(silent=True))
     result = authenticate_user(data["email"], data["password"])
     return (
@@ -60,7 +60,7 @@ def login() -> tuple[Response, int]:
 @bp.get("/me")
 @requires_auth
 def me() -> tuple[Response, int]:
-    """Return the caller's own profile (Story 3 — any authenticated user)."""
+    """Return the caller's own profile (SCRUM-21 — any authenticated user)."""
     user = get_user_by_id(g.current_user_id)
     return jsonify(_user_schema.dump(user)), 200
 
@@ -68,7 +68,7 @@ def me() -> tuple[Response, int]:
 @bp.get("/internal-only")
 @requires_role(*INTERNAL_ROLES)
 def internal_only() -> tuple[Response, int]:
-    """Example role-restricted route (Story 3 — internal staff only).
+    """Example role-restricted route (SCRUM-21 — internal staff only).
 
     Exists purely to demonstrate the ``@requires_role`` pattern that feature
     modules will use in later sprints.
