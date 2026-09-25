@@ -16,6 +16,7 @@ from app.modules.notifications.models import Notification, NotificationKind
 MESSAGE_BY_KIND: dict[NotificationKind, str] = {
     NotificationKind.EVENT_REQUEST_SUBMITTED: "A new event request was submitted.",
     NotificationKind.COORDINATOR_ASSIGNED: "You have been assigned to coordinate this event.",
+    NotificationKind.EQUIPMENT_REQUESTED: "Equipment was requested for an event.",
 }
 
 #: Where a notification links to: the event's page, found by its reference

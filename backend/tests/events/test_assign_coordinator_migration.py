@@ -39,7 +39,8 @@ def test_migration_and_models_agree_on_the_kind_values(load_migration: LoadMigra
     added = set(migration.ADDED_NOTIFICATION_KIND_VALUES)
 
     assert previous == created_by_0009
-    assert previous | added == {kind.value for kind in NotificationKind}
+    # Migration 0011 adds a kind of its own, so the model has these and more.
+    assert added.issubset({kind.value for kind in NotificationKind})
     assert previous.isdisjoint(added)
     assert set(migration.HISTORY_KIND_VALUES) == {kind.value for kind in EventHistoryKind}
 

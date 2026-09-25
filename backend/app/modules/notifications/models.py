@@ -31,6 +31,7 @@ class NotificationKind(str, enum.Enum):
     EVENT_REQUEST_SUBMITTED = "event_request_submitted"
     #: Added by SCRUM-30: the recipient is now the event's coordinator (ADR-0018).
     COORDINATOR_ASSIGNED = "coordinator_assigned"
+    EQUIPMENT_REQUESTED = "equipment_requested"
 
 
 class Notification(db.Model):  # type: ignore[name-defined]
