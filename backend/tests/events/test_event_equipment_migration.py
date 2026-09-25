@@ -20,6 +20,7 @@ pytestmark = pytest.mark.scrum_37
 
 LoadMigration = Callable[[str], ModuleType]
 RenderMigrationSql = Callable[[Callable[[], None]], str]
+AssertInOrder = Callable[[str, list[str]], None]
 
 MIGRATION = "0011_create_event_equipment_lines_table.py"
 
@@ -78,7 +79,9 @@ def test_upgrade_creates_the_table_then_adds_the_kind_outside_the_transaction(
 
 
 def test_downgrade_drops_the_table_and_rebuilds_notification_kind_without_the_new_value(
-    load_migration: LoadMigration, render_migration_sql: RenderMigrationSql
+    load_migration: LoadMigration,
+    render_migration_sql: RenderMigrationSql,
+    assert_in_order: AssertInOrder,
 ) -> None:
     migration = load_migration(MIGRATION)
     expected_in_order = [
@@ -94,6 +97,4 @@ def test_downgrade_drops_the_table_and_rebuilds_notification_kind_without_the_ne
 
     sql = render_migration_sql(migration.downgrade)
 
-    positions = [sql.find(statement) for statement in expected_in_order]
-    assert -1 not in positions
-    assert positions == sorted(positions)
+    assert_in_order(sql, expected_in_order)
