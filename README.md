@@ -15,6 +15,7 @@ backend/            Flask application (see below)
     common/         cross-cutting: error handlers, requires_auth / requires_role
     modules/auth/   models, routes, schemas, services, permissions
     modules/events/ event requests (SCRUM-19)
+    modules/venue/  venue catalogue (SCRUM-25)
   tests/            unit tests (pytest), one marker per story
   migrations/       Alembic migrations (Flask-Migrate)
 docs/adr/           Architecture Decision Records: choices made where requirements were silent
@@ -104,6 +105,12 @@ curl http://localhost:5000/api/auth/internal-only -H "Authorization: Bearer <tok
 | `GET  /api/auth/internal-only` | `event_coordinator`, `venue_staff`, `technical_support_staff`   |
 | `POST /api/events/requests`    | `event_organiser` — submit an event request                     |
 | `GET  /api/events/requests`    | `event_organiser` — list your own event requests                |
+| `POST /api/venues`             | `venue_staff` — add a venue                                     |
+| `GET  /api/venues`             | any authenticated user — list active venues, by name            |
+| `GET  /api/venues/<id>`        | any authenticated user — one venue, active or not               |
+| `PATCH /api/venues/<id>`       | `venue_staff` — change only the fields sent                     |
+| `POST /api/venues/<id>/deactivate` | `venue_staff` — hide from listing and search            |
+| `POST /api/venues/<id>/reactivate` | `venue_staff` — show again                              |
 
 Roles: `event_organiser`, `attendee`, `event_coordinator`, `venue_staff`, `technical_support_staff`.
 
@@ -113,7 +120,7 @@ All errors share one shape: `{"error": "<code>", "message": "<text>", "details":
 
 ## 5. Run the tests
 
-The Sprint 1 suite is unit tests only. The database is mocked, so **Postgres does not need to be running**.
+The suite is unit tests only, and **Postgres does not need to be running**. Most tests mock the database; the venue service tests run against an in-memory SQLite database, so their queries really execute.
 
 ```bash
 cd backend
@@ -127,6 +134,7 @@ pytest -m scrum_65   # create an account
 pytest -m scrum_6    # log in
 pytest -m scrum_21   # enforce permissions
 pytest -m scrum_19   # submit an event request
+pytest -m scrum_25   # update venue catalogue
 ```
 
 ## Database migrations
