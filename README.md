@@ -18,6 +18,9 @@ backend/            Flask application (see below)
   tests/            unit tests (pytest), one marker per story
   migrations/       Alembic migrations (Flask-Migrate)
 docs/adr/           Architecture Decision Records: choices made where requirements were silent
+backend/CONVENTIONS.md   Python conventions: style, naming, typing, testing
+docs/code-review-checklist.md   what to check when reviewing a PR
+CLAUDE.md           working rules for Claude Code (commands, architecture rules, gotchas)
 frontend/           placeholder only — framework not yet decided
 docker-compose.yml  Postgres + backend for local development
 .github/workflows/  CI: migrate against Postgres, run unit tests
