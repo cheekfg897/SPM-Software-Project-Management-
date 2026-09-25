@@ -17,6 +17,9 @@ To change a decision, don't rewrite history. Add a new ADR that **supersedes** t
 | [0002](0002-event-time-window.md) | Event time window: end must be strictly after start; overnight allowed through `end_date` | Accepted | SCRUM-19 |
 | [0003](0003-expected-attendance-minimum.md) | Expected attendance must be at least 1, with no upper limit | Accepted | SCRUM-19 |
 | [0004](0004-event-request-reference-format.md) | Event request reference is a random code like `EVR-XXXXXXXX` | Accepted | SCRUM-19 |
+| [0005](0005-password-policy.md) | Passwords need at least 8 characters, a letter and a digit | Accepted | SCRUM-65 |
+| [0006](0006-access-tokens.md) | Log in with a 1-hour JWT access token, no refresh token yet | Accepted | SCRUM-6 |
+| [0007](0007-authorization-failures-are-logged.md) | A refused request is "recorded" as a structured log line | Accepted | SCRUM-21 |
 
 ## Template
 
