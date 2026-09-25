@@ -26,6 +26,7 @@ from app.modules.events.models import (
     EventRequestStatus,
 )
 from app.modules.events.services import submit_event_request
+from app.modules.notifications.services import list_notifications_for_recipient
 
 MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "migrations" / "versions"
 
@@ -184,3 +185,27 @@ def render_migration_sql() -> Callable[[Callable[[], None]], str]:
         return buffer.getvalue()
 
     return _render
+
+
+@pytest.fixture()
+def notifications_of() -> Callable[[int], list[tuple[Any, ...]]]:
+    """A user's notifications, newest first, as rows of what each one records.
+
+    Each row is (event request id, reference, name, kind, read at).
+    """
+
+    def _notifications_of(user_id: int) -> list[tuple[Any, ...]]:
+        rows = []
+        for notification in list_notifications_for_recipient(user_id):
+            rows.append(
+                (
+                    notification.event_request_id,
+                    notification.event_reference,
+                    notification.event_name,
+                    notification.kind,
+                    notification.read_at,
+                )
+            )
+        return rows
+
+    return _notifications_of
