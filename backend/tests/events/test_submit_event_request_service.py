@@ -63,23 +63,6 @@ def _references(*values: str) -> Callable[[], str]:
     return lambda: next(remaining)
 
 
-def _saved_request(**overrides: Any) -> EventRequest:
-    fields: dict[str, Any] = {
-        "reference": "EVR-AAAAAAAA",
-        "status": EventRequestStatus.SUBMITTED,
-        "organiser_id": 7,
-        "name": "Partner Summit",
-        "proposed_date": date(2026, 10, 15),
-        "end_date": date(2026, 10, 15),
-        "start_time": time(9, 0),
-        "end_time": time(17, 0),
-        "expected_attendance": 250,
-        "registration_required": False,
-    }
-    fields.update(overrides)
-    return EventRequest(**fields)
-
-
 # --------------------------------------------------------------------------
 # AC1 + AC5 — submitting saves every field with status Submitted and a reference
 # --------------------------------------------------------------------------
@@ -244,8 +227,13 @@ def test_is_reference_collision(orig: Exception, expected: bool) -> None:
 # --------------------------------------------------------------------------
 
 
-def test_list_returns_the_requests_found(mock_session: MagicMock) -> None:
-    rows = [_saved_request(reference="EVR-BBBBBBBB"), _saved_request(reference="EVR-AAAAAAAA")]
+def test_list_returns_the_requests_found(
+    mock_session: MagicMock, make_event_request: Callable[..., EventRequest]
+) -> None:
+    rows = [
+        make_event_request(reference="EVR-BBBBBBBB"),
+        make_event_request(reference="EVR-AAAAAAAA"),
+    ]
     mock_session.scalars.return_value = rows
 
     assert list_event_requests_for_organiser("7", session=mock_session) == rows
@@ -326,13 +314,14 @@ def test_submit_route_uses_the_callers_id_and_returns_201(
     make_user,
     monkeypatch: pytest.MonkeyPatch,
     valid_event_request_payload: dict[str, Any],
+    make_event_request: Callable[..., EventRequest],
 ) -> None:
     organiser = make_user(role=Role.EVENT_ORGANISER, user_id=7)
     calls: list[tuple[Any, Any]] = []
 
     def fake_submit(organiser_id: Any, payload: Any) -> EventRequest:
         calls.append((organiser_id, payload))
-        return _saved_request()
+        return make_event_request()
 
     monkeypatch.setattr(routes, "submit_event_request", fake_submit)
 
@@ -352,14 +341,18 @@ def test_submit_route_uses_the_callers_id_and_returns_201(
 
 
 def test_list_route_returns_the_callers_requests(
-    app: Flask, token_for, make_user, monkeypatch: pytest.MonkeyPatch
+    app: Flask,
+    token_for,
+    make_user,
+    monkeypatch: pytest.MonkeyPatch,
+    make_event_request: Callable[..., EventRequest],
 ) -> None:
     organiser = make_user(role=Role.EVENT_ORGANISER, user_id=7)
     calls: list[Any] = []
 
     def fake_list(organiser_id: Any) -> list[EventRequest]:
         calls.append(organiser_id)
-        return [_saved_request()]
+        return [make_event_request()]
 
     monkeypatch.setattr(routes, "list_event_requests_for_organiser", fake_list)
 
