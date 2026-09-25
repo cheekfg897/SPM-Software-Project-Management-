@@ -2,7 +2,7 @@
 
 Backend for ConnectSphere's event planning and venue booking platform (IS212 scrum project), built as a **modularised monolith**: one Flask app, internally split into self-contained modules that only talk through service functions.
 
-Sprint 1 scope: the auth foundation — account creation, login, and role-based permission enforcement. See [backend/STORIES.md](backend/STORIES.md) for the user stories and acceptance criteria.
+User stories and their acceptance criteria live in Jira (project **SCRUM**), the single source of truth for requirements. Decisions made where a story is silent are recorded in [docs/adr/](docs/adr/README.md).
 
 ## Repository layout
 

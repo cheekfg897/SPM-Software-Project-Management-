@@ -1,7 +1,7 @@
 # Weekly dependency pull requests. Everything is grouped into one PR per
 # ecosystem so the team reviews a single update a week instead of five.
-# Prefixes carry no scope: pr-title.yml only accepts a SCRUM story as a scope,
-# and ci/chore titles may omit it.
+# Prefixes are ci/build with no scope: those are the only PR title types
+# pr-title.yml lets go without a SCRUM story, and a scope must be a story.
 version: 2
 updates:
   - package-ecosystem: pip
@@ -14,7 +14,7 @@ updates:
       python:
         patterns: ["*"]
     commit-message:
-      prefix: "chore"
+      prefix: "build"
 
   - package-ecosystem: github-actions
     directory: /

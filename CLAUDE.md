@@ -43,7 +43,7 @@ the work is finished before the last one:
 |---|---|
 | Writing or changing Python | [backend/CONVENTIONS.md](backend/CONVENTIONS.md) — auto-loaded via `backend/CLAUDE.md` |
 | Reviewing code (a PR, a branch, or your own work) | the `review-checklist` skill, which walks [docs/code-review-checklist.md](docs/code-review-checklist.md) |
-| Implementing a story | The Jira story (`SCRUM-<n>` on `smu-team-uu78imq6.atlassian.net`, via the Atlassian MCP tools — read-only unless asked): ACs in the description, clarifications in comments. Then the relevant `docs/adr/` records. `backend/STORIES.md` is a local copy and may be stale. |
+| Implementing a story | The Jira story (`SCRUM-<n>` on `smu-team-uu78imq6.atlassian.net`, via the Atlassian MCP tools — read-only unless asked): ACs in the description, clarifications in comments. Then the relevant `docs/adr/` records. Jira is the only place requirements live; there is no local copy. |
 | Acceptance criteria are ambiguous | `docs/adr/README.md` — record the decision as a new ADR |
 
 ## Commands
@@ -101,10 +101,12 @@ flask db heads                # must print exactly one head
 
 - PR titles are Conventional Commits, enforced by `.github/workflows/pr-title.yml`. Use the
   same format for commit subjects.
-  - `feat fix docs refactor test perf style revert` **must** name the story:
+  - `feat fix docs chore refactor test perf style revert` **must** name the story:
     `feat(SCRUM-19): submit an event request`.
-  - `ci build chore` may leave it out: `ci: cache pip downloads`. If they give a scope, it must
-    be a story (`ci(SCRUM-5): ...`), never a free-form one like `chore(deps)`.
+  - Only `ci` and `build` (pipelines, dependencies, Dependabot) may leave it out:
+    `ci: cache pip downloads`. If they give a scope, it must be a story (`ci(SCRUM-5): ...`),
+    never a free-form one like `build(deps)`.
 - **Layered commits** (`backend/CONVENTIONS.md` §15): one logical change per commit, each
-  passing lint and tests on its own, stacked in dependency order.
+  passing lint and tests on its own, stacked in dependency order. Merge with **Rebase and
+  merge**, never squash.
 - Branch off `main`; never commit `backend/.env` or real secrets.
