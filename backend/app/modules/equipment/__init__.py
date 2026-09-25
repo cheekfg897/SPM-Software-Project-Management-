@@ -7,3 +7,12 @@ Public surface for other modules (import from here, not from sub-files):
 """
 
 from __future__ import annotations
+
+from flask import Flask
+
+
+def register(app: Flask) -> None:
+    """Attach the equipment blueprint to ``app``."""
+    from app.modules.equipment.routes import bp
+
+    app.register_blueprint(bp)
