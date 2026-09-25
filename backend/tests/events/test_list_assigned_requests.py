@@ -17,7 +17,7 @@ from flask import Flask
 
 from app.common.errors import AuthenticationError, AuthorizationError
 from app.modules.auth.models import User
-from app.modules.auth.permissions import ALL_ROLES, Role
+from app.modules.auth.permissions import Role
 from app.modules.events import routes
 from app.modules.events.models import EventRequest
 from app.modules.events.services import list_event_requests_for_coordinator
@@ -31,7 +31,6 @@ ReplaceServices = Callable[[ModuleType, dict[str, Any]], dict[str, MagicMock]]
 
 ENDPOINT = "events.list_assigned_requests"
 PATH = "/api/events/requests/assigned"
-NON_COORDINATOR_ROLES = sorted(ALL_ROLES - {Role.EVENT_COORDINATOR}, key=lambda role: role.value)
 
 
 @pytest.fixture()
@@ -109,12 +108,14 @@ def test_list_route_allows_only_event_coordinators(app: Flask) -> None:
     assert app.view_functions[ENDPOINT].allowed_roles == frozenset({"event_coordinator"})
 
 
-@pytest.mark.parametrize("role", NON_COORDINATOR_ROLES, ids=lambda role: role.value)
 def test_other_roles_cannot_list_assigned_requests(
-    call_route: CallRoute, token_for: Callable[..., str], list_service: MagicMock, role: Role
+    call_route: CallRoute,
+    token_for: Callable[..., str],
+    list_service: MagicMock,
+    non_coordinator_role: Role,
 ) -> None:
     with pytest.raises(AuthorizationError) as exc_info:
-        call_route(ENDPOINT, "GET", PATH, {}, token_for(role=role))
+        call_route(ENDPOINT, "GET", PATH, {}, token_for(role=non_coordinator_role))
 
     assert exc_info.value.status_code == 403
     list_service.assert_not_called()

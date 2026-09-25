@@ -18,7 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.modules.auth.models import User
-from app.modules.auth.permissions import Role
+from app.modules.auth.permissions import ALL_ROLES, Role
 from app.modules.equipment.models import EquipmentType
 from app.modules.events.models import (
     EquipmentLineStatus,
@@ -32,6 +32,15 @@ from app.modules.events.services import submit_event_request
 from app.modules.notifications.services import list_notifications_for_recipient
 
 MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "migrations" / "versions"
+
+#: Every role but Event Coordinator, in a fixed order so test ids are stable.
+NON_COORDINATOR_ROLES = sorted(ALL_ROLES - {Role.EVENT_COORDINATOR}, key=lambda role: role.value)
+
+
+@pytest.fixture(params=NON_COORDINATOR_ROLES, ids=lambda role: role.value)
+def non_coordinator_role(request: pytest.FixtureRequest) -> Role:
+    """Each role but Event Coordinator in turn, for routes only coordinators call."""
+    return request.param
 
 
 @pytest.fixture()

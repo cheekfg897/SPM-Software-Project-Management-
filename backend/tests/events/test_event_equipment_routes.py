@@ -86,7 +86,6 @@ REMOVE = EquipmentRoute(
 WRITE_ROUTES = [ADD, EDIT, REMOVE]
 ALL_ROUTES = [ADD, LIST, EDIT, REMOVE]
 
-NON_COORDINATOR_ROLES = sorted(ALL_ROLES - {Role.EVENT_COORDINATOR}, key=lambda role: role.value)
 LINE_READERS = [Role.EVENT_COORDINATOR, Role.TECHNICAL_SUPPORT_STAFF]
 NON_READER_ROLES = sorted(ALL_ROLES - set(LINE_READERS), key=lambda role: role.value)
 
@@ -136,17 +135,16 @@ def mock_services(
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("role", NON_COORDINATOR_ROLES, ids=lambda role: role.value)
 @pytest.mark.parametrize("route", WRITE_ROUTES, ids=lambda route: route.endpoint)
 def test_writing_lines_by_anyone_but_coordinators_is_403(
     call_route: CallRoute,
     token_for: TokenFor,
     mock_services: dict[str, MagicMock],
-    role: Role,
+    non_coordinator_role: Role,
     route: EquipmentRoute,
 ) -> None:
     with pytest.raises(AuthorizationError) as exc_info:
-        _call(call_route, route, token_for(role=role))
+        _call(call_route, route, token_for(role=non_coordinator_role))
 
     assert exc_info.value.status_code == 403
     mock_services[route.service].assert_not_called()
