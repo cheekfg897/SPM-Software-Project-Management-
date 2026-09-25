@@ -119,7 +119,9 @@ class EventRequest(db.Model):  # type: ignore[name-defined]
     name: Mapped[str] = mapped_column(String(NAME_MAX_LENGTH), nullable=False)
     purpose: Mapped[str | None] = mapped_column(Text, nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    proposed_date: Mapped[date] = mapped_column(Date, nullable=False)
+    #: Indexed because Technical Support's list of equipment awaiting action keeps only
+    #: events from today on, soonest first (SCRUM-38, ADR-0022).
+    proposed_date: Mapped[date] = mapped_column(Date, index=True, nullable=False)
     #: Same as ``proposed_date`` unless the event runs past midnight (ADR-0002).
     end_date: Mapped[date] = mapped_column(Date, nullable=False)
     start_time: Mapped[time] = mapped_column(Time, nullable=False)
