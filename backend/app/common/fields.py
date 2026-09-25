@@ -21,3 +21,19 @@ class BusinessDateTime(fields.DateTime):
         if value is None:
             return None
         return super()._serialize(to_business_time(value), attr, obj, **kwargs)
+
+
+class WholeNumber(fields.Integer):
+    """An integer field that also rejects JSON booleans.
+
+    ``fields.Integer(strict=True)`` accepts ``true`` because ``bool`` is an
+    integer subclass in Python.
+    """
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(strict=True, **kwargs)
+
+    def _deserialize(self, value: Any, attr: str | None, data: Any, **kwargs: Any) -> int:
+        if isinstance(value, bool):
+            raise self.make_error("invalid")
+        return super()._deserialize(value, attr, data, **kwargs)
