@@ -21,10 +21,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from werkzeug.security import check_password_hash, generate_password_hash
 
+from app.common.database import resolve_session
 from app.common.decorators import ROLE_CLAIM
 from app.common.errors import AuthenticationError, ConflictError, NotFoundError
 from app.common.validation import load_or_raise
-from app.extensions import db
 from app.modules.auth.models import User
 from app.modules.auth.permissions import Role
 from app.modules.auth.schemas import RegisterSchema
@@ -46,11 +46,6 @@ class AuthResult:
     user: User
 
 
-def _session(session: Session | None) -> Session:
-    """Return the explicit session if given, else the app-bound one."""
-    return session if session is not None else db.session
-
-
 def normalise_email(email: str) -> str:
     """Canonicalise an email for storage/lookup (trimmed, lower-cased)."""
     return email.strip().lower()
@@ -59,7 +54,7 @@ def normalise_email(email: str) -> str:
 def get_user_by_email(email: str, *, session: Session | None = None) -> User | None:
     """Fetch a user by (normalised) email, or ``None`` if not found."""
     stmt = select(User).where(User.email == normalise_email(email))
-    return _session(session).scalar(stmt)
+    return resolve_session(session).scalar(stmt)
 
 
 def get_user_by_id(user_id: int | str, *, session: Session | None = None) -> User:
@@ -68,7 +63,7 @@ def get_user_by_id(user_id: int | str, *, session: Session | None = None) -> Use
     Raises:
         NotFoundError: if no such user exists.
     """
-    user = _session(session).get(User, int(user_id))
+    user = resolve_session(session).get(User, int(user_id))
     if user is None:
         raise NotFoundError("User not found.")
     return user
@@ -95,7 +90,7 @@ def register_user(payload: Mapping[str, Any] | None, *, session: Session | None 
         ConflictError: 409 — email already registered.
     """
     data = load_or_raise(RegisterSchema(), payload)
-    sess = _session(session)
+    sess = resolve_session(session)
 
     email = normalise_email(data["email"])
     if get_user_by_email(email, session=sess) is not None:
@@ -120,6 +115,20 @@ def register_user(payload: Mapping[str, Any] | None, *, session: Session | None 
         raise ConflictError("An account with this email already exists.") from exc
 
     return user
+
+
+def issue_access_token(user: User) -> str:
+    """Create a JWT for ``user`` with the ``role`` claim the decorators expect.
+
+    Expiry comes from ``JWT_ACCESS_TOKEN_EXPIRES`` (default 1 hour).
+    """
+    # TODO: refresh tokens are a future story — when added, issue them here
+    # alongside the access token and add a /api/auth/refresh route.
+    role_value = user.role.value if isinstance(user.role, Role) else str(user.role)
+    return create_access_token(
+        identity=str(user.id),
+        additional_claims={ROLE_CLAIM: role_value},
+    )
 
 
 def authenticate_user(email: str, password: str, *, session: Session | None = None) -> AuthResult:
@@ -148,17 +157,3 @@ def authenticate_user(email: str, password: str, *, session: Session | None = No
         raise AuthenticationError(INVALID_CREDENTIALS_MESSAGE)
 
     return AuthResult(access_token=issue_access_token(user), user=user)
-
-
-def issue_access_token(user: User) -> str:
-    """Create a JWT for ``user`` with the ``role`` claim the decorators expect.
-
-    Expiry comes from ``JWT_ACCESS_TOKEN_EXPIRES`` (default 1 hour).
-    """
-    # TODO: refresh tokens are a future story — when added, issue them here
-    # alongside the access token and add a /api/auth/refresh route.
-    role_value = user.role.value if isinstance(user.role, Role) else str(user.role)
-    return create_access_token(
-        identity=str(user.id),
-        additional_claims={ROLE_CLAIM: role_value},
-    )

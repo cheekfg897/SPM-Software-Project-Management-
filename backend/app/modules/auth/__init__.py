@@ -14,14 +14,6 @@ from app.common.errors import error_response
 from app.extensions import jwt
 
 
-def register(app: Flask) -> None:
-    """Attach the auth blueprint and JWT callbacks to ``app``."""
-    from app.modules.auth.routes import bp
-
-    app.register_blueprint(bp)
-    _configure_jwt_error_shape()
-
-
 def _configure_jwt_error_shape() -> None:
     """Make Flask-JWT-Extended's own errors use the project error shape.
 
@@ -43,3 +35,11 @@ def _configure_jwt_error_shape() -> None:
     @jwt.expired_token_loader
     def _expired_token(jwt_header, jwt_payload):  # type: ignore[no-untyped-def]
         return error_response(401, "authentication_error", "Missing, invalid or expired token.")
+
+
+def register(app: Flask) -> None:
+    """Attach the auth blueprint and JWT callbacks to ``app``."""
+    from app.modules.auth.routes import bp
+
+    app.register_blueprint(bp)
+    _configure_jwt_error_shape()
