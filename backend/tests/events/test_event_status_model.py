@@ -103,7 +103,7 @@ def test_every_status_is_shown_by_its_value(
 
 
 def test_organiser_sees_the_current_status_of_their_own_request(
-    db_session: Session, make_event_request: MakeEventRequest
+    db_session: Session, saved_users: list[User], make_event_request: MakeEventRequest
 ) -> None:
     event_request = make_event_request(
         reference=REFERENCE, status=EventRequestStatus.UNDER_REVIEW, organiser_id=7
@@ -135,7 +135,7 @@ def test_a_request_that_is_not_the_callers_is_not_found(
 
 @pytest.mark.parametrize("typed", ["evr-aaaaaaaa", " EVR-AAAAAAAA ", "Evr-Aaaaaaaa"])
 def test_reference_lookup_ignores_case_and_surrounding_spaces(
-    db_session: Session, make_event_request: MakeEventRequest, typed: str
+    db_session: Session, saved_users: list[User], make_event_request: MakeEventRequest, typed: str
 ) -> None:
     saved = _saved(db_session, make_event_request(reference=REFERENCE, organiser_id=7))
 

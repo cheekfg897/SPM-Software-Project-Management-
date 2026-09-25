@@ -62,9 +62,10 @@ def valid_event_request_payload() -> dict[str, Any]:
 def make_event_request() -> Callable[..., EventRequest]:
     """Factory for in-memory ``EventRequest`` objects.
 
-    Add one to ``db_session`` to persist it. Everything but the four parameters is
-    fixed; tests about the other fields go through ``submit_event_request`` with
-    ``valid_event_request_payload``.
+    Add one to ``db_session`` to persist it. By default it is organiser 7's, filed
+    under client organisation 3 as ``saved_users`` links them (SCRUM-66 AC4).
+    Everything but the five parameters is fixed; tests about the other fields go
+    through ``submit_event_request`` with ``valid_event_request_payload``.
     """
 
     def _make(
@@ -72,12 +73,14 @@ def make_event_request() -> Callable[..., EventRequest]:
         reference: str = "EVR-AAAAAAAA",
         status: EventRequestStatus = EventRequestStatus.SUBMITTED,
         organiser_id: int = 7,
+        organisation_id: int | None = 3,
         coordinator_id: int | None = None,
     ) -> EventRequest:
         return EventRequest(
             reference=reference,
             status=status,
             organiser_id=organiser_id,
+            organisation_id=organisation_id,
             coordinator_id=coordinator_id,
             name="Partner Summit",
             proposed_date=date(2026, 10, 15),
