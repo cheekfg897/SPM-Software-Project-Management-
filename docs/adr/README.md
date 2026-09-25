@@ -26,6 +26,7 @@ To change a decision, don't rewrite history. Add a new ADR that **supersedes** t
 | [0011](0011-venue-setup-and-turnaround.md) | Setup and turnaround are set per venue, default to 30 minutes, and pad both events | Accepted | SCRUM-67 |
 | [0012](0012-event-status-model.md) | Seven event statuses; `under_review` covers "Under Review / Planning"; visibility beyond the organiser waits on later stories | Accepted | SCRUM-22 |
 | [0013](0013-client-organisations-recorded-by-internal-users.md) | Client organisations are recorded by internal users; organisers are linked at registration | Accepted | SCRUM-66 |
+| [0014](0014-equipment-type-location-and-quantity.md) | An equipment type is one uniquely named record, held at one venue or one named store | Accepted | SCRUM-27 |
 
 ## Template
 
