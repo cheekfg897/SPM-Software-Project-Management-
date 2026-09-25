@@ -276,6 +276,8 @@ def test_internal_roles_can_open_the_calendar(
         {
             "start_time": "2026-10-01T17:00:00+08:00",
             "end_time": "2026-10-01T18:00:00+08:00",
+            "event_start": None,
+            "event_end": None,
             "kind": "block",
             "reason": expected_reason,
         }

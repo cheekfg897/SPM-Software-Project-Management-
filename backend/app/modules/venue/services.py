@@ -9,10 +9,11 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import ColumnElement, and_, select
+from flask import current_app
+from sqlalchemy import ColumnElement, and_, or_, select
 from sqlalchemy.orm import Session
 
 from app.common.database import resolve_session
@@ -32,6 +33,22 @@ from app.modules.venue.opening_hours import Period
 from app.modules.venue.schemas import EditVenueSchema, VenueSearchSchema
 
 _LIST_FIELDS = ("facilities", "accessibility_features", "supported_layouts")
+
+
+def _default_minutes(config_key: str) -> int:
+    """The configured setup or turnaround default, for a venue without its own."""
+    return int(current_app.config[config_key])
+
+
+def _buffers(venue: Venue) -> tuple[timedelta, timedelta]:
+    """The venue's setup and turnaround time (SCRUM-67)."""
+    return timedelta(minutes=venue.setup_minutes), timedelta(minutes=venue.turnaround_minutes)
+
+
+def _occupied(venue: Venue, start: datetime, end: datetime) -> tuple[datetime, datetime]:
+    """The period an event holds the venue, with setup and turnaround (ADR-0011)."""
+    setup, turnaround = _buffers(venue)
+    return start - setup, end + turnaround
 
 
 def _build_periods(periods: Iterable[Period]) -> list[VenueOpeningPeriod]:
@@ -78,19 +95,57 @@ def create_venue(payload: Mapping[str, Any] | None, *, session: Session | None =
         accessibility_features=join_list_field(data["accessibility_features"]),
         supported_layouts=join_list_field(data["supported_layouts"]),
         opening_periods=_build_periods(data["opening_hours"]),
+        setup_minutes=data.get("setup_minutes", _default_minutes("DEFAULT_VENUE_SETUP_MINUTES")),
+        turnaround_minutes=data.get(
+            "turnaround_minutes", _default_minutes("DEFAULT_VENUE_TURNAROUND_MINUTES")
+        ),
     )
     sess.add(venue)
     sess.commit()
     return venue
 
 
+@dataclass(frozen=True)
+class OverlapWarning:
+    """Two confirmed bookings whose padded periods overlap (SCRUM-67 AC4)."""
+
+    booking_ids: tuple[int, int]
+    overlap_start: datetime
+    overlap_end: datetime
+
+
+def _confirmed_overlaps(venue: Venue, session: Session) -> list[OverlapWarning]:
+    """Every pair of the venue's confirmed bookings whose padded periods overlap."""
+    bookings = session.scalars(
+        select(Booking)
+        .where(Booking.venue_id == venue.id, Booking.status == BookingStatus.CONFIRMED)
+        .order_by(Booking.start_time, Booking.id)
+    ).all()
+    warnings: list[OverlapWarning] = []
+    for index, first in enumerate(bookings):
+        first_start, first_end = _occupied(venue, first.start_time, first.end_time)
+        for second in bookings[index + 1 :]:
+            second_start, second_end = _occupied(venue, second.start_time, second.end_time)
+            overlap_start = max(first_start, second_start)
+            overlap_end = min(first_end, second_end)
+            if overlap_start < overlap_end:
+                warnings.append(OverlapWarning((first.id, second.id), overlap_start, overlap_end))
+    return warnings
+
+
 def update_venue(
     venue_id: int, payload: Mapping[str, Any] | None, *, session: Session | None = None
-) -> Venue:
-    """Update a venue's editable fields (SCRUM-25 AC1/AC2).
+) -> tuple[Venue, list[OverlapWarning]]:
+    """Update a venue's editable fields (SCRUM-25 AC1/AC2, SCRUM-67 AC1/AC4).
 
     Only the fields present in ``payload`` are changed. ``opening_hours``, if
     present, replaces the whole weekly schedule (ADR-0008).
+
+    If the setup or turnaround time changes, confirmed bookings are left as they are
+    but re-checked against the new padding, and any pair that now overlaps is returned.
+
+    Returns:
+        The updated venue, and the overlap warnings (empty unless a buffer changed).
 
     Raises:
         NotFoundError: 404 — no such venue.
@@ -101,6 +156,7 @@ def update_venue(
     data = load_or_raise(schema, payload, partial=tuple(schema.fields))
     sess = resolve_session(session)
     venue = get_venue(venue_id, session=sess)
+    buffers_before = _buffers(venue)
 
     if "opening_hours" in data:
         venue.opening_periods = _build_periods(data.pop("opening_hours"))
@@ -111,7 +167,9 @@ def update_venue(
         setattr(venue, key, value)
 
     sess.commit()
-    return venue
+    if _buffers(venue) == buffers_before:
+        return venue, []
+    return venue, _confirmed_overlaps(venue, sess)
 
 
 def deactivate_venue(venue_id: int, *, session: Session | None = None) -> Venue:
@@ -175,6 +233,8 @@ class CalendarEntry:
 
     start_time: datetime
     end_time: datetime
+    event_start: datetime | None
+    event_end: datetime | None
     kind: CalendarEntryKind
     reason: str
 
@@ -191,19 +251,24 @@ def get_venue_calendar(
 
     Confirmed bookings, tentative holds and blocked periods are all shown, each marked
     with its kind; cancelled bookings aren't. How much of the reason a viewer sees
-    depends on their role (AC3).
+    depends on their role (AC3). A booking is shown as the period it holds the venue,
+    padded by setup and turnaround, with the event's own times alongside (SCRUM-67);
+    a block isn't padded, so its event times are ``None``.
 
     Raises:
         NotFoundError: 404 — no such venue.
     """
     sess = resolve_session(session)
     venue = get_venue(venue_id, session=sess)
+    setup, turnaround = _buffers(venue)
 
+    # A booking holds the venue from start - setup to end + turnaround (SCRUM-67), so
+    # widen the range by the same amounts to find each booking whose padding reaches in.
     bookings = sess.scalars(
         select(Booking).where(
             Booking.venue_id == venue.id,
             Booking.status != BookingStatus.CANCELLED,
-            _overlaps(Booking, range_start, range_end),
+            _overlaps(Booking, range_start - turnaround, range_end + setup),
         )
     )
     blocks = sess.scalars(
@@ -216,11 +281,18 @@ def get_venue_calendar(
     for booking in bookings:
         kind = _CALENDAR_KIND_BY_STATUS[booking.status]
         reason = _booking_reason(booking, viewer_role)
-        entries.append(CalendarEntry(booking.start_time, booking.end_time, kind, reason))
+        occupied_start, occupied_end = _occupied(venue, booking.start_time, booking.end_time)
+        entries.append(
+            CalendarEntry(
+                occupied_start, occupied_end, booking.start_time, booking.end_time, kind, reason
+            )
+        )
     for block in blocks:
         reason = _block_reason(block, viewer_role)
         entries.append(
-            CalendarEntry(block.start_time, block.end_time, CalendarEntryKind.BLOCK, reason)
+            CalendarEntry(
+                block.start_time, block.end_time, None, None, CalendarEntryKind.BLOCK, reason
+            )
         )
     return sorted(entries, key=lambda entry: entry.start_time)
 
@@ -256,15 +328,30 @@ def _match_requirements(venue: Venue, data: Mapping[str, Any]) -> VenueMatch | N
     return VenueMatch(venue, facilities, accessibility, layout)
 
 
+def _booking_clash(venue: Venue, start: datetime, end: datetime) -> ColumnElement[bool]:
+    """SQL condition: a booking on ``venue`` too close to ``start``-``end``.
+
+    The booking and the requested event each hold the venue from their start minus
+    setup to their end plus turnaround, so they clash unless setup + turnaround
+    separates them (ADR-0011).
+    """
+    setup, turnaround = _buffers(venue)
+    gap = setup + turnaround
+    return and_(Booking.venue_id == venue.id, _overlaps(Booking, start - gap, end + gap))
+
+
 def search_venues(
     payload: Mapping[str, Any] | None, *, session: Session | None = None
 ) -> list[VenueMatch]:
     """Active venues that meet an event's requirements and are free for its period.
 
-    One query selects venues by capacity and location and leaves out any with an
-    overlapping non-cancelled booking or blocked period (AC1, AC2). Facilities,
-    accessibility and layout are stored as joined strings, so they're checked on the
-    venues that query returns. Results are ordered by name.
+    Two queries. The first selects active venues by capacity and location and leaves
+    out any blocked during the period (AC1, AC2). Facilities, accessibility and layout
+    are stored as joined strings, so they're checked on the venues it returns. The
+    second finds which of those have a non-cancelled booking too close to the period,
+    each venue padded by its own setup and turnaround (SCRUM-67, ADR-0011); that
+    padding differs per venue, which one portable query can't express. Results are
+    ordered by name.
 
     Raises:
         ValidationError: 400 — missing or invalid filters.
@@ -272,11 +359,6 @@ def search_venues(
     data = load_or_raise(VenueSearchSchema(), payload)
     start, end = data["start_time"], data["end_time"]
 
-    conflicting_booking = select(Booking.id).where(
-        Booking.venue_id == Venue.id,
-        Booking.status != BookingStatus.CANCELLED,
-        _overlaps(Booking, start, end),
-    )
     conflicting_block = select(VenueBlock.id).where(
         VenueBlock.venue_id == Venue.id, _overlaps(VenueBlock, start, end)
     )
@@ -285,7 +367,6 @@ def search_venues(
         .where(
             Venue.is_active.is_(True),
             Venue.capacity >= data["min_capacity"],
-            ~conflicting_booking.exists(),
             ~conflicting_block.exists(),
         )
         .order_by(Venue.name)
@@ -293,9 +374,18 @@ def search_venues(
     if data["location"] is not None:
         stmt = stmt.where(Venue.location.icontains(data["location"], autoescape=True))
 
+    sess = resolve_session(session)
     matches: list[VenueMatch] = []
-    for venue in resolve_session(session).scalars(stmt):
+    for venue in sess.scalars(stmt):
         match = _match_requirements(venue, data)
         if match is not None:
             matches.append(match)
-    return matches
+    if not matches:
+        return []
+
+    clash_conditions = [_booking_clash(match.venue, start, end) for match in matches]
+    clashing_bookings = select(Booking.venue_id).where(
+        Booking.status != BookingStatus.CANCELLED, or_(*clash_conditions)
+    )
+    busy_venue_ids = set(sess.scalars(clashing_bookings))
+    return [match for match in matches if match.venue.id not in busy_venue_ids]

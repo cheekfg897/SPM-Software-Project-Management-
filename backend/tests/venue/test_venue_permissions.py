@@ -52,17 +52,18 @@ VALID_PAYLOAD = {"name": "Hall", "location": "A", "capacity": 10}
 def mock_services(
     monkeypatch: pytest.MonkeyPatch, make_venue: Callable[..., Venue]
 ) -> dict[str, MagicMock]:
-    """Replace every venue service the routes call with a mock returning a venue."""
+    """Replace every venue service the routes call with a mock of the right shape."""
+    returns = {
+        "create_venue": make_venue(),
+        "update_venue": (make_venue(), []),  # the venue, and no overlap warnings
+        "deactivate_venue": make_venue(),
+        "reactivate_venue": make_venue(),
+        "list_venues": [make_venue()],
+        "get_venue": make_venue(),
+    }
     mocks = {}
-    for name in (
-        "create_venue",
-        "update_venue",
-        "deactivate_venue",
-        "reactivate_venue",
-        "list_venues",
-        "get_venue",
-    ):
-        mock = MagicMock(return_value=[make_venue()] if name == "list_venues" else make_venue())
+    for name, value in returns.items():
+        mock = MagicMock(return_value=value)
         monkeypatch.setattr(services, name, mock)
         mocks[name] = mock
     return mocks

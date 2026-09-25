@@ -126,7 +126,10 @@ def token_for() -> Callable[..., str]:
 
 @pytest.fixture()
 def make_venue() -> Callable[..., Venue]:
-    """Factory for ``Venue`` objects; add one to ``db_session`` to persist it."""
+    """Factory for ``Venue`` objects; add one to ``db_session`` to persist it.
+
+    Setup and turnaround default to 0, so only tests that set them deal with buffers.
+    """
     counter = {"id": 0}
 
     def _make(
@@ -138,6 +141,8 @@ def make_venue() -> Callable[..., Venue]:
         accessibility_features: str = "wheelchair_access",
         supported_layouts: str = "theatre,classroom",
         opening_periods: list[VenueOpeningPeriod] | None = None,
+        setup_minutes: int = 0,
+        turnaround_minutes: int = 0,
         is_active: bool = True,
         venue_id: int | None = None,
     ) -> Venue:
@@ -150,6 +155,8 @@ def make_venue() -> Callable[..., Venue]:
             accessibility_features=accessibility_features,
             supported_layouts=supported_layouts,
             opening_periods=opening_periods or [],
+            setup_minutes=setup_minutes,
+            turnaround_minutes=turnaround_minutes,
             is_active=is_active,
         )
         venue.id = venue_id if venue_id is not None else counter["id"]

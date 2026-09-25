@@ -23,6 +23,7 @@ from app.modules.venue import services
 from app.modules.venue.schemas import (
     CalendarEntrySchema,
     CalendarQuerySchema,
+    OverlapWarningSchema,
     VenueMatchSchema,
     VenueSchema,
 )
@@ -32,6 +33,7 @@ bp = Blueprint("venue", __name__, url_prefix="/api/venues")
 _venue_schema = VenueSchema()
 _calendar_entry_schema = CalendarEntrySchema()
 _venue_match_schema = VenueMatchSchema()
+_overlap_warning_schema = OverlapWarningSchema()
 
 #: SCRUM-35 AC4: what an empty search says.
 NO_MATCHES_MESSAGE = "No venues match your search criteria."
@@ -69,9 +71,15 @@ def get_venue(venue_id: int) -> tuple[Response, int]:
 @bp.patch("/<int:venue_id>")
 @requires_role(Role.VENUE_STAFF)
 def update_venue(venue_id: int) -> tuple[Response, int]:
-    """Update a venue's editable fields. Venue Staff only (AC3)."""
-    venue = services.update_venue(venue_id, request.get_json(silent=True))
-    return jsonify(_venue_schema.dump(venue)), 200
+    """Update a venue's editable fields. Venue Staff only (SCRUM-25 AC4, SCRUM-67 AC5).
+
+    If the setup or turnaround time changed, the response lists confirmed bookings that
+    now overlap (SCRUM-67 AC4).
+    """
+    venue, overlap_warnings = services.update_venue(venue_id, request.get_json(silent=True))
+    body = _venue_schema.dump(venue)
+    body["overlap_warnings"] = _overlap_warning_schema.dump(overlap_warnings, many=True)
+    return jsonify(body), 200
 
 
 @bp.post("/<int:venue_id>/deactivate")

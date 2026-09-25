@@ -23,6 +23,7 @@ To change a decision, don't rewrite history. Add a new ADR that **supersedes** t
 | [0008](0008-venue-opening-hours.md) | Venue opening hours are weekly periods, Google-Places style; overnight allowed | Accepted | SCRUM-25 |
 | [0009](0009-booking-times-in-utc.md) | Booking and block times are stored in UTC and shown in business time | Accepted | SCRUM-26 |
 | [0010](0010-search-prefill-deferred.md) | Opening venue search pre-filled from an event is deferred | Accepted | SCRUM-35 |
+| [0011](0011-venue-setup-and-turnaround.md) | Setup and turnaround are set per venue, default to 30 minutes, and pad both events | Accepted | SCRUM-67 |
 
 ## Template
 
