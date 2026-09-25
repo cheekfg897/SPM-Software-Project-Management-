@@ -7,6 +7,8 @@
 # Testing
 pytest==9.1.1
 pytest-cov==7.1.0
+# Fails a pull request whose changed lines aren't all covered (CI backend job).
+diff-cover==10.6.0
 
 # Lint and format (configured in ruff.toml). Pinned so CI and laptops flag
 # the same things; bump it deliberately.
