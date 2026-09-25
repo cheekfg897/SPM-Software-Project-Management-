@@ -7,6 +7,8 @@ were ambiguous, the choice is recorded as an ADR in ``docs/adr/``:
 * ADR-0002: the event must end strictly after it starts; overnight events use
   the optional ``end_date``.
 * ADR-0003: expected attendance is a whole number of at least 1.
+
+SCRUM-37 adds the equipment lines recorded on a request (ADR-0019).
 """
 
 from __future__ import annotations
@@ -26,7 +28,7 @@ from marshmallow import (
 
 from app.common.clock import local_today
 from app.common.fields import WholeNumber
-from app.modules.events.models import NAME_MAX_LENGTH, EventRequestStatus
+from app.modules.events.models import NAME_MAX_LENGTH, EquipmentLineStatus, EventRequestStatus
 
 #: Free-text fields a request may leave out. Blank values are stored as null.
 OPTIONAL_TEXT_FIELDS = (
@@ -168,3 +170,43 @@ class CoordinatorContactSchema(Schema):
 
     full_name = fields.String(dump_only=True)
     email = fields.Email(dump_only=True)
+
+
+class EditEquipmentLineSchema(Schema):
+    """Payload for adding (``POST``) or editing (``PATCH``) an equipment line.
+
+    SCRUM-37 AC1-AC3. Edits are loaded with ``partial`` set to this schema's field
+    names, so any field may be left out; a field that is sent is checked the same way
+    as on add. ``status`` is server-controlled and not declared, so sending it is an
+    unknown field.
+    """
+
+    equipment_type_id = WholeNumber(
+        required=True,
+        validate=validate.Range(min=1, error="equipment_type_id must be a positive number."),
+    )
+    quantity = WholeNumber(
+        required=True, validate=validate.Range(min=1, error="Quantity must be at least 1.")
+    )
+    notes = fields.String(allow_none=True, load_default=None)
+
+    @post_load
+    def _normalise(self, data: dict[str, Any], **_: Any) -> dict[str, Any]:
+        # Only a key that is present is touched, so this is safe for partial edits.
+        if data.get("notes") is not None:
+            data["notes"] = data["notes"].strip() or None
+        return data
+
+
+class EquipmentLineSchema(Schema):
+    """One equipment line as the API shows it (SCRUM-37 AC4).
+
+    ``id`` is exposed because edit and remove address a line by it. The event's
+    internal id is not: a line is always read under the event's reference.
+    """
+
+    id = fields.Integer(dump_only=True)
+    equipment_type_id = fields.Integer(dump_only=True)
+    quantity = fields.Integer(dump_only=True)
+    notes = fields.String(dump_only=True, allow_none=True)
+    status = fields.Enum(EquipmentLineStatus, by_value=True, dump_only=True)

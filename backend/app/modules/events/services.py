@@ -27,18 +27,21 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql import ColumnElement
 
 from app.common.database import resolve_session
-from app.common.errors import AppError, NotFoundError
+from app.common.errors import AppError, ConflictError, NotFoundError, ValidationError
 from app.common.validation import load_or_raise
 from app.modules.auth.permissions import Role
 from app.modules.auth.services import get_user_by_id, list_user_ids_with_role
+from app.modules.equipment.services import get_equipment_type
 from app.modules.events.models import (
     REFERENCE_UNIQUE_CONSTRAINT,
+    EquipmentLineStatus,
+    EventEquipmentLine,
     EventHistoryEntry,
     EventHistoryKind,
     EventRequest,
     EventRequestStatus,
 )
-from app.modules.events.schemas import SubmitEventRequestSchema
+from app.modules.events.schemas import EditEquipmentLineSchema, SubmitEventRequestSchema
 from app.modules.notifications.services import EventSummary, NotificationKind, notify_users
 
 logger = logging.getLogger("connectsphere.events")
@@ -405,3 +408,204 @@ def get_event_record_for_organiser(
     sess = resolve_session(session)
     event_request = get_event_request_for_organiser(organiser_id, reference, session=sess)
     return event_request, _coordinator_contact(event_request, sess)
+
+
+# --------------------------------------------------------------------------
+# SCRUM-37 — record what equipment an event needs
+# --------------------------------------------------------------------------
+
+#: Statuses in which a request is still awaiting review, so its equipment may change
+#: (SCRUM-37 AC2, ADR-0019).
+AWAITING_REVIEW_STATUSES: frozenset[EventRequestStatus] = frozenset(
+    {EventRequestStatus.SUBMITTED, EventRequestStatus.UNDER_REVIEW}
+)
+NOT_AWAITING_REVIEW_MESSAGE = "Equipment can only be changed while the request is awaiting review."
+DUPLICATE_LINE_MESSAGE = (
+    "This event already has a line for that equipment type. Edit that line instead."
+)
+
+
+class RequestNotAwaitingReviewError(AppError):
+    """The request is no longer awaiting review, so its equipment can't change (409)."""
+
+    status_code = 409
+    error_code = "request_not_awaiting_review"
+
+
+def _event_request_by_reference(reference: str, session: Session) -> EventRequest:
+    """Any event request by its reference, for internal staff (SCRUM-37, ADR-0019).
+
+    Every Event Coordinator may record equipment on any request (ADR-0019). Case and
+    surrounding spaces are ignored (ADR-0004).
+
+    Raises:
+        NotFoundError: 404 — no such request.
+    """
+    stmt = select(EventRequest).where(EventRequest.reference == _normalise_reference(reference))
+    event_request = session.scalar(stmt)
+    if event_request is None:
+        raise NotFoundError("Event request not found.")
+    return event_request
+
+
+def _event_request_awaiting_review(reference: str, session: Session) -> EventRequest:
+    """The request, if its equipment may still change (SCRUM-37 AC2).
+
+    Raises:
+        NotFoundError: 404 — no such request.
+        RequestNotAwaitingReviewError: 409 — the request is no longer awaiting review.
+    """
+    event_request = _event_request_by_reference(reference, session)
+    if event_request.status not in AWAITING_REVIEW_STATUSES:
+        raise RequestNotAwaitingReviewError(NOT_AWAITING_REVIEW_MESSAGE)
+    return event_request
+
+
+def _check_equipment_type(equipment_type_id: int, session: Session) -> None:
+    """Reject an equipment type that isn't in the catalogue, as a 400 on its field."""
+    try:
+        get_equipment_type(equipment_type_id, session=session)
+    except NotFoundError as exc:
+        raise ValidationError(
+            "Invalid request.", details={"equipment_type_id": [exc.message]}
+        ) from exc
+
+
+def _commit_line_or_conflict(session: Session) -> None:
+    """Commit; a second line for an equipment type on one event is a 409 (ADR-0019)."""
+    # The schema has enforced every other rule and the type has been checked, so the
+    # only integrity error left here is the unique (event, equipment type) pair.
+    try:
+        session.commit()
+    except IntegrityError as exc:
+        session.rollback()
+        raise ConflictError(DUPLICATE_LINE_MESSAGE) from exc
+
+
+def _line_of_event(
+    event_request: EventRequest, line_id: int, session: Session
+) -> EventEquipmentLine:
+    """One of the event's own equipment lines, by id (SCRUM-37 AC2).
+
+    Raises:
+        NotFoundError: 404 — the event has no line with that id.
+    """
+    stmt = select(EventEquipmentLine).where(
+        EventEquipmentLine.id == line_id,
+        EventEquipmentLine.event_request_id == event_request.id,
+    )
+    line = session.scalar(stmt)
+    if line is None:
+        raise NotFoundError("Equipment line not found.")
+    return line
+
+
+def add_equipment_line(
+    reference: str, payload: Mapping[str, Any] | None, *, session: Session | None = None
+) -> EventEquipmentLine:
+    """Record one kind of equipment an event needs (SCRUM-37 AC1, AC3).
+
+    The line is saved with status ``requested``; once it is saved, every Technical
+    Support Staff member is notified (AC5, ADR-0019).
+
+    Args:
+        reference: The event request's ``EVR-…`` reference; case and surrounding
+            spaces are ignored.
+        payload: Decoded JSON body: ``equipment_type_id``, ``quantity`` and optional
+            ``notes``.
+        session: Database session; defaults to ``db.session``.
+
+    Returns:
+        The saved :class:`EventEquipmentLine`.
+
+    Raises:
+        ValidationError: 400 — payload invalid, or no such equipment type.
+        NotFoundError: 404 — no such event request.
+        RequestNotAwaitingReviewError: 409 — the request is no longer awaiting review.
+        ConflictError: 409 — the event already has a line for that equipment type.
+    """
+    data = load_or_raise(EditEquipmentLineSchema(), payload)
+    sess = resolve_session(session)
+    event_request = _event_request_awaiting_review(reference, sess)
+    _check_equipment_type(data["equipment_type_id"], sess)
+
+    line = EventEquipmentLine(
+        event_request_id=event_request.id, status=EquipmentLineStatus.REQUESTED, **data
+    )
+    sess.add(line)
+    _commit_line_or_conflict(sess)
+    technical_support_ids = list_user_ids_with_role(Role.TECHNICAL_SUPPORT_STAFF, session=sess)
+    _raise_notifications(
+        technical_support_ids, event_request, NotificationKind.EQUIPMENT_REQUESTED, sess
+    )
+    return line
+
+
+def list_equipment_lines(
+    reference: str, *, session: Session | None = None
+) -> tuple[EventRequest, list[EventEquipmentLine]]:
+    """An event and its equipment lines with their state, in the order added (AC4).
+
+    The event comes too: its date and times tell Technical Support by when the
+    equipment is needed (ADR-0019).
+
+    Returns:
+        The event request, and its lines.
+
+    Raises:
+        NotFoundError: 404 — no such event request.
+    """
+    event_request = _event_request_by_reference(reference, resolve_session(session))
+    return event_request, list(event_request.equipment_lines)
+
+
+def update_equipment_line(
+    reference: str,
+    line_id: int,
+    payload: Mapping[str, Any] | None,
+    *,
+    session: Session | None = None,
+) -> EventEquipmentLine:
+    """Change a line's equipment type, quantity or notes (SCRUM-37 AC2, AC3).
+
+    Only the fields in ``payload`` change; ``notes`` is cleared only when sent as
+    ``null``. Allowed while the request is awaiting review (ADR-0019).
+
+    Returns:
+        The updated :class:`EventEquipmentLine`.
+
+    Raises:
+        ValidationError: 400 — invalid values for the fields sent, or no such
+            equipment type.
+        NotFoundError: 404 — no such event request, or no such line on it.
+        RequestNotAwaitingReviewError: 409 — the request is no longer awaiting review.
+        ConflictError: 409 — another line on the event already has that equipment type.
+    """
+    schema = EditEquipmentLineSchema()
+    data = load_or_raise(schema, payload, partial=tuple(schema.fields))
+    sess = resolve_session(session)
+    event_request = _event_request_awaiting_review(reference, sess)
+    line = _line_of_event(event_request, line_id, sess)
+    if "equipment_type_id" in data:
+        _check_equipment_type(data["equipment_type_id"], sess)
+
+    for key, value in data.items():
+        setattr(line, key, value)
+    _commit_line_or_conflict(sess)
+    return line
+
+
+def remove_equipment_line(reference: str, line_id: int, *, session: Session | None = None) -> None:
+    """Delete one of an event's equipment lines (SCRUM-37 AC2).
+
+    Allowed while the request is awaiting review. Nobody is notified (ADR-0019).
+
+    Raises:
+        NotFoundError: 404 — no such event request, or no such line on it.
+        RequestNotAwaitingReviewError: 409 — the request is no longer awaiting review.
+    """
+    sess = resolve_session(session)
+    event_request = _event_request_awaiting_review(reference, sess)
+    line = _line_of_event(event_request, line_id, sess)
+    sess.delete(line)
+    sess.commit()
