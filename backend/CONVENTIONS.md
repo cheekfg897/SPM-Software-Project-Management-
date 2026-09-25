@@ -436,12 +436,24 @@ A test earns its place only if it would catch a real break. Every test must:
 Every line **and branch** you add or change is covered by a non-decorative test. CI's 90% is
 the floor for the whole codebase; for new code the bar is 100%.
 
+CI enforces the **lines** on every pull request: the *Changed lines are fully covered* step
+runs `diff-cover` and fails below 100%. It can't see branches, so an `if` tested only one way
+still passes CI; checking the changed branches is on you and the reviewer. Run the same
+check before pushing:
+
+```bash
+pytest --cov=app --cov-branch --cov-report=term-missing --cov-report=xml
+diff-cover coverage.xml --compare-branch=origin/main --fail-under=100
+```
+
 When a line genuinely can't be covered by a unit test, explain why rather than leave it
 silently red:
 
 - Mark it `# pragma: no cover - <reason>` (e.g. `- misconfiguration guard`, `- only reachable
-  through the HTTP layer`), or say in the function's docstring why it isn't unit-tested (as
-  `register_error_handlers` does).
+  through the HTTP layer`). This is the only way to exclude a changed line: `diff-cover`
+  ignores docstrings, so an uncovered line explained only in a docstring fails CI. (Some older
+  code explains HTTP-only gaps in a docstring, as `register_error_handlers` does; add the
+  pragma if you change one of those lines.)
 - List every such gap, with its reason, in the PR description or the self-review report.
 
 ### Style
