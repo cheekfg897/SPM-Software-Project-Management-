@@ -62,6 +62,23 @@ def normalise_roles(roles: Iterable[Any]) -> frozenset[str]:
     return frozenset(v for v in (_role_value(r) for r in roles) if v is not None)
 
 
+def log_authorization_failure(*, reason: str, role: str | None, detail: str = "") -> None:
+    """Write a structured audit line for a failed authentication/authorization.
+
+    Fields: reason, role attempted, endpoint, HTTP method, path, UTC timestamp.
+    """
+    logger.warning(
+        "authz_failure reason=%s role=%s endpoint=%s method=%s path=%s timestamp=%s detail=%s",
+        reason,
+        role,
+        request.endpoint,
+        request.method,
+        request.path,
+        datetime.now(timezone.utc).isoformat(),
+        detail,
+    )
+
+
 def authenticate_request() -> dict[str, Any]:
     """Verify the JWT on the current request and return its claims.
 
@@ -82,23 +99,6 @@ def authenticate_request() -> dict[str, Any]:
     g.current_user_id = claims.get("sub")
     g.current_user_role = claims.get(ROLE_CLAIM)
     return claims
-
-
-def log_authorization_failure(*, reason: str, role: str | None, detail: str = "") -> None:
-    """Write a structured audit line for a failed authentication/authorization.
-
-    Fields: reason, role attempted, endpoint, HTTP method, path, UTC timestamp.
-    """
-    logger.warning(
-        "authz_failure reason=%s role=%s endpoint=%s method=%s path=%s timestamp=%s detail=%s",
-        reason,
-        role,
-        request.endpoint,
-        request.method,
-        request.path,
-        datetime.now(timezone.utc).isoformat(),
-        detail,
-    )
 
 
 def requires_auth(func: F) -> F:

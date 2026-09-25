@@ -21,9 +21,9 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.common.database import resolve_session
 from app.common.errors import AppError
 from app.common.validation import load_or_raise
-from app.extensions import db
 from app.modules.events.models import (
     REFERENCE_UNIQUE_CONSTRAINT,
     EventRequest,
@@ -45,11 +45,6 @@ class ReferenceGenerationError(AppError):
 
     status_code = 500
     error_code = "reference_generation_failed"
-
-
-def _session(session: Session | None) -> Session:
-    """Return the explicit session if given, else the app-bound one."""
-    return session if session is not None else db.session
 
 
 def generate_reference() -> str:
@@ -105,7 +100,7 @@ def submit_event_request(
         IntegrityError: any other constraint failure; not retried.
     """
     data = load_or_raise(SubmitEventRequestSchema(today=today), payload)
-    sess = _session(session)
+    sess = resolve_session(session)
 
     for attempt in range(1, MAX_REFERENCE_ATTEMPTS + 1):
         event_request = EventRequest(
@@ -141,4 +136,4 @@ def list_event_requests_for_organiser(
         .where(EventRequest.organiser_id == int(organiser_id))
         .order_by(EventRequest.created_at.desc(), EventRequest.id.desc())
     )
-    return list(_session(session).scalars(stmt))
+    return list(resolve_session(session).scalars(stmt))

@@ -19,29 +19,6 @@ from app.config import get_config
 from app.extensions import db, jwt, migrate
 
 
-def create_app(config_name: str | None = None) -> Flask:
-    """Build and configure the Flask application.
-
-    Args:
-        config_name: One of ``development``, ``testing``, ``production``.
-            Defaults to the ``FLASK_ENV`` environment variable, then
-            ``development``.
-
-    Returns:
-        A fully configured :class:`flask.Flask` instance.
-    """
-    app = Flask(__name__)
-    app.config.from_object(get_config(config_name))
-
-    _configure_logging(app)
-    _init_extensions(app)
-    _register_modules(app)
-    register_error_handlers(app)
-    register_health_check(app)
-
-    return app
-
-
 def _configure_logging(app: Flask) -> None:
     """Ensure INFO-level logs (incl. authorization failures) reach the console."""
     if not app.logger.handlers:
@@ -69,3 +46,26 @@ def _register_modules(app: Flask) -> None:
 
     auth.register(app)
     events.register(app)
+
+
+def create_app(config_name: str | None = None) -> Flask:
+    """Build and configure the Flask application.
+
+    Args:
+        config_name: One of ``development``, ``testing``, ``production``.
+            Defaults to the ``FLASK_ENV`` environment variable, then
+            ``development``.
+
+    Returns:
+        A fully configured :class:`flask.Flask` instance.
+    """
+    app = Flask(__name__)
+    app.config.from_object(get_config(config_name))
+
+    _configure_logging(app)
+    _init_extensions(app)
+    _register_modules(app)
+    register_error_handlers(app)
+    register_health_check(app)
+
+    return app
