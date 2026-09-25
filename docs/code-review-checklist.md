@@ -37,6 +37,9 @@ Mypy isn't in CI yet, so type hints are reviewed by hand in section 8.
 - [ ] Nothing beyond the story was added (no speculative options, abstractions or endpoints).
 - [ ] Where the ACs were ambiguous, the decision is recorded as an ADR in `docs/adr/` and the
       index table is updated.
+- [ ] The PR description's **Decisions made** lists each of those decisions with its ADR, split
+      into agreed and defaults to review. **Tickets to open** lists the follow-ups found,
+      including new `# TODO`s. Both say "None" if empty (§15).
 - [ ] New test modules set `pytestmark` to the story's marker, and the marker is declared in
       `pytest.ini`.
 - [ ] `README.md` route table and `.env.example` are updated if the change affects them.
