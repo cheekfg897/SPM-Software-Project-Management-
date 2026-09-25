@@ -8,8 +8,9 @@ were ambiguous, the choice is recorded as an ADR in ``docs/adr/``:
   the optional ``end_date``.
 * ADR-0003: expected attendance is a whole number of at least 1.
 
-SCRUM-37 adds the equipment lines recorded on a request (ADR-0019), and SCRUM-87
-the coordinator a request is reassigned to (ADR-0021).
+SCRUM-37 adds the equipment lines recorded on a request (ADR-0019), SCRUM-87 the
+coordinator a request is reassigned to (ADR-0021), and SCRUM-38 the list of lines
+still awaiting Technical Support (ADR-0022).
 """
 
 from __future__ import annotations
@@ -234,6 +235,20 @@ class EquipmentLineSchema(Schema):
     quantity = fields.Integer(dump_only=True)
     notes = fields.String(dump_only=True, allow_none=True)
     status = fields.Enum(EquipmentLineStatus, by_value=True, dump_only=True)
+
+
+class EquipmentAwaitingActionSchema(Schema):
+    """One event's equipment still awaiting Technical Support (SCRUM-38 AC2, ADR-0022).
+
+    The event is dumped with the same fields as the SCRUM-37 equipment list, so its
+    name, date and times read the same in both places.
+    """
+
+    event = fields.Nested(
+        EventRequestSchema(only=EQUIPMENT_EVENT_FIELDS), attribute="event_request", dump_only=True
+    )
+    equipment_lines = fields.Nested(EquipmentLineSchema, many=True, dump_only=True)
+    days_remaining = fields.Integer(dump_only=True)
 
 
 class EventRequestDetailSchema(EventRequestSchema):
