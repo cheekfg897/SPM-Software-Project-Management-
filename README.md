@@ -14,7 +14,7 @@ backend/            Flask application (see below)
     extensions.py   db, migrate, jwt instances
     common/         cross-cutting: error handlers, requires_auth / requires_role
     modules/auth/   models, routes, schemas, services, permissions
-    modules/events/ event requests (SCRUM-19), event status model (SCRUM-22), filed under the organiser's organisation (SCRUM-66), coordinator assignment and event history (SCRUM-30)
+    modules/events/ event requests (SCRUM-19), event status model (SCRUM-22), filed under the organiser's organisation (SCRUM-66), coordinator assignment and event history (SCRUM-30), equipment lines (SCRUM-37)
     modules/organisations/ client organisations that Event Organisers belong to (SCRUM-66)
     modules/notifications/ in-app notifications about events (SCRUM-28)
     modules/venue/  venue catalogue (SCRUM-25), availability calendar (SCRUM-26), search (SCRUM-35), suitability check (SCRUM-36), setup/turnaround (SCRUM-67), blocks (SCRUM-34)
@@ -109,7 +109,11 @@ curl http://localhost:5000/api/auth/internal-only -H "Authorization: Bearer <tok
 | `POST /api/events/requests`    | `event_organiser` — submit an event request                     |
 | `GET  /api/events/requests`    | `event_organiser` — list your own event requests                |
 | `GET  /api/events/requests/assigned` | `event_coordinator` — the event requests assigned to you, newest first |
-| `GET  /api/events/requests/<reference>` | `event_organiser` — one of your own event requests, with its current status and the assigned coordinator's name and email (`null` until assigned; `404` if it isn't yours) |
+| `GET  /api/events/requests/<reference>` | `event_organiser` — one of your own event requests, with its current status, the assigned coordinator's name and email (`null` until assigned) and its equipment lines (`404` if it isn't yours) |
+| `POST /api/events/requests/<reference>/equipment` | `event_coordinator` — add an equipment line (type, quantity, notes) to a request assigned to you, while it is awaiting review; notifies Technical Support Staff (`404` if it isn't assigned to you) |
+| `GET  /api/events/requests/<reference>/equipment` | `event_coordinator` (requests assigned to you), `technical_support_staff` (any request) — the event's date and times (`event`, so Technical Support know by when) and its equipment lines with their status |
+| `PATCH /api/events/requests/<reference>/equipment/<line_id>` | `event_coordinator` — on a request assigned to you, change only the fields sent, while it is awaiting review |
+| `DELETE /api/events/requests/<reference>/equipment/<line_id>` | `event_coordinator` — on a request assigned to you, remove a line, while it is awaiting review |
 | `POST /api/organisations`      | internal roles — record a client organisation                   |
 | `GET  /api/organisations`      | internal roles — list client organisations, by name             |
 | `POST /api/venues`             | `venue_staff` — add a venue                                     |
@@ -144,11 +148,13 @@ All errors share one shape: `{"error": "<code>", "message": "<text>", "details":
 
 An equipment type is kept at exactly one place: a catalogued venue (`venue_id`) or a named store (`store_name`). Equipment type names are unique ([ADR-0014](docs/adr/0014-equipment-type-location-and-quantity.md)).
 
+An event has at most one equipment line per equipment type (edit the line to change the quantity), and its lines can be added, changed or removed only by the request's assigned coordinator and only while the request is `submitted` or `under_review` ([ADR-0019](docs/adr/0019-event-equipment-lines.md)).
+
 Date-times (bookings, blocks, calendar ranges) should carry an offset, such as `Z` or `+08:00`. One sent without an offset is read as business time (`APP_TIMEZONE`, Singapore by default). They're stored in UTC and come back in business time, e.g. `2026-10-01T17:00:00+08:00` ([ADR-0009](docs/adr/0009-booking-times-in-utc.md)). Notification times (`created_at`, `read_at`) come back the same way.
 
 ## 5. Run the tests
 
-The suite is unit tests only, and **Postgres does not need to be running**. Most tests mock the database; the venue, equipment, notifications and coordinator-assignment service tests run against an in-memory SQLite database, so their queries really execute.
+The suite is unit tests only, and **Postgres does not need to be running**. Most tests mock the database; the venue, equipment, notifications, coordinator-assignment and event equipment service tests run against an in-memory SQLite database, so their queries really execute.
 
 ```bash
 cd backend
@@ -171,6 +177,7 @@ pytest -m scrum_30   # assign a coordinator to a submitted event
 pytest -m scrum_34   # block a venue
 pytest -m scrum_35   # search and filter venues
 pytest -m scrum_36   # check whether a venue suits an event
+pytest -m scrum_37   # record what equipment an event needs
 pytest -m scrum_67   # setup and turnaround time
 pytest -m scrum_66   # client organisations
 ```

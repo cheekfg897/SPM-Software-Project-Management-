@@ -31,6 +31,7 @@ To change a decision, don't rewrite history. Add a new ADR that **supersedes** t
 | [0016](0016-venue-block-warns-not-refuses.md) | A venue block is saved even over a confirmed booking, and reports what it cuts into | Accepted | SCRUM-34 |
 | [0017](0017-suitability-check-takes-requirements.md) | The suitability check takes an event's requirements explicitly; the justification rule waits for booking requests | Accepted | SCRUM-36 |
 | [0018](0018-least-loaded-coordinator-and-event-history.md) | A submitted request goes to the least-loaded Event Coordinator; one event history table records what happens to an event | Accepted | SCRUM-30 |
+| [0019](0019-event-equipment-lines.md) | Equipment lines are recorded per event by Event Coordinators while the request awaits review, one per type, each notifying Technical Support | Accepted | SCRUM-37 |
 
 ## Template
 
