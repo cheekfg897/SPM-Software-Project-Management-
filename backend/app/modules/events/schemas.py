@@ -223,3 +223,13 @@ class EquipmentLineSchema(Schema):
     quantity = fields.Integer(dump_only=True)
     notes = fields.String(dump_only=True, allow_none=True)
     status = fields.Enum(EquipmentLineStatus, by_value=True, dump_only=True)
+
+
+class EventRequestDetailSchema(EventRequestSchema):
+    """An event request as its own record shows it: the summary and its equipment lines.
+
+    SCRUM-37 AC4. The list of requests keeps :class:`EventRequestSchema`, so listing
+    never loads every request's lines.
+    """
+
+    equipment_lines = fields.Nested(EquipmentLineSchema, many=True, dump_only=True)

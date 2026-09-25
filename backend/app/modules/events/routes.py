@@ -15,6 +15,7 @@ from app.modules.events.schemas import (
     EQUIPMENT_EVENT_FIELDS,
     CoordinatorContactSchema,
     EquipmentLineSchema,
+    EventRequestDetailSchema,
     EventRequestSchema,
 )
 from app.modules.events.services import (
@@ -32,6 +33,7 @@ bp = Blueprint("events", __name__, url_prefix="/api/events")
 
 _event_request_schema = EventRequestSchema()
 _coordinator_contact_schema = CoordinatorContactSchema()
+_event_request_detail_schema = EventRequestDetailSchema()
 _equipment_line_schema = EquipmentLineSchema()
 _equipment_event_schema = EventRequestSchema(only=EQUIPMENT_EVENT_FIELDS)
 
@@ -75,13 +77,14 @@ def list_assigned_requests() -> tuple[Response, int]:
 @bp.get("/requests/<reference>")
 @requires_role(Role.EVENT_ORGANISER)
 def get_my_request(reference: str) -> tuple[Response, int]:
-    """One of the caller's own event requests: its status and its coordinator.
+    """One of the caller's own event requests: its status, coordinator and equipment.
 
     The current status is SCRUM-22's; the assigned coordinator's name and email are
-    SCRUM-30 AC3's, ``null`` until one is assigned (ADR-0018).
+    SCRUM-30 AC3's, ``null`` until one is assigned (ADR-0018); the equipment lines
+    are SCRUM-37 AC4's.
     """
     event_request, coordinator = get_event_record_for_organiser(g.current_user_id, reference)
-    body = _event_request_schema.dump(event_request)
+    body = _event_request_detail_schema.dump(event_request)
     if coordinator is None:
         body["coordinator"] = None
     else:
