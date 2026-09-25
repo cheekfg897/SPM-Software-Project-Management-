@@ -1,9 +1,10 @@
 """Shared fixtures for the unit-test suite.
 
-Sprint 1 tests are **unit tests only**: services, permissions and decorators
-are exercised directly with a mocked database session. No real Postgres, no
-Flask test client. An application context is still needed because JWT
-creation and the password policy read from ``app.config``.
+The suite is **unit tests only**: services, permissions and decorators are
+exercised directly. No real Postgres, no Flask test client. Most service tests
+use ``mock_session``; tests whose outcome depends on what a query selects use
+``db_session``, an in-memory SQLite database. An application context is always
+pushed because JWT creation and several rules read from ``app.config``.
 """
 
 from __future__ import annotations
@@ -19,8 +20,10 @@ from sqlalchemy.orm import Session
 
 from app import create_app
 from app.common.decorators import ROLE_CLAIM
+from app.extensions import db
 from app.modules.auth.models import User
 from app.modules.auth.permissions import Role
+from app.modules.venue.models import Venue, VenueOpeningPeriod
 
 
 @pytest.fixture(scope="session")
@@ -48,6 +51,20 @@ def mock_session() -> MagicMock:
     session.scalar.return_value = None
     session.get.return_value = None
     return session
+
+
+@pytest.fixture()
+def db_session() -> Iterator[Session]:
+    """The app's real session, on an empty in-memory SQLite database for each test.
+
+    Use it when a test's outcome depends on what a query selects, such as a filter
+    or an ordering. ``mock_session`` returns whatever the test queued regardless of
+    the ``WHERE`` clause, so a wrong or missing filter would still pass.
+    """
+    db.create_all()
+    yield db.session
+    db.session.remove()
+    db.drop_all()
 
 
 @pytest.fixture()
@@ -105,3 +122,37 @@ def token_for() -> Callable[..., str]:
         return create_access_token(identity=identity, additional_claims=claims, **kwargs)
 
     return _token
+
+
+@pytest.fixture()
+def make_venue() -> Callable[..., Venue]:
+    """Factory for ``Venue`` objects; add one to ``db_session`` to persist it."""
+    counter = {"id": 0}
+
+    def _make(
+        *,
+        name: str = "Main Hall",
+        location: str = "Building A",
+        capacity: int = 100,
+        facilities: str = "projector,wifi",
+        accessibility_features: str = "wheelchair_access",
+        supported_layouts: str = "theatre,classroom",
+        opening_periods: list[VenueOpeningPeriod] | None = None,
+        is_active: bool = True,
+        venue_id: int | None = None,
+    ) -> Venue:
+        counter["id"] += 1
+        venue = Venue(
+            name=name,
+            location=location,
+            capacity=capacity,
+            facilities=facilities,
+            accessibility_features=accessibility_features,
+            supported_layouts=supported_layouts,
+            opening_periods=opening_periods or [],
+            is_active=is_active,
+        )
+        venue.id = venue_id if venue_id is not None else counter["id"]
+        return venue
+
+    return _make

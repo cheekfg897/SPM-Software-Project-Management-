@@ -38,14 +38,15 @@ def _init_extensions(app: Flask) -> None:
 def _register_modules(app: Flask) -> None:
     """Register every bounded-context module.
 
-    New modules (events, venues, equipment, ...) are added here in later
+    New modules (equipment, ...) are added here in later
     sprints by importing their ``register`` function. Nothing else in the
     app needs to change.
     """
-    from app.modules import auth, events
+    from app.modules import auth, events, venue
 
     auth.register(app)
     events.register(app)
+    venue.register(app)
 
 
 def create_app(config_name: str | None = None) -> Flask:
