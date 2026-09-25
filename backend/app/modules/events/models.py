@@ -74,6 +74,12 @@ class EventRequest(db.Model):  # type: ignore[name-defined]
     organiser_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("users.id"), index=True, nullable=False
     )
+    #: The organiser's client organisation when they submitted (SCRUM-66 AC4,
+    #: ADR-0013). Rows from before migration 0007 are NULL. A database-level foreign
+    #: key only, like ``organiser_id``.
+    organisation_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("client_organisations.id"), index=True, nullable=True
+    )
     name: Mapped[str] = mapped_column(String(NAME_MAX_LENGTH), nullable=False)
     purpose: Mapped[str | None] = mapped_column(Text, nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
