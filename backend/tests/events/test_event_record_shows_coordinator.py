@@ -16,7 +16,6 @@ from typing import Any
 import pytest
 from flask import Flask, Response
 
-from app.common.errors import NotFoundError
 from app.modules.auth.models import User
 from app.modules.auth.permissions import Role
 from app.modules.events import routes
@@ -82,17 +81,6 @@ def test_an_unassigned_request_shows_no_coordinator(
 
     assert event_request.reference == REFERENCE
     assert coordinator is None
-
-
-def test_someone_elses_request_is_not_found_through_the_record(
-    save: Callable[..., None], make_event_request: MakeEventRequest
-) -> None:
-    save(make_event_request(reference=REFERENCE, organiser_id=7, coordinator_id=3))
-
-    with pytest.raises(NotFoundError) as exc_info:
-        get_event_record_for_organiser("8", REFERENCE)
-
-    assert exc_info.value.status_code == 404
 
 
 # --------------------------------------------------------------------------

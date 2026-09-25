@@ -52,7 +52,7 @@ REFERENCE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"
 REFERENCE_LENGTH = 8
 MAX_REFERENCE_ATTEMPTS = 3
 
-#: One answer for a reference that doesn't exist and one that isn't the caller's, so a
+#: One answer for a reference that doesn't exist and one the caller may not see, so a
 #: reference can't be probed (ADR-0012).
 EVENT_REQUEST_NOT_FOUND_MESSAGE = "Event request not found."
 
@@ -71,7 +71,10 @@ class ReferenceGenerationError(AppError):
 
 
 class OrganiserWithoutOrganisationError(AppError):
-    """The organiser's account isn't linked to a client organisation (403, ADR-0013)."""
+    """The organiser's account isn't linked to a client organisation (403).
+
+    Refused on submit (ADR-0013) and on reading event requests (ADR-0020).
+    """
 
     status_code = 403
     error_code = "organiser_without_organisation"
@@ -148,17 +151,20 @@ def record_event_history(
 
 
 def _organisation_of_organiser(organiser_id: int | str, session: Session) -> int:
-    """The client organisation an event request is filed under (SCRUM-66 AC4).
+    """The organiser's client organisation, read from their account.
+
+    A request is filed under it (SCRUM-66 AC4), and the organiser sees that
+    organisation's requests (SCRUM-7).
 
     Raises:
         OrganiserWithoutOrganisationError: 403 — an account from before SCRUM-66 that
             no one has linked to an organisation yet.
+        NotFoundError: 404 — the token names a user that no longer exists.
     """
     organiser = get_user_by_id(organiser_id, session=session)
     if organiser.organisation_id is None:
         raise OrganiserWithoutOrganisationError(
-            "Your account is not linked to a client organisation, "
-            "so it cannot submit event requests yet."
+            "Your account is not linked to a client organisation yet."
         )
     return organiser.organisation_id
 
@@ -331,22 +337,41 @@ def _list_event_requests_newest_first(
     return list(session.scalars(stmt))
 
 
-def _visible_to_organiser(organiser_id: int | str) -> ColumnElement[bool]:
-    """The event requests an organiser may see: the ones they submitted (ADR-0012).
+def _visible_to_organiser(organiser_id: int | str, session: Session) -> ColumnElement[bool]:
+    """The event requests an organiser may see: their client organisation's (SCRUM-7).
 
-    The one place an organiser's scope is decided, so their list and the detail of
-    one request can't disagree about what is theirs.
+    The organisation is read from the organiser's account each time, not from their
+    token (ADR-0020). A request filed under no organisation matches nobody
+    (ADR-0013). This is the one place an organiser's scope is decided, so their list
+    and the detail of one request can't disagree; SCRUM-20 narrows it here so a
+    draft stays with the organiser who wrote it.
+
+    Raises:
+        OrganiserWithoutOrganisationError: 403 — the organiser has no organisation.
+        NotFoundError: 404 — the token names a user that no longer exists.
     """
-    return EventRequest.organiser_id == int(organiser_id)
+    return EventRequest.organisation_id == _organisation_of_organiser(organiser_id, session)
 
 
 def list_event_requests_for_organiser(
     organiser_id: int | str, *, session: Session | None = None
 ) -> list[EventRequest]:
-    """Return the organiser's own event requests, newest first (SCRUM-19 AC5)."""
-    return _list_event_requests_newest_first(
-        _visible_to_organiser(organiser_id), resolve_session(session)
-    )
+    """Return the organiser's client organisation's event requests, newest first.
+
+    Every organiser of the organisation gets the same list, whoever in it submitted
+    each request (SCRUM-7 AC1, AC3; SCRUM-19 AC5).
+
+    Args:
+        organiser_id: The caller's user id, taken from their token.
+        session: Database session; defaults to ``db.session``.
+
+    Raises:
+        OrganiserWithoutOrganisationError: 403 — the organiser has no client
+            organisation (ADR-0020).
+        NotFoundError: 404 — the token names a user that no longer exists.
+    """
+    sess = resolve_session(session)
+    return _list_event_requests_newest_first(_visible_to_organiser(organiser_id, sess), sess)
 
 
 def list_event_requests_for_coordinator(
@@ -388,10 +413,11 @@ def _event_request_by_reference(
 def get_event_request_for_organiser(
     organiser_id: int | str, reference: str, *, session: Session | None = None
 ) -> EventRequest:
-    """Fetch one of the organiser's own event requests by reference (SCRUM-22 AC2).
+    """Fetch one of the organiser's organisation's event requests by reference.
 
-    A reference that belongs to another organiser gets the same 404 as one that
-    doesn't exist (ADR-0012).
+    Its status is SCRUM-22 AC2's. Any organiser of the request's client organisation
+    may open it (SCRUM-7 AC3); a request of another organisation gets the same 404
+    as a reference that doesn't exist (SCRUM-7 AC2, ADR-0012).
 
     Args:
         organiser_id: The caller's user id, taken from their token.
@@ -399,10 +425,14 @@ def get_event_request_for_organiser(
         session: Database session; defaults to ``db.session``.
 
     Raises:
-        NotFoundError: 404 — no such request among the caller's own.
+        OrganiserWithoutOrganisationError: 403 — the organiser has no client
+            organisation (ADR-0020).
+        NotFoundError: 404 — no such request in the caller's organisation, or the
+            token names a user that no longer exists.
     """
+    sess = resolve_session(session)
     return _event_request_by_reference(
-        reference, resolve_session(session), belongs_to=_visible_to_organiser(organiser_id)
+        reference, sess, belongs_to=_visible_to_organiser(organiser_id, sess)
     )
 
 
@@ -419,7 +449,7 @@ def _coordinator_contact(
 def get_event_record_for_organiser(
     organiser_id: int | str, reference: str, *, session: Session | None = None
 ) -> tuple[EventRequest, CoordinatorContact | None]:
-    """One of the organiser's own requests and its assigned coordinator (SCRUM-30 AC3).
+    """One of the organisation's requests and its assigned coordinator (SCRUM-30 AC3).
 
     Same lookup and scope as :func:`get_event_request_for_organiser`; the coordinator
     is ``None`` until one is assigned (ADR-0018).
@@ -433,7 +463,10 @@ def get_event_record_for_organiser(
         The request, and its coordinator's name and email or ``None``.
 
     Raises:
-        NotFoundError: 404 — no such request among the caller's own.
+        OrganiserWithoutOrganisationError: 403 — the organiser has no client
+            organisation (ADR-0020).
+        NotFoundError: 404 — no such request in the caller's organisation, or the
+            token names a user that no longer exists.
     """
     sess = resolve_session(session)
     event_request = get_event_request_for_organiser(organiser_id, reference, session=sess)

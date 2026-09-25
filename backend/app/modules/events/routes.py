@@ -53,7 +53,11 @@ def submit_request() -> tuple[Response, int]:
 @bp.get("/requests")
 @requires_role(Role.EVENT_ORGANISER)
 def list_my_requests() -> tuple[Response, int]:
-    """List the caller's own event requests, newest first (SCRUM-19)."""
+    """List the caller's client organisation's event requests, newest first.
+
+    Every organiser of the organisation sees the same list (SCRUM-7 AC1, AC3;
+    SCRUM-19 AC5); an organiser with no organisation gets ``403`` (ADR-0020).
+    """
     event_requests = list_event_requests_for_organiser(g.current_user_id)
     return (
         jsonify({"event_requests": _event_request_schema.dump(event_requests, many=True)}),
@@ -77,11 +81,13 @@ def list_assigned_requests() -> tuple[Response, int]:
 @bp.get("/requests/<reference>")
 @requires_role(Role.EVENT_ORGANISER)
 def get_my_request(reference: str) -> tuple[Response, int]:
-    """One of the caller's own event requests: its status, coordinator and equipment.
+    """One of the organisation's event requests: its status, coordinator and equipment.
 
-    The current status is SCRUM-22's; the assigned coordinator's name and email are
-    SCRUM-30 AC3's, ``null`` until one is assigned (ADR-0018); the equipment lines
-    are SCRUM-37 AC4's.
+    Any organiser of the request's client organisation may open it; another
+    organisation's request is ``404`` like an unknown reference (SCRUM-7 AC2, AC3,
+    ADR-0012). The current status is SCRUM-22's; the assigned coordinator's name and
+    email are SCRUM-30 AC3's, ``null`` until one is assigned (ADR-0018); the
+    equipment lines are SCRUM-37 AC4's.
     """
     event_request, coordinator = get_event_record_for_organiser(g.current_user_id, reference)
     body = _event_request_detail_schema.dump(event_request)
