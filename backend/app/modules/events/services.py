@@ -52,6 +52,10 @@ REFERENCE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"
 REFERENCE_LENGTH = 8
 MAX_REFERENCE_ATTEMPTS = 3
 
+#: One answer for a reference that doesn't exist and one that isn't the caller's, so a
+#: reference can't be probed (ADR-0012).
+EVENT_REQUEST_NOT_FOUND_MESSAGE = "Event request not found."
+
 #: Statuses in which an assigned coordinator is still working a request, so they count
 #: towards the coordinator's load (ADR-0018).
 OPEN_STATUSES: frozenset[EventRequestStatus] = frozenset(
@@ -350,13 +354,29 @@ def _normalise_reference(reference: str) -> str:
     return reference.strip().upper()
 
 
+def _event_request_by_reference(reference: str, session: Session) -> EventRequest:
+    """Any event request by its reference, whoever it belongs to.
+
+    Case and surrounding spaces are ignored (ADR-0004). Callers that serve one
+    user check the request is theirs and answer "not yours" with the same 404.
+
+    Raises:
+        NotFoundError: 404 — no such request.
+    """
+    stmt = select(EventRequest).where(EventRequest.reference == _normalise_reference(reference))
+    event_request = session.scalar(stmt)
+    if event_request is None:
+        raise NotFoundError(EVENT_REQUEST_NOT_FOUND_MESSAGE)
+    return event_request
+
+
 def get_event_request_for_organiser(
     organiser_id: int | str, reference: str, *, session: Session | None = None
 ) -> EventRequest:
     """Fetch one of the organiser's own event requests by reference (SCRUM-22 AC2).
 
-    The query is scoped to the caller, so a reference that belongs to another
-    organiser looks exactly like one that doesn't exist (ADR-0012).
+    A reference that belongs to another organiser gets the same 404 as one that
+    doesn't exist (ADR-0012).
 
     Args:
         organiser_id: The caller's user id, taken from their token.
@@ -366,13 +386,9 @@ def get_event_request_for_organiser(
     Raises:
         NotFoundError: 404 — no such request among the caller's own.
     """
-    stmt = select(EventRequest).where(
-        EventRequest.organiser_id == int(organiser_id),
-        EventRequest.reference == _normalise_reference(reference),
-    )
-    event_request = resolve_session(session).scalar(stmt)
-    if event_request is None:
-        raise NotFoundError("Event request not found.")
+    event_request = _event_request_by_reference(reference, resolve_session(session))
+    if event_request.organiser_id != int(organiser_id):
+        raise NotFoundError(EVENT_REQUEST_NOT_FOUND_MESSAGE)
     return event_request
 
 
@@ -432,21 +448,6 @@ class RequestNotAwaitingReviewError(AppError):
     error_code = "request_not_awaiting_review"
 
 
-def _event_request_by_reference(reference: str, session: Session) -> EventRequest:
-    """Any event request by its reference, as Technical Support see it (ADR-0019).
-
-    Case and surrounding spaces are ignored (ADR-0004).
-
-    Raises:
-        NotFoundError: 404 — no such request.
-    """
-    stmt = select(EventRequest).where(EventRequest.reference == _normalise_reference(reference))
-    event_request = session.scalar(stmt)
-    if event_request is None:
-        raise NotFoundError("Event request not found.")
-    return event_request
-
-
 def _event_request_assigned_to(
     coordinator_id: int | str, reference: str, session: Session
 ) -> EventRequest:
@@ -460,7 +461,7 @@ def _event_request_assigned_to(
     """
     event_request = _event_request_by_reference(reference, session)
     if event_request.coordinator_id != int(coordinator_id):
-        raise NotFoundError("Event request not found.")
+        raise NotFoundError(EVENT_REQUEST_NOT_FOUND_MESSAGE)
     return event_request
 
 
