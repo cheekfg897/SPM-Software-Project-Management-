@@ -17,7 +17,7 @@ backend/            Flask application (see below)
     modules/events/ event requests (SCRUM-19), event status model (SCRUM-22), filed under the organiser's organisation (SCRUM-66)
     modules/organisations/ client organisations that Event Organisers belong to (SCRUM-66)
     modules/notifications/ in-app notifications about events (SCRUM-28)
-    modules/venue/  venue catalogue (SCRUM-25), availability calendar (SCRUM-26), search (SCRUM-35), setup/turnaround (SCRUM-67)
+    modules/venue/  venue catalogue (SCRUM-25), availability calendar (SCRUM-26), search (SCRUM-35), setup/turnaround (SCRUM-67), blocks (SCRUM-34)
     modules/equipment/ equipment catalogue (SCRUM-27)
   tests/            unit tests (pytest), one marker per story
   migrations/       Alembic migrations (Flask-Migrate)
@@ -119,6 +119,7 @@ curl http://localhost:5000/api/auth/internal-only -H "Authorization: Bearer <tok
 | `POST /api/venues/<id>/reactivate` | `venue_staff` — show again                              |
 | `GET  /api/venues/<id>/calendar?range_start=…&range_end=…` | internal roles — bookings and blocked periods in the range |
 | `POST /api/venues/search`      | `event_coordinator` — venues that meet an event's requirements and are free |
+| `POST /api/venues/<id>/blocks` | `venue_staff` — block a period with a reason; lists the confirmed bookings it cuts into |
 | `POST /api/equipment/types`    | `technical_support_staff` — add an equipment type               |
 | `GET  /api/equipment/types`    | internal roles — every equipment type with its total quantity, by name |
 | `GET  /api/equipment/types/<id>` | internal roles — one equipment type                           |
@@ -160,6 +161,7 @@ pytest -m scrum_25   # update venue catalogue
 pytest -m scrum_26   # view a venue's availability calendar
 pytest -m scrum_27   # maintain the equipment catalogue
 pytest -m scrum_28   # receive notifications about my events
+pytest -m scrum_34   # block a venue
 pytest -m scrum_35   # search and filter venues
 pytest -m scrum_67   # setup and turnaround time
 pytest -m scrum_66   # client organisations

@@ -23,7 +23,9 @@ from app.modules.venue import services
 from app.modules.venue.schemas import (
     CalendarEntrySchema,
     CalendarQuerySchema,
+    ConflictingBookingSchema,
     OverlapWarningSchema,
+    VenueBlockSchema,
     VenueMatchSchema,
     VenueSchema,
 )
@@ -34,6 +36,8 @@ _venue_schema = VenueSchema()
 _calendar_entry_schema = CalendarEntrySchema()
 _venue_match_schema = VenueMatchSchema()
 _overlap_warning_schema = OverlapWarningSchema()
+_venue_block_schema = VenueBlockSchema()
+_conflicting_booking_schema = ConflictingBookingSchema()
 
 #: SCRUM-35 AC4: what an empty search says.
 NO_MATCHES_MESSAGE = "No venues match your search criteria."
@@ -131,3 +135,22 @@ def search_venues() -> tuple[Response, int]:
     if not matches:
         body["message"] = NO_MATCHES_MESSAGE
     return jsonify(body), 200
+
+
+# --------------------------------------------------------------------------
+# SCRUM-34 — Block a venue for maintenance or internal use
+# --------------------------------------------------------------------------
+
+
+@bp.post("/<int:venue_id>/blocks")
+@requires_role(Role.VENUE_STAFF)
+def block_venue(venue_id: int) -> tuple[Response, int]:
+    """Block a venue for a period. Venue Staff only (SCRUM-34 AC1).
+
+    The block is saved even over confirmed bookings; the response lists the ones it
+    cuts into (AC2, ADR-0016).
+    """
+    block, conflicting_bookings = services.block_venue(venue_id, request.get_json(silent=True))
+    body = _venue_block_schema.dump(block)
+    body["conflicting_bookings"] = _conflicting_booking_schema.dump(conflicting_bookings, many=True)
+    return jsonify(body), 201
