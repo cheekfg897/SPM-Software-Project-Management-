@@ -24,6 +24,7 @@ from app.modules.events.services import (
     list_equipment_lines,
     list_event_requests_for_coordinator,
     list_event_requests_for_organiser,
+    reassign_coordinator,
     remove_equipment_line,
     submit_event_request,
     update_equipment_line,
@@ -148,3 +149,26 @@ def remove_equipment(reference: str, line_id: int) -> tuple[Response, int]:
     """Remove an equipment line of a request assigned to the caller (SCRUM-37 AC2)."""
     remove_equipment_line(g.current_user_id, reference, line_id)
     return Response(), 204
+
+
+# --------------------------------------------------------------------------
+# SCRUM-87 — reassign an event to a different coordinator
+# --------------------------------------------------------------------------
+
+
+@bp.post("/requests/<reference>/reassign")
+@requires_role(Role.EVENT_COORDINATOR)
+def reassign_request(reference: str) -> tuple[Response, int]:
+    """Move a request to the Event Coordinator named by ``coordinator_email``.
+
+    SCRUM-87, ADR-0021. Only the request's current coordinator may; the service
+    answers anyone else with the equipment routes' "not yours" 404. Returns ``200``
+    with the request and the new coordinator's name and email (AC6). The caller is
+    recorded as having done it (AC7).
+    """
+    event_request, coordinator = reassign_coordinator(
+        g.current_user_id, reference, request.get_json(silent=True)
+    )
+    body = _event_request_schema.dump(event_request)
+    body["coordinator"] = _coordinator_contact_schema.dump(coordinator)
+    return jsonify(body), 200
