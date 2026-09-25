@@ -29,16 +29,14 @@ from app.modules.auth.models import User
 from app.modules.events.models import EventRequest
 from app.modules.events.services import submit_event_request
 from app.modules.notifications.schemas import MESSAGE_BY_KIND
-from app.modules.notifications.services import (
-    NotificationKind,
-    list_notifications_for_recipient,
-)
+from app.modules.notifications.services import NotificationKind
 
 pytestmark = [pytest.mark.scrum_28, pytest.mark.scrum_30]
 
 SubmitValidRequest = Callable[..., EventRequest]
+NotificationsOf = Callable[[int], list[tuple[Any, ...]]]
 
-#: What the assignment notification records, in the order ``_notifications_of``
+#: What the assignment notification records, in the order ``notifications_of``
 #: lists it: event request id, reference, name, kind, read at.
 ASSIGNED_NOTIFICATION = (
     1,
@@ -49,57 +47,49 @@ ASSIGNED_NOTIFICATION = (
 )
 
 
-def _notifications_of(user_id: int) -> list[tuple[Any, ...]]:
-    """Every notification the user has, in ``ASSIGNED_NOTIFICATION``'s layout."""
-    rows = []
-    for notification in list_notifications_for_recipient(user_id):
-        rows.append(
-            (
-                notification.event_request_id,
-                notification.event_reference,
-                notification.event_name,
-                notification.kind,
-                notification.read_at,
-            )
-        )
-    return rows
-
-
 # --------------------------------------------------------------------------
 # SCRUM-28 AC3, SCRUM-30 AC4 — only the assigned coordinator is told, once
 # --------------------------------------------------------------------------
 
 
 def test_the_assigned_coordinator_gets_one_assignment_notification(
-    saved_users: list[User], submit_valid_request: SubmitValidRequest
+    saved_users: list[User],
+    submit_valid_request: SubmitValidRequest,
+    notifications_of: NotificationsOf,
 ) -> None:
     submit_valid_request()
 
-    assert _notifications_of(3) == [ASSIGNED_NOTIFICATION]
+    assert notifications_of(3) == [ASSIGNED_NOTIFICATION]
 
 
 @pytest.mark.parametrize(
-    "user_id", [9, 4, 7], ids=["the-other-coordinator", "venue-staff", "the-organiser"]
+    "user_id",
+    [9, 4, 5, 7],
+    ids=["the-other-coordinator", "venue-staff", "technical-support", "the-organiser"],
 )
 def test_nobody_else_is_notified_of_a_new_request(
-    saved_users: list[User], submit_valid_request: SubmitValidRequest, user_id: int
+    saved_users: list[User],
+    submit_valid_request: SubmitValidRequest,
+    notifications_of: NotificationsOf,
+    user_id: int,
 ) -> None:
     submit_valid_request()
 
-    assert _notifications_of(user_id) == []
+    assert notifications_of(user_id) == []
 
 
 def test_a_rejected_request_notifies_nobody(
     saved_users: list[User],
     valid_event_request_payload: dict[str, Any],
     submit_valid_request: SubmitValidRequest,
+    notifications_of: NotificationsOf,
 ) -> None:
     valid_event_request_payload["proposed_date"] = "2026-09-14"  # yesterday
 
     with pytest.raises(ValidationError):
         submit_valid_request()
 
-    assert _notifications_of(3) == []
+    assert notifications_of(3) == []
 
 
 def test_the_assignment_notification_says_what_happened() -> None:

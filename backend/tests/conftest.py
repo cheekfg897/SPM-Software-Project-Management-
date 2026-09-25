@@ -24,6 +24,7 @@ from app.common.decorators import ROLE_CLAIM
 from app.extensions import db
 from app.modules.auth.models import User
 from app.modules.auth.permissions import Role
+from app.modules.equipment.models import EquipmentType
 from app.modules.venue.models import Venue, VenueOpeningPeriod
 
 
@@ -152,8 +153,9 @@ def saved_users(db_session: Session, make_user: Callable[..., User]) -> list[Use
 
     Event Coordinators 9 and 3 (saved in that order, so a query has to sort them),
     each with their own name so a test can tell which one it got (SCRUM-30), Venue
-    Staff 4 and Event Organiser 7, who belongs to client organisation 3 so they can
-    submit event requests (SCRUM-66).
+    Staff 4, Event Organiser 7, who belongs to client organisation 3 so they can
+    submit event requests (SCRUM-66), and Technical Support Staff 5 and 2 (also saved
+    out of order).
     """
     users = [
         make_user(
@@ -175,6 +177,8 @@ def saved_users(db_session: Session, make_user: Callable[..., User]) -> list[Use
             user_id=7,
             organisation_id=3,
         ),
+        make_user(email="techsupport5@example.com", role=Role.TECHNICAL_SUPPORT_STAFF, user_id=5),
+        make_user(email="techsupport2@example.com", role=Role.TECHNICAL_SUPPORT_STAFF, user_id=2),
     ]
     db_session.add_all(users)
     db_session.commit()
@@ -287,5 +291,41 @@ def make_venue() -> Callable[..., Venue]:
 def venue(make_venue: Callable[..., Venue], save: Callable[..., None]) -> Venue:
     """One saved, active venue with default details."""
     saved = make_venue()
+    save(saved)
+    return saved
+
+
+@pytest.fixture()
+def make_equipment_type() -> Callable[..., EquipmentType]:
+    """Factory for ``EquipmentType`` objects; add one to ``db_session`` to persist it.
+
+    By default the equipment is kept in a store, not at a venue.
+    """
+
+    def _make(
+        *,
+        name: str = "Projector",
+        description: str | None = None,
+        total_quantity: int = 10,
+        venue_id: int | None = None,
+        store_name: str | None = "Central AV store",
+    ) -> EquipmentType:
+        return EquipmentType(
+            name=name,
+            description=description,
+            total_quantity=total_quantity,
+            venue_id=venue_id,
+            store_name=store_name,
+        )
+
+    return _make
+
+
+@pytest.fixture()
+def equipment_type(
+    make_equipment_type: Callable[..., EquipmentType], save: Callable[..., None]
+) -> EquipmentType:
+    """One saved equipment type with default details, kept in a store."""
+    saved = make_equipment_type()
     save(saved)
     return saved
