@@ -5,7 +5,10 @@ type, a quantity and technical notes. AC2: a line can be edited or removed while
 request is still awaiting review (``submitted`` or ``under_review``). AC3: a quantity
 of zero or less is refused. AC4: the lines and their current state are visible on the
 event record. One line per equipment type per event, and the database holds the same
-rules as the schema (ADR-0019). AC5 is in ``test_event_equipment_notifications.py``.
+rules as the schema (ADR-0019). Only the event's assigned coordinator (SCRUM-30) adds,
+edits, removes or lists its lines; any other coordinator, or anyone on an unassigned
+event, gets the same 404 as an unknown event. Technical Support Staff list any event's
+lines. AC5 is in ``test_event_equipment_notifications.py``.
 
 The services run against ``db_session``, so the lookups and orderings are real SQL.
 """
@@ -21,6 +24,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.common.errors import ConflictError, NotFoundError, ValidationError
+from app.modules.auth.permissions import Role
 from app.modules.equipment.models import EquipmentType
 from app.modules.events.models import (
     EquipmentLineStatus,
@@ -47,7 +51,11 @@ MakeEquipmentLine = Callable[..., EventEquipmentLine]
 ReloadEquipmentLine = Callable[[int], EventEquipmentLine]
 Save = Callable[..., None]
 StoredLine = tuple[int, int, int, str | None, EquipmentLineStatus]
+LineOperation = Callable[[int, str, int], None]
 
+#: The Event Coordinator ``saved_event_request`` is assigned to.
+COORDINATOR_ID = 3
+TECHNICAL_SUPPORT_ID = 5
 REFERENCE = "EVR-AAAAAAAA"
 OTHER_REFERENCE = "EVR-BBBBBBBB"
 UNKNOWN_REFERENCE = "EVR-ZZZZZZZZ"
@@ -73,10 +81,15 @@ def _stored_lines(session: Session) -> list[StoredLine]:
     return stored
 
 
+def _listed_by_the_coordinator(reference: str) -> tuple[EventRequest, list[EventEquipmentLine]]:
+    """List ``reference``'s lines as the coordinator it is assigned to."""
+    return list_equipment_lines(COORDINATOR_ID, reference, viewer_role=Role.EVENT_COORDINATOR)
+
+
 def _add_rejected(session: Session, payload: dict[str, Any]) -> ValidationError:
     """Add ``payload`` to REFERENCE, expecting a 400 that saves nothing."""
     with pytest.raises(ValidationError) as exc_info:
-        add_equipment_line(REFERENCE, payload)
+        add_equipment_line(COORDINATOR_ID, REFERENCE, payload)
 
     assert exc_info.value.status_code == 400
     assert _stored_lines(session) == []
@@ -90,16 +103,16 @@ def _edit_rejected(
     before = EquipmentLineSchema().dump(reload(line.id))
 
     with pytest.raises(ValidationError) as exc_info:
-        update_equipment_line(REFERENCE, line.id, payload)
+        update_equipment_line(COORDINATOR_ID, REFERENCE, line.id, payload)
 
     assert exc_info.value.status_code == 400
     assert EquipmentLineSchema().dump(reload(line.id)) == before
     return exc_info.value
 
 
-def _edit_quantity(reference: str, line_id: int) -> None:
+def _edit_quantity(coordinator_id: int, reference: str, line_id: int) -> None:
     """Edit a line's quantity: one of the two operations on an existing line."""
-    update_equipment_line(reference, line_id, {"quantity": 3})
+    update_equipment_line(coordinator_id, reference, line_id, {"quantity": 3})
 
 
 #: What can be done to an existing line (AC2). Both refuse the same things.
@@ -122,10 +135,28 @@ def saved_line(
 
 @pytest.fixture()
 def other_event_request(make_event_request: MakeEventRequest, save: Save) -> EventRequest:
-    """A second saved request, OTHER_REFERENCE."""
-    event_request = make_event_request(reference=OTHER_REFERENCE)
+    """A second saved request, OTHER_REFERENCE, assigned to the same coordinator."""
+    event_request = make_event_request(reference=OTHER_REFERENCE, coordinator_id=COORDINATOR_ID)
     save(event_request)
     return event_request
+
+
+@pytest.fixture(
+    params=[(9, COORDINATOR_ID), (COORDINATOR_ID, None)],
+    ids=["another-coordinators-event", "an-unassigned-event"],
+)
+def outside_coordinator(
+    request: pytest.FixtureRequest, saved_event_request: EventRequest, save: Save
+) -> int:
+    """The id of a coordinator who isn't REFERENCE's assigned coordinator.
+
+    Either REFERENCE is assigned to coordinator 3 and the caller is coordinator 9, or
+    REFERENCE is unassigned and the caller is coordinator 3.
+    """
+    caller_id, assigned_to = request.param
+    saved_event_request.coordinator_id = assigned_to
+    save(saved_event_request)
+    return caller_id
 
 
 # --------------------------------------------------------------------------
@@ -139,7 +170,7 @@ def test_a_line_is_saved_with_its_type_quantity_notes_and_requested_status(
     valid_equipment_line_payload: dict[str, Any],
     reload_equipment_line: ReloadEquipmentLine,
 ) -> None:
-    line = add_equipment_line(REFERENCE, valid_equipment_line_payload)
+    line = add_equipment_line(COORDINATOR_ID, REFERENCE, valid_equipment_line_payload)
 
     reloaded = reload_equipment_line(line.id)
     assert EquipmentLineSchema().dump(reloaded) == {
@@ -159,8 +190,10 @@ def test_several_lines_of_different_types_can_be_added(
     microphone: EquipmentType,
     valid_equipment_line_payload: dict[str, Any],
 ) -> None:
-    add_equipment_line(REFERENCE, valid_equipment_line_payload)
-    add_equipment_line(REFERENCE, {"equipment_type_id": microphone.id, "quantity": 4})
+    add_equipment_line(COORDINATOR_ID, REFERENCE, valid_equipment_line_payload)
+    add_equipment_line(
+        COORDINATOR_ID, REFERENCE, {"equipment_type_id": microphone.id, "quantity": 4}
+    )
 
     event_id = saved_event_request.id
     assert _stored_lines(db_session) == [
@@ -182,7 +215,7 @@ def test_notes_are_optional_and_blank_notes_are_stored_as_null(
 ) -> None:
     payload = {"equipment_type_id": equipment_type.id, "quantity": 2, **notes}
 
-    line = add_equipment_line(REFERENCE, payload)
+    line = add_equipment_line(COORDINATOR_ID, REFERENCE, payload)
 
     assert reload_equipment_line(line.id).notes is None
 
@@ -194,7 +227,7 @@ def test_notes_are_trimmed(
 ) -> None:
     valid_equipment_line_payload["notes"] = "  Needs HDMI  "
 
-    line = add_equipment_line(REFERENCE, valid_equipment_line_payload)
+    line = add_equipment_line(COORDINATOR_ID, REFERENCE, valid_equipment_line_payload)
 
     assert reload_equipment_line(line.id).notes == "Needs HDMI"
 
@@ -245,10 +278,12 @@ def test_a_second_line_for_the_same_equipment_type_is_a_conflict(
     equipment_type: EquipmentType,
     valid_equipment_line_payload: dict[str, Any],
 ) -> None:
-    add_equipment_line(REFERENCE, valid_equipment_line_payload)
+    add_equipment_line(COORDINATOR_ID, REFERENCE, valid_equipment_line_payload)
 
     with pytest.raises(ConflictError) as exc_info:
-        add_equipment_line(REFERENCE, {"equipment_type_id": equipment_type.id, "quantity": 5})
+        add_equipment_line(
+            COORDINATOR_ID, REFERENCE, {"equipment_type_id": equipment_type.id, "quantity": 5}
+        )
 
     assert exc_info.value.status_code == 409
     assert exc_info.value.message == DUPLICATE_LINE_MESSAGE
@@ -263,7 +298,7 @@ def test_adding_to_an_unknown_event_request_is_not_found(
     valid_equipment_line_payload: dict[str, Any],
 ) -> None:
     with pytest.raises(NotFoundError) as exc_info:
-        add_equipment_line(UNKNOWN_REFERENCE, valid_equipment_line_payload)
+        add_equipment_line(COORDINATOR_ID, UNKNOWN_REFERENCE, valid_equipment_line_payload)
 
     assert exc_info.value.status_code == 404
     assert exc_info.value.message == "Event request not found."
@@ -277,7 +312,7 @@ def test_the_reference_ignores_case_and_surrounding_spaces(
     reload_equipment_line: ReloadEquipmentLine,
     typed: str,
 ) -> None:
-    line = add_equipment_line(typed, valid_equipment_line_payload)
+    line = add_equipment_line(COORDINATOR_ID, typed, valid_equipment_line_payload)
 
     assert reload_equipment_line(line.id).event_request_id == saved_event_request.id
 
@@ -320,7 +355,7 @@ def test_a_quantity_of_one_is_accepted(
 ) -> None:
     valid_equipment_line_payload["quantity"] = 1
 
-    line = add_equipment_line(REFERENCE, valid_equipment_line_payload)
+    line = add_equipment_line(COORDINATOR_ID, REFERENCE, valid_equipment_line_payload)
 
     assert reload_equipment_line(line.id).quantity == 1
 
@@ -366,7 +401,7 @@ def test_editing_changes_only_the_fields_sent(
     quantity: int,
     notes: str,
 ) -> None:
-    update_equipment_line(REFERENCE, saved_line.id, payload)
+    update_equipment_line(COORDINATOR_ID, REFERENCE, saved_line.id, payload)
 
     reloaded = reload_equipment_line(saved_line.id)
     assert (reloaded.equipment_type_id, reloaded.quantity, reloaded.notes) == (
@@ -381,7 +416,9 @@ def test_editing_can_move_a_line_to_another_equipment_type(
     microphone: EquipmentType,
     reload_equipment_line: ReloadEquipmentLine,
 ) -> None:
-    update_equipment_line(REFERENCE, saved_line.id, {"equipment_type_id": microphone.id})
+    update_equipment_line(
+        COORDINATOR_ID, REFERENCE, saved_line.id, {"equipment_type_id": microphone.id}
+    )
 
     assert reload_equipment_line(saved_line.id).equipment_type_id == microphone.id
 
@@ -397,7 +434,7 @@ def test_editing_clears_the_notes_only_when_sent_as_null(
     payload: dict[str, Any],
     notes: str | None,
 ) -> None:
-    update_equipment_line(REFERENCE, saved_line.id, payload)
+    update_equipment_line(COORDINATOR_ID, REFERENCE, saved_line.id, payload)
 
     assert reload_equipment_line(saved_line.id).notes == notes
 
@@ -423,7 +460,10 @@ def test_editing_to_a_type_another_line_already_has_is_a_conflict(
 
     with pytest.raises(ConflictError) as exc_info:
         update_equipment_line(
-            REFERENCE, microphone_line.id, {"equipment_type_id": saved_line.equipment_type_id}
+            COORDINATOR_ID,
+            REFERENCE,
+            microphone_line.id,
+            {"equipment_type_id": saved_line.equipment_type_id},
         )
 
     assert exc_info.value.status_code == 409
@@ -441,7 +481,7 @@ def test_removing_a_line_deletes_only_that_line(
     microphone_line = make_equipment_line(saved_event_request, microphone, quantity=4, notes=None)
     save(microphone_line)
 
-    remove_equipment_line(REFERENCE, saved_line.id)
+    remove_equipment_line(COORDINATOR_ID, REFERENCE, saved_line.id)
 
     assert _stored_lines(db_session) == [
         (saved_event_request.id, microphone.id, 4, None, REQUESTED)
@@ -450,10 +490,10 @@ def test_removing_a_line_deletes_only_that_line(
 
 @pytest.mark.parametrize("operation", LINE_OPERATIONS, ids=LINE_OPERATION_IDS)
 def test_an_unknown_line_is_not_found(
-    saved_line: EventEquipmentLine, operation: Callable[[str, int], None]
+    saved_line: EventEquipmentLine, operation: LineOperation
 ) -> None:
     with pytest.raises(NotFoundError) as exc_info:
-        operation(REFERENCE, UNKNOWN_ID)
+        operation(COORDINATOR_ID, REFERENCE, UNKNOWN_ID)
 
     assert exc_info.value.status_code == 404
     assert exc_info.value.message == "Equipment line not found."
@@ -472,7 +512,7 @@ def test_a_line_can_only_be_reached_through_its_own_event(
     equipment_type: EquipmentType,
     make_equipment_line: MakeEquipmentLine,
     save: Save,
-    operation: Callable[[str, int], None],
+    operation: LineOperation,
     reference: str,
     message: str,
 ) -> None:
@@ -480,7 +520,7 @@ def test_a_line_can_only_be_reached_through_its_own_event(
     save(other_line)
 
     with pytest.raises(NotFoundError) as exc_info:
-        operation(reference, other_line.id)
+        operation(COORDINATOR_ID, reference, other_line.id)
 
     assert exc_info.value.status_code == 404
     assert exc_info.value.message == message
@@ -504,9 +544,9 @@ def test_lines_may_change_while_the_request_is_submitted_or_under_review(
     saved_event_request.status = status
     save(saved_event_request)
 
-    line = add_equipment_line(REFERENCE, valid_equipment_line_payload)
-    edited = update_equipment_line(REFERENCE, line.id, {"quantity": 3})
-    remove_equipment_line(REFERENCE, line.id)
+    line = add_equipment_line(COORDINATOR_ID, REFERENCE, valid_equipment_line_payload)
+    edited = update_equipment_line(COORDINATOR_ID, REFERENCE, line.id, {"quantity": 3})
+    remove_equipment_line(COORDINATOR_ID, REFERENCE, line.id)
 
     assert edited.quantity == 3
     assert _stored_lines(db_session) == []
@@ -524,7 +564,7 @@ def test_lines_cannot_be_added_once_the_request_is_no_longer_awaiting_review(
     save(saved_event_request)
 
     with pytest.raises(RequestNotAwaitingReviewError) as exc_info:
-        add_equipment_line(REFERENCE, valid_equipment_line_payload)
+        add_equipment_line(COORDINATOR_ID, REFERENCE, valid_equipment_line_payload)
 
     assert exc_info.value.status_code == 409
     assert exc_info.value.error_code == "request_not_awaiting_review"
@@ -538,13 +578,13 @@ def test_lines_cannot_be_edited_or_removed_once_the_request_is_no_longer_awaitin
     saved_line: EventEquipmentLine,
     save: Save,
     reload_equipment_line: ReloadEquipmentLine,
-    operation: Callable[[str, int], None],
+    operation: LineOperation,
 ) -> None:
     saved_event_request.status = EventRequestStatus.CONFIRMED
     save(saved_event_request)
 
     with pytest.raises(RequestNotAwaitingReviewError) as exc_info:
-        operation(REFERENCE, saved_line.id)
+        operation(COORDINATOR_ID, REFERENCE, saved_line.id)
 
     assert exc_info.value.status_code == 409
     assert reload_equipment_line(saved_line.id).quantity == 2
@@ -561,10 +601,12 @@ def test_the_events_lines_are_listed_with_their_state_in_the_order_added(
     microphone: EquipmentType,
     valid_equipment_line_payload: dict[str, Any],
 ) -> None:
-    add_equipment_line(REFERENCE, valid_equipment_line_payload)
-    add_equipment_line(REFERENCE, {"equipment_type_id": microphone.id, "quantity": 4})
+    add_equipment_line(COORDINATOR_ID, REFERENCE, valid_equipment_line_payload)
+    add_equipment_line(
+        COORDINATOR_ID, REFERENCE, {"equipment_type_id": microphone.id, "quantity": 4}
+    )
 
-    _, lines = list_equipment_lines(REFERENCE)
+    _, lines = _listed_by_the_coordinator(REFERENCE)
 
     listed = []
     for line in lines:
@@ -582,7 +624,7 @@ def test_another_events_lines_are_not_listed(
 ) -> None:
     save(make_equipment_line(other_event_request, microphone))
 
-    _, lines = list_equipment_lines(REFERENCE)
+    _, lines = _listed_by_the_coordinator(REFERENCE)
 
     listed_ids = [line.id for line in lines]
 
@@ -593,7 +635,7 @@ def test_the_lines_come_with_the_event_they_are_needed_for(
     saved_event_request: EventRequest, other_event_request: EventRequest
 ) -> None:
     """Technical Support read the event's date and times from it (ADR-0019)."""
-    listed_event, _ = list_equipment_lines(" evr-aaaaaaaa ")
+    listed_event, _ = _listed_by_the_coordinator(" evr-aaaaaaaa ")
 
     assert listed_event.id == saved_event_request.id
 
@@ -602,7 +644,7 @@ def test_listing_an_unknown_event_request_is_not_found(
     saved_event_request: EventRequest,
 ) -> None:
     with pytest.raises(NotFoundError) as exc_info:
-        list_equipment_lines(UNKNOWN_REFERENCE)
+        _listed_by_the_coordinator(UNKNOWN_REFERENCE)
 
     assert exc_info.value.status_code == 404
     assert exc_info.value.message == "Event request not found."
@@ -613,7 +655,7 @@ def test_the_organisers_own_event_record_shows_its_equipment_lines(
     equipment_type: EquipmentType,
     valid_equipment_line_payload: dict[str, Any],
 ) -> None:
-    line = add_equipment_line(REFERENCE, valid_equipment_line_payload)
+    line = add_equipment_line(COORDINATOR_ID, REFERENCE, valid_equipment_line_payload)
 
     event_record = EventRequestDetailSchema().dump(get_event_request_for_organiser("7", REFERENCE))
 
@@ -626,6 +668,66 @@ def test_the_organisers_own_event_record_shows_its_equipment_lines(
             "status": "requested",
         }
     ]
+
+
+# --------------------------------------------------------------------------
+# ADR-0019 — only the assigned coordinator changes or lists an event's lines
+# --------------------------------------------------------------------------
+
+
+def _assert_event_not_found(exc_info: pytest.ExceptionInfo[NotFoundError]) -> None:
+    """The refusal looks exactly like an unknown event (ADR-0012's "not yours")."""
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.message == "Event request not found."
+
+
+def test_a_coordinator_cannot_add_lines_to_an_event_not_assigned_to_them(
+    db_session: Session,
+    outside_coordinator: int,
+    valid_equipment_line_payload: dict[str, Any],
+) -> None:
+    with pytest.raises(NotFoundError) as exc_info:
+        add_equipment_line(outside_coordinator, REFERENCE, valid_equipment_line_payload)
+
+    _assert_event_not_found(exc_info)
+    assert _stored_lines(db_session) == []
+
+
+@pytest.mark.parametrize("operation", LINE_OPERATIONS, ids=LINE_OPERATION_IDS)
+def test_a_coordinator_cannot_edit_or_remove_lines_of_an_event_not_assigned_to_them(
+    db_session: Session,
+    saved_line: EventEquipmentLine,
+    outside_coordinator: int,
+    operation: LineOperation,
+) -> None:
+    with pytest.raises(NotFoundError) as exc_info:
+        operation(outside_coordinator, REFERENCE, saved_line.id)
+
+    _assert_event_not_found(exc_info)
+    assert _stored_lines(db_session) == [
+        (saved_line.event_request_id, saved_line.equipment_type_id, 2, "Needs HDMI", REQUESTED)
+    ]
+
+
+def test_a_coordinator_cannot_list_lines_of_an_event_not_assigned_to_them(
+    saved_line: EventEquipmentLine, outside_coordinator: int
+) -> None:
+    with pytest.raises(NotFoundError) as exc_info:
+        list_equipment_lines(outside_coordinator, REFERENCE, viewer_role=Role.EVENT_COORDINATOR)
+
+    _assert_event_not_found(exc_info)
+
+
+def test_technical_support_can_list_the_lines_of_any_event(
+    saved_line: EventEquipmentLine, outside_coordinator: int
+) -> None:
+    """Whoever the event is assigned to, if anyone (ADR-0019)."""
+    listed_event, lines = list_equipment_lines(
+        TECHNICAL_SUPPORT_ID, REFERENCE, viewer_role=Role.TECHNICAL_SUPPORT_STAFF
+    )
+
+    assert listed_event.reference == REFERENCE
+    assert [line.id for line in lines] == [saved_line.id]
 
 
 # --------------------------------------------------------------------------

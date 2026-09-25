@@ -37,6 +37,8 @@ pytestmark = pytest.mark.scrum_37
 
 NotificationsOf = Callable[[int], list[tuple[Any, ...]]]
 
+#: The Event Coordinator ``saved_event_request`` is assigned to.
+COORDINATOR_ID = 3
 REFERENCE = "EVR-AAAAAAAA"
 
 
@@ -69,7 +71,7 @@ def test_every_technical_support_staff_member_is_notified_when_equipment_is_requ
     requested_notification: tuple[Any, ...],
     technical_support_id: int,
 ) -> None:
-    add_equipment_line(REFERENCE, valid_equipment_line_payload)
+    add_equipment_line(COORDINATOR_ID, REFERENCE, valid_equipment_line_payload)
 
     assert notifications_of(technical_support_id) == [requested_notification]
 
@@ -84,7 +86,7 @@ def test_nobody_else_is_notified_when_equipment_is_requested(
     notifications_of: NotificationsOf,
     user_id: int,
 ) -> None:
-    add_equipment_line(REFERENCE, valid_equipment_line_payload)
+    add_equipment_line(COORDINATOR_ID, REFERENCE, valid_equipment_line_payload)
 
     assert notifications_of(user_id) == []
 
@@ -96,8 +98,10 @@ def test_each_added_line_raises_its_own_notification(
     microphone: EquipmentType,
     notifications_of: NotificationsOf,
 ) -> None:
-    add_equipment_line(REFERENCE, valid_equipment_line_payload)
-    add_equipment_line(REFERENCE, {"equipment_type_id": microphone.id, "quantity": 4})
+    add_equipment_line(COORDINATOR_ID, REFERENCE, valid_equipment_line_payload)
+    add_equipment_line(
+        COORDINATOR_ID, REFERENCE, {"equipment_type_id": microphone.id, "quantity": 4}
+    )
 
     kinds = [notification[3] for notification in notifications_of(5)]
     assert kinds == [NotificationKind.EQUIPMENT_REQUESTED, NotificationKind.EQUIPMENT_REQUESTED]
@@ -112,7 +116,7 @@ def test_a_rejected_line_notifies_nobody(
     valid_equipment_line_payload["quantity"] = 0
 
     with pytest.raises(ValidationError):
-        add_equipment_line(REFERENCE, valid_equipment_line_payload)
+        add_equipment_line(COORDINATOR_ID, REFERENCE, valid_equipment_line_payload)
 
     assert notifications_of(5) == []
 
@@ -124,10 +128,10 @@ def test_editing_or_removing_a_line_notifies_nobody(
     notifications_of: NotificationsOf,
     requested_notification: tuple[Any, ...],
 ) -> None:
-    line = add_equipment_line(REFERENCE, valid_equipment_line_payload)
+    line = add_equipment_line(COORDINATOR_ID, REFERENCE, valid_equipment_line_payload)
 
-    update_equipment_line(REFERENCE, line.id, {"quantity": 3})
-    remove_equipment_line(REFERENCE, line.id)
+    update_equipment_line(COORDINATOR_ID, REFERENCE, line.id, {"quantity": 3})
+    remove_equipment_line(COORDINATOR_ID, REFERENCE, line.id)
 
     assert notifications_of(5) == [requested_notification]
 
@@ -137,7 +141,7 @@ def test_the_notification_says_equipment_was_requested_and_links_to_the_event(
     saved_event_request: EventRequest,
     valid_equipment_line_payload: dict[str, Any],
 ) -> None:
-    add_equipment_line(REFERENCE, valid_equipment_line_payload)
+    add_equipment_line(COORDINATOR_ID, REFERENCE, valid_equipment_line_payload)
 
     shown = NotificationSchema().dump(list_notifications_for_recipient(5)[0])
 
@@ -159,7 +163,7 @@ def test_a_failed_notification_write_still_returns_the_saved_line(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """The line is committed first; failing its reply would invite adding it again."""
-    event_request = make_event_request()
+    event_request = make_event_request(coordinator_id=COORDINATOR_ID)
     event_request.id = 1
     mock_session.scalar.return_value = event_request
     mock_session.get.return_value = make_equipment_type()
@@ -169,7 +173,7 @@ def test_a_failed_notification_write_still_returns_the_saved_line(
     payload = {"equipment_type_id": 1, "quantity": 2}
 
     with caplog.at_level(logging.WARNING, logger="connectsphere.events"):
-        line = add_equipment_line(REFERENCE, payload, session=mock_session)
+        line = add_equipment_line(COORDINATOR_ID, REFERENCE, payload, session=mock_session)
 
     assert (line.event_request_id, line.quantity) == (1, 2)
     assert mock_session.commit.call_count == 2

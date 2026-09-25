@@ -100,11 +100,11 @@ def get_my_request(reference: str) -> tuple[Response, int]:
 @bp.post("/requests/<reference>/equipment")
 @requires_role(Role.EVENT_COORDINATOR)
 def add_equipment(reference: str) -> tuple[Response, int]:
-    """Add an equipment line to a request. Event Coordinators only (SCRUM-37 AC1).
+    """Add an equipment line to a request assigned to the caller (SCRUM-37 AC1).
 
     Returns ``201`` with the new line. Technical Support Staff are notified (AC5).
     """
-    line = add_equipment_line(reference, request.get_json(silent=True))
+    line = add_equipment_line(g.current_user_id, reference, request.get_json(silent=True))
     return jsonify(_equipment_line_schema.dump(line)), 201
 
 
@@ -116,7 +116,9 @@ def list_equipment(reference: str) -> tuple[Response, int]:
     The event's date and times come too, so Technical Support know by when the
     equipment is needed.
     """
-    event_request, lines = list_equipment_lines(reference)
+    event_request, lines = list_equipment_lines(
+        g.current_user_id, reference, viewer_role=Role(g.current_user_role)
+    )
     body = {
         "event": _equipment_event_schema.dump(event_request),
         "equipment_lines": _equipment_line_schema.dump(lines, many=True),
@@ -127,14 +129,16 @@ def list_equipment(reference: str) -> tuple[Response, int]:
 @bp.patch("/requests/<reference>/equipment/<int:line_id>")
 @requires_role(Role.EVENT_COORDINATOR)
 def update_equipment(reference: str, line_id: int) -> tuple[Response, int]:
-    """Change the fields sent on an equipment line. Event Coordinators only (AC2)."""
-    line = update_equipment_line(reference, line_id, request.get_json(silent=True))
+    """Change the fields sent on a line of a request assigned to the caller (AC2)."""
+    line = update_equipment_line(
+        g.current_user_id, reference, line_id, request.get_json(silent=True)
+    )
     return jsonify(_equipment_line_schema.dump(line)), 200
 
 
 @bp.delete("/requests/<reference>/equipment/<int:line_id>")
 @requires_role(Role.EVENT_COORDINATOR)
 def remove_equipment(reference: str, line_id: int) -> tuple[Response, int]:
-    """Remove an equipment line. Event Coordinators only (SCRUM-37 AC2)."""
-    remove_equipment_line(reference, line_id)
+    """Remove an equipment line of a request assigned to the caller (SCRUM-37 AC2)."""
+    remove_equipment_line(g.current_user_id, reference, line_id)
     return Response(), 204

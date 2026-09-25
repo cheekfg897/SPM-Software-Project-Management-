@@ -218,8 +218,11 @@ def notifications_of() -> Callable[[int], list[tuple[Any, ...]]]:
 def saved_event_request(
     make_event_request: Callable[..., EventRequest], save: Callable[..., None]
 ) -> EventRequest:
-    """Event request ``EVR-AAAAAAAA`` by organiser 7, ``submitted`` and saved."""
-    event_request = make_event_request()
+    """Event request ``EVR-AAAAAAAA`` by organiser 7, ``submitted`` and saved.
+
+    It is assigned to Event Coordinator 3, who may change its equipment (ADR-0019).
+    """
+    event_request = make_event_request(coordinator_id=3)
     save(event_request)
     return event_request
 
