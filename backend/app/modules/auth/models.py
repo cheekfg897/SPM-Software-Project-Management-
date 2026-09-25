@@ -7,7 +7,6 @@ functions in :mod:`app.modules.auth.services`.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
 
 from sqlalchemy import DateTime, Enum, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
@@ -62,19 +61,6 @@ class User(db.Model):  # type: ignore[name-defined]
         if not self.password_hash:
             return False
         return check_password_hash(self.password_hash, password)
-
-    # -- serialisation ---------------------------------------------------
-
-    def to_dict(self) -> dict[str, Any]:
-        """Public representation. Deliberately excludes ``password_hash``."""
-        return {
-            "id": self.id,
-            "email": self.email,
-            "full_name": self.full_name,
-            "role": self.role.value if isinstance(self.role, Role) else self.role,
-            "organisation": self.organisation,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-        }
 
     def __repr__(self) -> str:  # pragma: no cover - debugging aid
         role = getattr(self.role, "value", self.role)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -50,15 +51,19 @@ def test_plaintext_password_is_not_retained_anywhere(
     plaintext = valid_registration_payload["password"]
     user = register_user(valid_registration_payload, session=mock_session)
 
-    # Not on the object, not in its dict form, not in the API serialisation.
+    # Not on the object, and not in the API serialisation.
     assert plaintext not in [str(v) for v in vars(user).values()]
     assert not hasattr(user, "password")
-    assert "password" not in user.to_dict()
-    assert "password_hash" not in user.to_dict()
     dumped = UserSchema().dump(user)
     assert "password" not in dumped
     assert "password_hash" not in dumped
     assert plaintext not in str(dumped)
+
+
+def test_public_user_shape_shows_the_role_as_its_value(make_user: Callable[..., User]) -> None:
+    user = make_user(role=Role.EVENT_ORGANISER)
+
+    assert UserSchema().dump(user)["role"] == "event_organiser"
 
 
 def test_organisation_is_optional(
