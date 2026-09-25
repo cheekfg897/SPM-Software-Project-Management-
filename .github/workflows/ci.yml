@@ -121,8 +121,12 @@ jobs:
         working-directory: backend
 
     steps:
+      # Full history, so diff-cover can find where the pull request branched
+      # off its base and check only the lines it changed.
       - name: Check out
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -188,7 +192,22 @@ jobs:
       # the day, so this run doubles as the check that nothing depends on the
       # two matching.
       - name: Run unit tests with coverage
-        run: pytest --cov=app --cov-report=term-missing --cov-report=xml --cov-fail-under=90 --junitxml=junit.xml
+        run: pytest --cov=app --cov-branch --cov-report=term-missing --cov-report=xml --cov-fail-under=90 --junitxml=junit.xml
+
+      # The 90% floor above is for the whole codebase, so a pull request can
+      # add a function with no tests at all and still pass it. This holds
+      # every line the pull request adds or changes to 100% (CONVENTIONS.md
+      # §14). A line marked `# pragma: no cover - <reason>` is left out of the
+      # count, which is how a deliberate gap is declared, with its reason.
+      # diff-cover counts lines, not branches: an `if` tested only one way
+      # still passes here, so that part stays with the reviewer (checklist §10).
+      - name: Changed lines are fully covered
+        if: github.event_name == 'pull_request'
+        env:
+          # Passed as an environment variable, never interpolated into the
+          # script, the same as the PR title in pr-title.yml.
+          BASE_REF: ${{ github.base_ref }}
+        run: diff-cover coverage.xml --compare-branch="origin/$BASE_REF" --fail-under=100 --format markdown:diff-cover.md
 
       # Puts the coverage table on the run's summary page, so nobody has to
       # download the artifact to see where a number moved.
@@ -197,6 +216,10 @@ jobs:
         run: |
           echo "## Backend coverage" >> "$GITHUB_STEP_SUMMARY"
           coverage report --format=markdown >> "$GITHUB_STEP_SUMMARY" || true
+          # Only pull requests produce it; it lists any changed line left uncovered.
+          if [ -f diff-cover.md ]; then
+            cat diff-cover.md >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Upload test and coverage reports
         if: always()
@@ -206,6 +229,7 @@ jobs:
           path: |
             backend/coverage.xml
             backend/junit.xml
+            backend/diff-cover.md
 
   audit:
     name: Dependency vulnerability audit
