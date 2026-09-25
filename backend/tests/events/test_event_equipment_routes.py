@@ -24,7 +24,6 @@ from flask import Flask
 from app.common.errors import AuthenticationError, AuthorizationError
 from app.modules.auth.models import User
 from app.modules.auth.permissions import ALL_ROLES, Role
-from app.modules.equipment.models import EquipmentType
 from app.modules.events import routes
 from app.modules.events.models import EventEquipmentLine, EventRequest
 
@@ -40,25 +39,6 @@ REFERENCE = "EVR-AAAAAAAA"
 LINES_PATH = f"/api/events/requests/{REFERENCE}/equipment"
 LINE_PATH = f"{LINES_PATH}/7"
 LINE_KWARGS: dict[str, Any] = {"reference": REFERENCE, "line_id": 7}
-
-#: The line every mocked service returns, as the API shows it.
-SHOWN = {
-    "id": 7,
-    "equipment_type_id": 1,
-    "quantity": 2,
-    "notes": "Needs HDMI",
-    "status": "requested",
-}
-#: The event the mocked services' lines belong to, as the equipment list shows it:
-#: the same field names and formats as the event request itself.
-SHOWN_EVENT = {
-    "reference": "EVR-AAAAAAAA",
-    "name": "Partner Summit",
-    "proposed_date": "2026-10-15",
-    "end_date": "2026-10-15",
-    "start_time": "09:00:00",
-    "end_time": "17:00:00",
-}
 
 
 class EquipmentRoute(NamedTuple):
@@ -92,26 +72,6 @@ NON_READER_ROLES = sorted(ALL_ROLES - set(LINE_READERS), key=lambda role: role.v
 
 def _call(call_route: CallRoute, route: EquipmentRoute, token: str | None) -> Any:
     return call_route(route.endpoint, route.method, route.path, route.view_kwargs, token)
-
-
-@pytest.fixture()
-def shown_event(make_event_request: Callable[..., EventRequest]) -> EventRequest:
-    """An in-memory event request that the equipment list shows as SHOWN_EVENT."""
-    return make_event_request()
-
-
-@pytest.fixture()
-def shown_line(
-    shown_event: EventRequest,
-    make_equipment_type: Callable[..., EquipmentType],
-    make_equipment_line: Callable[..., EventEquipmentLine],
-) -> EventEquipmentLine:
-    """An in-memory line that serialises to SHOWN."""
-    line = make_equipment_line(shown_event, make_equipment_type())
-    # In-memory objects have no ids, so set the ones SHOWN expects.
-    line.id = 7
-    line.equipment_type_id = 1
-    return line
 
 
 @pytest.fixture()
@@ -193,22 +153,28 @@ def test_the_list_route_allows_coordinators_and_technical_support(app: Flask) ->
 
 
 def test_the_add_route_returns_the_new_line(
-    call_route: CallRoute, token_for: TokenFor, mock_services: dict[str, MagicMock]
+    call_route: CallRoute,
+    token_for: TokenFor,
+    mock_services: dict[str, MagicMock],
+    line_as_shown: dict[str, Any],
 ) -> None:
     response, status = _call(call_route, ADD, token_for(role=Role.EVENT_COORDINATOR))
 
     assert status == 201
-    assert response.get_json() == SHOWN
+    assert response.get_json() == line_as_shown
     mock_services[ADD.service].assert_called_once_with(CALLER_ID, REFERENCE, {})
 
 
 def test_the_edit_route_returns_the_changed_line(
-    call_route: CallRoute, token_for: TokenFor, mock_services: dict[str, MagicMock]
+    call_route: CallRoute,
+    token_for: TokenFor,
+    mock_services: dict[str, MagicMock],
+    line_as_shown: dict[str, Any],
 ) -> None:
     response, status = _call(call_route, EDIT, token_for(role=Role.EVENT_COORDINATOR))
 
     assert status == 200
-    assert response.get_json() == SHOWN
+    assert response.get_json() == line_as_shown
     mock_services[EDIT.service].assert_called_once_with(CALLER_ID, REFERENCE, 7, {})
 
 
@@ -232,12 +198,14 @@ def test_the_list_route_shows_the_lines_and_when_the_event_is(
     call_route: CallRoute,
     token_for: TokenFor,
     mock_services: dict[str, MagicMock],
+    event_as_shown: dict[str, Any],
+    line_as_shown: dict[str, Any],
     role: Role,
 ) -> None:
     response, status = _call(call_route, LIST, token_for(role=role))
 
     assert status == 200
-    assert response.get_json() == {"event": SHOWN_EVENT, "equipment_lines": [SHOWN]}
+    assert response.get_json() == {"event": event_as_shown, "equipment_lines": [line_as_shown]}
     mock_services[LIST.service].assert_called_once_with(CALLER_ID, REFERENCE, viewer_role=role)
 
 
@@ -248,6 +216,7 @@ def test_the_organisers_detail_route_shows_the_equipment_lines(
     replace_services: ReplaceServices,
     make_event_request: Callable[..., EventRequest],
     shown_line: EventEquipmentLine,
+    line_as_shown: dict[str, Any],
 ) -> None:
     event_request = make_event_request()
     event_request.equipment_lines = [shown_line]
@@ -263,4 +232,4 @@ def test_the_organisers_detail_route_shows_the_equipment_lines(
     )
 
     assert status == 200
-    assert response.get_json()["equipment_lines"] == [SHOWN]
+    assert response.get_json()["equipment_lines"] == [line_as_shown]

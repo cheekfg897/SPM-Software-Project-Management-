@@ -307,6 +307,54 @@ def make_equipment_line() -> Callable[..., EventEquipmentLine]:
 
 
 @pytest.fixture()
+def shown_event(make_event_request: Callable[..., EventRequest]) -> EventRequest:
+    """The in-memory event request that the API shows as ``event_as_shown``."""
+    return make_event_request()
+
+
+@pytest.fixture()
+def event_as_shown() -> dict[str, Any]:
+    """``shown_event`` as the equipment routes show it (ADR-0019).
+
+    The same field names and formats as the event request itself.
+    """
+    return {
+        "reference": "EVR-AAAAAAAA",
+        "name": "Partner Summit",
+        "proposed_date": "2026-10-15",
+        "end_date": "2026-10-15",
+        "start_time": "09:00:00",
+        "end_time": "17:00:00",
+    }
+
+
+@pytest.fixture()
+def shown_line(
+    shown_event: EventRequest,
+    make_equipment_type: Callable[..., EquipmentType],
+    make_equipment_line: Callable[..., EventEquipmentLine],
+) -> EventEquipmentLine:
+    """An in-memory line of ``shown_event`` that the API shows as ``line_as_shown``."""
+    line = make_equipment_line(shown_event, make_equipment_type())
+    # In-memory objects have no ids, so set the ones ``line_as_shown`` expects.
+    line.id = 7
+    line.equipment_type_id = 1
+    return line
+
+
+@pytest.fixture()
+def line_as_shown() -> dict[str, Any]:
+    """``shown_line`` as the API shows it (SCRUM-37 AC4)."""
+    return {
+        "id": 7,
+        "equipment_type_id": 1,
+        "quantity": 2,
+        "notes": "Needs HDMI",
+        "status": "requested",
+    }
+
+
+@pytest.fixture()
 def reload_equipment_line(db_session: Session) -> Callable[[int], EventEquipmentLine]:
     """Read an equipment line back from the database rather than the session's cache."""
 
