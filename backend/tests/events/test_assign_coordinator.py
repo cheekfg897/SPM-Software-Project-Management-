@@ -40,6 +40,7 @@ MakeEventRequest = Callable[..., EventRequest]
 SubmitValidRequest = Callable[..., EventRequest]
 HistoryOf = Callable[[int], list[tuple[EventHistoryKind, int | None, dict[str, Any] | None]]]
 HoldRequest = Callable[..., None]
+CoordinatorOf = Callable[[int], int | None]
 
 #: Who each status sends the next request to, when coordinator 3 already holds one
 #: request in that status and coordinator 9 holds none (ADR-0018).
@@ -52,14 +53,6 @@ NEXT_ASSIGNEE_BY_STATUS = [
     (EventRequestStatus.CANCELLED, 3),
     (EventRequestStatus.REJECTED, 3),
 ]
-
-
-def _assigned_to(db_session: Session, event_request_id: int) -> int | None:
-    """The coordinator the saved request is assigned to, read back from the database."""
-    db_session.expire_all()
-    event_request = db_session.get(EventRequest, event_request_id)
-    assert event_request is not None
-    return event_request.coordinator_id
 
 
 @pytest.fixture()
@@ -88,11 +81,13 @@ def hold_request(save: Callable[..., None], make_event_request: MakeEventRequest
 
 
 def test_a_submitted_request_is_assigned_to_an_event_coordinator(
-    saved_users: list[User], submit_valid_request: SubmitValidRequest, db_session: Session
+    saved_users: list[User],
+    submit_valid_request: SubmitValidRequest,
+    coordinator_of: CoordinatorOf,
 ) -> None:
     submitted = submit_valid_request()
 
-    assert _assigned_to(db_session, submitted.id) == 3
+    assert coordinator_of(submitted.id) == 3
     assert submitted.status is EventRequestStatus.SUBMITTED
 
 
@@ -105,7 +100,7 @@ def test_the_coordinator_with_the_fewest_open_requests_is_assigned(
     saved_users: list[User],
     hold_request: HoldRequest,
     submit_valid_request: SubmitValidRequest,
-    db_session: Session,
+    coordinator_of: CoordinatorOf,
     open_for_3: int,
     open_for_9: int,
     expected: int,
@@ -119,7 +114,7 @@ def test_the_coordinator_with_the_fewest_open_requests_is_assigned(
 
     submitted = submit_valid_request()
 
-    assert _assigned_to(db_session, submitted.id) == expected
+    assert coordinator_of(submitted.id) == expected
 
 
 @pytest.mark.parametrize(
@@ -131,7 +126,7 @@ def test_only_open_statuses_count_towards_a_coordinators_load(
     saved_users: list[User],
     hold_request: HoldRequest,
     submit_valid_request: SubmitValidRequest,
-    db_session: Session,
+    coordinator_of: CoordinatorOf,
     status: EventRequestStatus,
     expected: int,
 ) -> None:
@@ -139,7 +134,7 @@ def test_only_open_statuses_count_towards_a_coordinators_load(
 
     submitted = submit_valid_request()
 
-    assert _assigned_to(db_session, submitted.id) == expected
+    assert coordinator_of(submitted.id) == expected
 
 
 def test_with_no_event_coordinator_the_request_is_saved_unassigned_and_logged(
@@ -147,6 +142,7 @@ def test_with_no_event_coordinator_the_request_is_saved_unassigned_and_logged(
     make_user: Callable[..., User],
     submit_valid_request: SubmitValidRequest,
     history_of: HistoryOf,
+    coordinator_of: CoordinatorOf,
     db_session: Session,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -155,7 +151,7 @@ def test_with_no_event_coordinator_the_request_is_saved_unassigned_and_logged(
     with caplog.at_level(logging.WARNING, logger="connectsphere.events"):
         submitted = submit_valid_request()
 
-    assert _assigned_to(db_session, submitted.id) is None
+    assert coordinator_of(submitted.id) is None
     assert submitted.status is EventRequestStatus.SUBMITTED
     assert history_of(submitted.id) == []
     assert db_session.scalars(select(Notification)).all() == []
@@ -193,6 +189,7 @@ def test_a_reference_collision_leaves_one_assignment_for_the_saved_request(
     make_event_request: MakeEventRequest,
     submit_valid_request: SubmitValidRequest,
     history_of: HistoryOf,
+    coordinator_of: CoordinatorOf,
     db_session: Session,
 ) -> None:
     save(make_event_request(reference="EVR-AAAAAAAA"))
@@ -200,7 +197,7 @@ def test_a_reference_collision_leaves_one_assignment_for_the_saved_request(
     submitted = submit_valid_request("EVR-AAAAAAAA", "EVR-BBBBBBBB")
 
     assert submitted.reference == "EVR-BBBBBBBB"
-    assert _assigned_to(db_session, submitted.id) == 3
+    assert coordinator_of(submitted.id) == 3
     assert history_of(submitted.id) == [
         (EventHistoryKind.COORDINATOR_ASSIGNED, None, {"coordinator_id": 3})
     ]
