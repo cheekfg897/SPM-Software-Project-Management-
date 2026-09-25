@@ -8,7 +8,7 @@ the project's 400 ``ValidationError`` with per-field details. Output schemas are
 
 from __future__ import annotations
 
-from datetime import time
+from datetime import date, time
 from typing import Any, ClassVar
 
 from marshmallow import (
@@ -21,10 +21,11 @@ from marshmallow import (
     validates_schema,
 )
 
-from app.common.clock import as_utc
+from app.common.clock import as_utc, local_today, to_business_time
 from app.common.fields import BusinessDateTime
 from app.common.validation import not_blank
 from app.modules.venue.models import (
+    BLOCK_REASON_MAX_LENGTH,
     LIST_ITEM_MAX_LENGTH,
     LIST_MAX_ITEMS,
     LIST_SEPARATOR,
@@ -313,3 +314,73 @@ class VenueMatchSchema(Schema):
             "accessibility_features": match.accessibility_features,
             "layout": match.layout,
         }
+
+
+class BlockVenueSchema(_TimeRangeSchema):
+    """Payload for ``POST /api/venues/<id>/blocks`` (SCRUM-34, ADR-0016).
+
+    A block may start in the past, so a fault found part-way through can be recorded
+    from when it began, but it can't have ended before today. Opening hours aren't
+    checked.
+
+    Args:
+        today: The date "ended before today" is measured against. Defaults to today
+            in the business timezone; tests pass a fixed date.
+    """
+
+    start_time = fields.DateTime(required=True)
+    end_time = fields.DateTime(required=True)
+    reason = fields.String(required=True, validate=not_blank)
+
+    def __init__(self, *, today: date | None = None, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._today = today
+
+    @property
+    def today(self) -> date:
+        """The reference date for the "not ended before today" rule."""
+        return self._today if self._today is not None else local_today()
+
+    @validates("reason")
+    def _reason_fits(self, value: str, **_: Any) -> None:
+        # Measured once trimmed, since that's what is stored: surrounding spaces
+        # mustn't push a reason of the maximum length over it.
+        if len(value.strip()) > BLOCK_REASON_MAX_LENGTH:
+            raise MarshmallowValidationError(
+                f"Reason must be at most {BLOCK_REASON_MAX_LENGTH} characters."
+            )
+
+    @validates_schema
+    def _does_not_end_before_today(self, data: dict[str, Any], **_: Any) -> None:
+        ends_on = to_business_time(as_utc(data["end_time"])).date()
+        if ends_on < self.today:
+            raise MarshmallowValidationError(
+                "Block cannot end before today.", field_name="end_time"
+            )
+
+    @post_load
+    def _trim_reason(self, data: dict[str, Any], **_: Any) -> dict[str, Any]:
+        data["reason"] = data["reason"].strip()
+        return data
+
+
+class VenueBlockSchema(Schema):
+    """One of a venue's blocked periods, in business time (SCRUM-34, ADR-0009)."""
+
+    id = fields.Integer(dump_only=True)
+    venue_id = fields.Integer(dump_only=True)
+    start_time = BusinessDateTime(dump_only=True)
+    end_time = BusinessDateTime(dump_only=True)
+    reason = fields.String(dump_only=True)
+
+
+class ConflictingBookingSchema(Schema):
+    """A confirmed booking a new block cuts into, as the period it holds the venue.
+
+    SCRUM-34 AC2; the period includes setup and turnaround (ADR-0011, ADR-0016).
+    """
+
+    booking_id = fields.Integer(dump_only=True)
+    event_id = fields.Integer(dump_only=True, allow_none=True)
+    start_time = BusinessDateTime(dump_only=True)
+    end_time = BusinessDateTime(dump_only=True)

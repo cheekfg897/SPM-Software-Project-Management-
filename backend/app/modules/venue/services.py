@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from flask import current_app
@@ -30,7 +30,7 @@ from app.modules.venue.models import (
     join_list_field,
 )
 from app.modules.venue.opening_hours import Period
-from app.modules.venue.schemas import EditVenueSchema, VenueSearchSchema
+from app.modules.venue.schemas import BlockVenueSchema, EditVenueSchema, VenueSearchSchema
 
 _LIST_FIELDS = ("facilities", "accessibility_features", "supported_layouts")
 
@@ -396,3 +396,77 @@ def search_venues(
     )
     busy_venue_ids = set(sess.scalars(clashing_bookings))
     return [match for match in matches if match.venue.id not in busy_venue_ids]
+
+
+# --------------------------------------------------------------------------
+# SCRUM-34 — block a venue for maintenance or internal use
+# --------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ConflictingBooking:
+    """A confirmed booking a new block cuts into (SCRUM-34 AC2).
+
+    ``start_time`` and ``end_time`` are the period the booking holds the venue,
+    setup and turnaround included (ADR-0011), as the calendar shows it.
+    """
+
+    booking_id: int
+    event_id: int | None
+    start_time: datetime
+    end_time: datetime
+
+
+def _bookings_cut_by(venue: Venue, block: VenueBlock, session: Session) -> list[ConflictingBooking]:
+    """The venue's confirmed bookings that hold it at some time during ``block``."""
+    bookings = session.scalars(
+        select(Booking)
+        .where(
+            Booking.status == BookingStatus.CONFIRMED,
+            _booking_holds_venue(venue, block.start_time, block.end_time),
+        )
+        .order_by(Booking.start_time, Booking.id)
+    )
+    conflicts: list[ConflictingBooking] = []
+    for booking in bookings:
+        held_start, held_end = _occupied(venue, booking.start_time, booking.end_time)
+        conflicts.append(ConflictingBooking(booking.id, booking.event_id, held_start, held_end))
+    return conflicts
+
+
+def block_venue(
+    venue_id: int,
+    payload: Mapping[str, Any] | None,
+    *,
+    session: Session | None = None,
+    today: date | None = None,
+) -> tuple[VenueBlock, list[ConflictingBooking]]:
+    """Block a venue for a period, with a reason (SCRUM-34 AC1).
+
+    The block is saved even if it cuts into confirmed bookings; those are returned
+    so Venue Staff can see what they're blocking (AC2, ADR-0016). Nothing happens to
+    the bookings themselves. Once saved, the calendar shows the block and search
+    leaves the venue out for that period (AC3).
+
+    Args:
+        venue_id: The venue to block.
+        payload: Decoded JSON body: ``start_time``, ``end_time`` and ``reason``.
+        session: Database session; defaults to ``db.session``.
+        today: Reference date for the "not ended before today" rule; defaults to
+            today in the business timezone.
+
+    Returns:
+        The saved block, and the confirmed bookings it cuts into, in start order.
+
+    Raises:
+        ValidationError: 400 — payload invalid (details per field).
+        NotFoundError: 404 — no such venue.
+    """
+    data = load_or_raise(BlockVenueSchema(today=today), payload)
+    sess = resolve_session(session)
+    venue = get_venue(venue_id, session=sess)
+
+    block = VenueBlock(venue_id=venue.id, **data)
+    sess.add(block)
+    sess.commit()
+    return block, _bookings_cut_by(venue, block, sess)
