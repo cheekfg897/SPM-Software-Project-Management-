@@ -1,31 +1,52 @@
 """Unit tests for SCRUM-22 "Define the event status model".
 
 AC1: an event request holds exactly one of the story's seven statuses, and each one
-survives a trip through the database. AC2: the status is shown by its value. The
-choices behind the list (``under_review`` for "Under Review / Planning", no
-``approved``) are in ADR-0012.
+survives a trip through the database. AC2: the status is shown by its value, and the
+organiser who submitted a request can open it to see its current status. The other
+four viewers in AC2 wait on later stories (ADR-0012). Someone else's request looks
+exactly like one that doesn't exist, and a typed reference ignores case and spaces
+(ADR-0004).
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
+from flask import Flask, Response
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.common.errors import AuthenticationError, AuthorizationError, NotFoundError
+from app.modules.auth.models import User
+from app.modules.auth.permissions import ALL_ROLES, Role
+from app.modules.events import routes
 from app.modules.events.models import EventRequest, EventRequestStatus
 from app.modules.events.schemas import EventRequestSchema
+from app.modules.events.services import get_event_request_for_organiser
 
 pytestmark = pytest.mark.scrum_22
 
 MakeEventRequest = Callable[..., EventRequest]
+
+REFERENCE = "EVR-AAAAAAAA"
+REQUEST_PATH = f"/api/events/requests/{REFERENCE}"
+NON_ORGANISER_ROLES = sorted(ALL_ROLES - {Role.EVENT_ORGANISER}, key=lambda role: role.value)
 
 
 def _saved(db_session: Session, event_request: EventRequest) -> EventRequest:
     db_session.add(event_request)
     db_session.commit()
     return event_request
+
+
+def _open_request(app: Flask, token: str | None) -> tuple[Response, int]:
+    """Call the detail route as the holder of ``token``, or with no token at all."""
+    headers = {"Authorization": f"Bearer {token}"} if token is not None else {}
+    with app.test_request_context(REQUEST_PATH, headers=headers):
+        return routes.get_my_request(reference=REFERENCE)
 
 
 # --------------------------------------------------------------------------
@@ -74,3 +95,109 @@ def test_every_status_is_shown_by_its_value(
     dumped = EventRequestSchema().dump(make_event_request(status=status))
 
     assert dumped["status"] == status.value
+
+
+# --------------------------------------------------------------------------
+# AC2 — the organiser sees the current status of their own request
+# --------------------------------------------------------------------------
+
+
+def test_organiser_sees_the_current_status_of_their_own_request(
+    db_session: Session, make_event_request: MakeEventRequest
+) -> None:
+    event_request = make_event_request(
+        reference=REFERENCE, status=EventRequestStatus.UNDER_REVIEW, organiser_id=7
+    )
+    saved = _saved(db_session, event_request)
+
+    found = get_event_request_for_organiser("7", REFERENCE, session=db_session)
+
+    assert found is saved
+    assert found.status is EventRequestStatus.UNDER_REVIEW
+
+
+@pytest.mark.parametrize(
+    ("caller_id", "reference"),
+    [("8", REFERENCE), ("7", "EVR-ZZZZZZZZ")],
+    ids=["someone_elses", "unknown"],
+)
+def test_a_request_that_is_not_the_callers_is_not_found(
+    db_session: Session, make_event_request: MakeEventRequest, caller_id: str, reference: str
+) -> None:
+    _saved(db_session, make_event_request(reference=REFERENCE, organiser_id=7))
+
+    with pytest.raises(NotFoundError) as exc_info:
+        get_event_request_for_organiser(caller_id, reference, session=db_session)
+
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.message == "Event request not found."
+
+
+@pytest.mark.parametrize("typed", ["evr-aaaaaaaa", " EVR-AAAAAAAA ", "Evr-Aaaaaaaa"])
+def test_reference_lookup_ignores_case_and_surrounding_spaces(
+    db_session: Session, make_event_request: MakeEventRequest, typed: str
+) -> None:
+    saved = _saved(db_session, make_event_request(reference=REFERENCE, organiser_id=7))
+
+    assert get_event_request_for_organiser("7", typed, session=db_session) is saved
+
+
+# --------------------------------------------------------------------------
+# Detail route — Event Organisers only, and always the caller's own request
+# --------------------------------------------------------------------------
+
+
+def test_detail_route_allows_only_event_organisers() -> None:
+    assert routes.get_my_request.allowed_roles == frozenset({"event_organiser"})  # type: ignore[attr-defined]
+
+
+@pytest.mark.parametrize("role", NON_ORGANISER_ROLES, ids=lambda role: role.value)
+def test_other_roles_cannot_open_a_request(
+    app: Flask, token_for: Callable[..., str], monkeypatch: pytest.MonkeyPatch, role: Role
+) -> None:
+    service = MagicMock()
+    monkeypatch.setattr(routes, "get_event_request_for_organiser", service)
+
+    with pytest.raises(AuthorizationError) as exc_info:
+        _open_request(app, token_for(role=role))
+
+    assert exc_info.value.status_code == 403
+    service.assert_not_called()
+
+
+def test_detail_without_a_token_is_401(app: Flask, monkeypatch: pytest.MonkeyPatch) -> None:
+    service = MagicMock()
+    monkeypatch.setattr(routes, "get_event_request_for_organiser", service)
+
+    with pytest.raises(AuthenticationError) as exc_info:
+        _open_request(app, None)
+
+    assert exc_info.value.status_code == 401
+    service.assert_not_called()
+
+
+def test_detail_route_returns_the_callers_request_with_its_status(
+    app: Flask,
+    token_for: Callable[..., str],
+    make_user: Callable[..., User],
+    monkeypatch: pytest.MonkeyPatch,
+    make_event_request: MakeEventRequest,
+) -> None:
+    organiser = make_user(role=Role.EVENT_ORGANISER, user_id=7)
+    calls: list[tuple[Any, Any]] = []
+
+    def fake_get(organiser_id: Any, reference: Any) -> EventRequest:
+        calls.append((organiser_id, reference))
+        return make_event_request(reference=REFERENCE, status=EventRequestStatus.CONFIRMED)
+
+    monkeypatch.setattr(routes, "get_event_request_for_organiser", fake_get)
+
+    response, status = _open_request(app, token_for(organiser))
+
+    assert status == 200
+    assert calls == [("7", REFERENCE)]
+    body = response.get_json()
+    assert body["reference"] == REFERENCE
+    assert body["status"] == "confirmed"
+    assert "id" not in body
+    assert "organiser_id" not in body

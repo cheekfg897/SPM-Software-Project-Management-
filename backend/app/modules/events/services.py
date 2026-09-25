@@ -22,7 +22,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.common.database import resolve_session
-from app.common.errors import AppError
+from app.common.errors import AppError, NotFoundError
 from app.common.validation import load_or_raise
 from app.modules.events.models import (
     REFERENCE_UNIQUE_CONSTRAINT,
@@ -137,3 +137,34 @@ def list_event_requests_for_organiser(
         .order_by(EventRequest.created_at.desc(), EventRequest.id.desc())
     )
     return list(resolve_session(session).scalars(stmt))
+
+
+def _normalise_reference(reference: str) -> str:
+    """A reference as typed by a user, trimmed and upper-cased (ADR-0004)."""
+    return reference.strip().upper()
+
+
+def get_event_request_for_organiser(
+    organiser_id: int | str, reference: str, *, session: Session | None = None
+) -> EventRequest:
+    """Fetch one of the organiser's own event requests by reference (SCRUM-22 AC2).
+
+    The query is scoped to the caller, so a reference that belongs to another
+    organiser looks exactly like one that doesn't exist (ADR-0012).
+
+    Args:
+        organiser_id: The caller's user id, taken from their token.
+        reference: The ``EVR-…`` reference; case and surrounding spaces are ignored.
+        session: Database session; defaults to ``db.session``.
+
+    Raises:
+        NotFoundError: 404 — no such request among the caller's own.
+    """
+    stmt = select(EventRequest).where(
+        EventRequest.organiser_id == int(organiser_id),
+        EventRequest.reference == _normalise_reference(reference),
+    )
+    event_request = resolve_session(session).scalar(stmt)
+    if event_request is None:
+        raise NotFoundError("Event request not found.")
+    return event_request
