@@ -109,8 +109,9 @@ jobs:
         working-directory: backend
 
     steps:
-      # Full history, so diff-cover can find where the pull request branched
-      # off its base and check only the lines it changed.
+      # Full history, so the base the pull request was merged into (HEAD^1,
+      # see the diff-cover step) and everything below it are here to diff
+      # against.
       - name: Check out
         uses: actions/checkout@v4
         with:
@@ -189,13 +190,15 @@ jobs:
       # count, which is how a deliberate gap is declared, with its reason.
       # diff-cover counts lines, not branches: an `if` tested only one way
       # still passes here, so that part stays with the reviewer (checklist §10).
+      #
+      # HEAD on a pull_request run is GitHub's merge of the branch into the
+      # pull request's base, so HEAD^1 is that base as it stood when the run
+      # started. github.base_ref is not the same thing: for a pull request in
+      # a stack it names the branch the whole stack ends in (main), and
+      # diffing against that counted every lower pull request's lines too.
       - name: Changed lines are fully covered
         if: github.event_name == 'pull_request'
-        env:
-          # Passed as an environment variable, never interpolated into the
-          # script, the same as the PR title in pr-title.yml.
-          BASE_REF: ${{ github.base_ref }}
-        run: diff-cover coverage.xml --compare-branch="origin/$BASE_REF" --fail-under=100 --format markdown:diff-cover.md
+        run: diff-cover coverage.xml --compare-branch=HEAD^1 --fail-under=100 --format markdown:diff-cover.md
 
       # Puts the coverage table on the run's summary page, so nobody has to
       # download the artifact to see where a number moved.
