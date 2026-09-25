@@ -17,6 +17,7 @@ backend/            Flask application (see below)
     modules/events/ event requests (SCRUM-19), event status model (SCRUM-22), filed under the organiser's organisation (SCRUM-66)
     modules/organisations/ client organisations that Event Organisers belong to (SCRUM-66)
     modules/venue/  venue catalogue (SCRUM-25), availability calendar (SCRUM-26), search (SCRUM-35), setup/turnaround (SCRUM-67)
+    modules/equipment/ equipment catalogue (SCRUM-27)
   tests/            unit tests (pytest), one marker per story
   migrations/       Alembic migrations (Flask-Migrate)
 docs/adr/           Architecture Decision Records: choices made where requirements were silent
@@ -117,6 +118,10 @@ curl http://localhost:5000/api/auth/internal-only -H "Authorization: Bearer <tok
 | `POST /api/venues/<id>/reactivate` | `venue_staff` — show again                              |
 | `GET  /api/venues/<id>/calendar?range_start=…&range_end=…` | internal roles — bookings and blocked periods in the range |
 | `POST /api/venues/search`      | `event_coordinator` — venues that meet an event's requirements and are free |
+| `POST /api/equipment/types`    | `technical_support_staff` — add an equipment type               |
+| `GET  /api/equipment/types`    | internal roles — every equipment type with its total quantity, by name |
+| `GET  /api/equipment/types/<id>` | internal roles — one equipment type                           |
+| `PATCH /api/equipment/types/<id>` | `technical_support_staff` — change only the fields sent; sending `venue_id` or `store_name` replaces the location |
 
 Roles: `event_organiser`, `attendee`, `event_coordinator`, `venue_staff`, `technical_support_staff`.
 
@@ -126,11 +131,13 @@ An `event_organiser` registers with the `organisation_id` of an existing client 
 
 All errors share one shape: `{"error": "<code>", "message": "<text>", "details": {...}}` (`details` only for validation errors).
 
+An equipment type is kept at exactly one place: a catalogued venue (`venue_id`) or a named store (`store_name`). Equipment type names are unique ([ADR-0014](docs/adr/0014-equipment-type-location-and-quantity.md)).
+
 Date-times (bookings, blocks, calendar ranges) should carry an offset, such as `Z` or `+08:00`. One sent without an offset is read as business time (`APP_TIMEZONE`, Singapore by default). They're stored in UTC and come back in business time, e.g. `2026-10-01T17:00:00+08:00` ([ADR-0009](docs/adr/0009-booking-times-in-utc.md)).
 
 ## 5. Run the tests
 
-The suite is unit tests only, and **Postgres does not need to be running**. Most tests mock the database; the venue service tests run against an in-memory SQLite database, so their queries really execute.
+The suite is unit tests only, and **Postgres does not need to be running**. Most tests mock the database; the venue and equipment service tests run against an in-memory SQLite database, so their queries really execute.
 
 ```bash
 cd backend
@@ -147,6 +154,7 @@ pytest -m scrum_19   # submit an event request
 pytest -m scrum_22   # event status model
 pytest -m scrum_25   # update venue catalogue
 pytest -m scrum_26   # view a venue's availability calendar
+pytest -m scrum_27   # maintain the equipment catalogue
 pytest -m scrum_35   # search and filter venues
 pytest -m scrum_67   # setup and turnaround time
 pytest -m scrum_66   # client organisations
