@@ -332,6 +332,15 @@ def list_event_requests_for_organiser(
     )
 
 
+def list_event_requests_for_coordinator(
+    coordinator_id: int | str, *, session: Session | None = None
+) -> list[EventRequest]:
+    """Return the requests assigned to the coordinator, newest first (SCRUM-30 AC5)."""
+    return _list_event_requests_newest_first(
+        EventRequest.coordinator_id == int(coordinator_id), resolve_session(session)
+    )
+
+
 def _normalise_reference(reference: str) -> str:
     """A reference as typed by a user, trimmed and upper-cased (ADR-0004)."""
     return reference.strip().upper()

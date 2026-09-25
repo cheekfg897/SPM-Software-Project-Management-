@@ -14,6 +14,7 @@ from app.modules.auth.permissions import Role
 from app.modules.events.schemas import CoordinatorContactSchema, EventRequestSchema
 from app.modules.events.services import (
     get_event_record_for_organiser,
+    list_event_requests_for_coordinator,
     list_event_requests_for_organiser,
     submit_event_request,
 )
@@ -41,6 +42,19 @@ def submit_request() -> tuple[Response, int]:
 def list_my_requests() -> tuple[Response, int]:
     """List the caller's own event requests, newest first (SCRUM-19)."""
     event_requests = list_event_requests_for_organiser(g.current_user_id)
+    return (
+        jsonify({"event_requests": _event_request_schema.dump(event_requests, many=True)}),
+        200,
+    )
+
+
+# Declared before ``/requests/<reference>`` for readers; Werkzeug matches the static
+# segment first either way, so "assigned" is never taken for a reference.
+@bp.get("/requests/assigned")
+@requires_role(Role.EVENT_COORDINATOR)
+def list_assigned_requests() -> tuple[Response, int]:
+    """List the event requests assigned to the caller, newest first (SCRUM-30 AC5)."""
+    event_requests = list_event_requests_for_coordinator(g.current_user_id)
     return (
         jsonify({"event_requests": _event_request_schema.dump(event_requests, many=True)}),
         200,
