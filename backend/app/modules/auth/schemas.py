@@ -13,7 +13,7 @@ from typing import Any
 from flask import current_app, has_app_context
 from marshmallow import Schema, ValidationError as MarshmallowValidationError, fields, validate
 
-from app.modules.auth.permissions import Role
+from app.modules.auth.permissions import Role, role_value
 
 # Password policy (SCRUM-65). See STORIES.md for the stated rule.
 DEFAULT_PASSWORD_MIN_LENGTH = 8
@@ -86,5 +86,4 @@ class UserSchema(Schema):
 
     def get_role(self, obj: Any) -> str:
         """Serialise the role enum to its string value."""
-        role = getattr(obj, "role", None)
-        return role.value if isinstance(role, Role) else str(role)
+        return role_value(obj.role)

@@ -70,3 +70,14 @@ def is_external_role(role: Role | str) -> bool:
         return Role(role) in EXTERNAL_ROLES
     except ValueError:
         return False
+
+
+def role_value(role: Role | str) -> str:
+    """Return the string stored in the database and the JWT for ``role``.
+
+    Accepts a member or its value, because a ``User`` built in memory may hold either.
+
+    Raises:
+        ValueError: if ``role`` is not a known role.
+    """
+    return Role.from_value(role).value

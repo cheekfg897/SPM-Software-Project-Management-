@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from flask import Flask
 
-from app.common.errors import error_response
+from app.common.errors import invalid_token_response
 from app.extensions import jwt
 
 
@@ -21,20 +21,12 @@ def _configure_jwt_error_shape() -> None:
     are configured anyway so that anything using ``@jwt_required()`` directly
     (or future modules) can never leak a differently-shaped ``401``.
 
-    Not unit-tested this sprint: only reachable via the HTTP layer.
+    The response is unit-tested in ``tests/common/test_errors.py``. That
+    Flask-JWT-Extended calls it is only observable through the HTTP layer.
     """
-
-    @jwt.unauthorized_loader
-    def _missing_token(reason: str):  # type: ignore[no-untyped-def]
-        return error_response(401, "authentication_error", "Missing, invalid or expired token.")
-
-    @jwt.invalid_token_loader
-    def _invalid_token(reason: str):  # type: ignore[no-untyped-def]
-        return error_response(401, "authentication_error", "Missing, invalid or expired token.")
-
-    @jwt.expired_token_loader
-    def _expired_token(jwt_header, jwt_payload):  # type: ignore[no-untyped-def]
-        return error_response(401, "authentication_error", "Missing, invalid or expired token.")
+    jwt.unauthorized_loader(invalid_token_response)
+    jwt.invalid_token_loader(invalid_token_response)
+    jwt.expired_token_loader(invalid_token_response)
 
 
 def register(app: Flask) -> None:

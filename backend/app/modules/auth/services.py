@@ -26,7 +26,7 @@ from app.common.decorators import ROLE_CLAIM
 from app.common.errors import AuthenticationError, ConflictError, NotFoundError
 from app.common.validation import load_or_raise
 from app.modules.auth.models import User
-from app.modules.auth.permissions import Role
+from app.modules.auth.permissions import Role, role_value
 from app.modules.auth.schemas import RegisterSchema
 
 #: The one message used for *every* login failure so that responses cannot be
@@ -124,10 +124,9 @@ def issue_access_token(user: User) -> str:
     """
     # TODO: refresh tokens are a future story — when added, issue them here
     # alongside the access token and add a /api/auth/refresh route.
-    role_value = user.role.value if isinstance(user.role, Role) else str(user.role)
     return create_access_token(
         identity=str(user.id),
-        additional_claims={ROLE_CLAIM: role_value},
+        additional_claims={ROLE_CLAIM: role_value(user.role)},
     )
 
 

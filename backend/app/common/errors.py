@@ -23,6 +23,10 @@ from typing import Any
 from flask import Flask, Response, jsonify
 from werkzeug.exceptions import HTTPException
 
+#: Shown for every missing, malformed or expired token, whichever code detects it.
+#: A message, not a credential: bandit's S105 only reacts to "TOKEN" in the name.
+INVALID_TOKEN_MESSAGE = "Missing, invalid or expired token."  # noqa: S105
+
 
 class AppError(Exception):
     """Base class for all application-level errors.
@@ -105,6 +109,18 @@ def error_response(
     if details:
         body["details"] = details
     return jsonify(body), status_code
+
+
+def invalid_token_response(*_callback_args: Any) -> tuple[Response, int]:
+    """Build the ``401`` for a missing, malformed or expired token.
+
+    Registered as Flask-JWT-Extended's error callbacks, which pass either the error text
+    or the token's header and payload. The response is the same whatever went wrong, so
+    those arguments are accepted and ignored.
+    """
+    return error_response(
+        AuthenticationError.status_code, AuthenticationError.error_code, INVALID_TOKEN_MESSAGE
+    )
 
 
 def register_error_handlers(app: Flask) -> None:

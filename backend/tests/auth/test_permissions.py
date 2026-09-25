@@ -24,6 +24,7 @@ from app.modules.auth.permissions import (
     Role,
     is_external_role,
     is_internal_role,
+    role_value,
 )
 
 pytestmark = pytest.mark.scrum_21
@@ -297,6 +298,16 @@ def test_role_from_value_rejects_unknown() -> None:
     assert Role.from_value("attendee") is Role.ATTENDEE
     with pytest.raises(ValueError):
         Role.from_value("superuser")
+
+
+@pytest.mark.parametrize("role", [Role.VENUE_STAFF, "venue_staff"])
+def test_role_value_accepts_a_member_or_its_value(role: Role | str) -> None:
+    assert role_value(role) == "venue_staff"
+
+
+def test_role_value_rejects_an_unknown_role() -> None:
+    with pytest.raises(ValueError, match="Unknown role: 'superuser'"):
+        role_value("superuser")
 
 
 # --------------------------------------------------------------------------

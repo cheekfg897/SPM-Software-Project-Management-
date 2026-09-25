@@ -36,7 +36,7 @@ from flask_jwt_extended import get_jwt, verify_jwt_in_request
 from flask_jwt_extended.exceptions import JWTExtendedException
 from jwt.exceptions import PyJWTError
 
-from app.common.errors import AuthenticationError, AuthorizationError
+from app.common.errors import INVALID_TOKEN_MESSAGE, AuthenticationError, AuthorizationError
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -93,7 +93,7 @@ def authenticate_request() -> dict[str, Any]:
         verify_jwt_in_request()
     except (JWTExtendedException, PyJWTError) as exc:
         log_authorization_failure(reason="invalid_token", role=None, detail=str(exc))
-        raise AuthenticationError("Missing, invalid or expired token.") from exc
+        raise AuthenticationError(INVALID_TOKEN_MESSAGE) from exc
 
     claims: dict[str, Any] = get_jwt()
     g.current_user_id = claims.get("sub")
