@@ -25,6 +25,7 @@ from marshmallow import (
 )
 
 from app.common.clock import local_today
+from app.common.fields import WholeNumber
 from app.modules.events.models import NAME_MAX_LENGTH, EventRequestStatus
 
 #: Free-text fields a request may leave out. Blank values are stored as null.
@@ -35,22 +36,6 @@ OPTIONAL_TEXT_FIELDS = (
     "accessibility_needs",
     "equipment_requirements",
 )
-
-
-class WholeNumber(fields.Integer):
-    """An integer field that also rejects JSON booleans.
-
-    ``fields.Integer(strict=True)`` accepts ``true`` because ``bool`` is an
-    integer subclass in Python.
-    """
-
-    def __init__(self, **kwargs: Any) -> None:
-        super().__init__(strict=True, **kwargs)
-
-    def _deserialize(self, value: Any, attr: str | None, data: Any, **kwargs: Any) -> int:
-        if isinstance(value, bool):
-            raise self.make_error("invalid")
-        return super()._deserialize(value, attr, data, **kwargs)
 
 
 def _not_blank(value: str) -> None:
