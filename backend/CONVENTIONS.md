@@ -436,10 +436,12 @@ A test earns its place only if it would catch a real break. Every test must:
 Every line **and branch** you add or change is covered by a non-decorative test. CI's 90% is
 the floor for the whole codebase; for new code the bar is 100%.
 
-CI enforces the **lines** on every pull request: the *Changed lines are fully covered* step
-runs `diff-cover` and fails below 100%. It can't see branches, so an `if` tested only one way
-still passes CI; checking the changed branches is on you and the reviewer. Run the same
-check before pushing:
+CI enforces the **lines** on every pull request, whatever branch it targets: the *Changed lines
+are fully covered* step runs `diff-cover` against the pull request's own base branch and fails
+below 100%, and the overall and changed-lines figures are posted as a comment on the pull
+request. It can't see branches, so an `if` tested only one way still passes CI; checking the
+changed branches is on you and the reviewer. Run the same check before pushing, comparing with
+your base (`origin/main`, or the branch below yours in a stack):
 
 ```bash
 pytest --cov=app --cov-branch --cov-report=term-missing --cov-report=xml
