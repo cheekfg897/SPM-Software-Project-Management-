@@ -13,6 +13,7 @@ from app.common.decorators import requires_role
 from app.modules.auth.permissions import Role
 from app.modules.events.schemas import EventRequestSchema
 from app.modules.events.services import (
+    get_event_request_for_organiser,
     list_event_requests_for_organiser,
     submit_event_request,
 )
@@ -43,3 +44,11 @@ def list_my_requests() -> tuple[Response, int]:
         jsonify({"event_requests": _event_request_schema.dump(event_requests, many=True)}),
         200,
     )
+
+
+@bp.get("/requests/<reference>")
+@requires_role(Role.EVENT_ORGANISER)
+def get_my_request(reference: str) -> tuple[Response, int]:
+    """One of the caller's own event requests, with its current status (SCRUM-22)."""
+    event_request = get_event_request_for_organiser(g.current_user_id, reference)
+    return jsonify(_event_request_schema.dump(event_request)), 200
