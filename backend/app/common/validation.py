@@ -1,8 +1,9 @@
-"""Shared payload validation helper.
+"""Shared payload validation helpers.
 
 Every module validates request bodies with marshmallow schemas and uses
 :func:`load_or_raise` to turn marshmallow errors into the project's
-:class:`~app.common.errors.ValidationError` (HTTP 400).
+:class:`~app.common.errors.ValidationError` (HTTP 400). :func:`not_blank` is the
+validator for required text that must contain more than whitespace.
 """
 
 from __future__ import annotations
@@ -13,6 +14,12 @@ from typing import Any
 from marshmallow import Schema, ValidationError as MarshmallowValidationError
 
 from app.common.errors import ValidationError
+
+
+def not_blank(value: str) -> None:
+    """Marshmallow validator: reject a string that is empty or only whitespace."""
+    if not value.strip():
+        raise MarshmallowValidationError("Must not be blank.")
 
 
 def load_or_raise(
