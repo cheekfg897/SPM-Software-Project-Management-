@@ -39,9 +39,20 @@ REFERENCE_UNIQUE_CONSTRAINT = "uq_event_requests_reference"
 
 
 class EventRequestStatus(str, enum.Enum):
-    """Lifecycle of an event request. Later stories add review states."""
+    """The stages an event request passes through (SCRUM-22, ADR-0012).
 
+    ``UNDER_REVIEW`` is the story's "Under Review / Planning". Only ``SUBMITTED`` is
+    written so far; each other value arrives with the story that performs the
+    transition (SCRUM-20, SCRUM-31, SCRUM-49, SCRUM-61, SCRUM-68).
+    """
+
+    DRAFT = "draft"
     SUBMITTED = "submitted"
+    UNDER_REVIEW = "under_review"
+    CONFIRMED = "confirmed"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+    REJECTED = "rejected"
 
 
 class EventRequest(db.Model):  # type: ignore[name-defined]
