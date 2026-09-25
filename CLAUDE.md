@@ -56,7 +56,7 @@ ruff format .                 # format; CI runs `ruff format --check .`
 pytest                        # unit tests — Postgres NOT needed, the DB is mocked
 pytest -m scrum_19            # one story's tests
 pytest --cov=app --cov-branch --cov-report=term-missing --cov-report=xml   # CI floor: 90%
-diff-cover coverage.xml --compare-branch=origin/main --fail-under=100     # changed lines: 100%
+diff-cover coverage.xml --compare-branch=origin/main --fail-under=100     # changed lines: 100% (in a stack, compare with the branch below)
 flask db migrate -m "..."     # autogenerate a migration — then review and rename it
 flask db upgrade && flask db check   # apply, and confirm models match migrations
 flask db heads                # must print exactly one head
@@ -109,4 +109,7 @@ flask db heads                # must print exactly one head
 - **Layered commits** (`backend/CONVENTIONS.md` §15): one logical change per commit, each
   passing lint and tests on its own, stacked in dependency order. Merge with **Rebase and
   merge**, never squash.
+- CI (`.github/workflows/ci.yml`) runs on every PR whatever branch it targets, so a stacked PR
+  gets its checks at once; `diff-cover` compares with the PR's own base, and the overall and
+  changed-lines coverage figures are posted as one comment on the PR, updated on each push.
 - Branch off `main`; never commit `backend/.env` or real secrets.

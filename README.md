@@ -27,7 +27,7 @@ docs/code-review-checklist.md   what to check when reviewing a PR
 CLAUDE.md           working rules for Claude Code (commands, architecture rules, gotchas)
 frontend/           placeholder only — framework not yet decided
 docker-compose.yml  Postgres + backend for local development
-.github/workflows/  CI: migrate against Postgres, run unit tests
+.github/workflows/  CI on every PR and push to main: lint, migrations, unit tests, coverage comment; PR title check
 ```
 
 ## Prerequisites
