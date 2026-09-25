@@ -3,6 +3,7 @@
 Public surface for other modules (import from here, not from sub-files):
 
 * :func:`app.modules.auth.services.get_user_by_id`
+* :func:`app.modules.auth.services.list_user_ids_with_role`
 * :data:`app.modules.auth.permissions.Role` and the role groups
 """
 

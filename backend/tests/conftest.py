@@ -147,6 +147,24 @@ def make_user() -> Callable[..., User]:
 
 
 @pytest.fixture()
+def saved_users(db_session: Session, make_user: Callable[..., User]) -> list[User]:
+    """Users of several roles, saved to ``db_session``.
+
+    Event Coordinators 9 and 3 (saved in that order, so a query has to sort them),
+    Venue Staff 4 and Event Organiser 7.
+    """
+    users = [
+        make_user(email="coordinator9@example.com", role=Role.EVENT_COORDINATOR, user_id=9),
+        make_user(email="coordinator3@example.com", role=Role.EVENT_COORDINATOR, user_id=3),
+        make_user(email="staff4@example.com", role=Role.VENUE_STAFF, user_id=4),
+        make_user(email="organiser7@example.com", role=Role.EVENT_ORGANISER, user_id=7),
+    ]
+    db_session.add_all(users)
+    db_session.commit()
+    return users
+
+
+@pytest.fixture()
 def valid_registration_payload() -> dict[str, Any]:
     """A registration body that satisfies every rule in ``RegisterSchema``.
 
