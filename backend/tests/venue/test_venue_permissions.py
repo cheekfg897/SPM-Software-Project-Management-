@@ -9,6 +9,7 @@ an unauthorized write must be rejected before any service call happens.
 from __future__ import annotations
 
 from collections.abc import Callable
+from types import ModuleType
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -43,43 +44,28 @@ WRITE_ROUTES = [
 ]
 WRITE_ROUTE_IDS = [route[0] for route in WRITE_ROUTES]
 
-NON_VENUE_STAFF_ROLES = sorted(ALL_ROLES - {Role.VENUE_STAFF}, key=lambda r: r.value)
+CallRoute = Callable[..., Any]
+ReplaceServices = Callable[[ModuleType, dict[str, Any]], dict[str, MagicMock]]
 
-VALID_PAYLOAD = {"name": "Hall", "location": "A", "capacity": 10}
+NON_VENUE_STAFF_ROLES = sorted(ALL_ROLES - {Role.VENUE_STAFF}, key=lambda r: r.value)
 
 
 @pytest.fixture()
 def mock_services(
-    monkeypatch: pytest.MonkeyPatch, make_venue: Callable[..., Venue]
+    replace_services: ReplaceServices, make_venue: Callable[..., Venue]
 ) -> dict[str, MagicMock]:
     """Replace every venue service the routes call with a mock of the right shape."""
-    returns = {
-        "create_venue": make_venue(),
-        "update_venue": (make_venue(), []),  # the venue, and no overlap warnings
-        "deactivate_venue": make_venue(),
-        "reactivate_venue": make_venue(),
-        "list_venues": [make_venue()],
-        "get_venue": make_venue(),
-    }
-    mocks = {}
-    for name, value in returns.items():
-        mock = MagicMock(return_value=value)
-        monkeypatch.setattr(services, name, mock)
-        mocks[name] = mock
-    return mocks
-
-
-def _call_route(
-    app: Flask,
-    endpoint: str,
-    method: str,
-    path: str,
-    view_kwargs: dict[str, Any],
-    token: str | None,
-) -> Any:
-    headers = {"Authorization": f"Bearer {token}"} if token is not None else {}
-    with app.test_request_context(path, method=method, headers=headers, json=VALID_PAYLOAD):
-        return app.view_functions[endpoint](**view_kwargs)
+    return replace_services(
+        services,
+        {
+            "create_venue": make_venue(),
+            "update_venue": (make_venue(), []),  # the venue, and no overlap warnings
+            "deactivate_venue": make_venue(),
+            "reactivate_venue": make_venue(),
+            "list_venues": [make_venue()],
+            "get_venue": make_venue(),
+        },
+    )
 
 
 # --------------------------------------------------------------------------
@@ -92,10 +78,18 @@ def _call_route(
     ("endpoint", "method", "path", "view_kwargs", "service"), WRITE_ROUTES, ids=WRITE_ROUTE_IDS
 )
 def test_write_by_non_venue_staff_is_403(
-    app: Flask, token_for, mock_services, role: Role, endpoint, method, path, view_kwargs, service
+    call_route: CallRoute,
+    token_for,
+    mock_services,
+    role: Role,
+    endpoint,
+    method,
+    path,
+    view_kwargs,
+    service,
 ) -> None:
     with pytest.raises(AuthorizationError) as exc_info:
-        _call_route(app, endpoint, method, path, view_kwargs, token_for(role=role))
+        call_route(endpoint, method, path, view_kwargs, token_for(role=role))
 
     assert exc_info.value.status_code == 403
     mock_services[service].assert_not_called()
@@ -105,10 +99,10 @@ def test_write_by_non_venue_staff_is_403(
     ("endpoint", "method", "path", "view_kwargs", "service"), WRITE_ROUTES, ids=WRITE_ROUTE_IDS
 )
 def test_write_without_token_is_401(
-    app: Flask, mock_services, endpoint, method, path, view_kwargs, service
+    call_route: CallRoute, mock_services, endpoint, method, path, view_kwargs, service
 ) -> None:
     with pytest.raises(AuthenticationError) as exc_info:
-        _call_route(app, endpoint, method, path, view_kwargs, token=None)
+        call_route(endpoint, method, path, view_kwargs, token=None)
 
     assert exc_info.value.status_code == 401
     mock_services[service].assert_not_called()
@@ -133,9 +127,9 @@ def test_write_route_allows_only_venue_staff(
     ("endpoint", "method", "path", "view_kwargs", "service"), WRITE_ROUTES, ids=WRITE_ROUTE_IDS
 )
 def test_write_by_venue_staff_reaches_service(
-    app: Flask, token_for, mock_services, endpoint, method, path, view_kwargs, service
+    call_route: CallRoute, token_for, mock_services, endpoint, method, path, view_kwargs, service
 ) -> None:
-    _call_route(app, endpoint, method, path, view_kwargs, token_for(role=Role.VENUE_STAFF))
+    call_route(endpoint, method, path, view_kwargs, token_for(role=Role.VENUE_STAFF))
 
     mock_services[service].assert_called_once()
 
@@ -150,8 +144,8 @@ def test_write_by_venue_staff_reaches_service(
     ids=["list_venues", "get_venue"],
 )
 def test_read_is_allowed_for_non_venue_staff(
-    app: Flask, token_for, mock_services, role: Role, endpoint, path, view_kwargs
+    call_route: CallRoute, token_for, mock_services, role: Role, endpoint, path, view_kwargs
 ) -> None:
-    _, status = _call_route(app, endpoint, "GET", path, view_kwargs, token_for(role=role))
+    _, status = call_route(endpoint, "GET", path, view_kwargs, token_for(role=role))
 
     assert status == 200
