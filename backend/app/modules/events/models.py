@@ -92,6 +92,12 @@ class EventRequest(db.Model):  # type: ignore[name-defined]
     organisation_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("client_organisations.id"), index=True, nullable=True
     )
+    #: The Event Coordinator assigned when the request was submitted (SCRUM-30 AC1,
+    #: ADR-0018). One column, so a request never has more than one (AC2); NULL when no
+    #: coordinator existed. A database-level foreign key only, like ``organiser_id``.
+    coordinator_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id"), index=True, nullable=True
+    )
     name: Mapped[str] = mapped_column(String(NAME_MAX_LENGTH), nullable=False)
     purpose: Mapped[str | None] = mapped_column(Text, nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
