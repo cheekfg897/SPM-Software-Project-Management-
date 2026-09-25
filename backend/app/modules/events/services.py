@@ -30,7 +30,11 @@ from app.common.database import resolve_session
 from app.common.errors import AppError, ConflictError, NotFoundError, ValidationError
 from app.common.validation import load_or_raise
 from app.modules.auth.permissions import Role
-from app.modules.auth.services import get_user_by_id, list_user_ids_with_role
+from app.modules.auth.services import (
+    get_user_by_email,
+    get_user_by_id,
+    list_user_ids_with_role,
+)
 from app.modules.equipment.services import get_equipment_type
 from app.modules.events.models import (
     REFERENCE_UNIQUE_CONSTRAINT,
@@ -41,7 +45,11 @@ from app.modules.events.models import (
     EventRequest,
     EventRequestStatus,
 )
-from app.modules.events.schemas import EditEquipmentLineSchema, SubmitEventRequestSchema
+from app.modules.events.schemas import (
+    EditEquipmentLineSchema,
+    ReassignCoordinatorSchema,
+    SubmitEventRequestSchema,
+)
 from app.modules.notifications.services import EventSummary, NotificationKind, notify_users
 
 logger = logging.getLogger("connectsphere.events")
@@ -715,3 +723,136 @@ def remove_equipment_line(
     line = _line_of_event(event_request, line_id, sess)
     sess.delete(line)
     sess.commit()
+
+
+# --------------------------------------------------------------------------
+# SCRUM-87 — reassign an event to a different coordinator
+# --------------------------------------------------------------------------
+
+#: Statuses in which an event request may move to another coordinator: from
+#: submission until the event is over (SCRUM-87, ADR-0021). A draft has no coordinator
+#: yet, and a completed, cancelled or rejected event has nothing left to coordinate.
+REASSIGNABLE_STATUSES: frozenset[EventRequestStatus] = frozenset(
+    {EventRequestStatus.SUBMITTED, EventRequestStatus.UNDER_REVIEW, EventRequestStatus.CONFIRMED}
+)
+NOT_REASSIGNABLE_MESSAGE = (
+    "Only a submitted, under-review or confirmed event request can be reassigned."
+)
+NOT_ASSIGNED_MESSAGE = "This event request has no coordinator to reassign from."
+NOT_A_COORDINATOR_MESSAGE = "No Event Coordinator has this email address."
+ALREADY_ASSIGNED_MESSAGE = "That coordinator is already assigned to this event request."
+
+
+class RequestNotReassignableError(AppError):
+    """The request can't move to another coordinator in its current state (409)."""
+
+    status_code = 409
+    error_code = "request_not_reassignable"
+
+
+def _coordinator_to_replace(actor_id: int | str, event_request: EventRequest) -> int:
+    """The caller, if the request is theirs to hand on (ADR-0021).
+
+    Only its current coordinator may reassign a request. The ownership check comes
+    after the "no coordinator" one, which has its own answer, and before the status
+    one, so another coordinator learns no more about a finished event than about an
+    open one.
+
+    Raises:
+        RequestNotReassignableError: 409 — the request has no coordinator.
+        NotFoundError: 404 — the caller isn't its coordinator (ADR-0019).
+        RequestNotReassignableError: 409 — the request isn't submitted, under review
+            or confirmed.
+    """
+    if event_request.coordinator_id is None:
+        raise RequestNotReassignableError(NOT_ASSIGNED_MESSAGE)
+    _check_assigned_to(actor_id, event_request)
+    if event_request.status not in REASSIGNABLE_STATUSES:
+        raise RequestNotReassignableError(NOT_REASSIGNABLE_MESSAGE)
+    return event_request.coordinator_id
+
+
+def _event_coordinator_id_by_email(email: str, session: Session) -> int:
+    """The id of the Event Coordinator with this email; case is ignored (ADR-0021).
+
+    An unknown email and another role's email get the same answer, a 400 on the
+    field, so the reply doesn't say whether someone else holds that address.
+
+    Raises:
+        ValidationError: 400 — no Event Coordinator has that email.
+    """
+    user = get_user_by_email(email, session=session)
+    if user is None or user.role is not Role.EVENT_COORDINATOR:
+        raise ValidationError(
+            "Invalid request.", details={"coordinator_email": [NOT_A_COORDINATOR_MESSAGE]}
+        )
+    return user.id
+
+
+def reassign_coordinator(
+    actor_id: int | str,
+    reference: str,
+    payload: Mapping[str, Any] | None,
+    *,
+    session: Session | None = None,
+) -> tuple[EventRequest, CoordinatorContact]:
+    """Move an event request to a different Event Coordinator (SCRUM-87).
+
+    Only the request's current coordinator may do it, while it is submitted, under
+    review or confirmed (ADR-0021). The request's one ``coordinator_id`` is replaced
+    (AC1, AC2), and a ``coordinator_reassigned`` history entry is saved in the same
+    commit: the previous and the new coordinator's ids and names as they were then,
+    who did it and when (AC3, AC7). The event then lists, and gives access to, the new
+    coordinator only (AC4, AC5). Once saved, the new coordinator gets the usual
+    ``coordinator_assigned`` notification (AC4); a failure there is logged, not raised
+    (ADR-0015). The previous coordinator isn't notified, since they made the change.
+
+    Args:
+        actor_id: The caller's user id, taken from their token.
+        reference: The ``EVR-…`` reference; case and surrounding spaces are ignored.
+        payload: Decoded JSON body: ``coordinator_email``.
+        session: Database session; defaults to ``db.session``.
+
+    Returns:
+        The request, and the new coordinator's name and email, as the organiser now
+        sees them (AC6).
+
+    Raises:
+        ValidationError: 400 — payload invalid, or no Event Coordinator has that
+            email.
+        NotFoundError: 404 — no such request, or the caller isn't its coordinator.
+        RequestNotReassignableError: 409 — the request has no coordinator, or isn't
+            submitted, under review or confirmed.
+        ConflictError: 409 — that coordinator already has the request.
+    """
+    data = load_or_raise(ReassignCoordinatorSchema(), payload)
+    sess = resolve_session(session)
+    event_request = _event_request_by_reference(reference, sess)
+    previous_coordinator_id = _coordinator_to_replace(actor_id, event_request)
+    coordinator_id = _event_coordinator_id_by_email(data["coordinator_email"], sess)
+    if coordinator_id == previous_coordinator_id:
+        raise ConflictError(ALREADY_ASSIGNED_MESSAGE)
+    previous_coordinator = _contact_of_coordinator(previous_coordinator_id, sess)
+    coordinator = _contact_of_coordinator(coordinator_id, sess)
+
+    event_request.coordinator_id = coordinator_id
+    # The names are kept as they are now, so the history reads the same if a user is
+    # renamed or removed later (AC3).
+    record_event_history(
+        event_request,
+        EventHistoryKind.COORDINATOR_REASSIGNED,
+        actor_id=int(actor_id),
+        details={
+            "previous_coordinator_id": previous_coordinator_id,
+            "previous_coordinator_name": previous_coordinator.full_name,
+            "coordinator_id": coordinator_id,
+            "coordinator_name": coordinator.full_name,
+        },
+        session=sess,
+    )
+    sess.commit()
+    # The previous coordinator isn't told: only they may reassign, so they did this.
+    _raise_notifications(
+        [coordinator_id], event_request, NotificationKind.COORDINATOR_ASSIGNED, sess
+    )
+    return event_request, coordinator

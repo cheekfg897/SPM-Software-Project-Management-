@@ -110,8 +110,9 @@ class EventRequest(db.Model):  # type: ignore[name-defined]
         Integer, ForeignKey("client_organisations.id"), index=True, nullable=True
     )
     #: The Event Coordinator assigned when the request was submitted (SCRUM-30 AC1,
-    #: ADR-0018). One column, so a request never has more than one (AC2); NULL when no
-    #: coordinator existed. A database-level foreign key only, like ``organiser_id``.
+    #: ADR-0018), or since reassigned to (SCRUM-87, ADR-0021). One column, so a request
+    #: never has more than one (AC2); NULL when no coordinator existed. A database-level
+    #: foreign key only, like ``organiser_id``.
     coordinator_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("users.id"), index=True, nullable=True
     )
