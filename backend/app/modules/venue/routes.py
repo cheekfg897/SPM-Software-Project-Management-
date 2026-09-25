@@ -154,3 +154,22 @@ def block_venue(venue_id: int) -> tuple[Response, int]:
     body = _venue_block_schema.dump(block)
     body["conflicting_bookings"] = _conflicting_booking_schema.dump(conflicting_bookings, many=True)
     return jsonify(body), 201
+
+
+@bp.get("/<int:venue_id>/blocks")
+@requires_role(Role.VENUE_STAFF)
+def list_venue_blocks(venue_id: int) -> tuple[Response, int]:
+    """A venue's blocks with ids and reasons, to find one to remove. Venue Staff only.
+
+    SCRUM-34 AC4, ADR-0016.
+    """
+    blocks = services.list_venue_blocks(venue_id)
+    return jsonify(_venue_block_schema.dump(blocks, many=True)), 200
+
+
+@bp.delete("/<int:venue_id>/blocks/<int:block_id>")
+@requires_role(Role.VENUE_STAFF)
+def remove_venue_block(venue_id: int, block_id: int) -> tuple[Response, int]:
+    """Remove a block, freeing the venue again. Venue Staff only (SCRUM-34 AC4)."""
+    services.remove_venue_block(venue_id, block_id)
+    return Response(), 204

@@ -120,6 +120,8 @@ curl http://localhost:5000/api/auth/internal-only -H "Authorization: Bearer <tok
 | `GET  /api/venues/<id>/calendar?range_start=…&range_end=…` | internal roles — bookings and blocked periods in the range |
 | `POST /api/venues/search`      | `event_coordinator` — venues that meet an event's requirements and are free |
 | `POST /api/venues/<id>/blocks` | `venue_staff` — block a period with a reason; lists the confirmed bookings it cuts into |
+| `GET  /api/venues/<id>/blocks` | `venue_staff` — the venue's blocks with ids and reasons, in start order |
+| `DELETE /api/venues/<id>/blocks/<block_id>` | `venue_staff` — remove a block; the venue is available again |
 | `POST /api/equipment/types`    | `technical_support_staff` — add an equipment type               |
 | `GET  /api/equipment/types`    | internal roles — every equipment type with its total quantity, by name |
 | `GET  /api/equipment/types/<id>` | internal roles — one equipment type                           |
