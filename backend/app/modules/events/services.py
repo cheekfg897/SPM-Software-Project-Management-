@@ -190,11 +190,12 @@ def _least_loaded_coordinator(coordinator_ids: list[int], session: Session) -> i
 def _raise_notifications(
     recipient_ids: list[int], event_request: EventRequest, kind: NotificationKind, session: Session
 ) -> None:
-    """Notify ``recipient_ids`` about ``event_request``; a failed write is only logged.
+    """Notify ``recipient_ids`` that ``kind`` happened to ``event_request``.
 
-    Runs after the request's own commit, so the notifications refer to a saved row
-    (ADR-0015). If they can't be saved, only they are lost: the request is already
-    saved, and failing the submission would invite the organiser to submit it again.
+    Runs after the change's own commit, so the notifications refer to a saved row
+    (ADR-0015). If they can't be saved, only they are lost and a warning is logged:
+    what they announce is already saved, and failing the reply would invite the
+    caller to do it again.
     """
     event = EventSummary(
         id=event_request.id, reference=event_request.reference, name=event_request.name
