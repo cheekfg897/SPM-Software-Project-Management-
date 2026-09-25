@@ -19,7 +19,10 @@ from sqlalchemy.orm import Session
 
 from app.modules.auth.models import User
 from app.modules.auth.permissions import Role
+from app.modules.equipment.models import EquipmentType
 from app.modules.events.models import (
+    EquipmentLineStatus,
+    EventEquipmentLine,
     EventHistoryEntry,
     EventHistoryKind,
     EventRequest,
@@ -209,3 +212,64 @@ def notifications_of() -> Callable[[int], list[tuple[Any, ...]]]:
         return rows
 
     return _notifications_of
+
+
+@pytest.fixture()
+def saved_event_request(
+    make_event_request: Callable[..., EventRequest], save: Callable[..., None]
+) -> EventRequest:
+    """Event request ``EVR-AAAAAAAA`` by organiser 7, ``submitted`` and saved."""
+    event_request = make_event_request()
+    save(event_request)
+    return event_request
+
+
+@pytest.fixture()
+def valid_equipment_line_payload(equipment_type: EquipmentType) -> dict[str, Any]:
+    """An equipment line body that satisfies every rule: two of the saved type."""
+    return {"equipment_type_id": equipment_type.id, "quantity": 2, "notes": "Needs HDMI"}
+
+
+@pytest.fixture()
+def microphone(
+    make_equipment_type: Callable[..., EquipmentType], save: Callable[..., None]
+) -> EquipmentType:
+    """A second saved equipment type, for events that need more than one."""
+    saved = make_equipment_type(name="Microphone", total_quantity=20)
+    save(saved)
+    return saved
+
+
+@pytest.fixture()
+def make_equipment_line() -> Callable[..., EventEquipmentLine]:
+    """Factory for ``EventEquipmentLine`` objects; add one to ``db_session`` to save."""
+
+    def _make(
+        event_request: EventRequest,
+        equipment_type: EquipmentType,
+        *,
+        quantity: int = 2,
+        notes: str | None = "Needs HDMI",
+    ) -> EventEquipmentLine:
+        return EventEquipmentLine(
+            event_request_id=event_request.id,
+            equipment_type_id=equipment_type.id,
+            quantity=quantity,
+            notes=notes,
+            status=EquipmentLineStatus.REQUESTED,
+        )
+
+    return _make
+
+
+@pytest.fixture()
+def reload_equipment_line(db_session: Session) -> Callable[[int], EventEquipmentLine]:
+    """Read an equipment line back from the database rather than the session's cache."""
+
+    def _reload(line_id: int) -> EventEquipmentLine:
+        db_session.expire_all()
+        line = db_session.get(EventEquipmentLine, line_id)
+        assert line is not None
+        return line
+
+    return _reload
