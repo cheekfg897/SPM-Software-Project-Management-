@@ -83,6 +83,15 @@ def _check_organisation_exists(organisation_id: int, session: Session) -> None:
         ) from exc
 
 
+def list_user_ids_with_role(role: Role, *, session: Session | None = None) -> list[int]:
+    """Return the id of every user with ``role``, lowest id first (SCRUM-28 AC3).
+
+    Ids rather than users, so nothing of :class:`User` crosses the module boundary.
+    """
+    stmt = select(User.id).where(User.role == role).order_by(User.id)
+    return list(resolve_session(session).scalars(stmt))
+
+
 def register_user(payload: Mapping[str, Any] | None, *, session: Session | None = None) -> User:
     """Create a new account (SCRUM-65).
 
