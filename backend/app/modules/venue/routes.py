@@ -25,6 +25,7 @@ from app.modules.venue.schemas import (
     CalendarQuerySchema,
     ConflictingBookingSchema,
     OverlapWarningSchema,
+    SuitabilityResultSchema,
     VenueBlockSchema,
     VenueMatchSchema,
     VenueSchema,
@@ -38,6 +39,7 @@ _venue_match_schema = VenueMatchSchema()
 _overlap_warning_schema = OverlapWarningSchema()
 _venue_block_schema = VenueBlockSchema()
 _conflicting_booking_schema = ConflictingBookingSchema()
+_suitability_result_schema = SuitabilityResultSchema()
 
 #: SCRUM-35 AC4: what an empty search says.
 NO_MATCHES_MESSAGE = "No venues match your search criteria."
@@ -173,3 +175,20 @@ def remove_venue_block(venue_id: int, block_id: int) -> tuple[Response, int]:
     """Remove a block, freeing the venue again. Venue Staff only (SCRUM-34 AC4)."""
     services.remove_venue_block(venue_id, block_id)
     return Response(), 204
+
+
+# --------------------------------------------------------------------------
+# SCRUM-36 — Check whether a venue suits an event
+# --------------------------------------------------------------------------
+
+
+@bp.post("/<int:venue_id>/suitability")
+@requires_role(Role.EVENT_COORDINATOR, Role.VENUE_STAFF)
+def check_suitability(venue_id: int) -> tuple[Response, int]:
+    """Whether a venue meets an event's requirements. Coordinators and Venue Staff.
+
+    Lists every requirement the venue fails. Always ``200``: an unsuitable venue is a
+    result, not an error (ADR-0017).
+    """
+    result = services.check_venue_suitability(venue_id, request.get_json(silent=True))
+    return jsonify(_suitability_result_schema.dump(result)), 200

@@ -31,7 +31,12 @@ from app.modules.venue.models import (
     join_list_field,
 )
 from app.modules.venue.opening_hours import Period
-from app.modules.venue.schemas import BlockVenueSchema, EditVenueSchema, VenueSearchSchema
+from app.modules.venue.schemas import (
+    BlockVenueSchema,
+    EditVenueSchema,
+    VenueSearchSchema,
+    VenueSuitabilitySchema,
+)
 
 _LIST_FIELDS = ("facilities", "accessibility_features", "supported_layouts")
 
@@ -330,8 +335,9 @@ def _missing_items(required: list[str], offered: list[str]) -> list[str]:
 def _unmet_requirements(venue: Venue, data: Mapping[str, Any]) -> list[UnmetRequirement]:
     """Every facility, accessibility or layout requirement in ``data`` the venue fails.
 
-    Search leaves out a venue that fails any (SCRUM-35 AC1). Items arrive trimmed and
-    lower-cased from the schema, as the venue's stored items are.
+    Search leaves out a venue that fails any (SCRUM-35 AC1); the suitability check
+    names each one (SCRUM-36 AC2). Items arrive trimmed and lower-cased from the
+    schema, as the venue's stored items are.
     """
     unmet: list[UnmetRequirement] = []
     for item in _missing_items(data["required_facilities"], venue.facilities_list()):
@@ -540,3 +546,53 @@ def remove_venue_block(venue_id: int, block_id: int, *, session: Session | None 
         raise NotFoundError("Block not found.")
     sess.delete(block)
     sess.commit()
+
+
+# --------------------------------------------------------------------------
+# SCRUM-36 — check whether a venue suits an event
+# --------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class SuitabilityResult:
+    """Whether a venue can host an event, and every requirement it fails (SCRUM-36).
+
+    SCRUM-42 will require a justification on a booking request when ``suitable`` is
+    false (AC4, ADR-0017).
+    """
+
+    reasons: list[UnmetRequirement]
+
+    @property
+    def suitable(self) -> bool:
+        """A venue is suitable when it fails no requirement (AC3)."""
+        return not self.reasons
+
+
+def check_venue_suitability(
+    venue_id: int, payload: Mapping[str, Any] | None, *, session: Session | None = None
+) -> SuitabilityResult:
+    """Whether a venue meets an event's requirements, and each one it fails (SCRUM-36).
+
+    Capacity is checked against the expected attendance (AC1); layout, facilities and
+    accessibility exactly as search matches them (AC2). Nothing failed means suitable
+    (AC3). Availability isn't checked here: search (SCRUM-35) and conflict detection
+    (SCRUM-44) do that. Takes the requirements rather than an event (ADR-0017).
+
+    Raises:
+        ValidationError: 400 — missing or invalid requirements.
+        NotFoundError: 404 — no such venue.
+    """
+    data = load_or_raise(VenueSuitabilitySchema(), payload)
+    venue = get_venue(venue_id, session=session)
+
+    reasons: list[UnmetRequirement] = []
+    expected_attendance = data["expected_attendance"]
+    if venue.capacity < expected_attendance:
+        message = (
+            f"Expected attendance of {expected_attendance} exceeds the venue's capacity"
+            f" of {venue.capacity}."
+        )
+        reasons.append(UnmetRequirement(RequirementKind.CAPACITY, message))
+    reasons.extend(_unmet_requirements(venue, data))
+    return SuitabilityResult(reasons)
