@@ -506,3 +506,20 @@ it. A reviewer can read them one at a time, and any one can be reverted or bisec
   one at a time. (A *merge commit* also keeps them, but adds noise.)
 - **Answering review:** fold each fix into the commit it belongs to and force-push with
   `--force-with-lease`, rather than adding "address review" commits on top.
+
+### Pull request description
+
+GitHub fills a new PR with `.github/pull_request_template.md`. Keep its sections. Two of them
+matter most, because nobody can find this information in the code afterwards:
+
+- **Decisions made.** List every call the ACs didn't settle, each linked to its ADR. Split them
+  into ones already *agreed with the team or customer* and *defaults to review*, so the
+  reviewer knows which are still open. An ADR records why; the PR is where the team sees the
+  decision and can object before it merges.
+- **Tickets to open.** List follow-up work the PR found but doesn't do: tech debt, questions
+  for the customer, gaps another story must cover. Say which story each belongs to, or that it
+  needs a new ticket. A `# TODO` in the code is fine as well, but it doesn't replace the line
+  here, because nobody plans work from TODOs. Whoever merges opens the tickets in Jira.
+
+Write "None" rather than deleting either section, so a reviewer can tell "nothing to
+report" from "forgot".

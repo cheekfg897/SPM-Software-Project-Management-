@@ -112,4 +112,8 @@ flask db heads                # must print exactly one head
 - CI (`.github/workflows/ci.yml`) runs on every PR whatever branch it targets, so a stacked PR
   gets its checks at once; `diff-cover` compares with the PR's own base, and the overall and
   changed-lines coverage figures are posted as one comment on the PR, updated on each push.
+- **PR description** (`backend/CONVENTIONS.md` §15): fill in `.github/pull_request_template.md`.
+  "Decisions made" lists every call the ACs didn't settle, linked to its ADR and split into
+  agreed vs defaults to review. "Tickets to open" lists follow-ups for the team to raise in Jira.
+  Write "None" rather than deleting either one.
 - Branch off `main`; never commit `backend/.env` or real secrets.
