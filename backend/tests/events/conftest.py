@@ -5,9 +5,12 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import date, time
 from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 
+from app.modules.auth.models import User
+from app.modules.auth.permissions import Role
 from app.modules.events.models import EventRequest, EventRequestStatus
 
 
@@ -64,3 +67,14 @@ def make_event_request() -> Callable[..., EventRequest]:
         )
 
     return _make
+
+
+@pytest.fixture()
+def organiser_is_found(mock_session: MagicMock, make_user: Callable[..., User]) -> None:
+    """Make ``mock_session`` find organiser 7, linked to client organisation 3.
+
+    Submitting looks up the organiser to copy their organisation (SCRUM-66 AC4).
+    """
+    mock_session.get.return_value = make_user(
+        role=Role.EVENT_ORGANISER, user_id=7, organisation_id=3
+    )

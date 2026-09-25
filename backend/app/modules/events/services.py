@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 from app.common.database import resolve_session
 from app.common.errors import AppError, NotFoundError
 from app.common.validation import load_or_raise
+from app.modules.auth.services import get_user_by_id
 from app.modules.events.models import (
     REFERENCE_UNIQUE_CONSTRAINT,
     EventRequest,
@@ -47,6 +48,13 @@ class ReferenceGenerationError(AppError):
     error_code = "reference_generation_failed"
 
 
+class OrganiserWithoutOrganisationError(AppError):
+    """The organiser's account isn't linked to a client organisation (403, ADR-0013)."""
+
+    status_code = 403
+    error_code = "organiser_without_organisation"
+
+
 def generate_reference() -> str:
     """Return a random reference such as ``EVR-7K2QX9AB``."""
     return REFERENCE_PREFIX + "".join(
@@ -68,6 +76,22 @@ def is_reference_collision(exc: IntegrityError) -> bool:
     return REFERENCE_UNIQUE_CONSTRAINT in message or "event_requests.reference" in message
 
 
+def _organisation_of_organiser(organiser_id: int | str, session: Session) -> int:
+    """The client organisation an event request is filed under (SCRUM-66 AC4).
+
+    Raises:
+        OrganiserWithoutOrganisationError: 403 — an account from before SCRUM-66 that
+            no one has linked to an organisation yet.
+    """
+    organiser = get_user_by_id(organiser_id, session=session)
+    if organiser.organisation_id is None:
+        raise OrganiserWithoutOrganisationError(
+            "Your account is not linked to a client organisation, "
+            "so it cannot submit event requests yet."
+        )
+    return organiser.organisation_id
+
+
 def submit_event_request(
     organiser_id: int | str,
     payload: Mapping[str, Any] | None,
@@ -79,7 +103,8 @@ def submit_event_request(
     """Submit a new event request on behalf of an organiser (SCRUM-19).
 
     Validates the payload (AC1-AC4), then saves it with status ``submitted``
-    and a fresh reference (AC5). If the reference is already taken, the save
+    and a fresh reference (AC5), filed under the organiser's client
+    organisation (SCRUM-66 AC4). If the reference is already taken, the save
     is rolled back and retried with a new one, up to
     :data:`MAX_REFERENCE_ATTEMPTS` times.
 
@@ -96,15 +121,20 @@ def submit_event_request(
 
     Raises:
         ValidationError: 400 — payload invalid (details per field).
+        OrganiserWithoutOrganisationError: 403 — the organiser has no client
+            organisation (ADR-0013).
+        NotFoundError: 404 — the token names a user that no longer exists.
         ReferenceGenerationError: 500 — every attempt hit a used reference.
         IntegrityError: any other constraint failure; not retried.
     """
     data = load_or_raise(SubmitEventRequestSchema(today=today), payload)
     sess = resolve_session(session)
+    organisation_id = _organisation_of_organiser(organiser_id, sess)
 
     for attempt in range(1, MAX_REFERENCE_ATTEMPTS + 1):
         event_request = EventRequest(
             organiser_id=int(organiser_id),
+            organisation_id=organisation_id,
             reference=reference_factory(),
             status=EventRequestStatus.SUBMITTED,
             **data,
