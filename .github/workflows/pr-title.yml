@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   title-format:
-    name: PR title is a conventional commit with a story ID
+    name: PR title is a conventional commit, with a story ID where one applies
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
@@ -26,14 +26,22 @@ jobs:
           TITLE: ${{ github.event.pull_request.title }}
           # Conventional Commits, with the Jira story as the scope:
           #   feat(SCRUM-19): submit an event request
-          # The scope is required — a pull request nobody can trace to a story
-          # is the thing this check exists to catch. If the team decides some
-          # work legitimately has no story, make the group optional by writing
-          # \(SCRUM-[0-9]+\)? instead.
-          PATTERN: '^(feat|fix|docs|chore|refactor|test|ci|build|perf|style|revert)\(SCRUM-[0-9]+\): .+'
+          # Product and code work must name its story — a pull request nobody
+          # can trace to a story is the thing this check exists to catch.
+          STORY_PATTERN: '^(feat|fix|docs|refactor|test|perf|style|revert)\(SCRUM-[0-9]+\): .+'
+          # Tooling work (pipelines, dependencies, housekeeping) often has no
+          # story, so its scope is optional — but when given, it must be a story
+          # (Dependabot's prefixes in dependabot.yml are unscoped for this reason).
+          #   ci: cache pip downloads
+          #   ci(SCRUM-5): add backend CI pipeline
+          TOOLING_PATTERN: '^(ci|build|chore)(\(SCRUM-[0-9]+\))?: .+'
         run: |
           echo "Title: $TITLE"
-          if ! printf '%s' "$TITLE" | grep -Eq "$PATTERN"; then
-            echo "::error::Title must read like 'feat(SCRUM-19): submit an event request' — one of feat|fix|docs|chore|refactor|test|ci|build|perf|style|revert, then (SCRUM-<id>), then a colon, a space and a summary."
-            exit 1
+          if printf '%s' "$TITLE" | grep -Eq "$STORY_PATTERN"; then
+            exit 0
           fi
+          if printf '%s' "$TITLE" | grep -Eq "$TOOLING_PATTERN"; then
+            exit 0
+          fi
+          echo "::error::Title must read like 'feat(SCRUM-19): submit an event request'. feat|fix|docs|refactor|test|perf|style|revert need (SCRUM-<id>); ci|build|chore may leave it out, e.g. 'ci: cache pip downloads'. Then a colon, a space and a summary."
+          exit 1
