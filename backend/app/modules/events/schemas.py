@@ -172,6 +172,19 @@ class CoordinatorContactSchema(Schema):
     email = fields.Email(dump_only=True)
 
 
+#: What the equipment list says about its event: when it is, so Technical Support know
+#: by when the equipment is needed (SCRUM-37, ADR-0019). Dumped with
+#: :class:`EventRequestSchema`, so the names and formats match the request itself.
+EQUIPMENT_EVENT_FIELDS = (
+    "reference",
+    "name",
+    "proposed_date",
+    "end_date",
+    "start_time",
+    "end_time",
+)
+
+
 class EditEquipmentLineSchema(Schema):
     """Payload for adding (``POST``) or editing (``PATCH``) an equipment line.
 

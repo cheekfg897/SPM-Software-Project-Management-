@@ -11,18 +11,29 @@ from flask import Blueprint, Response, g, jsonify, request
 
 from app.common.decorators import requires_role
 from app.modules.auth.permissions import Role
-from app.modules.events.schemas import CoordinatorContactSchema, EventRequestSchema
+from app.modules.events.schemas import (
+    EQUIPMENT_EVENT_FIELDS,
+    CoordinatorContactSchema,
+    EquipmentLineSchema,
+    EventRequestSchema,
+)
 from app.modules.events.services import (
+    add_equipment_line,
     get_event_record_for_organiser,
+    list_equipment_lines,
     list_event_requests_for_coordinator,
     list_event_requests_for_organiser,
+    remove_equipment_line,
     submit_event_request,
+    update_equipment_line,
 )
 
 bp = Blueprint("events", __name__, url_prefix="/api/events")
 
 _event_request_schema = EventRequestSchema()
 _coordinator_contact_schema = CoordinatorContactSchema()
+_equipment_line_schema = EquipmentLineSchema()
+_equipment_event_schema = EventRequestSchema(only=EQUIPMENT_EVENT_FIELDS)
 
 
 @bp.post("/requests")
@@ -76,3 +87,51 @@ def get_my_request(reference: str) -> tuple[Response, int]:
     else:
         body["coordinator"] = _coordinator_contact_schema.dump(coordinator)
     return jsonify(body), 200
+
+
+# --------------------------------------------------------------------------
+# SCRUM-37 — record what equipment an event needs
+# --------------------------------------------------------------------------
+
+
+@bp.post("/requests/<reference>/equipment")
+@requires_role(Role.EVENT_COORDINATOR)
+def add_equipment(reference: str) -> tuple[Response, int]:
+    """Add an equipment line to a request. Event Coordinators only (SCRUM-37 AC1).
+
+    Returns ``201`` with the new line. Technical Support Staff are notified (AC5).
+    """
+    line = add_equipment_line(reference, request.get_json(silent=True))
+    return jsonify(_equipment_line_schema.dump(line)), 201
+
+
+@bp.get("/requests/<reference>/equipment")
+@requires_role(Role.EVENT_COORDINATOR, Role.TECHNICAL_SUPPORT_STAFF)
+def list_equipment(reference: str) -> tuple[Response, int]:
+    """An event request's equipment lines with their status (SCRUM-37 AC4, ADR-0019).
+
+    The event's date and times come too, so Technical Support know by when the
+    equipment is needed.
+    """
+    event_request, lines = list_equipment_lines(reference)
+    body = {
+        "event": _equipment_event_schema.dump(event_request),
+        "equipment_lines": _equipment_line_schema.dump(lines, many=True),
+    }
+    return jsonify(body), 200
+
+
+@bp.patch("/requests/<reference>/equipment/<int:line_id>")
+@requires_role(Role.EVENT_COORDINATOR)
+def update_equipment(reference: str, line_id: int) -> tuple[Response, int]:
+    """Change the fields sent on an equipment line. Event Coordinators only (AC2)."""
+    line = update_equipment_line(reference, line_id, request.get_json(silent=True))
+    return jsonify(_equipment_line_schema.dump(line)), 200
+
+
+@bp.delete("/requests/<reference>/equipment/<int:line_id>")
+@requires_role(Role.EVENT_COORDINATOR)
+def remove_equipment(reference: str, line_id: int) -> tuple[Response, int]:
+    """Remove an equipment line. Event Coordinators only (SCRUM-37 AC2)."""
+    remove_equipment_line(reference, line_id)
+    return Response(), 204
