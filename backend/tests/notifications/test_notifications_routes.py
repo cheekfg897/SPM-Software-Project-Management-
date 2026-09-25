@@ -1,9 +1,10 @@
 """Unit tests for SCRUM-28 "Receive notifications about my events": the routes.
 
-Every user, whatever their role, reads their own notifications (AC2) and nobody
-else's. The *registered* view functions (``app.view_functions``) are called inside a
-``test_request_context`` against ``db_session``, so the auth decorator, the service's
-query and the response shape are all real (ADR-0015).
+Every user, whatever their role, lists (AC2), counts (AC5) and marks read (AC4) their
+own notifications and nobody else's. The *registered* view functions
+(``app.view_functions``) are called inside a ``test_request_context`` against
+``db_session``, so the auth decorator, the service's query and the response shape are
+all real (ADR-0015).
 """
 
 from __future__ import annotations
@@ -16,7 +17,7 @@ import pytest
 from flask import Flask
 from sqlalchemy.orm import Session
 
-from app.common.errors import AuthenticationError
+from app.common.errors import AuthenticationError, NotFoundError
 from app.modules.auth.models import User
 from app.modules.auth.permissions import ALL_ROLES, Role
 from app.modules.notifications.models import Notification
@@ -24,12 +25,26 @@ from app.modules.notifications.models import Notification
 pytestmark = pytest.mark.scrum_28
 
 Notify = Callable[..., list[Notification]]
+ReloadNotification = Callable[[int], Notification]
 
 #: (endpoint, HTTP method, path, view kwargs)
 Route = tuple[str, str, str, dict[str, int]]
 
 LIST_ROUTE: Route = ("notifications.list_my_notifications", "GET", "/api/notifications", {})
-ROUTES = [LIST_ROUTE]
+UNREAD_COUNT_ROUTE: Route = (
+    "notifications.unread_count",
+    "GET",
+    "/api/notifications/unread-count",
+    {},
+)
+#: Marks notification 1, the first one saved in a test.
+MARK_READ_ROUTE: Route = (
+    "notifications.mark_read",
+    "POST",
+    "/api/notifications/1/read",
+    {"notification_id": 1},
+)
+ROUTES = [LIST_ROUTE, UNREAD_COUNT_ROUTE, MARK_READ_ROUTE]
 ROUTE_IDS = [route[0] for route in ROUTES]
 
 #: The user the tests call the routes as.
@@ -108,3 +123,56 @@ def test_list_route_shows_the_callers_notifications_newest_first_with_every_fiel
             _shown(1, created_at="2026-10-01T09:00:00+08:00"),
         ]
     }
+
+
+# --------------------------------------------------------------------------
+# AC5 — the caller's unread count
+# --------------------------------------------------------------------------
+
+
+def test_unread_count_route_counts_the_callers_unread_notifications(
+    app: Flask, notify: Notify, caller_token: str
+) -> None:
+    notify(CALLER_ID, CALLER_ID, 6)
+
+    response, status = _call(app, UNREAD_COUNT_ROUTE, caller_token)
+
+    assert status == 200
+    assert response.get_json() == {"unread_count": 2}
+
+
+# --------------------------------------------------------------------------
+# AC4 — marking the caller's own notification read
+# --------------------------------------------------------------------------
+
+
+def test_mark_read_route_marks_the_callers_notification_and_returns_it(
+    app: Flask,
+    notify: Notify,
+    reload_notification: ReloadNotification,
+    caller_token: str,
+) -> None:
+    notify(CALLER_ID)
+
+    response, status = _call(app, MARK_READ_ROUTE, caller_token)
+
+    assert status == 200
+    body = response.get_json()
+    assert body["read_at"] is not None
+    assert body == _shown(1, created_at="2026-10-01T09:00:00+08:00", read_at=body["read_at"])
+    assert reload_notification(1).read_at is not None
+
+
+def test_mark_read_route_hides_another_users_notification(
+    app: Flask,
+    notify: Notify,
+    reload_notification: ReloadNotification,
+    caller_token: str,
+) -> None:
+    notify(6)
+
+    with pytest.raises(NotFoundError) as exc_info:
+        _call(app, MARK_READ_ROUTE, caller_token)
+
+    assert exc_info.value.status_code == 404
+    assert reload_notification(1).read_at is None
