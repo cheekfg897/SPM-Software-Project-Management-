@@ -1,7 +1,4 @@
-"""Unit tests for Story 2 — log in (``authenticate_user``).
-
-# TODO: replace marker/story name with the actual Jira story ID once assigned
-"""
+"""Unit tests for SCRUM-6 — log in (``authenticate_user``)."""
 
 from __future__ import annotations
 
@@ -21,7 +18,7 @@ from app.modules.auth.services import (
     normalise_email,
 )
 
-pytestmark = pytest.mark.story_login
+pytestmark = pytest.mark.scrum_6
 
 
 # --------------------------------------------------------------------------

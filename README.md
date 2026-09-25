@@ -120,10 +120,10 @@ pytest --cov=app --cov-report=term-missing
 Run a single story's tests via its marker:
 
 ```bash
-pytest -m story_create_account
-pytest -m story_login
-pytest -m story_permissions
-pytest -m scrum_19
+pytest -m scrum_65   # create an account
+pytest -m scrum_6    # log in
+pytest -m scrum_21   # enforce permissions
+pytest -m scrum_19   # submit an event request
 ```
 
 ## Database migrations

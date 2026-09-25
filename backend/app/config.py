@@ -51,9 +51,9 @@ class BaseConfig:
     JWT_TOKEN_LOCATION: ClassVar[list[str]] = ["headers"]
     JWT_HEADER_NAME: str = "Authorization"
     JWT_HEADER_TYPE: str = "Bearer"
-    # TODO: refresh tokens are a future story (see STORIES.md, Story 2).
+    # TODO: refresh tokens are a future story (see STORIES.md, SCRUM-6).
 
-    # Password policy (Story 1). Kept in config so the team can tune it
+    # Password policy (SCRUM-65). Kept in config so the team can tune it
     # without touching service code.
     PASSWORD_MIN_LENGTH: int = int(os.getenv("PASSWORD_MIN_LENGTH", "8"))
 

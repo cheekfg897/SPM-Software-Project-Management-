@@ -15,7 +15,7 @@ from marshmallow import Schema, ValidationError as MarshmallowValidationError, f
 
 from app.modules.auth.permissions import Role
 
-# Password policy (Story 1). See STORIES.md for the stated rule.
+# Password policy (SCRUM-65). See STORIES.md for the stated rule.
 DEFAULT_PASSWORD_MIN_LENGTH = 8
 _HAS_LETTER = re.compile(r"[A-Za-z]")
 _HAS_DIGIT = re.compile(r"\d")
