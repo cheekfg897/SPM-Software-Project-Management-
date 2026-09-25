@@ -1,12 +1,13 @@
 name: PR title
 
-# Its own workflow rather than a job in ci.yml: that file is paths-filtered,
-# and traceability should be checked on every pull request — including one
-# that only touches the frontend or the docs.
+# Its own workflow rather than a job in ci.yml: a title is fixed by editing
+# it, so this has to re-run on `edited`, and nothing else in the pipeline
+# should. It runs on every pull request, whatever branch it targets, so a
+# pull request stacked on another branch is checked as soon as it is opened.
+# `synchronize` stays: a required check needs a result for every new head.
 on:
   pull_request:
     types: [opened, edited, reopened, synchronize]
-    branches: [main]
 
 permissions:
   contents: read

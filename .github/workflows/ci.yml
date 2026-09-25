@@ -1,31 +1,19 @@
 name: CI
 
-# Backend code, the compose file and this pipeline are the only things these
-# jobs can be affected by, so a commit touching nothing else does not start a
-# run.
+# Every pull request, whatever branch it targets, and every push to main.
 #
-# The paths list is repeated under both triggers because GitHub Actions does
-# not support YAML anchors; keep the two copies in step.
-#
-# Caveat once branch protection is turned on: a workflow skipped by a paths
-# filter never reports a status at all, so requiring "CI" would leave a
-# frontend-only pull request waiting forever. Require the JOBS instead —
-# "Lint + static checks" and "Backend — migrate + unit tests". The PR title
-# check lives in pr-title.yml precisely so it runs on every pull request,
-# filtered or not.
+# No branch filter under pull_request: a pull request stacked on another
+# branch gets its checks straight away, not only once it is retargeted to
+# main. No paths filter either: the jobs below are meant to be required
+# status checks, and a paths filter skips the whole workflow on a docs-only
+# pull request, so its checks never report and the merge is blocked for good.
+# A docs-only run costs a few minutes; a stuck pull request costs an admin.
+# The PR title check lives in pr-title.yml because it has to re-run when the
+# title is edited, and nothing else here should.
 on:
   push:
     branches: [main]
-    paths:
-      - "backend/**"
-      - "docker-compose.yml"
-      - ".github/workflows/ci.yml"
   pull_request:
-    branches: [main]
-    paths:
-      - "backend/**"
-      - "docker-compose.yml"
-      - ".github/workflows/ci.yml"
 
   # Lets anyone re-run the pipeline from the Actions tab, on any branch.
   workflow_dispatch:
