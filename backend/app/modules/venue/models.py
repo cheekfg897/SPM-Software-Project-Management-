@@ -112,6 +112,15 @@ class CalendarEntryKind(str, enum.Enum):
     BLOCK = "block"
 
 
+class RequirementKind(str, enum.Enum):
+    """What an event asks of a venue, as the suitability check names it (SCRUM-36)."""
+
+    CAPACITY = "capacity"
+    FACILITIES = "facilities"
+    ACCESSIBILITY = "accessibility"
+    LAYOUT = "layout"
+
+
 class Venue(db.Model):  # type: ignore[name-defined]
     """A ConnectSphere venue (SCRUM-25)."""
 

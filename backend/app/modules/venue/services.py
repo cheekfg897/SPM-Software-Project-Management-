@@ -24,6 +24,7 @@ from app.modules.venue.models import (
     Booking,
     BookingStatus,
     CalendarEntryKind,
+    RequirementKind,
     Venue,
     VenueBlock,
     VenueOpeningPeriod,
@@ -310,6 +311,43 @@ def get_venue_calendar(
 
 
 @dataclass(frozen=True)
+class UnmetRequirement:
+    """One requirement a venue fails, and why (SCRUM-36)."""
+
+    requirement: RequirementKind
+    message: str
+
+
+def _missing_items(required: list[str], offered: list[str]) -> list[str]:
+    """The required items the venue doesn't offer, in the order they were asked for."""
+    missing: list[str] = []
+    for item in required:
+        if item not in offered:
+            missing.append(item)
+    return missing
+
+
+def _unmet_requirements(venue: Venue, data: Mapping[str, Any]) -> list[UnmetRequirement]:
+    """Every facility, accessibility or layout requirement in ``data`` the venue fails.
+
+    Search leaves out a venue that fails any (SCRUM-35 AC1). Items arrive trimmed and
+    lower-cased from the schema, as the venue's stored items are.
+    """
+    unmet: list[UnmetRequirement] = []
+    for item in _missing_items(data["required_facilities"], venue.facilities_list()):
+        message = f"The venue does not offer {item}."
+        unmet.append(UnmetRequirement(RequirementKind.FACILITIES, message))
+    for item in _missing_items(data["required_accessibility"], venue.accessibility_list()):
+        message = f"The venue does not offer {item}."
+        unmet.append(UnmetRequirement(RequirementKind.ACCESSIBILITY, message))
+    layout = data["required_layout"]
+    if layout is not None and layout not in venue.layouts_list():
+        message = f"The venue does not support the {layout} layout."
+        unmet.append(UnmetRequirement(RequirementKind.LAYOUT, message))
+    return unmet
+
+
+@dataclass(frozen=True)
 class VenueMatch:
     """A venue that meets a search, and what it offers of each requested requirement."""
 
@@ -320,19 +358,13 @@ class VenueMatch:
 
 
 def _match_requirements(venue: Venue, data: Mapping[str, Any]) -> VenueMatch | None:
-    """What the venue offers of each requested requirement; ``None`` if it lacks any."""
-    facilities = [item for item in data["required_facilities"] if item in venue.facilities_list()]
-    accessibility = [
-        item for item in data["required_accessibility"] if item in venue.accessibility_list()
-    ]
-    if len(facilities) < len(data["required_facilities"]):
+    """The venue and what it offers of each requirement; ``None`` if it lacks any."""
+    if _unmet_requirements(venue, data):
         return None
-    if len(accessibility) < len(data["required_accessibility"]):
-        return None
-    layout = data["required_layout"]
-    if layout is not None and layout not in venue.layouts_list():
-        return None
-    return VenueMatch(venue, facilities, accessibility, layout)
+    # It offers everything asked for, so what it offers is exactly what was requested.
+    return VenueMatch(
+        venue, data["required_facilities"], data["required_accessibility"], data["required_layout"]
+    )
 
 
 def _booking_clash(venue: Venue, start: datetime, end: datetime) -> ColumnElement[bool]:
