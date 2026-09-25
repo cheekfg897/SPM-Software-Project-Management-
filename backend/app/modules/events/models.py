@@ -61,10 +61,17 @@ class EventRequestStatus(str, enum.Enum):
 class EventHistoryKind(str, enum.Enum):
     """What an event history entry records (SCRUM-30, ADR-0018).
 
-    Later stories add kinds: SCRUM-87 reassignment, SCRUM-31 decisions, SCRUM-33 edits.
+    Later stories add kinds: SCRUM-31 decisions, SCRUM-33 edits.
     """
 
+    #: The system assigned a coordinator to a new request; ``details`` holds
+    #: ``coordinator_id`` and ``actor_id`` is NULL (SCRUM-30).
     COORDINATOR_ASSIGNED = "coordinator_assigned"
+    #: A user moved the request to another coordinator; ``details`` holds
+    #: ``previous_coordinator_id``, ``previous_coordinator_name``, ``coordinator_id``
+    #: and ``coordinator_name``, the names as they were then, and ``actor_id`` is who
+    #: did it (SCRUM-87, ADR-0021).
+    COORDINATOR_REASSIGNED = "coordinator_reassigned"
 
 
 class EquipmentLineStatus(str, enum.Enum):

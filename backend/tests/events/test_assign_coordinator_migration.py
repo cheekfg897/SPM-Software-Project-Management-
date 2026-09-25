@@ -36,7 +36,8 @@ def test_migration_and_models_agree_on_the_kind_values(load_migration: LoadMigra
     # Migration 0011 adds a kind of its own, so the model has these and more.
     assert added.issubset({kind.value for kind in NotificationKind})
     assert previous.isdisjoint(added)
-    assert set(migration.HISTORY_KIND_VALUES) == {kind.value for kind in EventHistoryKind}
+    # Migration 0012 adds a history kind too, so the model has these and more.
+    assert set(migration.HISTORY_KIND_VALUES).issubset({kind.value for kind in EventHistoryKind})
 
 
 def test_upgrade_adds_the_kind_outside_the_transaction_then_the_column_and_the_table(
