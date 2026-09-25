@@ -331,12 +331,21 @@ def _list_event_requests_newest_first(
     return list(session.scalars(stmt))
 
 
+def _visible_to_organiser(organiser_id: int | str) -> ColumnElement[bool]:
+    """The event requests an organiser may see: the ones they submitted (ADR-0012).
+
+    The one place an organiser's scope is decided, so their list and the detail of
+    one request can't disagree about what is theirs.
+    """
+    return EventRequest.organiser_id == int(organiser_id)
+
+
 def list_event_requests_for_organiser(
     organiser_id: int | str, *, session: Session | None = None
 ) -> list[EventRequest]:
     """Return the organiser's own event requests, newest first (SCRUM-19 AC5)."""
     return _list_event_requests_newest_first(
-        EventRequest.organiser_id == int(organiser_id), resolve_session(session)
+        _visible_to_organiser(organiser_id), resolve_session(session)
     )
 
 
@@ -354,16 +363,22 @@ def _normalise_reference(reference: str) -> str:
     return reference.strip().upper()
 
 
-def _event_request_by_reference(reference: str, session: Session) -> EventRequest:
-    """Any event request by its reference, whoever it belongs to.
+def _event_request_by_reference(
+    reference: str, session: Session, *, belongs_to: ColumnElement[bool] | None = None
+) -> EventRequest:
+    """An event request by its reference, among those matching ``belongs_to`` if given.
 
-    Case and surrounding spaces are ignored (ADR-0004). Callers that serve one
-    user check the request is theirs and answer "not yours" with the same 404.
+    Case and surrounding spaces are ignored (ADR-0004). A request outside
+    ``belongs_to`` is not found, the same 404 as a reference that doesn't exist, so
+    "not yours" can't be told apart from "no such request" (ADR-0012). Callers that
+    check ownership afterwards answer "not yours" with that same 404 too.
 
     Raises:
-        NotFoundError: 404 — no such request.
+        NotFoundError: 404 — no such request, or none matching ``belongs_to``.
     """
     stmt = select(EventRequest).where(EventRequest.reference == _normalise_reference(reference))
+    if belongs_to is not None:
+        stmt = stmt.where(belongs_to)
     event_request = session.scalar(stmt)
     if event_request is None:
         raise NotFoundError(EVENT_REQUEST_NOT_FOUND_MESSAGE)
@@ -386,10 +401,9 @@ def get_event_request_for_organiser(
     Raises:
         NotFoundError: 404 — no such request among the caller's own.
     """
-    event_request = _event_request_by_reference(reference, resolve_session(session))
-    if event_request.organiser_id != int(organiser_id):
-        raise NotFoundError(EVENT_REQUEST_NOT_FOUND_MESSAGE)
-    return event_request
+    return _event_request_by_reference(
+        reference, resolve_session(session), belongs_to=_visible_to_organiser(organiser_id)
+    )
 
 
 def _coordinator_contact(
