@@ -78,7 +78,7 @@ def make_user() -> Callable[..., User]:
         password: str = "Password123",
         full_name: str = "Alice Example",
         role: Role | str = Role.ATTENDEE,
-        organisation: str | None = "Example Org",
+        organisation_id: int | None = None,
         user_id: int | None = None,
     ) -> User:
         counter["id"] += 1
@@ -86,7 +86,7 @@ def make_user() -> Callable[..., User]:
             email=email,
             full_name=full_name,
             role=Role(role),
-            organisation=organisation,
+            organisation_id=organisation_id,
         )
         user.id = user_id if user_id is not None else counter["id"]
         user.set_password(password)
@@ -97,13 +97,16 @@ def make_user() -> Callable[..., User]:
 
 @pytest.fixture()
 def valid_registration_payload() -> dict[str, Any]:
-    """A registration body that satisfies every rule in ``RegisterSchema``."""
+    """A registration body that satisfies every rule in ``RegisterSchema``.
+
+    An attendee, because an Event Organiser also needs an existing client organisation
+    (SCRUM-66); ``tests/auth/test_registration_organisation.py`` covers that path.
+    """
     return {
         "email": "New.User@Example.com",
         "password": "Str0ngPass",
         "full_name": "New User",
-        "role": Role.EVENT_ORGANISER.value,
-        "organisation": "Acme Events",
+        "role": Role.ATTENDEE.value,
     }
 
 
@@ -132,6 +135,25 @@ def valid_organisation_payload() -> dict[str, Any]:
         "contact_name": "Alice Tan",
         "contact_email": "alice@acme.example",
     }
+
+
+@pytest.fixture()
+def organiser_registration_payload(
+    valid_registration_payload: dict[str, Any],
+) -> Callable[[Any], dict[str, Any]]:
+    """Factory for an Event Organiser's registration body naming ``organisation_id``.
+
+    Takes any value, so tests can send ids of the wrong type too (SCRUM-66).
+    """
+
+    def _payload(organisation_id: Any) -> dict[str, Any]:
+        return {
+            **valid_registration_payload,
+            "role": Role.EVENT_ORGANISER.value,
+            "organisation_id": organisation_id,
+        }
+
+    return _payload
 
 
 @pytest.fixture()

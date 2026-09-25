@@ -12,7 +12,7 @@ from werkzeug.security import check_password_hash
 
 from app.common.errors import ConflictError, ValidationError
 from app.modules.auth.models import User
-from app.modules.auth.permissions import Role
+from app.modules.auth.permissions import ALL_ROLES, Role
 from app.modules.auth.schemas import UserSchema
 from app.modules.auth.services import register_user
 
@@ -32,8 +32,8 @@ def test_valid_input_creates_user_with_hashed_password(
     assert isinstance(user, User)
     assert user.email == "new.user@example.com"  # normalised
     assert user.full_name == "New User"
-    assert user.role is Role.EVENT_ORGANISER
-    assert user.organisation == "Acme Events"
+    assert user.role is Role.ATTENDEE
+    assert user.organisation_id is None
 
     # Hashed, not plaintext, and verifiable.
     assert user.password_hash != valid_registration_payload["password"]
@@ -66,29 +66,17 @@ def test_public_user_shape_shows_the_role_as_its_value(make_user: Callable[..., 
     assert UserSchema().dump(user)["role"] == "event_organiser"
 
 
-def test_organisation_is_optional(
-    mock_session: MagicMock, valid_registration_payload: dict[str, Any]
-) -> None:
-    valid_registration_payload.pop("organisation")
-    user = register_user(valid_registration_payload, session=mock_session)
-    assert user.organisation is None
-
-
-def test_blank_organisation_is_stored_as_null(
-    mock_session: MagicMock, valid_registration_payload: dict[str, Any]
-) -> None:
-    valid_registration_payload["organisation"] = ""
-    user = register_user(valid_registration_payload, session=mock_session)
-    assert user.organisation is None
-
-
-@pytest.mark.parametrize("role", Role.values())
-def test_every_role_can_register(
+@pytest.mark.parametrize(
+    "role", sorted(role.value for role in ALL_ROLES if role is not Role.EVENT_ORGANISER)
+)
+def test_every_role_but_organiser_registers_without_an_organisation(
     role: str, mock_session: MagicMock, valid_registration_payload: dict[str, Any]
 ) -> None:
+    """Event Organisers must name a client organisation (SCRUM-66, ADR-0013)."""
     valid_registration_payload["role"] = role
     user = register_user(valid_registration_payload, session=mock_session)
     assert user.role.value == role
+    assert user.organisation_id is None
 
 
 # --------------------------------------------------------------------------
