@@ -40,6 +40,10 @@ LIST_MAX_ITEMS = (LIST_COLUMN_LENGTH + len(LIST_SEPARATOR)) // (
     LIST_ITEM_MAX_LENGTH + len(LIST_SEPARATOR)
 )
 
+#: Longest reason a block may carry (SCRUM-34, ADR-0016). The column is ``Text``, so
+#: this is an API rule rather than a column length: a reason is a short note.
+BLOCK_REASON_MAX_LENGTH = 500
+
 
 def join_list_field(items: list[str]) -> str:
     """Pack a list of values into one of the multi-value string columns."""
@@ -244,10 +248,10 @@ class Booking(db.Model):  # type: ignore[name-defined]
 
 
 class VenueBlock(db.Model):  # type: ignore[name-defined]
-    """A period a venue can't be used, such as maintenance (SCRUM-26).
+    """A period a venue can't be used, such as maintenance.
 
-    The calendar shows blocks; creating and removing them is SCRUM-34. Times are
-    stored in UTC (ADR-0009).
+    The calendar shows blocks (SCRUM-26); Venue Staff create and remove them
+    (SCRUM-34, ADR-0016). Times are stored in UTC (ADR-0009).
     """
 
     __tablename__ = "venue_blocks"
