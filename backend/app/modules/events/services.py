@@ -16,16 +16,17 @@ from __future__ import annotations
 
 import logging
 import secrets
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import Row, func, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import ColumnElement
 
+from app.common.clock import local_today
 from app.common.database import resolve_session
 from app.common.errors import AppError, ConflictError, NotFoundError, ValidationError
 from app.common.validation import load_or_raise
@@ -856,3 +857,94 @@ def reassign_coordinator(
         [coordinator_id], event_request, NotificationKind.COORDINATOR_ASSIGNED, sess
     )
     return event_request, coordinator
+
+
+# --------------------------------------------------------------------------
+# SCRUM-38 — the equipment requests awaiting Technical Support
+# --------------------------------------------------------------------------
+
+#: Statuses of events that won't run, so their equipment no longer needs arranging
+#: (SCRUM-38 AC1, ADR-0022).
+EQUIPMENT_NOT_NEEDED_STATUSES: frozenset[EventRequestStatus] = frozenset(
+    {EventRequestStatus.COMPLETED, EventRequestStatus.CANCELLED, EventRequestStatus.REJECTED}
+)
+
+
+@dataclass(frozen=True)
+class EquipmentAwaitingAction:
+    """One event's equipment still to arrange, and how long is left (SCRUM-38 AC2).
+
+    ``equipment_lines`` holds only the lines still ``requested``, in the order added.
+    ``days_remaining`` counts whole days from today to the event's date: 0 on the day.
+    """
+
+    event_request: EventRequest
+    equipment_lines: list[EventEquipmentLine]
+    days_remaining: int
+
+
+def _group_lines_by_event(
+    rows: Iterable[Row[tuple[EventRequest, EventEquipmentLine]]], today: date
+) -> list[EquipmentAwaitingAction]:
+    """One entry per event, in the order the events first appear in ``rows``."""
+    events: list[EventRequest] = []
+    lines_by_event: dict[int, list[EventEquipmentLine]] = {}
+    for event_request, line in rows:
+        if event_request.id not in lines_by_event:
+            events.append(event_request)
+            lines_by_event[event_request.id] = []
+        lines_by_event[event_request.id].append(line)
+
+    awaiting = []
+    for event_request in events:
+        days_remaining = (event_request.proposed_date - today).days
+        awaiting.append(
+            EquipmentAwaitingAction(
+                event_request=event_request,
+                equipment_lines=lines_by_event[event_request.id],
+                days_remaining=days_remaining,
+            )
+        )
+    return awaiting
+
+
+def list_equipment_requests_awaiting_action(
+    *, session: Session | None = None, today: date | None = None
+) -> list[EquipmentAwaitingAction]:
+    """The equipment Technical Support still have to arrange, soonest event first.
+
+    SCRUM-38 AC1-AC4, ADR-0022. An event is listed while at least one of its lines is
+    still ``requested``, its proposed date is today or later, and it isn't completed,
+    cancelled or rejected. Each entry holds only the lines still ``requested``, so an
+    event drops off once none is. Events are ordered by date, then start time, then
+    as submitted. One list for all Technical Support Staff.
+
+    Args:
+        session: Database session; defaults to ``db.session``.
+        today: The business date "not yet taken place" and the days remaining are
+            measured from; defaults to today in the business timezone (ADR-0001).
+
+    Returns:
+        One :class:`EquipmentAwaitingAction` per event.
+    """
+    sess = resolve_session(session)
+    if today is None:
+        today = local_today()
+    # One query for the lines themselves: the event's ``equipment_lines`` would load
+    # the lines already arranged too, and query once per event.
+    stmt = (
+        select(EventRequest, EventEquipmentLine)
+        .join(EventEquipmentLine, EventEquipmentLine.event_request_id == EventRequest.id)
+        .where(
+            EventEquipmentLine.status == EquipmentLineStatus.REQUESTED,
+            EventRequest.proposed_date >= today,
+            EventRequest.status.not_in(EQUIPMENT_NOT_NEEDED_STATUSES),
+        )
+        .order_by(
+            EventRequest.proposed_date,
+            EventRequest.start_time,
+            EventRequest.id,
+            EventEquipmentLine.id,
+        )
+    )
+    return _group_lines_by_event(sess.execute(stmt), today)

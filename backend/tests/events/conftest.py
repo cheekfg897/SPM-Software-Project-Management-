@@ -77,8 +77,9 @@ def make_event_request() -> Callable[..., EventRequest]:
 
     Add one to ``db_session`` to persist it. By default it is organiser 7's, filed
     under client organisation 3 as ``saved_users`` links them (SCRUM-66 AC4).
-    Everything but the five parameters is fixed; tests about the other fields go
-    through ``submit_event_request`` with ``valid_event_request_payload``.
+    Everything but the parameters is fixed; tests about the other fields go through
+    ``submit_event_request`` with ``valid_event_request_payload``. The event ends on
+    the day it starts.
     """
 
     def _make(
@@ -88,6 +89,8 @@ def make_event_request() -> Callable[..., EventRequest]:
         organiser_id: int = 7,
         organisation_id: int | None = 3,
         coordinator_id: int | None = None,
+        proposed_date: date = date(2026, 10, 15),
+        start_time: time = time(9, 0),
     ) -> EventRequest:
         return EventRequest(
             reference=reference,
@@ -96,9 +99,9 @@ def make_event_request() -> Callable[..., EventRequest]:
             organisation_id=organisation_id,
             coordinator_id=coordinator_id,
             name="Partner Summit",
-            proposed_date=date(2026, 10, 15),
-            end_date=date(2026, 10, 15),
-            start_time=time(9, 0),
+            proposed_date=proposed_date,
+            end_date=proposed_date,
+            start_time=start_time,
             end_time=time(17, 0),
             expected_attendance=250,
             registration_required=False,
