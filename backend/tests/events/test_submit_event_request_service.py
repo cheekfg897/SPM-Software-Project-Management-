@@ -247,14 +247,15 @@ def test_list_is_empty_when_the_organiser_has_no_requests(mock_session: MagicMoc
     assert list_event_requests_for_organiser("7", session=mock_session) == []
 
 
-def test_list_only_queries_the_callers_requests_newest_first(mock_session: MagicMock) -> None:
+def test_list_queries_the_organisations_requests_newest_first(mock_session: MagicMock) -> None:
     mock_session.scalars.return_value = []
 
     list_event_requests_for_organiser("7", session=mock_session)
 
     stmt = mock_session.scalars.call_args.args[0]
     compiled = str(stmt.compile(compile_kwargs={"literal_binds": True}))
-    assert "WHERE event_requests.organiser_id = 7" in compiled
+    # Organiser 7's organisation, from their account (SCRUM-7 AC1).
+    assert "WHERE event_requests.organisation_id = 3" in compiled
     assert "ORDER BY event_requests.created_at DESC, event_requests.id DESC" in compiled
 
 

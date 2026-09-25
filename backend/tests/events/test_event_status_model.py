@@ -3,9 +3,10 @@
 AC1: an event request holds exactly one of the story's seven statuses, and each one
 survives a trip through the database. AC2: the status is shown by its value, and the
 organiser who submitted a request can open it to see its current status. The other
-four viewers in AC2 wait on later stories (ADR-0012). Someone else's request looks
-exactly like one that doesn't exist, and a typed reference ignores case and spaces
-(ADR-0004).
+four viewers in AC2 wait on later stories (ADR-0012). An unknown reference is a 404,
+and a typed reference ignores case and spaces (ADR-0004). Which organisers may open
+a request, and the 404 for everyone else, are SCRUM-7's
+(``test_organisation_event_visibility.py``).
 """
 
 from __future__ import annotations
@@ -116,18 +117,13 @@ def test_organiser_sees_the_current_status_of_their_own_request(
     assert found.status is EventRequestStatus.UNDER_REVIEW
 
 
-@pytest.mark.parametrize(
-    ("caller_id", "reference"),
-    [("8", REFERENCE), ("7", "EVR-ZZZZZZZZ")],
-    ids=["someone_elses", "unknown"],
-)
-def test_a_request_that_is_not_the_callers_is_not_found(
-    db_session: Session, make_event_request: MakeEventRequest, caller_id: str, reference: str
+def test_an_unknown_reference_is_not_found(
+    db_session: Session, saved_users: list[User], make_event_request: MakeEventRequest
 ) -> None:
     _saved(db_session, make_event_request(reference=REFERENCE, organiser_id=7))
 
     with pytest.raises(NotFoundError) as exc_info:
-        get_event_request_for_organiser(caller_id, reference, session=db_session)
+        get_event_request_for_organiser("7", "EVR-ZZZZZZZZ", session=db_session)
 
     assert exc_info.value.status_code == 404
     assert exc_info.value.message == "Event request not found."
@@ -143,7 +139,7 @@ def test_reference_lookup_ignores_case_and_surrounding_spaces(
 
 
 # --------------------------------------------------------------------------
-# Detail route — Event Organisers only, and always the caller's own request
+# Detail route — Event Organisers only, identified by their token
 # --------------------------------------------------------------------------
 
 
