@@ -487,3 +487,8 @@ it. A reviewer can read them one at a time, and any one can be reverted or bisec
   refactors → features → docs.
 - **Message:** a Conventional Commit subject with the story, as in `CLAUDE.md` ("Git and
   PRs"). The body says *why*, and anything a reviewer should look at closely.
+- **Merge with *Rebase and merge*,** never *Squash and merge*. Squashing collapses the
+  layers into one commit on `main`, so they can no longer be reviewed, reverted or bisected
+  one at a time. (A *merge commit* also keeps them, but adds noise.)
+- **Answering review:** fold each fix into the commit it belongs to and force-push with
+  `--force-with-lease`, rather than adding "address review" commits on top.
