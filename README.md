@@ -14,7 +14,8 @@ backend/            Flask application (see below)
     extensions.py   db, migrate, jwt instances
     common/         cross-cutting: error handlers, requires_auth / requires_role
     modules/auth/   models, routes, schemas, services, permissions
-    modules/events/ event requests (SCRUM-19), event status model (SCRUM-22)
+    modules/events/ event requests (SCRUM-19), event status model (SCRUM-22), filed under the organiser's organisation (SCRUM-66)
+    modules/organisations/ client organisations that Event Organisers belong to (SCRUM-66)
     modules/venue/  venue catalogue (SCRUM-25), availability calendar (SCRUM-26), search (SCRUM-35), setup/turnaround (SCRUM-67)
   tests/            unit tests (pytest), one marker per story
   migrations/       Alembic migrations (Flask-Migrate)
@@ -106,6 +107,8 @@ curl http://localhost:5000/api/auth/internal-only -H "Authorization: Bearer <tok
 | `POST /api/events/requests`    | `event_organiser` — submit an event request                     |
 | `GET  /api/events/requests`    | `event_organiser` — list your own event requests                |
 | `GET  /api/events/requests/<reference>` | `event_organiser` — one of your own event requests, with its current status (`404` if it isn't yours) |
+| `POST /api/organisations`      | internal roles — record a client organisation                   |
+| `GET  /api/organisations`      | internal roles — list client organisations, by name             |
 | `POST /api/venues`             | `venue_staff` — add a venue                                     |
 | `GET  /api/venues`             | any authenticated user — list active venues, by name            |
 | `GET  /api/venues/<id>`        | any authenticated user — one venue, active or not               |
@@ -118,6 +121,8 @@ curl http://localhost:5000/api/auth/internal-only -H "Authorization: Bearer <tok
 Roles: `event_organiser`, `attendee`, `event_coordinator`, `venue_staff`, `technical_support_staff`.
 
 Password policy: at least 8 characters, with at least one letter and one digit.
+
+An `event_organiser` registers with the `organisation_id` of an existing client organisation, which an internal user records first; every other role must leave it out ([ADR-0013](docs/adr/0013-client-organisations-recorded-by-internal-users.md)).
 
 All errors share one shape: `{"error": "<code>", "message": "<text>", "details": {...}}` (`details` only for validation errors).
 
@@ -144,6 +149,7 @@ pytest -m scrum_25   # update venue catalogue
 pytest -m scrum_26   # view a venue's availability calendar
 pytest -m scrum_35   # search and filter venues
 pytest -m scrum_67   # setup and turnaround time
+pytest -m scrum_66   # client organisations
 ```
 
 ## Database migrations
