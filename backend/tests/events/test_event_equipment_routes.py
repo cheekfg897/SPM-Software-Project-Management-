@@ -3,9 +3,12 @@
 Event Coordinators add, edit and remove an event's equipment lines (AC1, AC2);
 coordinators and Technical Support Staff read them, with the event's date and times
 so Technical Support know by when it is needed, and the organiser sees them on
-their own event record (AC4, ADR-0019). The *registered* view functions are called
-inside a request context, so the real decorators run. The services are replaced
-with mocks: a refused request must be stopped before any service call happens.
+their own event record (AC4, ADR-0019). Each route passes the caller's id on, so the
+services can limit a coordinator to the events assigned to them (ADR-0019).
+
+The *registered* view functions are called inside a request context, so the real
+decorators run. The services are replaced with mocks: a refused request must be
+stopped before any service call happens.
 """
 
 from __future__ import annotations
@@ -31,6 +34,8 @@ CallRoute = Callable[..., Any]
 ReplaceServices = Callable[[ModuleType, dict[str, Any]], dict[str, MagicMock]]
 TokenFor = Callable[..., str]
 
+#: The user id ``token_for`` puts in a token minted for a role alone.
+CALLER_ID = "999"
 REFERENCE = "EVR-AAAAAAAA"
 LINES_PATH = f"/api/events/requests/{REFERENCE}/equipment"
 LINE_PATH = f"{LINES_PATH}/7"
@@ -196,7 +201,7 @@ def test_the_add_route_returns_the_new_line(
 
     assert status == 201
     assert response.get_json() == SHOWN
-    mock_services[ADD.service].assert_called_once_with(REFERENCE, {})
+    mock_services[ADD.service].assert_called_once_with(CALLER_ID, REFERENCE, {})
 
 
 def test_the_edit_route_returns_the_changed_line(
@@ -206,7 +211,7 @@ def test_the_edit_route_returns_the_changed_line(
 
     assert status == 200
     assert response.get_json() == SHOWN
-    mock_services[EDIT.service].assert_called_once_with(REFERENCE, 7, {})
+    mock_services[EDIT.service].assert_called_once_with(CALLER_ID, REFERENCE, 7, {})
 
 
 def test_the_remove_route_returns_no_content(
@@ -216,7 +221,7 @@ def test_the_remove_route_returns_no_content(
 
     assert status == 204
     assert response.get_data() == b""
-    mock_services[REMOVE.service].assert_called_once_with(REFERENCE, 7)
+    mock_services[REMOVE.service].assert_called_once_with(CALLER_ID, REFERENCE, 7)
 
 
 # --------------------------------------------------------------------------
@@ -235,7 +240,7 @@ def test_the_list_route_shows_the_lines_and_when_the_event_is(
 
     assert status == 200
     assert response.get_json() == {"event": SHOWN_EVENT, "equipment_lines": [SHOWN]}
-    mock_services[LIST.service].assert_called_once_with(REFERENCE)
+    mock_services[LIST.service].assert_called_once_with(CALLER_ID, REFERENCE, viewer_role=role)
 
 
 def test_the_organisers_detail_route_shows_the_equipment_lines(

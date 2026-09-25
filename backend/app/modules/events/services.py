@@ -433,10 +433,9 @@ class RequestNotAwaitingReviewError(AppError):
 
 
 def _event_request_by_reference(reference: str, session: Session) -> EventRequest:
-    """Any event request by its reference, for internal staff (SCRUM-37, ADR-0019).
+    """Any event request by its reference, as Technical Support see it (ADR-0019).
 
-    Every Event Coordinator may record equipment on any request (ADR-0019). Case and
-    surrounding spaces are ignored (ADR-0004).
+    Case and surrounding spaces are ignored (ADR-0004).
 
     Raises:
         NotFoundError: 404 — no such request.
@@ -448,14 +447,33 @@ def _event_request_by_reference(reference: str, session: Session) -> EventReques
     return event_request
 
 
-def _event_request_awaiting_review(reference: str, session: Session) -> EventRequest:
-    """The request, if its equipment may still change (SCRUM-37 AC2).
+def _event_request_assigned_to(
+    coordinator_id: int | str, reference: str, session: Session
+) -> EventRequest:
+    """The request, if ``coordinator_id`` is its assigned coordinator (ADR-0019).
+
+    Another coordinator's request, or an unassigned one, gets the same 404 as a
+    reference that doesn't exist, as an organiser's "not yours" does (ADR-0012).
 
     Raises:
-        NotFoundError: 404 — no such request.
-        RequestNotAwaitingReviewError: 409 — the request is no longer awaiting review.
+        NotFoundError: 404 — no such request among the coordinator's own.
     """
     event_request = _event_request_by_reference(reference, session)
+    if event_request.coordinator_id != int(coordinator_id):
+        raise NotFoundError("Event request not found.")
+    return event_request
+
+
+def _event_request_awaiting_review(
+    coordinator_id: int | str, reference: str, session: Session
+) -> EventRequest:
+    """The coordinator's request, if its equipment may still change (SCRUM-37 AC2).
+
+    Raises:
+        NotFoundError: 404 — no such request among the coordinator's own.
+        RequestNotAwaitingReviewError: 409 — the request is no longer awaiting review.
+    """
+    event_request = _event_request_assigned_to(coordinator_id, reference, session)
     if event_request.status not in AWAITING_REVIEW_STATUSES:
         raise RequestNotAwaitingReviewError(NOT_AWAITING_REVIEW_MESSAGE)
     return event_request
@@ -501,14 +519,20 @@ def _line_of_event(
 
 
 def add_equipment_line(
-    reference: str, payload: Mapping[str, Any] | None, *, session: Session | None = None
+    coordinator_id: int | str,
+    reference: str,
+    payload: Mapping[str, Any] | None,
+    *,
+    session: Session | None = None,
 ) -> EventEquipmentLine:
     """Record one kind of equipment an event needs (SCRUM-37 AC1, AC3).
 
-    The line is saved with status ``requested``; once it is saved, every Technical
-    Support Staff member is notified (AC5, ADR-0019).
+    Only the event's assigned coordinator may (ADR-0019). The line is saved with
+    status ``requested``; once it is saved, every Technical Support Staff member is
+    notified (AC5).
 
     Args:
+        coordinator_id: The caller's user id, taken from their token.
         reference: The event request's ``EVR-…`` reference; case and surrounding
             spaces are ignored.
         payload: Decoded JSON body: ``equipment_type_id``, ``quantity`` and optional
@@ -520,13 +544,13 @@ def add_equipment_line(
 
     Raises:
         ValidationError: 400 — payload invalid, or no such equipment type.
-        NotFoundError: 404 — no such event request.
+        NotFoundError: 404 — no such event request among the coordinator's own.
         RequestNotAwaitingReviewError: 409 — the request is no longer awaiting review.
         ConflictError: 409 — the event already has a line for that equipment type.
     """
     data = load_or_raise(EditEquipmentLineSchema(), payload)
     sess = resolve_session(session)
-    event_request = _event_request_awaiting_review(reference, sess)
+    event_request = _event_request_awaiting_review(coordinator_id, reference, sess)
     _check_equipment_type(data["equipment_type_id"], sess)
 
     line = EventEquipmentLine(
@@ -542,24 +566,38 @@ def add_equipment_line(
 
 
 def list_equipment_lines(
-    reference: str, *, session: Session | None = None
+    viewer_id: int | str, reference: str, *, viewer_role: Role, session: Session | None = None
 ) -> tuple[EventRequest, list[EventEquipmentLine]]:
     """An event and its equipment lines with their state, in the order added (AC4).
 
     The event comes too: its date and times tell Technical Support by when the
-    equipment is needed (ADR-0019).
+    equipment is needed. Technical Support Staff may list any event's lines; a
+    coordinator only those of an event assigned to them (ADR-0019).
+
+    Args:
+        viewer_id: The caller's user id, taken from their token.
+        reference: The event request's ``EVR-…`` reference; case and surrounding
+            spaces are ignored.
+        viewer_role: The caller's role.
+        session: Database session; defaults to ``db.session``.
 
     Returns:
         The event request, and its lines.
 
     Raises:
-        NotFoundError: 404 — no such event request.
+        NotFoundError: 404 — no such event request, or for a coordinator, none among
+            their own.
     """
-    event_request = _event_request_by_reference(reference, resolve_session(session))
+    sess = resolve_session(session)
+    if viewer_role is Role.TECHNICAL_SUPPORT_STAFF:
+        event_request = _event_request_by_reference(reference, sess)
+    else:
+        event_request = _event_request_assigned_to(viewer_id, reference, sess)
     return event_request, list(event_request.equipment_lines)
 
 
 def update_equipment_line(
+    coordinator_id: int | str,
     reference: str,
     line_id: int,
     payload: Mapping[str, Any] | None,
@@ -569,7 +607,8 @@ def update_equipment_line(
     """Change a line's equipment type, quantity or notes (SCRUM-37 AC2, AC3).
 
     Only the fields in ``payload`` change; ``notes`` is cleared only when sent as
-    ``null``. Allowed while the request is awaiting review (ADR-0019).
+    ``null``. Only the event's assigned coordinator may, while the request is awaiting
+    review (ADR-0019).
 
     Returns:
         The updated :class:`EventEquipmentLine`.
@@ -577,14 +616,15 @@ def update_equipment_line(
     Raises:
         ValidationError: 400 — invalid values for the fields sent, or no such
             equipment type.
-        NotFoundError: 404 — no such event request, or no such line on it.
+        NotFoundError: 404 — no such event request among the coordinator's own, or no
+            such line on it.
         RequestNotAwaitingReviewError: 409 — the request is no longer awaiting review.
         ConflictError: 409 — another line on the event already has that equipment type.
     """
     schema = EditEquipmentLineSchema()
     data = load_or_raise(schema, payload, partial=tuple(schema.fields))
     sess = resolve_session(session)
-    event_request = _event_request_awaiting_review(reference, sess)
+    event_request = _event_request_awaiting_review(coordinator_id, reference, sess)
     line = _line_of_event(event_request, line_id, sess)
     if "equipment_type_id" in data:
         _check_equipment_type(data["equipment_type_id"], sess)
@@ -595,17 +635,21 @@ def update_equipment_line(
     return line
 
 
-def remove_equipment_line(reference: str, line_id: int, *, session: Session | None = None) -> None:
+def remove_equipment_line(
+    coordinator_id: int | str, reference: str, line_id: int, *, session: Session | None = None
+) -> None:
     """Delete one of an event's equipment lines (SCRUM-37 AC2).
 
-    Allowed while the request is awaiting review. Nobody is notified (ADR-0019).
+    Only the event's assigned coordinator may, while the request is awaiting review.
+    Nobody is notified (ADR-0019).
 
     Raises:
-        NotFoundError: 404 — no such event request, or no such line on it.
+        NotFoundError: 404 — no such event request among the coordinator's own, or no
+            such line on it.
         RequestNotAwaitingReviewError: 409 — the request is no longer awaiting review.
     """
     sess = resolve_session(session)
-    event_request = _event_request_awaiting_review(reference, sess)
+    event_request = _event_request_awaiting_review(coordinator_id, reference, sess)
     line = _line_of_event(event_request, line_id, sess)
     sess.delete(line)
     sess.commit()
