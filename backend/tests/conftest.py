@@ -125,6 +125,16 @@ def token_for() -> Callable[..., str]:
 
 
 @pytest.fixture()
+def valid_organisation_payload() -> dict[str, Any]:
+    """A client organisation body that satisfies every required rule (SCRUM-66)."""
+    return {
+        "name": "Acme Events",
+        "contact_name": "Alice Tan",
+        "contact_email": "alice@acme.example",
+    }
+
+
+@pytest.fixture()
 def make_venue() -> Callable[..., Venue]:
     """Factory for ``Venue`` objects; add one to ``db_session`` to persist it.
 
