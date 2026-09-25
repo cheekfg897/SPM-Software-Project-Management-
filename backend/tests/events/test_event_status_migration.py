@@ -7,51 +7,23 @@ offline, so the upgrade and the downgrade are tested without a database (ADR-001
 
 from __future__ import annotations
 
-import importlib.util
-import io
 from collections.abc import Callable
-from pathlib import Path
 from types import ModuleType
 
 import pytest
-from alembic.operations import Operations
-from alembic.runtime.migration import MigrationContext
 
 from app.modules.events.models import EventRequestStatus
 
 pytestmark = pytest.mark.scrum_22
 
-MIGRATION = (
-    Path(__file__).resolve().parents[2]
-    / "migrations"
-    / "versions"
-    / "0006_add_event_request_statuses.py"
-)
+MIGRATION = "0006_add_event_request_statuses.py"
+
+LoadMigration = Callable[[str], ModuleType]
+RenderMigrationSql = Callable[[Callable[[], None]], str]
 
 
-def _load_migration() -> ModuleType:
-    spec = importlib.util.spec_from_file_location("migration_0006", MIGRATION)
-    assert spec is not None
-    assert spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-def _render(operation: Callable[[], None]) -> str:
-    """The SQL Alembic would run for ``operation`` on Postgres, rendered offline."""
-    buffer = io.StringIO()
-    context = MigrationContext.configure(
-        dialect_name="postgresql",
-        opts={"as_sql": True, "output_buffer": buffer, "literal_binds": True},
-    )
-    with Operations.context(context):
-        operation()
-    return buffer.getvalue()
-
-
-def test_migration_and_model_agree_on_the_status_values() -> None:
-    migration = _load_migration()
+def test_migration_and_model_agree_on_the_status_values(load_migration: LoadMigration) -> None:
+    migration = load_migration(MIGRATION)
     previous = set(migration.PREVIOUS_STATUS_VALUES)
     added = set(migration.ADDED_STATUS_VALUES)
 
@@ -59,10 +31,12 @@ def test_migration_and_model_agree_on_the_status_values() -> None:
     assert previous.isdisjoint(added)
 
 
-def test_upgrade_adds_each_new_value_outside_the_transaction() -> None:
-    migration = _load_migration()
+def test_upgrade_adds_each_new_value_outside_the_transaction(
+    load_migration: LoadMigration, render_migration_sql: RenderMigrationSql
+) -> None:
+    migration = load_migration(MIGRATION)
 
-    sql = _render(migration.upgrade)
+    sql = render_migration_sql(migration.upgrade)
 
     for value in ["draft", "under_review", "confirmed", "completed", "cancelled", "rejected"]:
         assert f"ALTER TYPE event_request_status ADD VALUE '{value}'" in sql
@@ -72,8 +46,10 @@ def test_upgrade_adds_each_new_value_outside_the_transaction() -> None:
     assert sql.rindex("ADD VALUE") < sql.index("BEGIN")
 
 
-def test_downgrade_rebuilds_the_type_with_only_submitted() -> None:
-    migration = _load_migration()
+def test_downgrade_rebuilds_the_type_with_only_submitted(
+    load_migration: LoadMigration, render_migration_sql: RenderMigrationSql
+) -> None:
+    migration = load_migration(MIGRATION)
     expected_in_order = [
         "UPDATE event_requests SET status = 'submitted' WHERE status != 'submitted'",
         "ALTER TYPE event_request_status RENAME TO event_request_status_old",
@@ -83,7 +59,7 @@ def test_downgrade_rebuilds_the_type_with_only_submitted() -> None:
         "DROP TYPE event_request_status_old",
     ]
 
-    sql = _render(migration.downgrade)
+    sql = render_migration_sql(migration.downgrade)
 
     positions = [sql.find(statement) for statement in expected_in_order]
     assert -1 not in positions
