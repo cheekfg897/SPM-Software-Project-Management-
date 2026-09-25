@@ -105,7 +105,8 @@ finding, not a nit.
       match the story — not wider.
 - [ ] Roles come from `Role` / role groups, never string literals.
 - [ ] The acting user comes from `g.current_user_id`, never from the request body or URL.
-- [ ] Reads are scoped to what the caller may see (e.g. filtered by organiser).
+- [ ] Reads are scoped to what the caller may see (e.g. an organiser's, filtered by their
+      client organisation).
 - [ ] Input schemas don't declare server-controlled fields (`id`, `status`, `reference`,
       owner ids).
 - [ ] Output schemas don't expose internal ids, password hashes or other users' data.

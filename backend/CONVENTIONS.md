@@ -380,7 +380,9 @@ Per ADR-0001, "today" means today in the business timezone (`APP_TIMEZONE`, defa
   plain text. Password fields are `load_only=True`.
 - Every non-public route has `@requires_auth` or `@requires_role(...)`. Default to the most
   restrictive role set that satisfies the story.
-- Scope data to the caller: an organiser's list query filters on `g.current_user_id`.
+- Scope data to the caller: an organiser's queries filter on the client organisation of the
+  account named by `g.current_user_id` (ADR-0020), through one condition shared by the list
+  and the detail view.
 - Read request bodies with `request.get_json(silent=True)` and let the schema reject bad
   shapes.
 - `# noqa: S...` (bandit) needs a written justification, like the test-only JWT secret in

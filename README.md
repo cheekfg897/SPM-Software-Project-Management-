@@ -14,7 +14,7 @@ backend/            Flask application (see below)
     extensions.py   db, migrate, jwt instances
     common/         cross-cutting: error handlers, requires_auth / requires_role
     modules/auth/   models, routes, schemas, services, permissions
-    modules/events/ event requests (SCRUM-19), event status model (SCRUM-22), filed under the organiser's organisation (SCRUM-66), coordinator assignment and event history (SCRUM-30), equipment lines (SCRUM-37)
+    modules/events/ event requests (SCRUM-19), event status model (SCRUM-22), filed under the organiser's organisation (SCRUM-66) and seen by its organisers (SCRUM-7), coordinator assignment and event history (SCRUM-30), equipment lines (SCRUM-37)
     modules/organisations/ client organisations that Event Organisers belong to (SCRUM-66)
     modules/notifications/ in-app notifications about events (SCRUM-28)
     modules/venue/  venue catalogue (SCRUM-25), availability calendar (SCRUM-26), search (SCRUM-35), suitability check (SCRUM-36), setup/turnaround (SCRUM-67), blocks (SCRUM-34)
@@ -107,9 +107,9 @@ curl http://localhost:5000/api/auth/internal-only -H "Authorization: Bearer <tok
 | `GET  /api/auth/me`            | any authenticated user                                          |
 | `GET  /api/auth/internal-only` | `event_coordinator`, `venue_staff`, `technical_support_staff`   |
 | `POST /api/events/requests`    | `event_organiser` — submit an event request                     |
-| `GET  /api/events/requests`    | `event_organiser` — list your own event requests                |
+| `GET  /api/events/requests`    | `event_organiser` — list your client organisation's event requests, whoever submitted them, newest first (`403` if your account has no organisation) |
 | `GET  /api/events/requests/assigned` | `event_coordinator` — the event requests assigned to you, newest first |
-| `GET  /api/events/requests/<reference>` | `event_organiser` — one of your own event requests, with its current status, the assigned coordinator's name and email (`null` until assigned) and its equipment lines (`404` if it isn't yours) |
+| `GET  /api/events/requests/<reference>` | `event_organiser` — one of your client organisation's event requests, with its current status, the assigned coordinator's name and email (`null` until assigned) and its equipment lines (`404` if it is another organisation's; `403` if your account has no organisation) |
 | `POST /api/events/requests/<reference>/equipment` | `event_coordinator` — add an equipment line (type, quantity, notes) to a request assigned to you, while it is awaiting review; notifies Technical Support Staff (`404` if it isn't assigned to you) |
 | `GET  /api/events/requests/<reference>/equipment` | `event_coordinator` (requests assigned to you), `technical_support_staff` (any request) — the event's date and times (`event`, so Technical Support know by when) and its equipment lines with their status |
 | `PATCH /api/events/requests/<reference>/equipment/<line_id>` | `event_coordinator` — on a request assigned to you, change only the fields sent, while it is awaiting review |
@@ -140,7 +140,7 @@ Roles: `event_organiser`, `attendee`, `event_coordinator`, `venue_staff`, `techn
 
 Password policy: at least 8 characters, with at least one letter and one digit.
 
-An `event_organiser` registers with the `organisation_id` of an existing client organisation, which an internal user records first; every other role must leave it out ([ADR-0013](docs/adr/0013-client-organisations-recorded-by-internal-users.md)).
+An `event_organiser` registers with the `organisation_id` of an existing client organisation, which an internal user records first; every other role must leave it out ([ADR-0013](docs/adr/0013-client-organisations-recorded-by-internal-users.md)). Every organiser of an organisation sees all of its event requests, and no other organisation's ([ADR-0020](docs/adr/0020-organisers-see-their-organisations-events.md)).
 
 A submitted event request is assigned to the Event Coordinator with the fewest open requests (`submitted` or `under_review`), lowest user id on a tie, and only that coordinator is notified; with no Event Coordinator registered it stays unassigned and nobody is notified ([ADR-0018](docs/adr/0018-least-loaded-coordinator-and-event-history.md)). Everything that happens to an event is written to an event history table that later stories append to.
 
@@ -180,6 +180,7 @@ pytest -m scrum_36   # check whether a venue suits an event
 pytest -m scrum_37   # record what equipment an event needs
 pytest -m scrum_67   # setup and turnaround time
 pytest -m scrum_66   # client organisations
+pytest -m scrum_7    # see only my own organisation's events
 ```
 
 ## Database migrations
