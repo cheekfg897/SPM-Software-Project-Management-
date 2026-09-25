@@ -20,6 +20,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
+from sqlalchemy.sql import ColumnElement
 
 from app.common.database import resolve_session
 from app.common.errors import AppError, NotFoundError
@@ -185,16 +186,25 @@ def submit_event_request(
     raise ReferenceGenerationError("Could not create the event request. Please try again.")
 
 
+def _list_event_requests_newest_first(
+    belongs_to: ColumnElement[bool], session: Session
+) -> list[EventRequest]:
+    """Event requests matching ``belongs_to``, newest first, later id first on a tie."""
+    stmt = (
+        select(EventRequest)
+        .where(belongs_to)
+        .order_by(EventRequest.created_at.desc(), EventRequest.id.desc())
+    )
+    return list(session.scalars(stmt))
+
+
 def list_event_requests_for_organiser(
     organiser_id: int | str, *, session: Session | None = None
 ) -> list[EventRequest]:
     """Return the organiser's own event requests, newest first (SCRUM-19 AC5)."""
-    stmt = (
-        select(EventRequest)
-        .where(EventRequest.organiser_id == int(organiser_id))
-        .order_by(EventRequest.created_at.desc(), EventRequest.id.desc())
+    return _list_event_requests_newest_first(
+        EventRequest.organiser_id == int(organiser_id), resolve_session(session)
     )
-    return list(resolve_session(session).scalars(stmt))
 
 
 def _normalise_reference(reference: str) -> str:
