@@ -68,6 +68,17 @@ def db_session() -> Iterator[Session]:
 
 
 @pytest.fixture()
+def save(db_session: Session) -> Callable[..., None]:
+    """Persist objects to ``db_session`` and commit, as a service would."""
+
+    def _save(*objects: object) -> None:
+        db_session.add_all(objects)
+        db_session.commit()
+
+    return _save
+
+
+@pytest.fixture()
 def make_user() -> Callable[..., User]:
     """Factory for in-memory ``User`` objects (never persisted)."""
     counter = {"id": 0}
@@ -195,3 +206,11 @@ def make_venue() -> Callable[..., Venue]:
         return venue
 
     return _make
+
+
+@pytest.fixture()
+def venue(make_venue: Callable[..., Venue], save: Callable[..., None]) -> Venue:
+    """One saved, active venue with default details."""
+    saved = make_venue()
+    save(saved)
+    return saved

@@ -12,17 +12,6 @@ from app.modules.venue.models import Booking, BookingStatus, Venue, VenueBlock
 
 
 @pytest.fixture()
-def save(db_session: Session) -> Callable[..., None]:
-    """Persist objects to ``db_session`` and commit, as a service would."""
-
-    def _save(*objects: object) -> None:
-        db_session.add_all(objects)
-        db_session.commit()
-
-    return _save
-
-
-@pytest.fixture()
 def reload_venue(db_session: Session) -> Callable[[int], Venue]:
     """Read a venue back from the database rather than from the session's cache."""
 
@@ -33,14 +22,6 @@ def reload_venue(db_session: Session) -> Callable[[int], Venue]:
         return venue
 
     return _reload
-
-
-@pytest.fixture()
-def venue(make_venue: Callable[..., Venue], save: Callable[..., None]) -> Venue:
-    """One saved, active venue with default details."""
-    saved = make_venue()
-    save(saved)
-    return saved
 
 
 @pytest.fixture()
