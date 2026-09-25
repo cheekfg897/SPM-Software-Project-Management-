@@ -17,7 +17,7 @@ backend/            Flask application (see below)
     modules/events/ event requests (SCRUM-19), event status model (SCRUM-22), filed under the organiser's organisation (SCRUM-66)
     modules/organisations/ client organisations that Event Organisers belong to (SCRUM-66)
     modules/notifications/ in-app notifications about events (SCRUM-28)
-    modules/venue/  venue catalogue (SCRUM-25), availability calendar (SCRUM-26), search (SCRUM-35), setup/turnaround (SCRUM-67), blocks (SCRUM-34)
+    modules/venue/  venue catalogue (SCRUM-25), availability calendar (SCRUM-26), search (SCRUM-35), suitability check (SCRUM-36), setup/turnaround (SCRUM-67), blocks (SCRUM-34)
     modules/equipment/ equipment catalogue (SCRUM-27)
   tests/            unit tests (pytest), one marker per story
   migrations/       Alembic migrations (Flask-Migrate)
@@ -122,6 +122,7 @@ curl http://localhost:5000/api/auth/internal-only -H "Authorization: Bearer <tok
 | `POST /api/venues/<id>/blocks` | `venue_staff` — block a period with a reason; lists the confirmed bookings it cuts into |
 | `GET  /api/venues/<id>/blocks` | `venue_staff` — the venue's blocks with ids and reasons, in start order |
 | `DELETE /api/venues/<id>/blocks/<block_id>` | `venue_staff` — remove a block; the venue is available again |
+| `POST /api/venues/<id>/suitability` | `event_coordinator`, `venue_staff` — whether the venue meets an event's requirements, with each reason it doesn't |
 | `POST /api/equipment/types`    | `technical_support_staff` — add an equipment type               |
 | `GET  /api/equipment/types`    | internal roles — every equipment type with its total quantity, by name |
 | `GET  /api/equipment/types/<id>` | internal roles — one equipment type                           |
@@ -165,6 +166,7 @@ pytest -m scrum_27   # maintain the equipment catalogue
 pytest -m scrum_28   # receive notifications about my events
 pytest -m scrum_34   # block a venue
 pytest -m scrum_35   # search and filter venues
+pytest -m scrum_36   # check whether a venue suits an event
 pytest -m scrum_67   # setup and turnaround time
 pytest -m scrum_66   # client organisations
 ```
