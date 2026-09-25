@@ -11,12 +11,12 @@ from typing import Any
 
 from marshmallow import (
     Schema,
-    ValidationError as MarshmallowValidationError,
     fields,
     post_load,
     validate,
 )
 
+from app.common.validation import not_blank
 from app.modules.organisations.models import (
     CONTACT_EMAIL_MAX_LENGTH,
     CONTACT_NAME_MAX_LENGTH,
@@ -25,18 +25,13 @@ from app.modules.organisations.models import (
 )
 
 
-def _not_blank(value: str) -> None:
-    if not value.strip():
-        raise MarshmallowValidationError("Must not be blank.")
-
-
 class CreateClientOrganisationSchema(Schema):
     """Payload for ``POST /api/organisations`` (SCRUM-66 AC1)."""
 
     name = fields.String(
         required=True,
         validate=[
-            _not_blank,
+            not_blank,
             validate.Length(
                 max=NAME_MAX_LENGTH, error=f"Name must be at most {NAME_MAX_LENGTH} characters."
             ),
@@ -45,7 +40,7 @@ class CreateClientOrganisationSchema(Schema):
     contact_name = fields.String(
         required=True,
         validate=[
-            _not_blank,
+            not_blank,
             validate.Length(
                 max=CONTACT_NAME_MAX_LENGTH,
                 error=f"Contact name must be at most {CONTACT_NAME_MAX_LENGTH} characters.",

@@ -23,6 +23,7 @@ from marshmallow import (
 
 from app.common.clock import as_utc
 from app.common.fields import BusinessDateTime
+from app.common.validation import not_blank
 from app.modules.venue.models import (
     LIST_ITEM_MAX_LENGTH,
     LIST_MAX_ITEMS,
@@ -33,11 +34,6 @@ from app.modules.venue.models import (
     Weekday,
 )
 from app.modules.venue.opening_hours import Period, find_overlap, period_error
-
-
-def _not_blank(value: str) -> None:
-    if not value.strip():
-        raise MarshmallowValidationError("Must not be blank.")
 
 
 def _validate_list_item(value: str) -> None:
@@ -127,14 +123,14 @@ class EditVenueSchema(Schema):
     name = fields.String(
         required=True,
         validate=[
-            _not_blank,
+            not_blank,
             validate.Length(max=200, error="Name must be at most 200 characters."),
         ],
     )
     location = fields.String(
         required=True,
         validate=[
-            _not_blank,
+            not_blank,
             validate.Length(max=200, error="Location must be at most 200 characters."),
         ],
     )
