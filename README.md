@@ -114,6 +114,7 @@ curl http://localhost:5000/api/auth/internal-only -H "Authorization: Bearer <tok
 | `GET  /api/events/requests/<reference>/equipment` | `event_coordinator` (requests assigned to you), `technical_support_staff` (any request) — the event's date and times (`event`, so Technical Support know by when) and its equipment lines with their status |
 | `PATCH /api/events/requests/<reference>/equipment/<line_id>` | `event_coordinator` — on a request assigned to you, change only the fields sent, while it is awaiting review |
 | `DELETE /api/events/requests/<reference>/equipment/<line_id>` | `event_coordinator` — on a request assigned to you, remove a line, while it is awaiting review |
+| `POST /api/events/requests/<reference>/reassign` | `event_coordinator` — on a request assigned to you, move it while submitted, under review or confirmed to the Event Coordinator named by `coordinator_email`; recorded in its history and the new coordinator is notified. Returns the request and the new coordinator's name and email |
 | `POST /api/organisations`      | internal roles — record a client organisation                   |
 | `GET  /api/organisations`      | internal roles — list client organisations, by name             |
 | `POST /api/venues`             | `venue_staff` — add a venue                                     |
@@ -181,6 +182,7 @@ pytest -m scrum_37   # record what equipment an event needs
 pytest -m scrum_67   # setup and turnaround time
 pytest -m scrum_66   # client organisations
 pytest -m scrum_7    # see only my own organisation's events
+pytest -m scrum_87   # reassign an event to a different coordinator
 ```
 
 ## Database migrations
