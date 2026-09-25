@@ -21,6 +21,7 @@ To change a decision, don't rewrite history. Add a new ADR that **supersedes** t
 | [0006](0006-access-tokens.md) | Log in with a 1-hour JWT access token, no refresh token yet | Accepted | SCRUM-6 |
 | [0007](0007-authorization-failures-are-logged.md) | A refused request is "recorded" as a structured log line | Accepted | SCRUM-21 |
 | [0008](0008-venue-opening-hours.md) | Venue opening hours are weekly periods, Google-Places style; overnight allowed | Accepted | SCRUM-25 |
+| [0009](0009-booking-times-in-utc.md) | Booking and block times are stored in UTC and shown in business time | Accepted | SCRUM-26 |
 
 ## Template
 

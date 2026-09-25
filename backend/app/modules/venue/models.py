@@ -13,15 +13,18 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     DateTime,
+    Enum,
     ForeignKey,
     Integer,
     SmallInteger,
     String,
+    Text,
     Time,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.common.database import UTCDateTime
 from app.extensions import db
 
 #: Separator for the multi-value string columns. Item values must never contain
@@ -87,6 +90,22 @@ class Weekday(enum.IntEnum):
     def labels(cls) -> list[str]:
         """Every day's API spelling, Monday first."""
         return [member.label for member in cls]
+
+
+class BookingStatus(str, enum.Enum):
+    """Lifecycle of a booking against a venue."""
+
+    TENTATIVE = "tentative"
+    CONFIRMED = "confirmed"
+    CANCELLED = "cancelled"
+
+
+class CalendarEntryKind(str, enum.Enum):
+    """What makes a period unavailable on a venue's calendar (SCRUM-26)."""
+
+    CONFIRMED_BOOKING = "confirmed_booking"
+    TENTATIVE_HOLD = "tentative_hold"
+    BLOCK = "block"
 
 
 class Venue(db.Model):  # type: ignore[name-defined]
@@ -179,3 +198,56 @@ class VenueOpeningPeriod(db.Model):  # type: ignore[name-defined]
             f"<VenueOpeningPeriod {Weekday(self.open_day).label} {self.open_time:%H:%M}"
             f" → {Weekday(self.close_day).label} {self.close_time:%H:%M}>"
         )
+
+
+class Booking(db.Model):  # type: ignore[name-defined]
+    """A tentative or confirmed hold on a venue for a period (SCRUM-26).
+
+    ``event_id`` is a bare integer, not a foreign key: the events module only has
+    event *requests* so far, not the confirmed events a booking will belong to. Times
+    are stored in UTC (ADR-0009).
+    """
+
+    __tablename__ = "bookings"
+    __table_args__ = (
+        CheckConstraint("end_time > start_time", name="ck_bookings_ends_after_start"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    venue_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("venues.id"), index=True, nullable=False
+    )
+    event_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    start_time: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)
+    end_time: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)
+    status: Mapped[BookingStatus] = mapped_column(
+        Enum(
+            BookingStatus,
+            name="booking_status",
+            # Store the enum *values* (snake_case), not the member names.
+            values_callable=lambda enum_cls: [m.value for m in enum_cls],
+        ),
+        nullable=False,
+        default=BookingStatus.TENTATIVE,
+    )
+
+
+class VenueBlock(db.Model):  # type: ignore[name-defined]
+    """A period a venue can't be used, such as maintenance (SCRUM-26).
+
+    The calendar shows blocks; creating and removing them is SCRUM-34. Times are
+    stored in UTC (ADR-0009).
+    """
+
+    __tablename__ = "venue_blocks"
+    __table_args__ = (
+        CheckConstraint("end_time > start_time", name="ck_venue_blocks_ends_after_start"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    venue_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("venues.id"), index=True, nullable=False
+    )
+    start_time: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)
+    end_time: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False, default="")
