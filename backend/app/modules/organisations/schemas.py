@@ -18,6 +18,7 @@ from marshmallow import (
     validate,
 )
 
+from app.common.validation import not_blank
 from app.modules.organisations.models import (
     CONTACT_EMAIL_MAX_LENGTH,
     CONTACT_NAME_MAX_LENGTH,
@@ -32,11 +33,6 @@ PHONE_MIN_DIGITS = 7
 #: digits.
 _PHONE_CHARACTERS = re.compile(r"\+?[0-9 ()-]+")
 _DIGIT = re.compile(r"[0-9]")
-
-
-def _not_blank(value: str) -> None:
-    if not value.strip():
-        raise MarshmallowValidationError("Must not be blank.")
 
 
 def _phone_number(value: str) -> None:
@@ -60,7 +56,7 @@ class CreateClientOrganisationSchema(Schema):
     name = fields.String(
         required=True,
         validate=[
-            _not_blank,
+            not_blank,
             validate.Length(
                 max=NAME_MAX_LENGTH, error=f"Name must be at most {NAME_MAX_LENGTH} characters."
             ),
@@ -69,7 +65,7 @@ class CreateClientOrganisationSchema(Schema):
     contact_name = fields.String(
         required=True,
         validate=[
-            _not_blank,
+            not_blank,
             validate.Length(
                 max=CONTACT_NAME_MAX_LENGTH,
                 error=f"Contact name must be at most {CONTACT_NAME_MAX_LENGTH} characters.",
