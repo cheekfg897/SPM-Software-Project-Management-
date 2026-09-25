@@ -145,6 +145,19 @@ def history_of(
 
 
 @pytest.fixture()
+def coordinator_of(db_session: Session) -> Callable[[int], int | None]:
+    """The coordinator a saved request is assigned to, read back from the database."""
+
+    def _coordinator_of(event_request_id: int) -> int | None:
+        db_session.expire_all()
+        event_request = db_session.get(EventRequest, event_request_id)
+        assert event_request is not None
+        return event_request.coordinator_id
+
+    return _coordinator_of
+
+
+@pytest.fixture()
 def organiser_is_found(mock_session: MagicMock, make_user: Callable[..., User]) -> None:
     """Make ``mock_session`` find organiser 7, linked to client organisation 3.
 
