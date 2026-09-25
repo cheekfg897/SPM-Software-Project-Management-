@@ -14,7 +14,7 @@ backend/            Flask application (see below)
     extensions.py   db, migrate, jwt instances
     common/         cross-cutting: error handlers, requires_auth / requires_role
     modules/auth/   models, routes, schemas, services, permissions
-    modules/events/ event requests (SCRUM-19), event status model (SCRUM-22), filed under the organiser's organisation (SCRUM-66)
+    modules/events/ event requests (SCRUM-19), event status model (SCRUM-22), filed under the organiser's organisation (SCRUM-66), coordinator assignment and event history (SCRUM-30)
     modules/organisations/ client organisations that Event Organisers belong to (SCRUM-66)
     modules/notifications/ in-app notifications about events (SCRUM-28)
     modules/venue/  venue catalogue (SCRUM-25), availability calendar (SCRUM-26), search (SCRUM-35), suitability check (SCRUM-36), setup/turnaround (SCRUM-67), blocks (SCRUM-34)
@@ -108,7 +108,8 @@ curl http://localhost:5000/api/auth/internal-only -H "Authorization: Bearer <tok
 | `GET  /api/auth/internal-only` | `event_coordinator`, `venue_staff`, `technical_support_staff`   |
 | `POST /api/events/requests`    | `event_organiser` — submit an event request                     |
 | `GET  /api/events/requests`    | `event_organiser` — list your own event requests                |
-| `GET  /api/events/requests/<reference>` | `event_organiser` — one of your own event requests, with its current status (`404` if it isn't yours) |
+| `GET  /api/events/requests/assigned` | `event_coordinator` — the event requests assigned to you, newest first |
+| `GET  /api/events/requests/<reference>` | `event_organiser` — one of your own event requests, with its current status and the assigned coordinator's name and email (`null` until assigned; `404` if it isn't yours) |
 | `POST /api/organisations`      | internal roles — record a client organisation                   |
 | `GET  /api/organisations`      | internal roles — list client organisations, by name             |
 | `POST /api/venues`             | `venue_staff` — add a venue                                     |
@@ -137,6 +138,8 @@ Password policy: at least 8 characters, with at least one letter and one digit.
 
 An `event_organiser` registers with the `organisation_id` of an existing client organisation, which an internal user records first; every other role must leave it out ([ADR-0013](docs/adr/0013-client-organisations-recorded-by-internal-users.md)).
 
+A submitted event request is assigned to the Event Coordinator with the fewest open requests (`submitted` or `under_review`), lowest user id on a tie, and only that coordinator is notified; with no Event Coordinator registered it stays unassigned and nobody is notified ([ADR-0018](docs/adr/0018-least-loaded-coordinator-and-event-history.md)). Everything that happens to an event is written to an event history table that later stories append to.
+
 All errors share one shape: `{"error": "<code>", "message": "<text>", "details": {...}}` (`details` only for validation errors).
 
 An equipment type is kept at exactly one place: a catalogued venue (`venue_id`) or a named store (`store_name`). Equipment type names are unique ([ADR-0014](docs/adr/0014-equipment-type-location-and-quantity.md)).
@@ -145,7 +148,7 @@ Date-times (bookings, blocks, calendar ranges) should carry an offset, such as `
 
 ## 5. Run the tests
 
-The suite is unit tests only, and **Postgres does not need to be running**. Most tests mock the database; the venue, equipment and notifications service tests run against an in-memory SQLite database, so their queries really execute.
+The suite is unit tests only, and **Postgres does not need to be running**. Most tests mock the database; the venue, equipment, notifications and coordinator-assignment service tests run against an in-memory SQLite database, so their queries really execute.
 
 ```bash
 cd backend
@@ -164,6 +167,7 @@ pytest -m scrum_25   # update venue catalogue
 pytest -m scrum_26   # view a venue's availability calendar
 pytest -m scrum_27   # maintain the equipment catalogue
 pytest -m scrum_28   # receive notifications about my events
+pytest -m scrum_30   # assign a coordinator to a submitted event
 pytest -m scrum_34   # block a venue
 pytest -m scrum_35   # search and filter venues
 pytest -m scrum_36   # check whether a venue suits an event
