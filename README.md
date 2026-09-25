@@ -14,7 +14,7 @@ backend/            Flask application (see below)
     extensions.py   db, migrate, jwt instances
     common/         cross-cutting: error handlers, requires_auth / requires_role
     modules/auth/   models, routes, schemas, services, permissions
-    modules/events/ event requests (SCRUM-19)
+    modules/events/ event requests (SCRUM-19), event status model (SCRUM-22)
     modules/venue/  venue catalogue (SCRUM-25), availability calendar (SCRUM-26), search (SCRUM-35), setup/turnaround (SCRUM-67)
   tests/            unit tests (pytest), one marker per story
   migrations/       Alembic migrations (Flask-Migrate)
@@ -105,6 +105,7 @@ curl http://localhost:5000/api/auth/internal-only -H "Authorization: Bearer <tok
 | `GET  /api/auth/internal-only` | `event_coordinator`, `venue_staff`, `technical_support_staff`   |
 | `POST /api/events/requests`    | `event_organiser` — submit an event request                     |
 | `GET  /api/events/requests`    | `event_organiser` — list your own event requests                |
+| `GET  /api/events/requests/<reference>` | `event_organiser` — one of your own event requests, with its current status (`404` if it isn't yours) |
 | `POST /api/venues`             | `venue_staff` — add a venue                                     |
 | `GET  /api/venues`             | any authenticated user — list active venues, by name            |
 | `GET  /api/venues/<id>`        | any authenticated user — one venue, active or not               |
@@ -138,6 +139,7 @@ pytest -m scrum_65   # create an account
 pytest -m scrum_6    # log in
 pytest -m scrum_21   # enforce permissions
 pytest -m scrum_19   # submit an event request
+pytest -m scrum_22   # event status model
 pytest -m scrum_25   # update venue catalogue
 pytest -m scrum_26   # view a venue's availability calendar
 pytest -m scrum_35   # search and filter venues
