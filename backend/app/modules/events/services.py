@@ -500,20 +500,29 @@ class RequestNotAwaitingReviewError(AppError):
     error_code = "request_not_awaiting_review"
 
 
-def _event_request_assigned_to(
-    coordinator_id: int | str, reference: str, session: Session
-) -> EventRequest:
-    """The request, if ``coordinator_id`` is its assigned coordinator (ADR-0019).
+def _check_assigned_to(coordinator_id: int | str, event_request: EventRequest) -> None:
+    """Refuse a coordinator the request isn't assigned to (ADR-0019).
 
     Another coordinator's request, or an unassigned one, gets the same 404 as a
     reference that doesn't exist, as an organiser's "not yours" does (ADR-0012).
 
     Raises:
+        NotFoundError: 404 — the request isn't assigned to ``coordinator_id``.
+    """
+    if event_request.coordinator_id != int(coordinator_id):
+        raise NotFoundError(EVENT_REQUEST_NOT_FOUND_MESSAGE)
+
+
+def _event_request_assigned_to(
+    coordinator_id: int | str, reference: str, session: Session
+) -> EventRequest:
+    """The request, if ``coordinator_id`` is its assigned coordinator (ADR-0019).
+
+    Raises:
         NotFoundError: 404 — no such request among the coordinator's own.
     """
     event_request = _event_request_by_reference(reference, session)
-    if event_request.coordinator_id != int(coordinator_id):
-        raise NotFoundError(EVENT_REQUEST_NOT_FOUND_MESSAGE)
+    _check_assigned_to(coordinator_id, event_request)
     return event_request
 
 
