@@ -39,7 +39,8 @@ from app.modules.events.services import (
     submit_event_request,
 )
 
-pytestmark = pytest.mark.scrum_19
+# Every submission looks up the organiser to copy their client organisation (SCRUM-66).
+pytestmark = [pytest.mark.scrum_19, pytest.mark.usefixtures("organiser_is_found")]
 
 REFERENCE_PATTERN = re.compile(r"^EVR-[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{8}$")
 REQUESTS_PATH = "/api/events/requests"
@@ -77,6 +78,7 @@ def test_submission_is_saved_with_every_field_status_and_reference(
 
     assert isinstance(event_request, EventRequest)
     assert event_request.organiser_id == 7  # token identity string → int
+    assert event_request.organisation_id == 3  # the organiser's, from their account
     assert event_request.status is EventRequestStatus.SUBMITTED
     assert REFERENCE_PATTERN.match(event_request.reference)
 
