@@ -18,19 +18,21 @@ from datetime import date
 from typing import Any
 
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.common.database import resolve_session
 from app.common.errors import AppError, NotFoundError
 from app.common.validation import load_or_raise
-from app.modules.auth.services import get_user_by_id
+from app.modules.auth.permissions import Role
+from app.modules.auth.services import get_user_by_id, list_user_ids_with_role
 from app.modules.events.models import (
     REFERENCE_UNIQUE_CONSTRAINT,
     EventRequest,
     EventRequestStatus,
 )
 from app.modules.events.schemas import SubmitEventRequestSchema
+from app.modules.notifications.services import EventSummary, NotificationKind, notify_users
 
 logger = logging.getLogger("connectsphere.events")
 
@@ -92,6 +94,29 @@ def _organisation_of_organiser(organiser_id: int | str, session: Session) -> int
     return organiser.organisation_id
 
 
+def _notify_coordinators_of_submission(event_request: EventRequest, session: Session) -> None:
+    """Tell every Event Coordinator a request was submitted (SCRUM-28 AC3).
+
+    Runs after the request's own commit, so the notifications refer to a saved row
+    (ADR-0015). Coordinators aren't assigned to requests yet (SCRUM-30), so every
+    coordinator is one the request is relevant to.
+
+    If the notifications can't be saved, only they are lost: the request is already
+    saved, and failing the submission would invite the organiser to submit it again.
+    """
+    coordinator_ids = list_user_ids_with_role(Role.EVENT_COORDINATOR, session=session)
+    event = EventSummary(
+        id=event_request.id, reference=event_request.reference, name=event_request.name
+    )
+    try:
+        notify_users(
+            coordinator_ids, event, NotificationKind.EVENT_REQUEST_SUBMITTED, session=session
+        )
+    except SQLAlchemyError:
+        session.rollback()
+        logger.warning("event_request_notification_failed reference=%s", event.reference)
+
+
 def submit_event_request(
     organiser_id: int | str,
     payload: Mapping[str, Any] | None,
@@ -106,7 +131,8 @@ def submit_event_request(
     and a fresh reference (AC5), filed under the organiser's client
     organisation (SCRUM-66 AC4). If the reference is already taken, the save
     is rolled back and retried with a new one, up to
-    :data:`MAX_REFERENCE_ATTEMPTS` times.
+    :data:`MAX_REFERENCE_ATTEMPTS` times. Once saved, every Event Coordinator
+    is notified (SCRUM-28 AC3).
 
     Args:
         organiser_id: The caller's user id, taken from their token.
@@ -152,6 +178,8 @@ def submit_event_request(
                 attempt,
             )
             continue
+        # Outside the try: a failed notification commit is not a reference collision.
+        _notify_coordinators_of_submission(event_request, sess)
         return event_request
 
     raise ReferenceGenerationError("Could not create the event request. Please try again.")
