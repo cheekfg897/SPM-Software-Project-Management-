@@ -211,6 +211,17 @@ def _overlaps(
     return and_(model.start_time < end, model.end_time > start)
 
 
+def _booking_holds_venue(venue: Venue, start: datetime, end: datetime) -> ColumnElement[bool]:
+    """SQL condition: a booking on ``venue`` holds it at any time in ``start``-``end``.
+
+    A booking holds its venue from ``start - setup`` to ``end + turnaround``
+    (ADR-0011), so the period is widened by the same amounts to catch a booking whose
+    padding reaches into it.
+    """
+    setup, turnaround = _buffers(venue)
+    return and_(Booking.venue_id == venue.id, _overlaps(Booking, start - turnaround, end + setup))
+
+
 def _booking_reason(booking: Booking, viewer_role: Role) -> str:
     """Venue Staff see which event holds the venue; others only that it's booked."""
     if viewer_role is not Role.VENUE_STAFF:
@@ -260,15 +271,11 @@ def get_venue_calendar(
     """
     sess = resolve_session(session)
     venue = get_venue(venue_id, session=sess)
-    setup, turnaround = _buffers(venue)
 
-    # A booking holds the venue from start - setup to end + turnaround (SCRUM-67), so
-    # widen the range by the same amounts to find each booking whose padding reaches in.
     bookings = sess.scalars(
         select(Booking).where(
-            Booking.venue_id == venue.id,
             Booking.status != BookingStatus.CANCELLED,
-            _overlaps(Booking, range_start - turnaround, range_end + setup),
+            _booking_holds_venue(venue, range_start, range_end),
         )
     )
     blocks = sess.scalars(
