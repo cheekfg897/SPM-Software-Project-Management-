@@ -74,7 +74,7 @@ def test_the_organiser_sees_the_assigned_coordinators_name_and_email(
 
 
 def test_an_unassigned_request_shows_no_coordinator(
-    save: Callable[..., None], make_event_request: MakeEventRequest
+    saved_users: list[User], save: Callable[..., None], make_event_request: MakeEventRequest
 ) -> None:
     save(make_event_request(reference=REFERENCE, organiser_id=7, coordinator_id=None))
 

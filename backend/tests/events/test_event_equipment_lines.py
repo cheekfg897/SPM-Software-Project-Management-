@@ -24,6 +24,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.common.errors import ConflictError, NotFoundError, ValidationError
+from app.modules.auth.models import User
 from app.modules.auth.permissions import Role
 from app.modules.equipment.models import EquipmentType
 from app.modules.events.models import (
@@ -651,6 +652,7 @@ def test_listing_an_unknown_event_request_is_not_found(
 
 
 def test_the_organisers_own_event_record_shows_its_equipment_lines(
+    saved_users: list[User],
     saved_event_request: EventRequest,
     equipment_type: EquipmentType,
     valid_equipment_line_payload: dict[str, Any],
