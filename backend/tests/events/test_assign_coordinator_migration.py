@@ -23,13 +23,7 @@ MIGRATION = "0010_add_coordinator_assignment_and_event_history.py"
 
 LoadMigration = Callable[[str], ModuleType]
 RenderMigrationSql = Callable[[Callable[[], None]], str]
-
-
-def _assert_in_order(sql: str, expected_in_order: list[str]) -> None:
-    """Every statement appears in ``sql``, in the given order."""
-    positions = [sql.find(statement) for statement in expected_in_order]
-    assert -1 not in positions
-    assert positions == sorted(positions)
+AssertInOrder = Callable[[str, list[str]], None]
 
 
 def test_migration_and_models_agree_on_the_kind_values(load_migration: LoadMigration) -> None:
@@ -46,7 +40,9 @@ def test_migration_and_models_agree_on_the_kind_values(load_migration: LoadMigra
 
 
 def test_upgrade_adds_the_kind_outside_the_transaction_then_the_column_and_the_table(
-    load_migration: LoadMigration, render_migration_sql: RenderMigrationSql
+    load_migration: LoadMigration,
+    render_migration_sql: RenderMigrationSql,
+    assert_in_order: AssertInOrder,
 ) -> None:
     migration = load_migration(MIGRATION)
 
@@ -56,7 +52,7 @@ def test_upgrade_adds_the_kind_outside_the_transaction_then_the_column_and_the_t
     # sits between a COMMIT and a new BEGIN, before anything else.
     assert "ALTER TYPE notification_kind ADD VALUE IF NOT EXISTS 'coordinator_assigned'" in sql
     assert sql.index("COMMIT") < sql.index("ADD VALUE") < sql.index("BEGIN")
-    _assert_in_order(
+    assert_in_order(
         sql[sql.index("BEGIN") :],
         [
             "ALTER TABLE event_requests ADD COLUMN coordinator_id INTEGER",
@@ -70,13 +66,15 @@ def test_upgrade_adds_the_kind_outside_the_transaction_then_the_column_and_the_t
 
 
 def test_downgrade_removes_the_table_the_column_and_rebuilds_the_notification_kind(
-    load_migration: LoadMigration, render_migration_sql: RenderMigrationSql
+    load_migration: LoadMigration,
+    render_migration_sql: RenderMigrationSql,
+    assert_in_order: AssertInOrder,
 ) -> None:
     migration = load_migration(MIGRATION)
 
     sql = render_migration_sql(migration.downgrade)
 
-    _assert_in_order(
+    assert_in_order(
         sql,
         [
             "DROP TABLE event_history_entries",

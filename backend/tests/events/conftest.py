@@ -191,6 +191,18 @@ def render_migration_sql() -> Callable[[Callable[[], None]], str]:
 
 
 @pytest.fixture()
+def assert_in_order() -> Callable[[str, list[str]], None]:
+    """Check that every statement appears in rendered SQL, in the given order."""
+
+    def _assert(sql: str, expected_in_order: list[str]) -> None:
+        positions = [sql.find(statement) for statement in expected_in_order]
+        assert -1 not in positions
+        assert positions == sorted(positions)
+
+    return _assert
+
+
+@pytest.fixture()
 def notifications_of() -> Callable[[int], list[tuple[Any, ...]]]:
     """A user's notifications, newest first, as rows of what each one records.
 
