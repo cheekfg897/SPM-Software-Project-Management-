@@ -175,30 +175,44 @@ def _least_loaded_coordinator(coordinator_ids: list[int], session: Session) -> i
     return min(coordinator_ids, key=load_then_id)
 
 
-def _notify_about_submission(
-    event_request: EventRequest, coordinator_ids: list[int], session: Session
+def _raise_notifications(
+    recipient_ids: list[int], event_request: EventRequest, kind: NotificationKind, session: Session
 ) -> None:
-    """Tell every Event Coordinator a request was submitted (SCRUM-28 AC3).
+    """Notify ``recipient_ids`` about ``event_request``; a failed write is only logged.
 
     Runs after the request's own commit, so the notifications refer to a saved row
     (ADR-0015). If they can't be saved, only they are lost: the request is already
     saved, and failing the submission would invite the organiser to submit it again.
-
-    With no coordinator to assign (ADR-0018) the request stays unassigned; that is
-    logged so someone can pick it up.
     """
     event = EventSummary(
         id=event_request.id, reference=event_request.reference, name=event_request.name
     )
     try:
-        notify_users(
-            coordinator_ids, event, NotificationKind.EVENT_REQUEST_SUBMITTED, session=session
-        )
+        notify_users(recipient_ids, event, kind, session=session)
     except SQLAlchemyError:
         session.rollback()
-        logger.warning("event_request_notification_failed reference=%s", event.reference)
+        logger.warning(
+            "event_request_notification_failed reference=%s kind=%s", event.reference, kind.value
+        )
+
+
+def _notify_about_submission(event_request: EventRequest, session: Session) -> None:
+    """Tell the assigned coordinator the new request is theirs (SCRUM-30 AC4).
+
+    SCRUM-28 AC3 raises a new request to the coordinators; only the assigned one is
+    told (ADR-0018, replacing ADR-0015's notice to every coordinator). With no
+    coordinator to assign the request stays unassigned and nobody is told; that is
+    logged so someone can pick it up.
+    """
     if event_request.coordinator_id is None:
         logger.warning("event_request_unassigned reference=%s", event_request.reference)
+        return
+    _raise_notifications(
+        [event_request.coordinator_id],
+        event_request,
+        NotificationKind.COORDINATOR_ASSIGNED,
+        session,
+    )
 
 
 def submit_event_request(
@@ -218,8 +232,8 @@ def submit_event_request(
     (:data:`EventHistoryKind.COORDINATOR_ASSIGNED`) in the same commit (SCRUM-30
     AC1, AC2, ADR-0018); with no Event Coordinator it is saved unassigned. If the
     reference is already taken, the save is rolled back and retried with a new
-    one, up to :data:`MAX_REFERENCE_ATTEMPTS` times. Once saved, every Event
-    Coordinator is notified (SCRUM-28 AC3).
+    one, up to :data:`MAX_REFERENCE_ATTEMPTS` times. Once saved, the assigned
+    coordinator is told it is theirs (SCRUM-28 AC3, SCRUM-30 AC4).
 
     Args:
         organiser_id: The caller's user id, taken from their token.
@@ -243,8 +257,7 @@ def submit_event_request(
     data = load_or_raise(SubmitEventRequestSchema(today=today), payload)
     sess = resolve_session(session)
     organisation_id = _organisation_of_organiser(organiser_id, sess)
-    # Read once: one set of coordinators is both assigned from and notified, and
-    # nothing a retry changes affects anyone's load.
+    # Chosen before the retry loop: a retry changes nobody's load.
     coordinator_ids = list_user_ids_with_role(Role.EVENT_COORDINATOR, session=sess)
     coordinator_id = _least_loaded_coordinator(coordinator_ids, sess)
 
@@ -280,7 +293,7 @@ def submit_event_request(
             )
             continue
         # Outside the try: a failed notification commit is not a reference collision.
-        _notify_about_submission(event_request, coordinator_ids, sess)
+        _notify_about_submission(event_request, sess)
         return event_request
 
     raise ReferenceGenerationError("Could not create the event request. Please try again.")

@@ -15,6 +15,7 @@ from app.modules.notifications.models import Notification, NotificationKind
 #: What each kind says happened (SCRUM-28 AC1). Every kind must have an entry.
 MESSAGE_BY_KIND: dict[NotificationKind, str] = {
     NotificationKind.EVENT_REQUEST_SUBMITTED: "A new event request was submitted.",
+    NotificationKind.COORDINATOR_ASSIGNED: "You have been assigned to coordinate this event.",
 }
 
 #: Where a notification links to: the event's page, found by its reference

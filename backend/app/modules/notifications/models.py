@@ -24,7 +24,13 @@ EVENT_REFERENCE_MAX_LENGTH = 12
 class NotificationKind(str, enum.Enum):
     """What happened to the event a notification is about. Later stories add kinds."""
 
+    #: SCRUM-28 sent this to every Event Coordinator. Since SCRUM-30 only the assigned
+    #: coordinator is told, with ``COORDINATOR_ASSIGNED``, so nothing produces it any
+    #: more (ADR-0018). It stays: Postgres enums don't lose values, and older rows
+    #: still carry it.
     EVENT_REQUEST_SUBMITTED = "event_request_submitted"
+    #: Added by SCRUM-30: the recipient is now the event's coordinator (ADR-0018).
+    COORDINATOR_ASSIGNED = "coordinator_assigned"
 
 
 class Notification(db.Model):  # type: ignore[name-defined]
