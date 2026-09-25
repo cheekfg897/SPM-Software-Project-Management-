@@ -2,16 +2,24 @@
 
 from __future__ import annotations
 
+import importlib.util
+import io
 from collections.abc import Callable
 from datetime import date, time
+from pathlib import Path
+from types import ModuleType
 from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+from alembic.operations import Operations
+from alembic.runtime.migration import MigrationContext
 
 from app.modules.auth.models import User
 from app.modules.auth.permissions import Role
 from app.modules.events.models import EventRequest, EventRequestStatus
+
+MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "migrations" / "versions"
 
 
 @pytest.fixture()
@@ -78,3 +86,41 @@ def organiser_is_found(mock_session: MagicMock, make_user: Callable[..., User]) 
     mock_session.get.return_value = make_user(
         role=Role.EVENT_ORGANISER, user_id=7, organisation_id=3
     )
+
+
+@pytest.fixture()
+def load_migration() -> Callable[[str], ModuleType]:
+    """Import a migration file from ``migrations/versions`` by its file name."""
+
+    def _load(file_name: str) -> ModuleType:
+        spec = importlib.util.spec_from_file_location(
+            f"migration_{file_name[:4]}", MIGRATIONS_DIR / file_name
+        )
+        assert spec is not None
+        assert spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    return _load
+
+
+@pytest.fixture()
+def render_migration_sql() -> Callable[[Callable[[], None]], str]:
+    """Render the SQL Alembic would run on Postgres for a migration step, offline.
+
+    ``flask db check`` doesn't compare enum members, and the unit suite has no
+    Postgres, so migration tests read the SQL instead.
+    """
+
+    def _render(operation: Callable[[], None]) -> str:
+        buffer = io.StringIO()
+        context = MigrationContext.configure(
+            dialect_name="postgresql",
+            opts={"as_sql": True, "output_buffer": buffer, "literal_binds": True},
+        )
+        with Operations.context(context):
+            operation()
+        return buffer.getvalue()
+
+    return _render
