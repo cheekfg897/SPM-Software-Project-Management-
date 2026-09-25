@@ -24,7 +24,7 @@ To change a decision, don't rewrite history. Add a new ADR that **supersedes** t
 | [0009](0009-booking-times-in-utc.md) | Booking and block times are stored in UTC and shown in business time | Accepted | SCRUM-26 |
 | [0010](0010-search-prefill-deferred.md) | Opening venue search pre-filled from an event is deferred | Accepted | SCRUM-35 |
 | [0011](0011-venue-setup-and-turnaround.md) | Setup and turnaround are set per venue, default to 30 minutes, and pad both events | Accepted | SCRUM-67 |
-| [0012](0012-event-status-model.md) | Seven event statuses; `under_review` covers "Under Review / Planning"; visibility beyond the organiser waits on later stories | Accepted | SCRUM-22 |
+| [0012](0012-event-status-model.md) | Seven event statuses; `under_review` covers "Under Review / Planning"; visibility beyond the organiser waits on later stories | Accepted; the organiser's scope superseded by [0020](0020-organisers-see-their-organisations-events.md) | SCRUM-22 |
 | [0013](0013-client-organisations-recorded-by-internal-users.md) | Client organisations are recorded by internal users; organisers are linked at registration | Accepted | SCRUM-66 |
 | [0014](0014-equipment-type-location-and-quantity.md) | An equipment type is one uniquely named record, held at one venue or one named store | Accepted | SCRUM-27 |
 | [0015](0015-in-app-notifications.md) | Notifications are in-app rows, one per recipient, that snapshot their event | Accepted; who is told about a new request superseded by [0018](0018-least-loaded-coordinator-and-event-history.md) | SCRUM-28 |
@@ -32,6 +32,7 @@ To change a decision, don't rewrite history. Add a new ADR that **supersedes** t
 | [0017](0017-suitability-check-takes-requirements.md) | The suitability check takes an event's requirements explicitly; the justification rule waits for booking requests | Accepted | SCRUM-36 |
 | [0018](0018-least-loaded-coordinator-and-event-history.md) | A submitted request goes to the least-loaded Event Coordinator; one event history table records what happens to an event | Accepted | SCRUM-30 |
 | [0019](0019-event-equipment-lines.md) | Equipment lines are recorded per event by Event Coordinators while the request awaits review, one per type, each notifying Technical Support | Accepted | SCRUM-37 |
+| [0020](0020-organisers-see-their-organisations-events.md) | Event Organisers see their client organisation's event requests, scoped by one condition; another organisation's is `404` | Accepted | SCRUM-7 |
 
 ## Template
 
