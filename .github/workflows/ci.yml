@@ -18,7 +18,8 @@ on:
   # Lets anyone re-run the pipeline from the Actions tab, on any branch.
   workflow_dispatch:
 
-# Narrower than the default token scope. Nothing here writes to the repo.
+# Narrower than the default token scope. Only the backend job widens it, to
+# post the coverage comment on a pull request.
 permissions:
   contents: read
 
@@ -76,6 +77,13 @@ jobs:
     name: Backend — migrate + unit tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
+
+    # Widened from the workflow default for the coverage comment. GitHub
+    # grants permissions per job, not per step, and a job's list replaces the
+    # workflow's rather than adding to it, hence contents: read again.
+    permissions:
+      contents: read
+      pull-requests: write
 
     # Postgres is started and migrated on every run even though the current
     # unit suite mocks the DB, so integration tests can be dropped in next
@@ -181,6 +189,7 @@ jobs:
       # the day, so this run doubles as the check that nothing depends on the
       # two matching.
       - name: Run unit tests with coverage
+        id: tests
         run: pytest --cov=app --cov-branch --cov-report=term-missing --cov-report=xml --cov-fail-under=90 --junitxml=junit.xml
 
       # The 90% floor above is for the whole codebase, so a pull request can
@@ -196,21 +205,60 @@ jobs:
       # started. github.base_ref is not the same thing: for a pull request in
       # a stack it names the branch the whole stack ends in (main), and
       # diffing against that counted every lower pull request's lines too.
+      # The JSON copy is for the headline figure in the coverage report.
       - name: Changed lines are fully covered
         if: github.event_name == 'pull_request'
-        run: diff-cover coverage.xml --compare-branch=HEAD^1 --fail-under=100 --format markdown:diff-cover.md
+        run: diff-cover coverage.xml --compare-branch=HEAD^1 --fail-under=100 --format markdown:diff-cover.md,json:diff-cover.json
 
-      # Puts the coverage table on the run's summary page, so nobody has to
-      # download the artifact to see where a number moved.
-      - name: Publish coverage summary
-        if: always()
+      # One report for the run's summary page and the pull request comment,
+      # so nobody has to download the artifact to see where a number moved.
+      # Written whenever the tests ran, pass or fail; skipped if an earlier
+      # step failed before they could, since there is nothing to report.
+      - name: Write the coverage report
+        id: report
+        if: always() && steps.tests.outcome != 'skipped'
         run: |
-          echo "## Backend coverage" >> "$GITHUB_STEP_SUMMARY"
-          coverage report --format=markdown >> "$GITHUB_STEP_SUMMARY" || true
-          # Only pull requests produce it; it lists any changed line left uncovered.
-          if [ -f diff-cover.md ]; then
-            cat diff-cover.md >> "$GITHUB_STEP_SUMMARY"
-          fi
+          {
+            echo "## Backend coverage"
+            echo
+            echo "- **Overall:** $(coverage report --format=total)% (floor 90%)"
+            # Only pull requests have it: the changed-lines figure, and any line left uncovered.
+            if [ -f diff-cover.json ]; then
+              echo "- **Changed lines:** $(jq .total_percent_covered diff-cover.json)% (must be 100%)"
+            fi
+            echo
+            echo "<details><summary>Per-file coverage</summary>"
+            echo
+            coverage report --format=markdown
+            echo
+            echo "</details>"
+            if [ -f diff-cover.md ]; then
+              echo
+              cat diff-cover.md
+            fi
+          } > coverage-report.md
+          cat coverage-report.md >> "$GITHUB_STEP_SUMMARY"
+
+      # The same report as one comment on the pull request, edited in place on
+      # each push rather than posted again. --edit-last finds the workflow's
+      # own earlier comment (nothing else in this repo comments as the Actions
+      # bot) and --create-if-none covers the first run. A pull request from a
+      # fork gets a read-only token, so the step is skipped for one; the run
+      # summary still has the report. continue-on-error: the coverage gates
+      # have already run, and a failure to post a comment must not turn a
+      # green build red once this job is a required check. Dependabot's pull
+      # requests also get a read-only token, so on those this step fails and
+      # is ignored.
+      - name: Post the coverage report on the pull request
+        if: >-
+          always() && github.event_name == 'pull_request'
+          && steps.report.outcome == 'success'
+          && github.event.pull_request.head.repo.full_name == github.repository
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: gh pr comment "$PR_URL" --body-file coverage-report.md --edit-last --create-if-none
 
       - name: Upload test and coverage reports
         if: always()
