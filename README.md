@@ -15,7 +15,7 @@ backend/            Flask application (see below)
     common/         cross-cutting: error handlers, requires_auth / requires_role
     modules/auth/   models, routes, schemas, services, permissions
     modules/events/ event requests (SCRUM-19)
-    modules/venue/  venue catalogue (SCRUM-25), availability calendar (SCRUM-26)
+    modules/venue/  venue catalogue (SCRUM-25), availability calendar (SCRUM-26), search (SCRUM-35)
   tests/            unit tests (pytest), one marker per story
   migrations/       Alembic migrations (Flask-Migrate)
 docs/adr/           Architecture Decision Records: choices made where requirements were silent
@@ -112,6 +112,7 @@ curl http://localhost:5000/api/auth/internal-only -H "Authorization: Bearer <tok
 | `POST /api/venues/<id>/deactivate` | `venue_staff` — hide from listing and search            |
 | `POST /api/venues/<id>/reactivate` | `venue_staff` — show again                              |
 | `GET  /api/venues/<id>/calendar?range_start=…&range_end=…` | internal roles — bookings and blocked periods in the range |
+| `POST /api/venues/search`      | `event_coordinator` — venues that meet an event's requirements and are free |
 
 Roles: `event_organiser`, `attendee`, `event_coordinator`, `venue_staff`, `technical_support_staff`.
 
@@ -139,6 +140,7 @@ pytest -m scrum_21   # enforce permissions
 pytest -m scrum_19   # submit an event request
 pytest -m scrum_25   # update venue catalogue
 pytest -m scrum_26   # view a venue's availability calendar
+pytest -m scrum_35   # search and filter venues
 ```
 
 ## Database migrations

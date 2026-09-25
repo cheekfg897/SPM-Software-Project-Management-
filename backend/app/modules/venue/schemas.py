@@ -253,3 +253,48 @@ class CalendarEntrySchema(Schema):
     end_time = BusinessDateTime(dump_only=True)
     kind = fields.Enum(CalendarEntryKind, by_value=True, dump_only=True)
     reason = fields.String(dump_only=True)
+
+
+class VenueSearchSchema(_TimeRangeSchema):
+    """Payload for ``POST /api/venues/search`` (SCRUM-35)."""
+
+    start_time = fields.DateTime(required=True)
+    end_time = fields.DateTime(required=True)
+    min_capacity = fields.Integer(
+        required=True,
+        validate=validate.Range(min=1, error="min_capacity must be a positive number."),
+    )
+    location = fields.String(load_default=None, allow_none=True)
+    required_layout = fields.String(
+        load_default=None, allow_none=True, validate=validate.OneOf(LayoutType.values())
+    )
+    required_facilities = _free_text_list()
+    required_accessibility = _free_text_list()
+
+    @post_load
+    def _normalise_requirements(self, data: dict[str, Any], **_: Any) -> dict[str, Any]:
+        # Stored items are trimmed and lower case; requests are compared the same way.
+        for key in ("required_facilities", "required_accessibility"):
+            data[key] = [_normalised_item(item) for item in data[key]]
+        if data["location"] is not None:
+            # A blank location means "anywhere", not "a location containing nothing".
+            data["location"] = data["location"].strip() or None
+        return data
+
+
+class VenueMatchSchema(Schema):
+    """One search result: the venue and which requested requirements it meets."""
+
+    id = fields.Integer(attribute="venue.id", dump_only=True)
+    name = fields.String(attribute="venue.name", dump_only=True)
+    capacity = fields.Integer(attribute="venue.capacity", dump_only=True)
+    location = fields.String(attribute="venue.location", dump_only=True)
+    matched_requirements = fields.Method("get_matched_requirements", dump_only=True)
+
+    def get_matched_requirements(self, match: Any) -> dict[str, Any]:
+        """What the venue offers of each requested requirement (AC3)."""
+        return {
+            "facilities": match.facilities,
+            "accessibility_features": match.accessibility_features,
+            "layout": match.layout,
+        }

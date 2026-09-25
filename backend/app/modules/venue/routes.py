@@ -12,18 +12,29 @@ registered view function directly (``tests/venue/test_venue_permissions.py``).
 
 from __future__ import annotations
 
+from typing import Any
+
 from flask import Blueprint, Response, g, jsonify, request
 
 from app.common.decorators import requires_auth, requires_role
 from app.common.validation import load_or_raise
 from app.modules.auth.permissions import INTERNAL_ROLES, Role
 from app.modules.venue import services
-from app.modules.venue.schemas import CalendarEntrySchema, CalendarQuerySchema, VenueSchema
+from app.modules.venue.schemas import (
+    CalendarEntrySchema,
+    CalendarQuerySchema,
+    VenueMatchSchema,
+    VenueSchema,
+)
 
 bp = Blueprint("venue", __name__, url_prefix="/api/venues")
 
 _venue_schema = VenueSchema()
 _calendar_entry_schema = CalendarEntrySchema()
+_venue_match_schema = VenueMatchSchema()
+
+#: SCRUM-35 AC4: what an empty search says.
+NO_MATCHES_MESSAGE = "No venues match your search criteria."
 
 
 # --------------------------------------------------------------------------
@@ -96,3 +107,19 @@ def get_calendar(venue_id: int) -> tuple[Response, int]:
         viewer_role=Role(g.current_user_role),
     )
     return jsonify(_calendar_entry_schema.dump(entries, many=True)), 200
+
+
+# --------------------------------------------------------------------------
+# SCRUM-35 — Search and filter venues against event requirements
+# --------------------------------------------------------------------------
+
+
+@bp.post("/search")
+@requires_role(Role.EVENT_COORDINATOR)
+def search_venues() -> tuple[Response, int]:
+    """Venues that meet an event's needs and are free. Event Coordinators only."""
+    matches = services.search_venues(request.get_json(silent=True))
+    body: dict[str, Any] = {"results": _venue_match_schema.dump(matches, many=True)}
+    if not matches:
+        body["message"] = NO_MATCHES_MESSAGE
+    return jsonify(body), 200
