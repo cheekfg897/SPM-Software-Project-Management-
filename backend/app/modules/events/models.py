@@ -67,6 +67,16 @@ class EventHistoryKind(str, enum.Enum):
     COORDINATOR_ASSIGNED = "coordinator_assigned"
 
 
+class EquipmentLineStatus(str, enum.Enum):
+    """Where an event's equipment line stands (SCRUM-37 AC4, ADR-0019).
+
+    Only ``REQUESTED`` is written so far; SCRUM-46 adds ``reserved`` with an
+    ``ALTER TYPE ... ADD VALUE`` migration.
+    """
+
+    REQUESTED = "requested"
+
+
 class EventRequest(db.Model):  # type: ignore[name-defined]
     """An Event Organiser's request for ConnectSphere to plan an event (SCRUM-19)."""
 
@@ -123,6 +133,11 @@ class EventRequest(db.Model):  # type: ignore[name-defined]
         nullable=False,
         default=EventRequestStatus.SUBMITTED,
     )
+    #: The equipment recorded for the event (SCRUM-37), in the order it was added.
+    #: Loaded on access, so the organiser's list query never touches that table.
+    equipment_lines: Mapped[list[EventEquipmentLine]] = relationship(
+        order_by="EventEquipmentLine.id"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -176,3 +191,52 @@ class EventHistoryEntry(db.Model):  # type: ignore[name-defined]
             f"<EventHistoryEntry id={self.id} event_request_id={self.event_request_id}"
             f" kind={self.kind!r}>"
         )
+
+
+class EventEquipmentLine(db.Model):  # type: ignore[name-defined]
+    """One kind of equipment an event needs, and how many (SCRUM-37, ADR-0019).
+
+    One line per equipment type per event: to change the number, edit the line.
+    """
+
+    __tablename__ = "event_equipment_lines"
+    __table_args__ = (
+        CheckConstraint("quantity >= 1", name="ck_event_equipment_lines_quantity_min"),
+        UniqueConstraint(
+            "event_request_id",
+            "equipment_type_id",
+            name="uq_event_equipment_lines_event_request_id_equipment_type_id",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    event_request_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("event_requests.id"), index=True, nullable=False
+    )
+    #: The catalogue entry (SCRUM-27). A database-level foreign key only: the
+    #: equipment module's model is not imported (module boundary).
+    equipment_type_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("equipment_types.id"), index=True, nullable=False
+    )
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    #: Technical notes; a blank note is stored as ``NULL``.
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[EquipmentLineStatus] = mapped_column(
+        Enum(
+            EquipmentLineStatus,
+            name="event_equipment_line_status",
+            # Store the enum *values* (snake_case), not the member names.
+            values_callable=lambda enum_cls: [m.value for m in enum_cls],
+        ),
+        nullable=False,
+        default=EquipmentLineStatus.REQUESTED,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
