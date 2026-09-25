@@ -29,7 +29,7 @@ Mypy isn't in CI yet, so type hints are reviewed by hand in section 8.
 - [ ] **Commits are layered** (§15): one logical change each, each passing lint and tests
       on its own, in dependency order, with no "WIP" or "fix previous commit" commits.
 - [ ] Every acceptance criterion of the story is implemented and tested — check against the
-      **Jira story** (the source of truth; `backend/STORIES.md` may be stale), one AC at a
+      **Jira story** (the single source of truth for requirements), one AC at a
       time. Read its comments too: agreed clarifications live there.
 - [ ] Open "Ask customer" subtasks on the story that this change depends on have an ADR
       recording the interim decision.
@@ -38,8 +38,7 @@ Mypy isn't in CI yet, so type hints are reviewed by hand in section 8.
       index table is updated.
 - [ ] New test modules set `pytestmark` to the story's marker, and the marker is declared in
       `pytest.ini`.
-- [ ] `README.md` route table, `STORIES.md` or `.env.example` are updated if the change
-      affects them.
+- [ ] `README.md` route table and `.env.example` are updated if the change affects them.
 
 ## 2. Architecture and module boundaries (§7)
 

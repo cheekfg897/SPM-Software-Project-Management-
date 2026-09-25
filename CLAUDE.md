@@ -41,7 +41,7 @@ the work is finished before the last one:
 |---|---|
 | Writing or changing Python | [backend/CONVENTIONS.md](backend/CONVENTIONS.md) — auto-loaded via `backend/CLAUDE.md` |
 | Reviewing code (a PR, a branch, or your own work) | the `review-checklist` skill, which walks [docs/code-review-checklist.md](docs/code-review-checklist.md) |
-| Implementing a story | The Jira story (`SCRUM-<n>` on `smu-team-uu78imq6.atlassian.net`, via the Atlassian MCP tools — read-only unless asked): ACs in the description, clarifications in comments. Then the relevant `docs/adr/` records. `backend/STORIES.md` is a local copy and may be stale. |
+| Implementing a story | The Jira story (`SCRUM-<n>` on `smu-team-uu78imq6.atlassian.net`, via the Atlassian MCP tools — read-only unless asked): ACs in the description, clarifications in comments. Then the relevant `docs/adr/` records. Jira is the only place requirements live; there is no local copy. |
 | Acceptance criteria are ambiguous | `docs/adr/README.md` — record the decision as a new ADR |
 
 ## Commands

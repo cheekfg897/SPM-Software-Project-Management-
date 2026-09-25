@@ -55,9 +55,10 @@ Take these from the issue:
 even though the connection allows writes. If the user wants Jira updated, they'll ask
 separately.
 
-**If Jira can't be reached** (tools missing, not logged in, or an error), fall back to
-`backend/STORIES.md` and the PR description. Say so at the top of the report, because the
-local copy may be out of date. Don't pass the AC check silently.
+**If Jira can't be reached** (tools missing, not logged in, or an error), there is no other
+copy of the acceptance criteria to fall back on. Tell the user and ask whether to wait or to
+continue without the AC check. If you continue, run steps 3 and 5 and say at the top of the
+report that the ACs were not checked. Never reconstruct ACs from memory or the PR description.
 
 Then read any ADR in `docs/adr/` that names this story.
 
@@ -171,7 +172,7 @@ the fix.
 Keep it short:
 
 1. **Story:** key, summary, status, and a link (`https://smu-team-uu78imq6.atlassian.net/browse/<KEY>`).
-   Or "Jira unavailable — checked against STORIES.md".
+   Or "Jira unavailable — acceptance criteria not checked".
 2. **Acceptance criteria:** the traceability table from step 4.
 3. **Checks:** each automated check with passed / failed / not run (and why).
 4. **Coverage gaps:** every uncovered line or branch in changed code, with its reason. Say
