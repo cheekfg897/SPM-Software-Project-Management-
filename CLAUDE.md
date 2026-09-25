@@ -98,10 +98,12 @@ flask db heads                # must print exactly one head
 
 - PR titles are Conventional Commits, enforced by `.github/workflows/pr-title.yml`. Use the
   same format for commit subjects.
-  - `feat fix docs refactor test perf style revert` **must** name the story:
+  - `feat fix docs chore refactor test perf style revert` **must** name the story:
     `feat(SCRUM-19): submit an event request`.
-  - `ci build chore` may leave it out: `ci: cache pip downloads`. If they give a scope, it must
-    be a story (`ci(SCRUM-5): ...`), never a free-form one like `chore(deps)`.
+  - Only `ci` and `build` (pipelines, dependencies, Dependabot) may leave it out:
+    `ci: cache pip downloads`. If they give a scope, it must be a story (`ci(SCRUM-5): ...`),
+    never a free-form one like `build(deps)`.
 - **Layered commits** (`backend/CONVENTIONS.md` §15): one logical change per commit, each
-  passing lint and tests on its own, stacked in dependency order.
+  passing lint and tests on its own, stacked in dependency order. Merge with **Rebase and
+  merge**, never squash.
 - Branch off `main`; never commit `backend/.env` or real secrets.

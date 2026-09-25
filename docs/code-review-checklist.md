@@ -11,7 +11,7 @@ whole team; a slightly vague name hurts one reader. If time is short, review fro
 Don't review by hand what CI already checks. Confirm these are green (or run them locally from
 `backend/`), then skip to section 1.
 
-- [ ] **PR title** is `type(SCRUM-<id>): summary`; `ci`/`build`/`chore` may drop the
+- [ ] **PR title** is `type(SCRUM-<id>): summary`; only `ci`/`build` may drop the
       `(SCRUM-<id>)` (`pr-title.yml`)
 - [ ] **Lint**: `ruff check .` — style, imports, docstrings present, bandit security rules,
       no `date.today()` / naive `datetime.now()`
