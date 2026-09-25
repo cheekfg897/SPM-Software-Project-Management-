@@ -31,6 +31,7 @@ from app.modules.venue.models import (
     LIST_SEPARATOR,
     CalendarEntryKind,
     LayoutType,
+    RequirementKind,
     Venue,
     Weekday,
 )
@@ -397,3 +398,26 @@ class ConflictingBookingSchema(Schema):
     event_id = fields.Integer(dump_only=True, allow_none=True)
     start_time = BusinessDateTime(dump_only=True)
     end_time = BusinessDateTime(dump_only=True)
+
+
+class VenueSuitabilitySchema(_RequirementsSchema):
+    """Payload for ``POST /api/venues/<id>/suitability`` (SCRUM-36)."""
+
+    expected_attendance = fields.Integer(
+        required=True,
+        validate=validate.Range(min=1, error="expected_attendance must be a positive number."),
+    )
+
+
+class UnmetRequirementSchema(Schema):
+    """One reason a venue can't host an event (SCRUM-36)."""
+
+    requirement = fields.Enum(RequirementKind, by_value=True, dump_only=True)
+    message = fields.String(dump_only=True)
+
+
+class SuitabilityResultSchema(Schema):
+    """What ``POST /api/venues/<id>/suitability`` returns (SCRUM-36)."""
+
+    suitable = fields.Boolean(dump_only=True)
+    reasons = fields.List(fields.Nested(UnmetRequirementSchema), dump_only=True)
