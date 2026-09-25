@@ -436,14 +436,19 @@ def get_event_request_for_organiser(
     )
 
 
+def _contact_of_coordinator(coordinator_id: int, session: Session) -> CoordinatorContact:
+    """A coordinator's name and email, as the organiser sees them (SCRUM-30 AC3)."""
+    coordinator = get_user_by_id(coordinator_id, session=session)
+    return CoordinatorContact(full_name=coordinator.full_name, email=coordinator.email)
+
+
 def _coordinator_contact(
     event_request: EventRequest, session: Session
 ) -> CoordinatorContact | None:
     """The request's assigned coordinator, or ``None`` while it has none (ADR-0018)."""
     if event_request.coordinator_id is None:
         return None
-    coordinator = get_user_by_id(event_request.coordinator_id, session=session)
-    return CoordinatorContact(full_name=coordinator.full_name, email=coordinator.email)
+    return _contact_of_coordinator(event_request.coordinator_id, session)
 
 
 def get_event_record_for_organiser(
