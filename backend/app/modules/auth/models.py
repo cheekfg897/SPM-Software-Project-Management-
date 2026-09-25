@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, Integer, String, func
+from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -38,8 +38,11 @@ class User(db.Model):  # type: ignore[name-defined]
         ),
         nullable=False,
     )
-    #: Optional — relevant to Event Organisers / Attendees.
-    organisation: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    #: Set for Event Organisers only (SCRUM-66 AC2, ADR-0013). A database-level foreign
+    #: key only: the organisations module's model is not imported (module boundary).
+    organisation_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("client_organisations.id"), index=True, nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

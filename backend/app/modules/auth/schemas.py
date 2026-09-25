@@ -11,8 +11,15 @@ import re
 from typing import Any
 
 from flask import current_app, has_app_context
-from marshmallow import Schema, ValidationError as MarshmallowValidationError, fields, validate
+from marshmallow import (
+    Schema,
+    ValidationError as MarshmallowValidationError,
+    fields,
+    validate,
+    validates_schema,
+)
 
+from app.common.fields import WholeNumber
 from app.modules.auth.permissions import Role, role_value
 
 # Password policy (SCRUM-65): see ADR-0005.
@@ -59,12 +66,31 @@ class RegisterSchema(Schema):
         required=True,
         validate=validate.OneOf(Role.values(), error="Role must be one of: {choices}."),
     )
-    organisation = fields.String(
+    #: The client organisation an Event Organiser belongs to (SCRUM-66 AC2, ADR-0013).
+    #: Whether it exists is checked by the service, which can read the database.
+    organisation_id = WholeNumber(
         required=False,
         allow_none=True,
         load_default=None,
-        validate=validate.Length(max=120, error="Organisation must be at most 120 characters."),
+        validate=validate.Range(min=1, error="Organisation id must be a positive number."),
     )
+
+    @validates_schema
+    def _organisation_matches_role(self, data: dict[str, Any], **_: Any) -> None:
+        # Only runs when every field passed its own validation, so ``role`` is a
+        # known role here.
+        is_organiser = data["role"] == Role.EVENT_ORGANISER.value
+        has_organisation = data["organisation_id"] is not None
+        if is_organiser and not has_organisation:
+            raise MarshmallowValidationError(
+                "Event Organisers must belong to a client organisation.",
+                field_name="organisation_id",
+            )
+        if has_organisation and not is_organiser:
+            raise MarshmallowValidationError(
+                "Only Event Organisers belong to a client organisation.",
+                field_name="organisation_id",
+            )
 
 
 class LoginSchema(Schema):
@@ -81,7 +107,8 @@ class UserSchema(Schema):
     email = fields.Email(dump_only=True)
     full_name = fields.String(dump_only=True)
     role = fields.Method("get_role", dump_only=True)
-    organisation = fields.String(dump_only=True, allow_none=True)
+    #: The caller's own client organisation, for Event Organisers (SCRUM-66).
+    organisation_id = fields.Integer(dump_only=True, allow_none=True)
     created_at = fields.DateTime(dump_only=True, allow_none=True)
 
     def get_role(self, obj: Any) -> str:

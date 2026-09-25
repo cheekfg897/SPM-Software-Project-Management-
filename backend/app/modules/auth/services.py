@@ -23,11 +23,12 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from app.common.database import resolve_session
 from app.common.decorators import ROLE_CLAIM
-from app.common.errors import AuthenticationError, ConflictError, NotFoundError
+from app.common.errors import AuthenticationError, ConflictError, NotFoundError, ValidationError
 from app.common.validation import load_or_raise
 from app.modules.auth.models import User
 from app.modules.auth.permissions import Role, role_value
 from app.modules.auth.schemas import RegisterSchema
+from app.modules.organisations.services import get_organisation
 
 #: The one message used for *every* login failure so that responses cannot be
 #: used to discover which emails are registered.
@@ -69,16 +70,30 @@ def get_user_by_id(user_id: int | str, *, session: Session | None = None) -> Use
     return user
 
 
+def _check_organisation_exists(organisation_id: int, session: Session) -> None:
+    """Refuse an unknown client organisation as a 400 on its field (SCRUM-66 AC2).
+
+    It is a bad value in the payload, like any other, rather than a missing resource.
+    """
+    try:
+        get_organisation(organisation_id, session=session)
+    except NotFoundError as exc:
+        raise ValidationError(
+            "Invalid request.", details={"organisation_id": [exc.message]}
+        ) from exc
+
+
 def register_user(payload: Mapping[str, Any] | None, *, session: Session | None = None) -> User:
     """Create a new account (SCRUM-65).
 
     Validates the payload against :class:`RegisterSchema` (required fields,
-    email format, role, password policy), checks the email is not already in
+    email format, role, password policy), checks that an Event Organiser's
+    client organisation exists (SCRUM-66), checks the email is not already in
     use, hashes the password and persists the user.
 
     Args:
         payload: Decoded JSON body with ``email``, ``password``, ``full_name``,
-            ``role`` and optional ``organisation``.
+            ``role`` and, for an Event Organiser only, ``organisation_id``.
         session: Database session; defaults to ``db.session``.
 
     Returns:
@@ -86,11 +101,16 @@ def register_user(payload: Mapping[str, Any] | None, *, session: Session | None 
         plaintext password is not retained anywhere on the object.
 
     Raises:
-        ValidationError: 400 — payload invalid (details per field).
+        ValidationError: 400 — payload invalid (details per field), including an
+            organisation id that is missing, not allowed for the role, or unknown.
         ConflictError: 409 — email already registered.
     """
     data = load_or_raise(RegisterSchema(), payload)
     sess = resolve_session(session)
+
+    organisation_id = data["organisation_id"]
+    if organisation_id is not None:
+        _check_organisation_exists(organisation_id, sess)
 
     email = normalise_email(data["email"])
     if get_user_by_email(email, session=sess) is not None:
@@ -100,7 +120,7 @@ def register_user(payload: Mapping[str, Any] | None, *, session: Session | None 
         email=email,
         full_name=data["full_name"].strip(),
         role=Role.from_value(data["role"]),
-        organisation=(data.get("organisation") or None),
+        organisation_id=organisation_id,
     )
     user.set_password(data["password"])
 
