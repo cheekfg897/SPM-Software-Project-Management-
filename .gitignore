@@ -41,6 +41,8 @@ venv/
 coverage.xml
 junit.xml
 diff-cover.md
+diff-cover.json
+coverage-report.md
 htmlcov/
 .mypy_cache/
 .ruff_cache/
