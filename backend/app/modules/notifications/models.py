@@ -32,6 +32,9 @@ class NotificationKind(str, enum.Enum):
     #: Added by SCRUM-30: the recipient is now the event's coordinator (ADR-0018).
     COORDINATOR_ASSIGNED = "coordinator_assigned"
     EQUIPMENT_REQUESTED = "equipment_requested"
+    #: A significant change to an event affects arrangements already made for it
+    #: (SCRUM-33, ADR-0025).
+    SIGNIFICANT_CHANGE = "significant_change"
 
 
 class Notification(db.Model):  # type: ignore[name-defined]
