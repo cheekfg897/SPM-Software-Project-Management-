@@ -136,6 +136,55 @@ def test_contact_phone_can_be_left_out(
 
 
 @pytest.mark.parametrize(
+    "phone", ["61234567", "6123-4567", "+65 6123 4567", "+1 (415) 555-0100", "1234567"]
+)
+def test_contact_phone_in_a_usual_format_is_accepted(
+    db_session: Session, phone: str, valid_organisation_payload: dict[str, Any]
+) -> None:
+    created = services.create_organisation(
+        {**valid_organisation_payload, "contact_phone": phone}, session=db_session
+    )
+
+    assert _reload(db_session, created.id).contact_phone == phone
+
+
+@pytest.mark.parametrize(
+    "bad_phone",
+    [
+        "abc",
+        "!!!",
+        "call me maybe",
+        "6123 4567 ext 2",
+        "65+6123 4567",
+        "++65 6123 4567",
+        "123456",
+        "\u0666\u0661\u0662\u0663\u0664\u0665\u0666\u0667",
+    ],
+    ids=[
+        "letters",
+        "symbols",
+        "words",
+        "extension",
+        "plus-not-leading",
+        "two-pluses",
+        "six-digits",
+        "non-ascii-digits",
+    ],
+)
+def test_contact_phone_that_is_not_a_phone_number_is_rejected(
+    db_session: Session, bad_phone: str, valid_organisation_payload: dict[str, Any]
+) -> None:
+    payload = {**valid_organisation_payload, "contact_phone": bad_phone}
+
+    assert _rejected_details(db_session, payload) == {
+        "contact_phone": [
+            "Contact phone must have at least 7 digits and use only spaces, hyphens, "
+            "brackets and a leading +."
+        ]
+    }
+
+
+@pytest.mark.parametrize(
     ("field", "max_length", "message"),
     [
         ("name", 120, "Name must be at most 120 characters."),
@@ -150,7 +199,7 @@ def test_over_length_field_is_rejected(
     message: str,
     valid_organisation_payload: dict[str, Any],
 ) -> None:
-    payload = {**valid_organisation_payload, field: "x" * (max_length + 1)}
+    payload = {**valid_organisation_payload, field: "1" * (max_length + 1)}
 
     assert _rejected_details(db_session, payload) == {field: [message]}
 
@@ -167,15 +216,18 @@ def test_over_length_contact_email_is_rejected(
     }
 
 
-@pytest.mark.parametrize("field", ["name", "contact_name"])
+@pytest.mark.parametrize(
+    ("field", "max_length"), [("name", 120), ("contact_name", 120), ("contact_phone", 30)]
+)
 def test_field_at_its_length_limit_is_accepted(
-    db_session: Session, field: str, valid_organisation_payload: dict[str, Any]
+    db_session: Session, field: str, max_length: int, valid_organisation_payload: dict[str, Any]
 ) -> None:
+    at_limit = "1" * max_length
     created = services.create_organisation(
-        {**valid_organisation_payload, field: "x" * 120}, session=db_session
+        {**valid_organisation_payload, field: at_limit}, session=db_session
     )
 
-    assert getattr(_reload(db_session, created.id), field) == "x" * 120
+    assert getattr(_reload(db_session, created.id), field) == at_limit
 
 
 def test_unknown_field_is_rejected(
