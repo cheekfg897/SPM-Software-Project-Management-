@@ -1,6 +1,6 @@
 # ADR-0025: An assigned coordinator edits set fields; a significant change asks Technical Support to recheck equipment; history is shown with names resolved, not ids
 
-- **Status:** Accepted
+- **Status:** Accepted; `approved` added to the editable statuses by [ADR-0028](0028-review-and-decide.md)
 - **Date:** 2026-09-26
 - **Story:** SCRUM-33 Update event information and flag significant changes
 - **Extends:** [ADR-0018](0018-least-loaded-coordinator-and-event-history.md): the event history table; [ADR-0019](0019-event-equipment-lines.md): notifying Technical Support Staff; [ADR-0021](0021-coordinator-reassignment.md): the coordinator's ownership check
