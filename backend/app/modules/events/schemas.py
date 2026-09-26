@@ -9,8 +9,10 @@ were ambiguous, the choice is recorded as an ADR in ``docs/adr/``:
 * ADR-0003: expected attendance is a whole number of at least 1.
 
 SCRUM-37 adds the equipment lines recorded on a request (ADR-0019), SCRUM-87 the
-coordinator a request is reassigned to (ADR-0021), and SCRUM-38 the list of lines
-still awaiting Technical Support (ADR-0022).
+coordinator a request is reassigned to (ADR-0021), SCRUM-38 the list of lines still
+awaiting Technical Support (ADR-0022), and SCRUM-20 :class:`SaveDraftSchema`, which
+:class:`SubmitEventRequestSchema` extends with the rules that only apply once a
+request is submitted (ADR-0024).
 """
 
 from __future__ import annotations
@@ -42,6 +44,11 @@ OPTIONAL_TEXT_FIELDS = (
 )
 
 
+#: Shared by both schemas, so a draft's attendance is checked the same way once
+#: submission requires it too.
+_ATTENDANCE_AT_LEAST_ONE = validate.Range(min=1, error="Expected attendance must be at least 1.")
+
+
 def _not_blank(value: str) -> None:
     if not value.strip():
         raise MarshmallowValidationError("Event name must not be blank.")
@@ -51,15 +58,25 @@ def _optional_text() -> fields.String:
     return fields.String(required=False, allow_none=True, load_default=None)
 
 
-class SubmitEventRequestSchema(Schema):
-    """Payload for ``POST /api/events/requests``.
+def _optional_date() -> fields.Date:
+    return fields.Date(required=False, allow_none=True, load_default=None)
 
-    Fields the server controls (``status``, ``reference``, ``organiser_id``)
-    are not declared, so sending them is rejected as an unknown field.
 
-    Args:
-        today: The date "in the past" is measured against. Defaults to today
-            in the business timezone; tests pass a fixed date.
+def _optional_time() -> fields.Time:
+    return fields.Time(required=False, allow_none=True, load_default=None)
+
+
+class SaveDraftSchema(Schema):
+    """Payload to save a draft or edit one (SCRUM-20 AC1, AC3).
+
+    Only ``name`` is required; every other field is optional and, when it is sent,
+    is checked on its own. Rules that compare two fields, or depend on today
+    (ADR-0001, ADR-0002), wait until the request is submitted (ADR-0024): a draft may
+    already hold a date in the past or an end time before the start, since it isn't
+    going ahead yet. Fields the server controls (``status``, ``reference``,
+    ``organiser_id``) are not declared, so sending them is rejected as an unknown
+    field. Editing a draft loads this schema with ``partial`` set to every one of
+    its field names, so a request may send any subset of them.
     """
 
     name = fields.String(
@@ -74,13 +91,12 @@ class SubmitEventRequestSchema(Schema):
     )
     purpose = _optional_text()
     description = _optional_text()
-    proposed_date = fields.Date(required=True)
-    end_date = fields.Date(required=False, allow_none=True, load_default=None)
-    start_time = fields.Time(required=True)
-    end_time = fields.Time(required=True)
+    proposed_date = _optional_date()
+    end_date = _optional_date()
+    start_time = _optional_time()
+    end_time = _optional_time()
     expected_attendance = WholeNumber(
-        required=True,
-        validate=validate.Range(min=1, error="Expected attendance must be at least 1."),
+        required=False, allow_none=True, load_default=None, validate=_ATTENDANCE_AT_LEAST_ONE
     )
     venue_requirements = _optional_text()
     accessibility_needs = _optional_text()
@@ -88,6 +104,48 @@ class SubmitEventRequestSchema(Schema):
     registration_required = fields.Boolean(
         required=False, load_default=False, truthy={True}, falsy={False}
     )
+
+    @validates("start_time", "end_time")
+    def _time_has_no_offset(self, value: Any, **_: Any) -> None:
+        # Times are in the business timezone. An offset would also make the
+        # start/end comparison on submission fail (naive vs aware datetimes). A draft
+        # may send a time as null, and marshmallow still runs this validator for it.
+        if value is not None and value.tzinfo is not None:
+            raise MarshmallowValidationError("Time must not include a timezone offset.")
+
+    @post_load
+    def _normalise(self, data: dict[str, Any], **_: Any) -> dict[str, Any]:
+        """Trim the fields that were actually sent; a field left out stays left out.
+
+        A partial edit (AC3) puts only the sent keys in ``data``, so checking
+        ``key in data`` before touching it never invents a field the caller did not
+        send, and a full save (AC1) trims every one it fills in.
+        """
+        if "name" in data:
+            data["name"] = data["name"].strip()
+        for key in OPTIONAL_TEXT_FIELDS:
+            if key in data and data[key] is not None:
+                data[key] = data[key].strip() or None
+        return data
+
+
+class SubmitEventRequestSchema(SaveDraftSchema):
+    """Payload for ``POST /api/events/requests`` and submitting a draft (SCRUM-19).
+
+    Extends :class:`SaveDraftSchema` with the fields a submission cannot do without,
+    and the rules that only make sense once every one of them is present: the
+    proposed date must not be in the past (ADR-0001), and the event must end after
+    it starts (ADR-0002).
+
+    Args:
+        today: The date "in the past" is measured against. Defaults to today
+            in the business timezone; tests pass a fixed date.
+    """
+
+    proposed_date = fields.Date(required=True)
+    start_time = fields.Time(required=True)
+    end_time = fields.Time(required=True)
+    expected_attendance = WholeNumber(required=True, validate=_ATTENDANCE_AT_LEAST_ONE)
 
     def __init__(self, *, today: date | None = None, **kwargs: Any) -> None:
         super().__init__(**kwargs)
@@ -102,13 +160,6 @@ class SubmitEventRequestSchema(Schema):
     def _proposed_date_not_in_past(self, value: date, **_: Any) -> None:
         if value < self.today:
             raise MarshmallowValidationError("Proposed date cannot be in the past.")
-
-    @validates("start_time", "end_time")
-    def _time_has_no_offset(self, value: Any, **_: Any) -> None:
-        # Times are in the business timezone. An offset would also make the
-        # start/end comparison below fail (naive vs aware datetimes).
-        if value.tzinfo is not None:
-            raise MarshmallowValidationError("Time must not include a timezone offset.")
 
     @validates_schema
     def _ends_after_it_starts(self, data: dict[str, Any], **_: Any) -> None:
@@ -130,11 +181,13 @@ class SubmitEventRequestSchema(Schema):
             )
 
     @post_load
-    def _normalise(self, data: dict[str, Any], **_: Any) -> dict[str, Any]:
-        data["name"] = data["name"].strip()
-        for key in OPTIONAL_TEXT_FIELDS:
-            value = data.get(key)
-            data[key] = (value.strip() or None) if value is not None else None
+    def _end_date_defaults_to_proposed_date(self, data: dict[str, Any], **_: Any) -> dict[str, Any]:
+        """Default ``end_date`` to ``proposed_date`` when it was not sent (ADR-0002).
+
+        Runs alongside :meth:`SaveDraftSchema._normalise`, which this schema also
+        inherits; only submission defaults ``end_date`` like this (ADR-0024 20-8), so
+        a draft keeps ``end_date`` exactly as sent.
+        """
         if data.get("end_date") is None:
             data["end_date"] = data["proposed_date"]
         return data

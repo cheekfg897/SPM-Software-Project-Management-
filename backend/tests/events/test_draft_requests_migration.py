@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from app.modules.auth.models import User
 from app.modules.events.models import EventRequest, EventRequestStatus
+from tests.events.cases import DETAIL_COLUMNS
 
 pytestmark = pytest.mark.scrum_20
 
@@ -35,9 +36,6 @@ CHECK_CONDITION = (
     "status = 'draft' OR (proposed_date IS NOT NULL AND end_date IS NOT NULL AND "
     "start_time IS NOT NULL AND end_time IS NOT NULL AND expected_attendance IS NOT NULL)"
 )
-
-#: The five columns a draft may leave empty (ADR-0024).
-DETAIL_COLUMNS = ["proposed_date", "end_date", "start_time", "end_time", "expected_attendance"]
 
 
 def _full_details(**overrides: Any) -> dict[str, Any]:
