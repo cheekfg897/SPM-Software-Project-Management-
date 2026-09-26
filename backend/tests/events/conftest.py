@@ -108,6 +108,12 @@ def other_organisers(
 
 
 @pytest.fixture()
+def coordinator_three() -> CoordinatorContact:
+    """Coordinator 3 of ``saved_users``, as the organiser sees them (SCRUM-24 AC7)."""
+    return CoordinatorContact(full_name="Coordinator Three", email="coordinator3@example.com")
+
+
+@pytest.fixture()
 def today() -> date:
     """A fixed "today" so date rules don't depend on when the tests run."""
     return date(2026, 9, 15)
