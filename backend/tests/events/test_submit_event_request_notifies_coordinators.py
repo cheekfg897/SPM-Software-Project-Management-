@@ -5,7 +5,9 @@ Coordinators; SCRUM-30 "Assign a coordinator to a submitted event" AC4 tells the
 coordinator it is assigned to. Since SCRUM-30, the assigned coordinator is the only
 one it is raised to: they get one ``coordinator_assigned`` notification and nobody
 else is notified (ADR-0018, replacing ADR-0015's notice to every coordinator).
-Nothing produces ``event_request_submitted`` any more.
+Nothing produces ``event_request_submitted`` any more. The same notice is how
+SCRUM-39 "Be notified about review and approval decisions" AC4 tells the new
+coordinator on assignment, so these tests are also its regression guards.
 
 Runs against ``db_session`` with the ``saved_users`` fixture, so the coordinators are
 found by a real query; coordinator 3 is the one assigned. With no coordinator at all,
@@ -31,7 +33,7 @@ from app.modules.events.services import submit_event_request
 from app.modules.notifications.schemas import MESSAGE_BY_KIND
 from app.modules.notifications.services import NotificationKind
 
-pytestmark = [pytest.mark.scrum_28, pytest.mark.scrum_30]
+pytestmark = [pytest.mark.scrum_28, pytest.mark.scrum_30, pytest.mark.scrum_39]
 
 SubmitValidRequest = Callable[..., EventRequest]
 NotificationsOf = Callable[[int], list[tuple[Any, ...]]]

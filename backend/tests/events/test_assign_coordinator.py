@@ -139,6 +139,7 @@ def test_only_open_statuses_count_towards_a_coordinators_load(
     assert coordinator_of(submitted.id) == expected
 
 
+@pytest.mark.scrum_39
 def test_with_no_event_coordinator_the_request_is_saved_unassigned_and_logged(
     save: Callable[..., None],
     make_user: Callable[..., User],
@@ -148,6 +149,7 @@ def test_with_no_event_coordinator_the_request_is_saved_unassigned_and_logged(
     db_session: Session,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
+    """Also SCRUM-39's guard: with nobody assigned, not even the organiser is told."""
     save(make_user(role=Role.EVENT_ORGANISER, user_id=7, organisation_id=3))
 
     with caplog.at_level(logging.WARNING, logger="connectsphere.events"):

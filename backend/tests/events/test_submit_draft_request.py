@@ -142,6 +142,7 @@ def test_a_submitted_drafts_end_date_defaults_to_its_proposed_date(
     assert reload_event_request(draft.id).end_date == date(2026, 10, 15)
 
 
+@pytest.mark.scrum_39
 def test_a_submitted_draft_goes_to_the_least_loaded_coordinator_with_history_and_a_notification(
     saved_users: list[User],
     save_draft: SaveDraft,
@@ -151,6 +152,7 @@ def test_a_submitted_draft_goes_to_the_least_loaded_coordinator_with_history_and
     db_session: Session,
     today: date,
 ) -> None:
+    """Also SCRUM-39 AC4's guard: the coordinator of a submitted draft is told."""
     draft = save_draft(ORGANISER_ID, COMPLETE_DRAFT_PAYLOAD)
 
     _submit(DRAFT_REFERENCE, db_session, today)
