@@ -14,7 +14,9 @@ awaiting Technical Support (ADR-0022), SCRUM-20 :class:`SaveDraftSchema`, which
 :class:`SubmitEventRequestSchema` extends with the rules that only apply once a
 request is submitted (ADR-0024), and SCRUM-24 the summary fields each role's event
 list shows (ADR-0026). ``_EventTimingSchema`` holds the date rules that depend on
-today (ADR-0001), shared by submitting and editing a request.
+today (ADR-0001), shared by submitting and editing a request, and
+``_EditedTimingSchema`` the rules for changing a saved request's dates, times and
+attendance (ADR-0025).
 """
 
 from __future__ import annotations
@@ -228,51 +230,26 @@ class SubmitEventRequestSchema(_EventTimingSchema, SaveDraftSchema):
         return data
 
 
-#: Free-text fields SCRUM-33 lets the assigned coordinator edit. Blank values are
-#: stored as null, same as on submit.
-EDITABLE_TEXT_FIELDS = (
-    "description",
-    "programme_notes",
-    "accessibility_needs",
-    "internal_planning_notes",
-    "venue_requirements",
-    "equipment_requirements",
-)
+class _EditedTimingSchema(_EventTimingSchema):
+    """When and how big an event is, as sent to change a saved request (ADR-0025).
 
-
-def _editable_text() -> fields.String:
-    # No load_default: unlike submitting, leaving a field out on an edit must not
-    # touch it, so only fields actually sent may become None.
-    return fields.String(allow_none=True)
-
-
-class EditEventRequestSchema(_EventTimingSchema):
-    """Payload for ``PATCH /api/events/requests/<reference>`` (SCRUM-33 AC1-AC3).
-
-    Every field is optional: only what is sent changes. Fields the server controls,
-    or that this story doesn't open for editing (``name``, ``purpose``,
-    ``registration_required``, ``status``, ``reference``, ``coordinator_id``,
-    equipment lines, a venue's setup/turnaround...), are not declared, so sending
-    them is rejected as an unknown field (ADR-0025).
+    Every field is optional: one left out keeps its saved value, and the date/time
+    rules are checked against the saved values where a field is left out. Split out
+    of the coordinator's edit (SCRUM-33) so the organiser's amendment on answering a
+    clarification request (SCRUM-32) can share it.
 
     Args:
-        event_request: The request being edited, so the date/time rules can be
+        event_request: The request being changed, so the date/time rules can be
             checked against its current values where a field is left out (ADR-0025).
         today: The date "in the past" is measured against. Defaults to today in the
             business timezone; tests pass a fixed date.
     """
 
-    description = _editable_text()
-    programme_notes = _editable_text()
-    accessibility_needs = _editable_text()
-    internal_planning_notes = _editable_text()
     proposed_date = fields.Date()
     end_date = fields.Date()
     start_time = fields.Time(validate=_no_timezone_offset)
     end_time = fields.Time(validate=_no_timezone_offset)
     expected_attendance = WholeNumber(validate=_ATTENDANCE_AT_LEAST_ONE)
-    venue_requirements = _editable_text()
-    equipment_requirements = _editable_text()
 
     def __init__(
         self, event_request: EventRequest, *, today: date | None = None, **kwargs: Any
@@ -302,13 +279,83 @@ class EditEventRequestSchema(_EventTimingSchema):
         end_time = data.get("end_time", self._event_request.end_time)
         _check_time_window(proposed_date, end_date, start_time, end_time)
 
+    # Not named _normalise: EditEventRequestSchema and SaveDraftSchema each have one,
+    # and a subclass's method of the same name replaces a hook instead of running
+    # beside it.
+    @post_load
+    def _end_date_follows_proposed_date(self, data: dict[str, Any], **_: Any) -> dict[str, Any]:
+        if "proposed_date" in data and "end_date" not in data:
+            data["end_date"] = self._end_date_after(data)
+        return data
+
+
+#: Free-text fields SCRUM-33 lets the assigned coordinator edit. Blank values are
+#: stored as null, same as on submit.
+EDITABLE_TEXT_FIELDS = (
+    "description",
+    "programme_notes",
+    "accessibility_needs",
+    "internal_planning_notes",
+    "venue_requirements",
+    "equipment_requirements",
+)
+
+
+def _editable_text() -> fields.String:
+    # No load_default: unlike submitting, leaving a field out on an edit must not
+    # touch it, so only fields actually sent may become None.
+    return fields.String(allow_none=True)
+
+
+class EditEventRequestSchema(_EditedTimingSchema):
+    """Payload for ``PATCH /api/events/requests/<reference>`` (SCRUM-33 AC1-AC3).
+
+    Every field is optional: only what is sent changes. The timing and size fields
+    and their rules come from :class:`_EditedTimingSchema`. Fields the server
+    controls, or that this story doesn't open for editing (``name``, ``purpose``,
+    ``registration_required``, ``status``, ``reference``, ``coordinator_id``,
+    equipment lines, a venue's setup/turnaround...), are not declared, so sending
+    them is rejected as an unknown field (ADR-0025).
+
+    Args:
+        event_request: The request being edited (see :class:`_EditedTimingSchema`).
+        today: The date "in the past" is measured against. Defaults to today in the
+            business timezone; tests pass a fixed date.
+    """
+
+    description = _editable_text()
+    programme_notes = _editable_text()
+    accessibility_needs = _editable_text()
+    internal_planning_notes = _editable_text()
+    venue_requirements = _editable_text()
+    equipment_requirements = _editable_text()
+
+    class Meta:
+        """Lists every field so the inherited timing fields keep their place.
+
+        Marshmallow would put the fields inherited from :class:`_EditedTimingSchema`
+        first, and an edit's changes are recorded and returned in field order.
+        """
+
+        fields = (
+            "description",
+            "programme_notes",
+            "accessibility_needs",
+            "internal_planning_notes",
+            "proposed_date",
+            "end_date",
+            "start_time",
+            "end_time",
+            "expected_attendance",
+            "venue_requirements",
+            "equipment_requirements",
+        )
+
     @post_load
     def _normalise(self, data: dict[str, Any], **_: Any) -> dict[str, Any]:
         for key in EDITABLE_TEXT_FIELDS:
             if key in data:
                 data[key] = _blank_as_none(data[key])
-        if "proposed_date" in data and "end_date" not in data:
-            data["end_date"] = self._end_date_after(data)
         return data
 
 

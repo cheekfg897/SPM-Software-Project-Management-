@@ -1503,6 +1503,37 @@ def _reassess_arrangements(
     _notify_technical_support(event_request, NotificationKind.SIGNIFICANT_CHANGE, session)
 
 
+def _record_field_changes(
+    event_request: EventRequest,
+    actor_id: int,
+    data: Mapping[str, Any],
+    *,
+    session: Session,
+    now: datetime,
+) -> list[FieldChange]:
+    """Apply what in ``data`` differs from ``event_request``, without committing.
+
+    Each changed field is set on the request and written to its history as a
+    ``field_changed`` entry by ``actor_id`` at ``now`` (ADR-0025), in the caller's
+    transaction.
+
+    Returns:
+        The changes made, in ``data``'s order; empty when nothing differs.
+    """
+    changes = _changes_to(event_request, data)
+    for change in changes:
+        setattr(event_request, change.field, data[change.field])
+        record_event_history(
+            event_request,
+            EventHistoryKind.FIELD_CHANGED,
+            actor_id=actor_id,
+            details=asdict(change),
+            session=session,
+            now=now,
+        )
+    return changes
+
+
 def update_event_request(
     coordinator_id: int | str,
     reference: str,
@@ -1530,8 +1561,8 @@ def update_event_request(
             the business timezone.
 
     Returns:
-        The request, and the changes made, in the order they were sent. Empty when
-        nothing changed.
+        The request, and the changes made, in the order
+        :class:`EditEventRequestSchema` lists its fields. Empty when nothing changed.
 
     Raises:
         ValidationError: 400 — payload invalid (details per field).
@@ -1542,21 +1573,16 @@ def update_event_request(
     sess = resolve_session(session)
     event_request = _event_request_editable_by(coordinator_id, reference, sess)
     data = load_or_raise(EditEventRequestSchema(event_request, today=today), payload)
-    changes = _changes_to(event_request, data)
+    changes = _record_field_changes(
+        event_request,
+        int(coordinator_id),
+        data,
+        session=sess,
+        now=datetime.now(timezone.utc),
+    )
     if not changes:
         return EventEdit(event_request, [])
 
-    edited_at = datetime.now(timezone.utc)
-    for change in changes:
-        setattr(event_request, change.field, data[change.field])
-        record_event_history(
-            event_request,
-            EventHistoryKind.FIELD_CHANGED,
-            actor_id=int(coordinator_id),
-            details=asdict(change),
-            session=sess,
-            now=edited_at,
-        )
     sess.commit()
     _reassess_arrangements(event_request, changes, sess)
     return EventEdit(event_request, changes)
