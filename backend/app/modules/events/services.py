@@ -17,8 +17,8 @@ from __future__ import annotations
 import logging
 import secrets
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from dataclasses import asdict, dataclass
+from datetime import date, datetime, time, timezone
 from typing import Any
 
 from marshmallow import Schema
@@ -49,6 +49,7 @@ from app.modules.events.models import (
 )
 from app.modules.events.schemas import (
     EditEquipmentLineSchema,
+    EditEventRequestSchema,
     EventRequestSchema,
     ReassignCoordinatorSchema,
     SaveDraftSchema,
@@ -824,7 +825,8 @@ def _event_request_awaiting_review(
     """The coordinator's request, if its equipment may still change (SCRUM-37 AC2).
 
     Raises:
-        NotFoundError: 404 — no such request among the coordinator's own.
+        NotFoundError: 404 — no such request among the coordinator's own; a draft is
+            never found (ADR-0024).
         RequestNotAwaitingReviewError: 409 — the request is no longer awaiting review.
     """
     event_request = _event_request_assigned_to(coordinator_id, reference, session)
@@ -1234,3 +1236,174 @@ def list_equipment_requests_awaiting_action(
         )
     )
     return _group_lines_by_event(sess.execute(stmt), today)
+
+
+# --------------------------------------------------------------------------
+# SCRUM-33 — update event information and flag significant changes
+# --------------------------------------------------------------------------
+
+#: Statuses in which an assigned coordinator may still edit a request (ADR-0025).
+#: A completed event is set in stone (SCRUM-68 only changes its status to that); a
+#: draft has no coordinator to edit it, and a cancelled or rejected event is over.
+EDITABLE_STATUSES: frozenset[EventRequestStatus] = frozenset(
+    {EventRequestStatus.SUBMITTED, EventRequestStatus.UNDER_REVIEW, EventRequestStatus.CONFIRMED}
+)
+NOT_EDITABLE_MESSAGE = "Only a submitted, under-review or confirmed event request can be edited."
+
+#: Changing when or how big an event is could affect a venue already booked or being
+#: searched for, and equipment already requested for it (ADR-0025).
+_TIMING_AND_SIZE_FIELDS = (
+    "proposed_date",
+    "end_date",
+    "start_time",
+    "end_time",
+    "expected_attendance",
+)
+
+#: Fields whose change could mean a venue already booked, or being searched for, no
+#: longer fits (ADR-0025). Nothing reads this yet: SCRUM-58 will, once SCRUM-42 gives
+#: events venue bookings to reassess; declared now so that story doesn't have to
+#: rediscover the field list.
+VENUE_AFFECTING_FIELDS: frozenset[str] = frozenset({*_TIMING_AND_SIZE_FIELDS, "venue_requirements"})
+
+#: Fields whose change could mean equipment already requested for the event no
+#: longer fits (ADR-0025).
+EQUIPMENT_AFFECTING_FIELDS: frozenset[str] = frozenset(
+    {*_TIMING_AND_SIZE_FIELDS, "equipment_requirements"}
+)
+
+#: Every field whose change is marked significant in the event's history (ADR-0025).
+SIGNIFICANT_FIELDS: frozenset[str] = VENUE_AFFECTING_FIELDS | EQUIPMENT_AFFECTING_FIELDS
+
+#: What a changed field's value is stored as in the history's JSON ``details``
+#: (ADR-0025): a date or time becomes its ISO string, everything else keeps its
+#: native JSON type.
+HistoryValue = str | int | None
+
+
+class RequestNotEditableError(AppError):
+    """The request isn't in a status that can be edited right now (409)."""
+
+    status_code = 409
+    error_code = "request_not_editable"
+
+
+@dataclass(frozen=True)
+class FieldChange:
+    """One field an edit changed, as the history and the API show it (ADR-0025)."""
+
+    field: str
+    previous_value: HistoryValue
+    new_value: HistoryValue
+    significant: bool
+
+
+@dataclass(frozen=True)
+class EventEdit:
+    """What :func:`update_event_request` did: the request, and what changed on it."""
+
+    event_request: EventRequest
+    changes: list[FieldChange]
+
+
+def _as_history_value(value: Any) -> HistoryValue:
+    """``value`` in the form the history's JSON ``details`` column can hold."""
+    if isinstance(value, date | time):
+        return value.isoformat()
+    return value
+
+
+def _event_request_editable_by(
+    coordinator_id: int | str, reference: str, session: Session
+) -> EventRequest:
+    """The coordinator's request, if it can still be edited (ADR-0025).
+
+    Raises:
+        NotFoundError: 404 — no such request among the coordinator's own; a draft is
+            never found (ADR-0024).
+        RequestNotEditableError: 409 — the request isn't submitted, under review or
+            confirmed.
+    """
+    event_request = _event_request_assigned_to(coordinator_id, reference, session)
+    if event_request.status not in EDITABLE_STATUSES:
+        raise RequestNotEditableError(NOT_EDITABLE_MESSAGE)
+    return event_request
+
+
+def _changes_to(event_request: EventRequest, data: Mapping[str, Any]) -> list[FieldChange]:
+    """What in ``data`` differs from ``event_request``'s values (ADR-0025).
+
+    A sent value equal to what is already saved is not a change.
+    """
+    changes = []
+    for field, new_value in data.items():
+        previous_value = getattr(event_request, field)
+        if new_value == previous_value:
+            continue
+        changes.append(
+            FieldChange(
+                field=field,
+                previous_value=_as_history_value(previous_value),
+                new_value=_as_history_value(new_value),
+                significant=field in SIGNIFICANT_FIELDS,
+            )
+        )
+    return changes
+
+
+def update_event_request(
+    coordinator_id: int | str,
+    reference: str,
+    payload: Mapping[str, Any] | None,
+    *,
+    session: Session | None = None,
+    today: date | None = None,
+) -> EventEdit:
+    """Change the fields sent on a request assigned to the caller (SCRUM-33 AC1-AC4).
+
+    Only what is sent in ``payload`` changes (AC1, AC3); a value equal to what is
+    already saved is not a change. Each changed field is written to the event
+    history as its own ``field_changed`` entry, sharing one ``occurred_at``, in the
+    same commit as the change itself (AC2, AC4); a field in
+    :data:`SIGNIFICANT_FIELDS` is marked ``significant``. An edit that changes
+    nothing writes and commits nothing.
+
+    Args:
+        coordinator_id: The caller's user id, taken from their token.
+        reference: The event request's ``EVR-…`` reference; case and surrounding
+            spaces are ignored.
+        payload: Decoded JSON body: any subset of the editable fields.
+        session: Database session; defaults to ``db.session``.
+        today: Reference date for the "not in the past" rule; defaults to today in
+            the business timezone.
+
+    Returns:
+        The request, and the changes made, in the order they were sent. Empty when
+        nothing changed.
+
+    Raises:
+        ValidationError: 400 — payload invalid (details per field).
+        NotFoundError: 404 — no such event request among the coordinator's own.
+        RequestNotEditableError: 409 — the request isn't submitted, under review or
+            confirmed.
+    """
+    sess = resolve_session(session)
+    event_request = _event_request_editable_by(coordinator_id, reference, sess)
+    data = load_or_raise(EditEventRequestSchema(event_request, today=today), payload)
+    changes = _changes_to(event_request, data)
+    if not changes:
+        return EventEdit(event_request, [])
+
+    edited_at = datetime.now(timezone.utc)
+    for change in changes:
+        setattr(event_request, change.field, data[change.field])
+        record_event_history(
+            event_request,
+            EventHistoryKind.FIELD_CHANGED,
+            actor_id=int(coordinator_id),
+            details=asdict(change),
+            session=sess,
+            now=edited_at,
+        )
+    sess.commit()
+    return EventEdit(event_request, changes)

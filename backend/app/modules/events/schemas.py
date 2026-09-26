@@ -33,7 +33,12 @@ from marshmallow import (
 
 from app.common.clock import local_today
 from app.common.fields import WholeNumber
-from app.modules.events.models import NAME_MAX_LENGTH, EquipmentLineStatus, EventRequestStatus
+from app.modules.events.models import (
+    NAME_MAX_LENGTH,
+    EquipmentLineStatus,
+    EventRequest,
+    EventRequestStatus,
+)
 
 #: Free-text fields a request may leave out. Blank values are stored as null.
 OPTIONAL_TEXT_FIELDS = (
@@ -45,8 +50,8 @@ OPTIONAL_TEXT_FIELDS = (
 )
 
 
-#: Shared by both schemas, so a draft's attendance is checked the same way once
-#: submission requires it too.
+#: Shared by the draft, submit and edit schemas, so attendance is checked the same
+#: way wherever it is sent.
 _ATTENDANCE_AT_LEAST_ONE = validate.Range(min=1, error="Expected attendance must be at least 1.")
 
 
@@ -216,6 +221,90 @@ class SubmitEventRequestSchema(_EventTimingSchema, SaveDraftSchema):
         """
         if data.get("end_date") is None:
             data["end_date"] = data["proposed_date"]
+        return data
+
+
+#: Free-text fields SCRUM-33 lets the assigned coordinator edit. Blank values are
+#: stored as null, same as on submit.
+EDITABLE_TEXT_FIELDS = (
+    "description",
+    "programme_notes",
+    "accessibility_needs",
+    "internal_planning_notes",
+    "venue_requirements",
+    "equipment_requirements",
+)
+
+
+def _editable_text() -> fields.String:
+    # No load_default: unlike submitting, leaving a field out on an edit must not
+    # touch it, so only fields actually sent may become None.
+    return fields.String(allow_none=True)
+
+
+class EditEventRequestSchema(_EventTimingSchema):
+    """Payload for ``PATCH /api/events/requests/<reference>`` (SCRUM-33 AC1-AC3).
+
+    Every field is optional: only what is sent changes. Fields the server controls,
+    or that this story doesn't open for editing (``name``, ``purpose``,
+    ``registration_required``, ``status``, ``reference``, ``coordinator_id``,
+    equipment lines, a venue's setup/turnaround...), are not declared, so sending
+    them is rejected as an unknown field (ADR-0025).
+
+    Args:
+        event_request: The request being edited, so the date/time rules can be
+            checked against its current values where a field is left out (ADR-0025).
+        today: The date "in the past" is measured against. Defaults to today in the
+            business timezone; tests pass a fixed date.
+    """
+
+    description = _editable_text()
+    programme_notes = _editable_text()
+    accessibility_needs = _editable_text()
+    internal_planning_notes = _editable_text()
+    proposed_date = fields.Date()
+    end_date = fields.Date()
+    start_time = fields.Time(validate=_no_timezone_offset)
+    end_time = fields.Time(validate=_no_timezone_offset)
+    expected_attendance = WholeNumber(validate=_ATTENDANCE_AT_LEAST_ONE)
+    venue_requirements = _editable_text()
+    equipment_requirements = _editable_text()
+
+    def __init__(
+        self, event_request: EventRequest, *, today: date | None = None, **kwargs: Any
+    ) -> None:
+        super().__init__(today=today, **kwargs)
+        self._event_request = event_request
+
+    def _end_date_after(self, data: dict[str, Any]) -> date:
+        """The end date implied by ``data``, keeping the event's length (ADR-0025).
+
+        A sent ``end_date`` wins outright. Otherwise, if ``proposed_date`` moved, the
+        end date moves with it by the same number of days (ADR-0002); left alone, it
+        stays what it already was.
+        """
+        if "end_date" in data:
+            return data["end_date"]
+        if "proposed_date" in data:
+            length = self._event_request.end_date - self._event_request.proposed_date
+            return data["proposed_date"] + length
+        return self._event_request.end_date
+
+    @validates_schema
+    def _still_ends_after_it_starts(self, data: dict[str, Any], **_: Any) -> None:
+        proposed_date = data.get("proposed_date", self._event_request.proposed_date)
+        end_date = self._end_date_after(data)
+        start_time = data.get("start_time", self._event_request.start_time)
+        end_time = data.get("end_time", self._event_request.end_time)
+        _check_time_window(proposed_date, end_date, start_time, end_time)
+
+    @post_load
+    def _normalise(self, data: dict[str, Any], **_: Any) -> dict[str, Any]:
+        for key in EDITABLE_TEXT_FIELDS:
+            if key in data:
+                data[key] = _blank_as_none(data[key])
+        if "proposed_date" in data and "end_date" not in data:
+            data["end_date"] = self._end_date_after(data)
         return data
 
 

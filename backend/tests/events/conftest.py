@@ -31,9 +31,11 @@ from app.modules.events.models import (
 )
 from app.modules.events.services import (
     CoordinatorContact,
+    EventEdit,
     reassign_coordinator,
     save_draft_event_request,
     submit_event_request,
+    update_event_request,
 )
 from app.modules.notifications.services import list_notifications_for_recipient
 from tests.events.cases import DRAFT_REFERENCE
@@ -468,6 +470,22 @@ def reload_equipment_line(db_session: Session) -> Callable[[int], EventEquipment
         return line
 
     return _reload
+
+
+@pytest.fixture()
+def edit_event(
+    saved_users: list[User], saved_event_request: EventRequest, today: date
+) -> Callable[[int, dict[str, Any] | None], EventEdit]:
+    """Edit ``saved_event_request`` (``EVR-AAAAAAAA``) as ``actor_id`` (SCRUM-33).
+
+    Runs against the default session, which ``db_session`` also yields, so a test can
+    read back what was saved through either fixture.
+    """
+
+    def _edit(actor_id: int, payload: dict[str, Any] | None) -> EventEdit:
+        return update_event_request(actor_id, "EVR-AAAAAAAA", payload, today=today)
+
+    return _edit
 
 
 @pytest.fixture()
