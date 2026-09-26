@@ -22,6 +22,7 @@ The `users` table already had a free-text `organisation` column from SCRUM-65. F
 - Organiser rows that pre-date migration `0007` have no organisation and can't submit until linked. Linking an existing account is not in this story.
 - Registration is public and organisation ids are sequential, so anyone can register as an organiser of any organisation by guessing its id. This is the same trust gap as internal roles self-registering (the `TODO(product)` on the register route), and closes with it: once accounts are provisioned or approved by an internal user, so is the organisation link.
 - Names are unique exactly as typed (case-sensitive); "Acme" and "acme" are two organisations.
+- A contact phone must look like a phone number: at least 7 digits, using only spaces, hyphens, brackets and one leading `+`, and at most 30 characters. It is stored as typed, not rewritten to one format, and extensions such as "ext 2" are refused.
 - Every SCRUM-65 registration test that used the free-text field now registers an attendee; the organiser path is tested under SCRUM-66.
 
 ## Revisit when
