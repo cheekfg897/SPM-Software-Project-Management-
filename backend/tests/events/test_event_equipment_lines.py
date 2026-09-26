@@ -533,10 +533,10 @@ def test_a_line_can_only_be_reached_through_its_own_event(
 
 @pytest.mark.parametrize(
     "status",
-    [EventRequestStatus.SUBMITTED, EventRequestStatus.UNDER_REVIEW],
+    [EventRequestStatus.SUBMITTED, EventRequestStatus.UNDER_REVIEW, EventRequestStatus.APPROVED],
     ids=lambda status: status.value,
 )
-def test_lines_may_change_while_the_request_is_submitted_or_under_review(
+def test_lines_may_change_while_the_request_is_submitted_under_review_or_approved(
     db_session: Session,
     saved_event_request: EventRequest,
     valid_equipment_line_payload: dict[str, Any],
