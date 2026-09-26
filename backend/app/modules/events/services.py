@@ -71,9 +71,10 @@ MAX_REFERENCE_ATTEMPTS = 3
 EVENT_REQUEST_NOT_FOUND_MESSAGE = "Event request not found."
 
 #: Statuses in which an assigned coordinator is still working a request, so they count
-#: towards the coordinator's load (ADR-0018).
+#: towards the coordinator's load (ADR-0018). An approved request is still being
+#: planned until it is confirmed (SCRUM-31, ADR-0028).
 OPEN_STATUSES: frozenset[EventRequestStatus] = frozenset(
-    {EventRequestStatus.SUBMITTED, EventRequestStatus.UNDER_REVIEW}
+    {EventRequestStatus.SUBMITTED, EventRequestStatus.UNDER_REVIEW, EventRequestStatus.APPROVED}
 )
 
 
@@ -779,12 +780,13 @@ def submit_draft_event_request(
 # --------------------------------------------------------------------------
 
 #: Statuses in which an event's equipment may change: while its request awaits review
-#: (SCRUM-37 AC2, ADR-0019).
+#: (SCRUM-37 AC2, ADR-0019), and once it is approved, while the event is planned
+#: (SCRUM-31, ADR-0028).
 EQUIPMENT_EDITABLE_STATUSES: frozenset[EventRequestStatus] = frozenset(
-    {EventRequestStatus.SUBMITTED, EventRequestStatus.UNDER_REVIEW}
+    {EventRequestStatus.SUBMITTED, EventRequestStatus.UNDER_REVIEW, EventRequestStatus.APPROVED}
 )
 EQUIPMENT_NOT_EDITABLE_MESSAGE = (
-    "Equipment can only be changed while the request is awaiting review."
+    "Equipment can only be changed while the request is submitted, under review or approved."
 )
 DUPLICATE_LINE_MESSAGE = (
     "This event already has a line for that equipment type. Edit that line instead."
@@ -1032,14 +1034,20 @@ def remove_equipment_line(
 # --------------------------------------------------------------------------
 
 #: Statuses in which an event request may move to another coordinator: from
-#: submission until the event is over (SCRUM-87, ADR-0021). A completed, cancelled or
-#: rejected event has nothing left to coordinate; a draft is hidden from coordinators
-#: altogether, so it never reaches this check (SCRUM-20, ADR-0024).
+#: submission until the event is over (SCRUM-87, ADR-0021; ``approved`` from SCRUM-31,
+#: ADR-0028). A completed, cancelled or rejected event has nothing left to coordinate;
+#: a draft is hidden from coordinators altogether, so it never reaches this check
+#: (SCRUM-20, ADR-0024).
 REASSIGNABLE_STATUSES: frozenset[EventRequestStatus] = frozenset(
-    {EventRequestStatus.SUBMITTED, EventRequestStatus.UNDER_REVIEW, EventRequestStatus.CONFIRMED}
+    {
+        EventRequestStatus.SUBMITTED,
+        EventRequestStatus.UNDER_REVIEW,
+        EventRequestStatus.APPROVED,
+        EventRequestStatus.CONFIRMED,
+    }
 )
 NOT_REASSIGNABLE_MESSAGE = (
-    "Only a submitted, under-review or confirmed event request can be reassigned."
+    "Only a submitted, under-review, approved or confirmed event request can be reassigned."
 )
 NOT_ASSIGNED_MESSAGE = "This event request has no coordinator to reassign from."
 NOT_A_COORDINATOR_MESSAGE = "No Event Coordinator has this email address."
@@ -1125,7 +1133,7 @@ def reassign_coordinator(
             email.
         NotFoundError: 404 — no such request, or the caller isn't its coordinator.
         RequestNotReassignableError: 409 — the request has no coordinator, or isn't
-            submitted, under review or confirmed.
+            submitted, under review, approved or confirmed.
         ConflictError: 409 — that coordinator already has the request.
     """
     data = load_or_raise(ReassignCoordinatorSchema(), payload)
@@ -1258,13 +1266,21 @@ def list_equipment_requests_awaiting_action(
 # SCRUM-33 — update event information and flag significant changes
 # --------------------------------------------------------------------------
 
-#: Statuses in which an assigned coordinator may still edit a request (ADR-0025).
+#: Statuses in which an assigned coordinator may still edit a request (ADR-0025;
+#: ``approved`` from SCRUM-31, ADR-0028).
 #: A completed event is set in stone (SCRUM-68 only changes its status to that); a
 #: draft has no coordinator to edit it, and a cancelled or rejected event is over.
 EDITABLE_STATUSES: frozenset[EventRequestStatus] = frozenset(
-    {EventRequestStatus.SUBMITTED, EventRequestStatus.UNDER_REVIEW, EventRequestStatus.CONFIRMED}
+    {
+        EventRequestStatus.SUBMITTED,
+        EventRequestStatus.UNDER_REVIEW,
+        EventRequestStatus.APPROVED,
+        EventRequestStatus.CONFIRMED,
+    }
 )
-NOT_EDITABLE_MESSAGE = "Only a submitted, under-review or confirmed event request can be edited."
+NOT_EDITABLE_MESSAGE = (
+    "Only a submitted, under-review, approved or confirmed event request can be edited."
+)
 
 #: Changing when or how big an event is could affect a venue already booked or being
 #: searched for, and equipment already requested for it (ADR-0025).
@@ -1337,8 +1353,8 @@ def _event_request_editable_by(
     Raises:
         NotFoundError: 404 — no such request among the coordinator's own; a draft is
             never found (ADR-0024).
-        RequestNotEditableError: 409 — the request isn't submitted, under review or
-            confirmed.
+        RequestNotEditableError: 409 — the request isn't submitted, under review,
+            approved or confirmed.
     """
     event_request = _event_request_assigned_to(coordinator_id, reference, session)
     if event_request.status not in EDITABLE_STATUSES:
@@ -1423,8 +1439,8 @@ def update_event_request(
     Raises:
         ValidationError: 400 — payload invalid (details per field).
         NotFoundError: 404 — no such event request among the coordinator's own.
-        RequestNotEditableError: 409 — the request isn't submitted, under review or
-            confirmed.
+        RequestNotEditableError: 409 — the request isn't submitted, under review,
+            approved or confirmed.
     """
     sess = resolve_session(session)
     event_request = _event_request_editable_by(coordinator_id, reference, sess)

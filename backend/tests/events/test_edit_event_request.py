@@ -62,6 +62,7 @@ OTHER_COORDINATOR_ID = 9
 EDITABLE = [
     EventRequestStatus.SUBMITTED,
     EventRequestStatus.UNDER_REVIEW,
+    EventRequestStatus.APPROVED,
     EventRequestStatus.CONFIRMED,
 ]
 FINISHED = [
@@ -397,7 +398,7 @@ def test_the_reference_ignores_case_and_surrounding_spaces(
 
 
 @pytest.mark.parametrize("status", EDITABLE, ids=lambda status: status.value)
-def test_a_submitted_under_review_or_confirmed_event_can_be_edited(
+def test_a_submitted_under_review_approved_or_confirmed_event_can_be_edited(
     edit_event: EditEvent,
     set_status: SetStatus,
     reload_event_request: ReloadEventRequest,
