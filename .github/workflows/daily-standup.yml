@@ -1,0 +1,54 @@
+name: Daily Standup Reminder
+
+# A sprint retrospective action item (SCRUM-91): standups were being missed, so
+# the team agreed to an automated prompt in the group chat.
+#
+# Both `schedule` and `workflow_dispatch` only run from the default branch, so
+# this cannot be tested from a pull request — merge it, then use "Run workflow"
+# on the Actions tab to check it before the next weekday fires.
+on:
+  schedule:
+    # 04:10 UTC = 12:10 SGT, Monday to Friday. GitHub runs cron in UTC only.
+    - cron: "10 4 * * 1-5"
+
+  # Lets anyone send the reminder by hand, which is also how it gets tested.
+  workflow_dispatch: {}
+
+# Narrower than the default token scope. This job only talks to Telegram.
+permissions:
+  contents: read
+
+jobs:
+  send-reminder:
+    name: Send the standup prompt to Telegram
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      # The bot token and chat id are repository secrets, referenced here by
+      # NAME — `secrets.<name>` is a lookup, and GitHub substitutes the value on
+      # the runner. Neither value belongs in this file or anywhere else in the
+      # repository.
+      #
+      # They are passed through `env:` rather than interpolated into the script,
+      # the same as the pull request title in pr-title.yml: a value containing
+      # $(...) or backticks would otherwise execute on the runner.
+      - name: Send standup reminder to Telegram
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          # A YAML block scalar, so the message reads as the team will see it
+          # and the indentation stays out of the text.
+          MESSAGE: |
+            📅 Daily Standup
+            1️⃣ What did you do yesterday?
+            2️⃣ What are you doing today?
+            3️⃣ Any blockers?
+        # --fail-with-body, not a bare -s: a revoked token answers 401, and
+        # without this the job would go green having posted nothing. urlencode
+        # because the message is multi-line.
+        run: |
+          curl -sS --fail-with-body -X POST \
+            "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" \
+            -d chat_id="$CHAT_ID" \
+            --data-urlencode "text=$MESSAGE"
