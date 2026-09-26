@@ -412,6 +412,31 @@ def make_equipment_line() -> Callable[..., EventEquipmentLine]:
 
 
 @pytest.fixture()
+def event_needing(
+    make_event_request: Callable[..., EventRequest],
+    make_equipment_line: Callable[..., EventEquipmentLine],
+    equipment_type: EquipmentType,
+    save: Callable[..., None],
+) -> Callable[..., EventRequest]:
+    """Factory: save an event that needs two of ``equipment_type`` (a projector)."""
+
+    def _save(
+        reference: str = "EVR-AAAAAAAA",
+        *,
+        proposed_date: date = date(2026, 10, 15),
+        status: EventRequestStatus = EventRequestStatus.SUBMITTED,
+    ) -> EventRequest:
+        event_request = make_event_request(
+            reference=reference, proposed_date=proposed_date, status=status
+        )
+        save(event_request)
+        save(make_equipment_line(event_request, equipment_type))
+        return event_request
+
+    return _save
+
+
+@pytest.fixture()
 def shown_event(make_event_request: Callable[..., EventRequest]) -> EventRequest:
     """The in-memory event request that the API shows as ``event_as_shown``."""
     return make_event_request()

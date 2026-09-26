@@ -69,31 +69,6 @@ def _mark_line_no_longer_requested(session: Session, line_id: int) -> None:
 
 
 @pytest.fixture()
-def event_needing(
-    make_event_request: MakeEventRequest,
-    make_equipment_line: MakeEquipmentLine,
-    equipment_type: EquipmentType,
-    save: Save,
-) -> EventNeeding:
-    """Factory: save an event that needs two of ``equipment_type`` (a projector)."""
-
-    def _save(
-        reference: str = REFERENCE,
-        *,
-        proposed_date: date = date(2026, 10, 15),
-        status: EventRequestStatus = EventRequestStatus.SUBMITTED,
-    ) -> EventRequest:
-        event_request = make_event_request(
-            reference=reference, proposed_date=proposed_date, status=status
-        )
-        save(event_request)
-        save(make_equipment_line(event_request, equipment_type))
-        return event_request
-
-    return _save
-
-
-@pytest.fixture()
 def two_lines(
     saved_event_request: EventRequest,
     equipment_type: EquipmentType,
