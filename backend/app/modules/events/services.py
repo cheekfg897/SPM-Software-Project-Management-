@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from typing import Any
 
-from sqlalchemy import Row, func, select
+from sqlalchemy import Row, and_, func, or_, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import ColumnElement
@@ -346,20 +346,34 @@ def _list_event_requests_newest_first(
     return list(session.scalars(stmt))
 
 
+def _not_a_draft() -> ColumnElement[bool]:
+    """The condition that a request has left the draft stage.
+
+    The one definition of "past the draft stage" (SCRUM-20, ADR-0024), shared by
+    every place that must not treat a draft as an ordinary request.
+    """
+    return EventRequest.status != EventRequestStatus.DRAFT
+
+
 def _visible_to_organiser(organiser_id: int | str, session: Session) -> ColumnElement[bool]:
     """The event requests an organiser may see: their client organisation's (SCRUM-7).
 
     The organisation is read from the organiser's account each time, not from their
     token (ADR-0020). A request filed under no organisation matches nobody
     (ADR-0013). This is the one place an organiser's scope is decided, so their list
-    and the detail of one request can't disagree; SCRUM-20 narrows it here so a
-    draft stays with the organiser who wrote it.
+    and the detail of one request can't disagree; a colleague's draft is the one
+    exception, kept from everyone but the organiser who wrote it (SCRUM-20 AC4,
+    ADR-0024).
 
     Raises:
         OrganiserWithoutOrganisationError: 403 — the organiser has no organisation.
         NotFoundError: 404 — the token names a user that no longer exists.
     """
-    return EventRequest.organisation_id == _organisation_of_organiser(organiser_id, session)
+    organisation_id = _organisation_of_organiser(organiser_id, session)
+    written_by_them = EventRequest.organiser_id == int(organiser_id)
+    return and_(
+        EventRequest.organisation_id == organisation_id, or_(_not_a_draft(), written_by_them)
+    )
 
 
 def list_event_requests_for_organiser(
