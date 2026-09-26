@@ -20,7 +20,7 @@ from marshmallow import (
 )
 
 from app.common.fields import WholeNumber
-from app.modules.auth.permissions import ALL_ROLES, INTERNAL_ROLES, Role, role_value
+from app.modules.auth.permissions import EXTERNAL_ROLES, INTERNAL_ROLES, Role, role_value
 
 # Password policy (SCRUM-65): see ADR-0005.
 DEFAULT_PASSWORD_MIN_LENGTH = 8
@@ -79,9 +79,7 @@ class _NewUserSchema(Schema):
 class RegisterSchema(_NewUserSchema):
     """Payload for ``POST /api/auth/register`` (SCRUM-65 AC3, AC4; ADR-0023)."""
 
-    # Kept at ALL_ROLES in this commit so self-registration is unchanged; the
-    # next commit in SCRUM-88 narrows this to EXTERNAL_ROLES.
-    role = _role_field(ALL_ROLES)
+    role = _role_field(EXTERNAL_ROLES)
     #: The client organisation an Event Organiser belongs to (SCRUM-66 AC2, ADR-0013).
     #: Whether it exists is checked by the service, which can read the database.
     organisation_id = WholeNumber(
