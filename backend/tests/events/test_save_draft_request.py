@@ -35,7 +35,7 @@ from app.modules.events.services import (
     list_event_requests_for_organiser,
     save_draft_event_request,
 )
-from tests.events.cases import DETAIL_COLUMNS, DRAFT_REFERENCE, DriverError
+from tests.events.cases import DETAIL_COLUMNS, DRAFT_REFERENCE, FIELD_REJECTED_CASES, DriverError
 
 pytestmark = pytest.mark.scrum_20
 
@@ -49,17 +49,6 @@ NAME_REJECTED_PAYLOADS = [
     pytest.param({"name": "   "}, id="blank"),
     pytest.param({"name": None}, id="null"),
     pytest.param({"name": "x" * (NAME_MAX_LENGTH + 1)}, id="too_long"),
-]
-
-#: One field at a time, each with a value its own rule refuses.
-FIELD_REJECTED_CASES = [
-    ("proposed_date", "soon"),
-    ("start_time", "25:00"),
-    ("start_time", "09:00+08:00"),
-    ("expected_attendance", 0),
-    ("expected_attendance", "50"),
-    ("expected_attendance", True),
-    ("registration_required", "yes"),
 ]
 
 

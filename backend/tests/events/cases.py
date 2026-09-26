@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from app.modules.events.models import EventRequestStatus
+
 
 class DriverError(Exception):
     """Stands in for a psycopg2 error, naming the constraint it violated on ``diag``.
@@ -24,3 +26,20 @@ DRAFT_REFERENCE = "EVR-DDDDDDDD"
 #: The five columns a draft may leave empty and every other request must have
 #: (SCRUM-20, ADR-0024).
 DETAIL_COLUMNS = ["proposed_date", "end_date", "start_time", "end_time", "expected_attendance"]
+
+#: Every status but draft, so "past the draft stage" can be checked as a whole.
+NON_DRAFT_STATUSES = [
+    status for status in EventRequestStatus if status is not EventRequestStatus.DRAFT
+]
+
+#: One field at a time, each with a value its own rule refuses, whether the field
+#: is sent on a save or on an edit: the per-field rule does not care which (SCRUM-20).
+FIELD_REJECTED_CASES = [
+    ("proposed_date", "soon"),
+    ("start_time", "25:00"),
+    ("start_time", "09:00+08:00"),
+    ("expected_attendance", 0),
+    ("expected_attendance", "50"),
+    ("expected_attendance", True),
+    ("registration_required", "yes"),
+]
