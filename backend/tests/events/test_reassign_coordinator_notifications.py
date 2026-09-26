@@ -2,9 +2,11 @@
 
 AC4: the newly assigned coordinator is notified, with the same
 ``coordinator_assigned`` notification a coordinator gets on submission (ADR-0021).
-Nobody else is: the previous coordinator made the change themselves, and telling the
-organiser is SCRUM-39's. A refused reassignment notifies nobody, and a failed
-notification write doesn't fail the saved reassignment (ADR-0015). The same notice
+Since SCRUM-39 the organiser is also told, with ``request_assigned``
+(``test_organiser_assignment_notifications.py``). Nobody else is: the previous
+coordinator made the change themselves. A refused reassignment notifies nobody, and
+a failed notification write doesn't fail the saved reassignment or the other notice
+(ADR-0015). The same notice
 is how SCRUM-39 AC4 tells the new coordinator on reassignment, so these tests are
 also its regression guards.
 
@@ -22,7 +24,6 @@ from unittest.mock import MagicMock
 
 import pytest
 from sqlalchemy import select
-from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.common.errors import ConflictError
@@ -32,6 +33,7 @@ from app.modules.notifications.models import Notification
 from app.modules.notifications.services import (
     NotificationKind,
 )
+from tests.events.cases import LOST_NOTIFICATION_CASES
 
 pytestmark = [pytest.mark.scrum_87, pytest.mark.scrum_39]
 
@@ -43,7 +45,7 @@ NINE = "coordinator9@example.com"
 
 
 # --------------------------------------------------------------------------
-# AC4, ADR-0021 — the new coordinator is told, and nobody else
+# AC4, ADR-0021 — the new coordinator is told, and no one else on the staff
 # --------------------------------------------------------------------------
 
 
@@ -65,13 +67,12 @@ def test_the_new_coordinator_is_told_the_event_is_theirs(
 
 @pytest.mark.parametrize(
     "user_id",
-    [2, 3, 4, 5, 7],
+    [2, 3, 4, 5],
     ids=[
         "technical-support-2",
         "previous-coordinator",
         "venue-staff",
         "technical-support-5",
-        "the-organiser",
     ],
 )
 def test_nobody_else_is_notified_of_a_reassignment(
@@ -94,14 +95,16 @@ def test_a_refused_reassignment_notifies_nobody(reassign: Reassign, db_session: 
 # --------------------------------------------------------------------------
 
 
+@pytest.mark.parametrize(("commits", "lost_kind"), LOST_NOTIFICATION_CASES)
 def test_a_failed_notification_write_still_returns_the_reassigned_event(
     mock_session: MagicMock,
     reassignment_lookups: EventRequest,
     caplog: pytest.LogCaptureFixture,
+    commits: list[Exception | None],
+    lost_kind: str,
 ) -> None:
     """The reassignment is committed first; failing its reply would invite a retry."""
-    lost_connection = OperationalError("INSERT INTO notifications ...", {}, Exception("gone"))
-    mock_session.commit.side_effect = [None, lost_connection]
+    mock_session.commit.side_effect = commits
 
     with caplog.at_level(logging.WARNING, logger="connectsphere.events"):
         event_request, _ = reassign_coordinator(
@@ -109,8 +112,8 @@ def test_a_failed_notification_write_still_returns_the_reassigned_event(
         )
 
     assert event_request.coordinator_id == 9
-    assert mock_session.commit.call_count == 2
+    assert mock_session.commit.call_count == 3
     mock_session.rollback.assert_called_once()
     assert [record.getMessage() for record in caplog.records] == [
-        "event_request_notification_failed reference=EVR-AAAAAAAA kind=coordinator_assigned"
+        f"event_request_notification_failed reference=EVR-AAAAAAAA kind={lost_kind}"
     ]

@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+from sqlalchemy.exc import OperationalError
+
 from app.modules.events.models import EventRequestStatus
 
 
@@ -68,4 +71,16 @@ WINDOW_VIOLATION_IDS = [
     "end-time-before-current-start",
     "start-time-after-current-end",
     "end-date-before-current-proposed-date",
+]
+
+#: A dropped database connection, as a failed notification write raises it (ADR-0015).
+LOST_CONNECTION = OperationalError("INSERT INTO notifications ...", {}, Exception("gone"))
+
+#: Which notification write is lost once an assignment is saved: the session's
+#: commits in order (the change's own, the coordinator's notice, then the organiser's),
+#: and the kind the warning names (SCRUM-39 AC1, ADR-0015). Losing one notice still
+#: sends the other.
+LOST_NOTIFICATION_CASES = [
+    pytest.param([None, LOST_CONNECTION, None], "coordinator_assigned", id="the-coordinators"),
+    pytest.param([None, None, LOST_CONNECTION], "request_assigned", id="the-organisers"),
 ]
