@@ -42,6 +42,7 @@ from app.modules.events.services import (
     reassign_coordinator,
     remove_equipment_line,
     save_draft_event_request,
+    start_event_request_review,
     submit_draft_event_request,
     submit_event_request,
     update_draft_event_request,
@@ -344,4 +345,22 @@ def complete_request(reference: str) -> tuple[Response, int]:
     request. The caller is recorded in the event history as having done it (AC5).
     """
     event_request = complete_event_request(g.current_user_id, reference)
+    return jsonify(_event_request_schema.dump(event_request)), 200
+
+
+# --------------------------------------------------------------------------
+# SCRUM-31 — review and decide a submitted request
+# --------------------------------------------------------------------------
+
+
+@bp.post("/requests/<reference>/review")
+@requires_role(Role.EVENT_COORDINATOR)
+def review_request(reference: str) -> tuple[Response, int]:
+    """Move a submitted request assigned to the caller to under review (SCRUM-31 AC3).
+
+    Only the request's own coordinator may; the service answers anyone else with the
+    equipment routes' "not yours" 404 (AC5, ADR-0028). Returns ``200`` with the
+    request.
+    """
+    event_request = start_event_request_review(g.current_user_id, reference)
     return jsonify(_event_request_schema.dump(event_request)), 200

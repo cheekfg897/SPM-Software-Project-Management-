@@ -1786,3 +1786,55 @@ def complete_event_request(
     )
     sess.commit()
     return event_request
+
+
+# --------------------------------------------------------------------------
+# SCRUM-31 — review and decide a submitted request
+# --------------------------------------------------------------------------
+
+NOT_REVIEWABLE_MESSAGE = "Only a submitted event request can be moved to under review."
+
+
+class RequestNotReviewableError(AppError):
+    """The request isn't submitted, so it can't be moved to under review (409)."""
+
+    status_code = 409
+    error_code = "request_not_reviewable"
+
+
+def start_event_request_review(
+    coordinator_id: int | str, reference: str, *, session: Session | None = None
+) -> EventRequest:
+    """Move a submitted request to under review (SCRUM-31 AC3).
+
+    Only the request's assigned coordinator may (AC5), and only while it is
+    submitted (ADR-0028). A ``review_started`` history entry, naming the coordinator,
+    is saved in the same commit. Nobody is notified.
+
+    Args:
+        coordinator_id: The caller's user id, taken from their token.
+        reference: The ``EVR-…`` reference; case and surrounding spaces are ignored.
+        session: Database session; defaults to ``db.session``.
+
+    Returns:
+        The request, now ``under_review``.
+
+    Raises:
+        NotFoundError: 404 — no such request among the coordinator's own; a draft is
+            never found (ADR-0024).
+        RequestNotReviewableError: 409 — the request isn't submitted.
+    """
+    sess = resolve_session(session)
+    event_request = _event_request_assigned_to(coordinator_id, reference, sess)
+    if event_request.status is not EventRequestStatus.SUBMITTED:
+        raise RequestNotReviewableError(NOT_REVIEWABLE_MESSAGE)
+
+    event_request.status = EventRequestStatus.UNDER_REVIEW
+    record_event_history(
+        event_request,
+        EventHistoryKind.REVIEW_STARTED,
+        actor_id=int(coordinator_id),
+        session=sess,
+    )
+    sess.commit()
+    return event_request
