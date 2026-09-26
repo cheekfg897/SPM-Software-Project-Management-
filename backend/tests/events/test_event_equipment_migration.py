@@ -40,7 +40,9 @@ def test_migration_and_model_agree_on_the_notification_kinds(
     previous = set(migration.PREVIOUS_KIND_VALUES)
     added = set(migration.ADDED_KIND_VALUES)
 
-    assert previous | added == {kind.value for kind in NotificationKind}
+    # Subset, not equality: a later migration (SCRUM-33) adds more kinds this
+    # migration doesn't know about.
+    assert previous | added <= {kind.value for kind in NotificationKind}
     assert previous.isdisjoint(added)
 
 
