@@ -27,7 +27,7 @@ class Role(str, enum.Enum):
 
     @classmethod
     def values(cls) -> list[str]:
-        """All role values as plain strings (used by validation schemas)."""
+        """All role values as plain strings."""
         return [member.value for member in cls]
 
     @classmethod

@@ -20,7 +20,7 @@ from marshmallow import (
 )
 
 from app.common.fields import WholeNumber
-from app.modules.auth.permissions import Role, role_value
+from app.modules.auth.permissions import ALL_ROLES, INTERNAL_ROLES, Role, role_value
 
 # Password policy (SCRUM-65): see ADR-0005.
 DEFAULT_PASSWORD_MIN_LENGTH = 8
@@ -53,8 +53,20 @@ def validate_password_strength(password: str) -> None:
         raise MarshmallowValidationError("Password must contain at least one digit.")
 
 
-class RegisterSchema(Schema):
-    """Payload for ``POST /api/auth/register``."""
+def _role_field(allowed: frozenset[Role]) -> fields.String:
+    """A required role field, restricted to the values in ``allowed``.
+
+    Choices are sorted so the validation message reads the same regardless of the
+    frozenset's iteration order.
+    """
+    choices = sorted(role.value for role in allowed)
+    return fields.String(
+        required=True, validate=validate.OneOf(choices, error="Role must be one of: {choices}.")
+    )
+
+
+class _NewUserSchema(Schema):
+    """Fields common to every new account, whoever creates it (SCRUM-88)."""
 
     email = fields.Email(required=True)
     password = fields.String(required=True, load_only=True, validate=validate_password_strength)
@@ -62,10 +74,14 @@ class RegisterSchema(Schema):
         required=True,
         validate=validate.Length(min=1, max=120, error="Full name must be 1–120 characters."),
     )
-    role = fields.String(
-        required=True,
-        validate=validate.OneOf(Role.values(), error="Role must be one of: {choices}."),
-    )
+
+
+class RegisterSchema(_NewUserSchema):
+    """Payload for ``POST /api/auth/register`` (SCRUM-65 AC3, AC4; ADR-0023)."""
+
+    # Kept at ALL_ROLES in this commit so self-registration is unchanged; the
+    # next commit in SCRUM-88 narrows this to EXTERNAL_ROLES.
+    role = _role_field(ALL_ROLES)
     #: The client organisation an Event Organiser belongs to (SCRUM-66 AC2, ADR-0013).
     #: Whether it exists is checked by the service, which can read the database.
     organisation_id = WholeNumber(
@@ -91,6 +107,15 @@ class RegisterSchema(Schema):
                 "Only Event Organisers belong to a client organisation.",
                 field_name="organisation_id",
             )
+
+
+class CreateStaffUserSchema(_NewUserSchema):
+    """Payload for ``flask create-staff-user`` (SCRUM-88, ADR-0023).
+
+    No ``organisation_id`` field: staff accounts never belong to a client organisation.
+    """
+
+    role = _role_field(INTERNAL_ROLES)
 
 
 class LoginSchema(Schema):

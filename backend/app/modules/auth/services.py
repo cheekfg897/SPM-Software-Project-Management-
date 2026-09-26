@@ -27,7 +27,7 @@ from app.common.errors import AuthenticationError, ConflictError, NotFoundError,
 from app.common.validation import load_or_raise
 from app.modules.auth.models import User
 from app.modules.auth.permissions import Role, role_value
-from app.modules.auth.schemas import RegisterSchema
+from app.modules.auth.schemas import CreateStaffUserSchema, RegisterSchema
 from app.modules.organisations.services import get_organisation
 
 #: The one message used for *every* login failure so that responses cannot be
@@ -158,6 +158,32 @@ def register_user(payload: Mapping[str, Any] | None, *, session: Session | None 
         _check_organisation_exists(organisation_id, sess)
 
     return _save_new_user(data, sess)
+
+
+def create_staff_user(payload: Mapping[str, Any] | None, *, session: Session | None = None) -> User:
+    """Create an internal staff account (SCRUM-88, ADR-0023).
+
+    Called by the ``flask create-staff-user`` command, never by a public route: staff
+    are provisioned by whoever operates the deployment, not by self-registration.
+    Validates the payload against :class:`CreateStaffUserSchema` (required fields,
+    email format, an internal role, password policy), checks the email is not already
+    in use, hashes the password and persists the user the same way
+    :func:`register_user` does.
+
+    Args:
+        payload: ``email``, ``password``, ``full_name`` and ``role``.
+        session: Database session; defaults to ``db.session``.
+
+    Returns:
+        The persisted :class:`User`.
+
+    Raises:
+        ValidationError: 400 — payload invalid (details per field), including a role
+            that is not one of the internal staff roles.
+        ConflictError: 409 — email already registered.
+    """
+    data = load_or_raise(CreateStaffUserSchema(), payload)
+    return _save_new_user(data, resolve_session(session))
 
 
 def issue_access_token(user: User) -> str:
