@@ -26,6 +26,7 @@ from app.modules.auth.models import User
 from app.modules.auth.permissions import ALL_ROLES, Role
 from app.modules.events import routes
 from app.modules.events.models import EventEquipmentLine, EventRequest
+from app.modules.events.services import EventRecord
 
 pytestmark = pytest.mark.scrum_37
 
@@ -220,7 +221,8 @@ def test_the_organisers_detail_route_shows_the_equipment_lines(
 ) -> None:
     event_request = make_event_request()
     event_request.equipment_lines = [shown_line]
-    replace_services(routes, {"get_event_record_for_organiser": (event_request, None)})
+    record = EventRecord(event_request=event_request, coordinator=None)
+    replace_services(routes, {"get_event_record_for_organiser": record})
     organiser = make_user(role=Role.EVENT_ORGANISER, user_id=7)
 
     response, status = call_route(

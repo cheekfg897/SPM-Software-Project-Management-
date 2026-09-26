@@ -26,6 +26,7 @@ from app.modules.events.schemas import (
     FieldChangeSchema,
 )
 from app.modules.events.services import (
+    EventRecord,
     add_equipment_line,
     complete_event_request,
     get_event_record_for_coordinator,
@@ -74,6 +75,16 @@ def _event_list_body(listed: list[dict[str, Any]], empty_message: str) -> dict[s
     body: dict[str, Any] = {"event_requests": listed}
     if not listed:
         body["message"] = empty_message
+    return body
+
+
+def _event_record_body(record: EventRecord) -> dict[str, Any]:
+    """A request's record as the API shows it: the request and its coordinator."""
+    body = _event_request_detail_schema.dump(record.event_request)
+    if record.coordinator is None:
+        body["coordinator"] = None
+    else:
+        body["coordinator"] = _coordinator_contact_schema.dump(record.coordinator)
     return body
 
 
@@ -192,15 +203,10 @@ def get_my_request(reference: str) -> tuple[Response, int]:
     SCRUM-37 AC4's. Technical Support's view of the equipment is ``/equipment``.
     """
     if Role(g.current_user_role) is Role.EVENT_COORDINATOR:
-        event_request, coordinator = get_event_record_for_coordinator(g.current_user_id, reference)
+        record = get_event_record_for_coordinator(g.current_user_id, reference)
     else:
-        event_request, coordinator = get_event_record_for_organiser(g.current_user_id, reference)
-    body = _event_request_detail_schema.dump(event_request)
-    if coordinator is None:
-        body["coordinator"] = None
-    else:
-        body["coordinator"] = _coordinator_contact_schema.dump(coordinator)
-    return jsonify(body), 200
+        record = get_event_record_for_organiser(g.current_user_id, reference)
+    return jsonify(_event_record_body(record)), 200
 
 
 # --------------------------------------------------------------------------

@@ -106,6 +106,15 @@ class CoordinatorContact:
     email: str
 
 
+@dataclass(frozen=True)
+class EventRecord:
+    """A request with what its record shows beside it (SCRUM-30 AC3, ADR-0026)."""
+
+    event_request: EventRequest
+    #: The assigned coordinator's contact, or ``None`` while it has none (ADR-0018).
+    coordinator: CoordinatorContact | None
+
+
 def generate_reference() -> str:
     """Return a random reference such as ``EVR-7K2QX9AB``."""
     return REFERENCE_PREFIX + "".join(
@@ -551,9 +560,16 @@ def _coordinator_contact(
     return _contact_of_coordinator(event_request.coordinator_id, session)
 
 
+def _event_record(event_request: EventRequest, session: Session) -> EventRecord:
+    """The request with the sections its record shows (SCRUM-30 AC3, ADR-0026)."""
+    return EventRecord(
+        event_request=event_request, coordinator=_coordinator_contact(event_request, session)
+    )
+
+
 def get_event_record_for_organiser(
     organiser_id: int | str, reference: str, *, session: Session | None = None
-) -> tuple[EventRequest, CoordinatorContact | None]:
+) -> EventRecord:
     """One of the organisation's requests and its assigned coordinator (SCRUM-30 AC3).
 
     Same lookup and scope as :func:`get_event_request_for_organiser`; the coordinator
@@ -565,7 +581,8 @@ def get_event_record_for_organiser(
         session: Database session; defaults to ``db.session``.
 
     Returns:
-        The request, and its coordinator's name and email or ``None``.
+        The request's record: the request, and its coordinator's name and email or
+        ``None``.
 
     Raises:
         OrganiserWithoutOrganisationError: 403 — the organiser has no client
@@ -575,7 +592,7 @@ def get_event_record_for_organiser(
     """
     sess = resolve_session(session)
     event_request = get_event_request_for_organiser(organiser_id, reference, session=sess)
-    return event_request, _coordinator_contact(event_request, sess)
+    return _event_record(event_request, sess)
 
 
 # --------------------------------------------------------------------------
@@ -1609,7 +1626,7 @@ def list_event_requests_with_equipment(*, session: Session | None = None) -> lis
 
 def get_event_record_for_coordinator(
     coordinator_id: int | str, reference: str, *, session: Session | None = None
-) -> tuple[EventRequest, CoordinatorContact | None]:
+) -> EventRecord:
     """A request assigned to the coordinator, and its coordinator (SCRUM-24 AC9).
 
     The same sections as the organiser's record. Only a request assigned to the
@@ -1622,7 +1639,7 @@ def get_event_record_for_coordinator(
         session: Database session; defaults to ``db.session``.
 
     Returns:
-        The request, and its coordinator's name and email.
+        The request's record: the request, and its coordinator's name and email.
 
     Raises:
         NotFoundError: 404 — no such request, or it isn't assigned to the caller.
@@ -1631,7 +1648,7 @@ def get_event_record_for_coordinator(
     event_request = _event_request_by_reference(
         reference, sess, belongs_to=_assigned_to(coordinator_id)
     )
-    return event_request, _coordinator_contact(event_request, sess)
+    return _event_record(event_request, sess)
 
 
 # --------------------------------------------------------------------------

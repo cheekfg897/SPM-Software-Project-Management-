@@ -23,6 +23,7 @@ from app.modules.auth.models import User
 from app.modules.events.models import EventRequest
 from app.modules.events.services import (
     CoordinatorContact,
+    EventRecord,
     OrganiserWithoutOrganisationError,
     get_event_record_for_organiser,
     get_event_request_for_organiser,
@@ -208,9 +209,11 @@ def test_a_colleague_can_open_a_request_they_did_not_submit(
 ) -> None:
     submitted = submit_valid_request()  # by organiser 7, assigned to coordinator 3
 
-    event_request, coordinator = get_event_record_for_organiser(COLLEAGUE_ID, "EVR-AAAAAAAA")
+    record = get_event_record_for_organiser(COLLEAGUE_ID, "EVR-AAAAAAAA")
 
-    assert event_request.id == submitted.id
-    assert coordinator == CoordinatorContact(
-        full_name="Coordinator Three", email="coordinator3@example.com"
+    assert record == EventRecord(
+        event_request=submitted,
+        coordinator=CoordinatorContact(
+            full_name="Coordinator Three", email="coordinator3@example.com"
+        ),
     )

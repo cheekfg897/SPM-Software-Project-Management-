@@ -113,10 +113,10 @@ def test_a_coordinator_opens_a_request_assigned_to_them(
     saved_event_request: EventRequest,
     coordinator_three: CoordinatorContact,
 ) -> None:
-    event_request, coordinator = get_event_record_for_coordinator(3, "EVR-AAAAAAAA")
+    record = get_event_record_for_coordinator(3, "EVR-AAAAAAAA")
 
-    assert event_request.reference == "EVR-AAAAAAAA"
-    assert coordinator == coordinator_three
+    assert record.event_request.reference == "EVR-AAAAAAAA"
+    assert record.coordinator == coordinator_three
 
 
 def test_a_coordinator_cannot_open_another_coordinators_request(

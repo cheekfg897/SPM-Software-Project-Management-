@@ -27,7 +27,7 @@ from app.modules.auth.permissions import Role
 from app.modules.events import routes
 from app.modules.events.models import EventRequest, EventRequestStatus
 from app.modules.events.schemas import EventRequestSchema
-from app.modules.events.services import get_event_request_for_organiser
+from app.modules.events.services import EventRecord, get_event_request_for_organiser
 
 pytestmark = pytest.mark.scrum_22
 
@@ -165,10 +165,10 @@ def test_detail_route_returns_the_callers_request_with_its_status(
     organiser = make_user(role=Role.EVENT_ORGANISER, user_id=7)
     calls: list[tuple[Any, Any]] = []
 
-    def fake_get(organiser_id: Any, reference: Any) -> tuple[EventRequest, None]:
+    def fake_get(organiser_id: Any, reference: Any) -> EventRecord:
         calls.append((organiser_id, reference))
         event_request = make_event_request(reference=REFERENCE, status=EventRequestStatus.CONFIRMED)
-        return event_request, None  # no coordinator assigned (SCRUM-30)
+        return EventRecord(event_request=event_request, coordinator=None)  # none assigned yet
 
     monkeypatch.setattr(routes, "get_event_record_for_organiser", fake_get)
 

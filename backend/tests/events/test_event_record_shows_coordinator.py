@@ -20,7 +20,11 @@ from app.modules.auth.models import User
 from app.modules.auth.permissions import Role
 from app.modules.events import routes
 from app.modules.events.models import EventRequest
-from app.modules.events.services import CoordinatorContact, get_event_record_for_organiser
+from app.modules.events.services import (
+    CoordinatorContact,
+    EventRecord,
+    get_event_record_for_organiser,
+)
 
 pytestmark = pytest.mark.scrum_30
 
@@ -45,8 +49,9 @@ def open_record(
     organiser = make_user(role=Role.EVENT_ORGANISER, user_id=7)
 
     def _open(coordinator: CoordinatorContact | None) -> tuple[Response, int]:
-        def fake_get(organiser_id: Any, reference: Any) -> tuple[Any, Any]:
-            return make_event_request(reference=REFERENCE, coordinator_id=3), coordinator
+        def fake_get(organiser_id: Any, reference: Any) -> EventRecord:
+            event_request = make_event_request(reference=REFERENCE, coordinator_id=3)
+            return EventRecord(event_request=event_request, coordinator=coordinator)
 
         monkeypatch.setattr(routes, "get_event_record_for_organiser", fake_get)
         headers = {"Authorization": f"Bearer {token_for(organiser)}"}
@@ -66,10 +71,10 @@ def test_the_organiser_sees_the_assigned_coordinators_name_and_email(
 ) -> None:
     submit_valid_request()
 
-    event_request, coordinator = get_event_record_for_organiser("7", REFERENCE)
+    record = get_event_record_for_organiser("7", REFERENCE)
 
-    assert event_request.reference == REFERENCE
-    assert coordinator == COORDINATOR_THREE
+    assert record.event_request.reference == REFERENCE
+    assert record.coordinator == COORDINATOR_THREE
 
 
 def test_an_unassigned_request_shows_no_coordinator(
@@ -77,10 +82,10 @@ def test_an_unassigned_request_shows_no_coordinator(
 ) -> None:
     save(make_event_request(reference=REFERENCE, organiser_id=7, coordinator_id=None))
 
-    event_request, coordinator = get_event_record_for_organiser("7", REFERENCE)
+    record = get_event_record_for_organiser("7", REFERENCE)
 
-    assert event_request.reference == REFERENCE
-    assert coordinator is None
+    assert record.event_request.reference == REFERENCE
+    assert record.coordinator is None
 
 
 # --------------------------------------------------------------------------

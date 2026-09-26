@@ -358,4 +358,4 @@ def test_the_new_coordinators_contact_is_returned_and_shown_to_the_organiser(
     _, contact = reassign(3, NINE)
 
     assert contact == COORDINATOR_NINE
-    assert get_event_record_for_organiser(7, REFERENCE)[1] == COORDINATOR_NINE
+    assert get_event_record_for_organiser(7, REFERENCE).coordinator == COORDINATOR_NINE
