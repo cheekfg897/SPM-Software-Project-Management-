@@ -84,13 +84,27 @@ This starts Postgres, installs dependencies in a `python:3.12-slim` container, r
 
 ## 4. Try the API
 
+`event_coordinator`, `venue_staff` and `technical_support_staff` accounts aren't
+self-registered; an operator creates one with the CLI command instead
+([ADR-0023](docs/adr/0023-staff-accounts-created-by-command.md)):
+
 ```bash
-# Register
+flask create-staff-user --email alice@example.com --full-name Alice --role venue_staff
+# Password:                  (type it; nothing is shown)
+# Repeat for confirmation:   (type it again)
+# Created venue_staff account for alice@example.com (id 1).
+
+# Or, running in Docker (see the Docker alternative above):
+docker compose exec backend flask create-staff-user --email alice@example.com --full-name Alice --role venue_staff
+```
+
+```bash
+# Register (public; only event_organiser or attendee — staff comes from the command above)
 curl -X POST http://localhost:5000/api/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"email":"alice@example.com","password":"Password123","full_name":"Alice","role":"venue_staff"}'
+  -d '{"email":"bob@example.com","password":"Password123","full_name":"Bob","role":"attendee"}'
 
-# Log in → returns access_token
+# Log in as the staff account created above → returns access_token
 curl -X POST http://localhost:5000/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"alice@example.com","password":"Password123"}'
@@ -102,7 +116,7 @@ curl http://localhost:5000/api/auth/internal-only -H "Authorization: Bearer <tok
 
 | Route                          | Access                                                          |
 | ------------------------------ | --------------------------------------------------------------- |
-| `POST /api/auth/register`      | public                                                          |
+| `POST /api/auth/register`      | public — `event_organiser` or `attendee` only; staff accounts come from `flask create-staff-user` ([ADR-0023](docs/adr/0023-staff-accounts-created-by-command.md)) |
 | `POST /api/auth/login`         | public                                                          |
 | `GET  /api/auth/me`            | any authenticated user                                          |
 | `GET  /api/auth/internal-only` | `event_coordinator`, `venue_staff`, `technical_support_staff`   |
@@ -142,7 +156,7 @@ Roles: `event_organiser`, `attendee`, `event_coordinator`, `venue_staff`, `techn
 
 Password policy: at least 8 characters, with at least one letter and one digit.
 
-An `event_organiser` registers with the `organisation_id` of an existing client organisation, which an internal user records first; every other role must leave it out ([ADR-0013](docs/adr/0013-client-organisations-recorded-by-internal-users.md)). Every organiser of an organisation sees all of its event requests, and no other organisation's ([ADR-0020](docs/adr/0020-organisers-see-their-organisations-events.md)).
+An `event_organiser` registers with the `organisation_id` of an existing client organisation, which an internal user records first; an attendee must leave it out ([ADR-0013](docs/adr/0013-client-organisations-recorded-by-internal-users.md)). Every organiser of an organisation sees all of its event requests, and no other organisation's ([ADR-0020](docs/adr/0020-organisers-see-their-organisations-events.md)).
 
 A submitted event request is assigned to the Event Coordinator with the fewest open requests (`submitted` or `under_review`), lowest user id on a tie, and only that coordinator is notified; with no Event Coordinator registered it stays unassigned and nobody is notified ([ADR-0018](docs/adr/0018-least-loaded-coordinator-and-event-history.md)). Everything that happens to an event is written to an event history table that later stories append to.
 
@@ -187,6 +201,7 @@ pytest -m scrum_67   # setup and turnaround time
 pytest -m scrum_66   # client organisations
 pytest -m scrum_7    # see only my own organisation's events
 pytest -m scrum_87   # reassign an event to a different coordinator
+pytest -m scrum_88   # staff accounts come from a command, not self-registration
 ```
 
 ## Database migrations
