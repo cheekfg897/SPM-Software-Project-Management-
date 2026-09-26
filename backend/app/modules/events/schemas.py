@@ -10,10 +10,11 @@ were ambiguous, the choice is recorded as an ADR in ``docs/adr/``:
 
 SCRUM-37 adds the equipment lines recorded on a request (ADR-0019), SCRUM-87 the
 coordinator a request is reassigned to (ADR-0021), SCRUM-38 the list of lines still
-awaiting Technical Support (ADR-0022), and SCRUM-20 :class:`SaveDraftSchema`, which
+awaiting Technical Support (ADR-0022), SCRUM-20 :class:`SaveDraftSchema`, which
 :class:`SubmitEventRequestSchema` extends with the rules that only apply once a
-request is submitted (ADR-0024). ``_EventTimingSchema`` holds the date rules that
-depend on today (ADR-0001), shared by submitting and editing a request.
+request is submitted (ADR-0024), and SCRUM-24 the summary fields each role's event
+list shows (ADR-0026). ``_EventTimingSchema`` holds the date rules that depend on
+today (ADR-0001), shared by submitting and editing a request.
 """
 
 from __future__ import annotations
@@ -354,6 +355,10 @@ EQUIPMENT_EVENT_FIELDS = (
     "start_time",
     "end_time",
 )
+
+#: What an event list shows at the least: the event's name, date and times as the
+#: equipment list shows them, and its status (SCRUM-24 AC6, ADR-0026).
+EVENT_LIST_FIELDS = (*EQUIPMENT_EVENT_FIELDS, "status")
 
 
 class ReassignCoordinatorSchema(Schema):

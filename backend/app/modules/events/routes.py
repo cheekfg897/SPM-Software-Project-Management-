@@ -15,6 +15,7 @@ from app.common.decorators import requires_role
 from app.modules.auth.permissions import INTERNAL_ROLES, Role
 from app.modules.events.schemas import (
     EQUIPMENT_EVENT_FIELDS,
+    EVENT_LIST_FIELDS,
     CoordinatorContactSchema,
     EditedEventRequestSchema,
     EquipmentAwaitingActionSchema,
@@ -32,6 +33,7 @@ from app.modules.events.services import (
     list_event_history,
     list_event_requests_for_coordinator,
     list_event_requests_for_organiser,
+    list_event_requests_with_equipment,
     list_unassigned_event_requests,
     reassign_coordinator,
     remove_equipment_line,
@@ -54,11 +56,13 @@ _equipment_awaiting_action_schema = EquipmentAwaitingActionSchema()
 _edited_event_request_schema = EditedEventRequestSchema()
 _field_change_schema = FieldChangeSchema()
 _event_history_entry_schema = EventHistoryEntrySchema()
+_event_list_row_schema = EventRequestSchema(only=EVENT_LIST_FIELDS)
 
 #: What each role's event list says when it is empty (SCRUM-24 AC8, ADR-0026).
 NO_ORGANISATION_REQUESTS_MESSAGE = "Your organisation has no event requests yet."
 NO_ASSIGNED_REQUESTS_MESSAGE = "No event requests are assigned to you yet."
 NO_UNASSIGNED_REQUESTS_MESSAGE = "No submitted event requests are waiting for a coordinator."
+NO_EQUIPMENT_REQUESTS_MESSAGE = "No events have an equipment request yet."
 
 
 def _event_list_body(listed: list[dict[str, Any]], empty_message: str) -> dict[str, Any]:
@@ -85,6 +89,8 @@ def submit_request() -> tuple[Response, int]:
     return jsonify(_event_request_schema.dump(event_request)), 201
 
 
+# TODO: SCRUM-42 adds Venue Staff's list (AC3) and SCRUM-52 the Attendee's (AC5),
+# in the same shape (ADR-0026).
 @bp.get("/requests")
 @requires_role(Role.EVENT_ORGANISER)
 def list_my_requests() -> tuple[Response, int]:
@@ -164,6 +170,21 @@ def list_unassigned_requests() -> tuple[Response, int]:
     event_requests = list_unassigned_event_requests()
     listed = _event_request_schema.dump(event_requests, many=True)
     return jsonify(_event_list_body(listed, NO_UNASSIGNED_REQUESTS_MESSAGE)), 200
+
+
+@bp.get("/requests/with-equipment")
+@requires_role(Role.TECHNICAL_SUPPORT_STAFF)
+def list_requests_with_equipment() -> tuple[Response, int]:
+    """Every event that has an equipment request, newest first (SCRUM-24 AC4).
+
+    Each row carries only ``EVENT_LIST_FIELDS``: the same name, date and times
+    Technical Support's own event view (``/equipment``) shows, plus status.
+    SCRUM-38's ``/awaiting-equipment`` stays their queue of what still needs
+    doing (ADR-0026).
+    """
+    event_requests = list_event_requests_with_equipment()
+    listed = _event_list_row_schema.dump(event_requests, many=True)
+    return jsonify(_event_list_body(listed, NO_EQUIPMENT_REQUESTS_MESSAGE)), 200
 
 
 @bp.get("/requests/<reference>")

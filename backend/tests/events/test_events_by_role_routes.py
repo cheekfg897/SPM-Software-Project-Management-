@@ -1,14 +1,15 @@
 """Route tests for SCRUM-24 "see the events my role is involved in".
 
 AC2: Event Coordinators can open the list of submitted requests no coordinator has
-yet, separate from their own assigned list. AC6: every role's event list shows each
+yet, separate from their own assigned list. AC4: Technical Support can open the list
+of events that have an equipment request. AC6: every role's event list shows each
 event's name, date, time and status. AC8: a list with no matching events says so,
 instead of an empty list looking the same as "nothing loaded yet" (copying
 ``search_venues``'s precedent, SCRUM-35 AC4).
 
-Covers the organiser's own list, the coordinator's assigned list and its new
-unassigned list; later commits add Technical Support's equipment list (AC4) and
-the event record opened to coordinators (AC7).
+Covers the organiser's own list, the coordinator's assigned and unassigned lists,
+and Technical Support's equipment list; a later commit adds the event record
+opened to coordinators (AC7).
 """
 
 from __future__ import annotations
@@ -64,8 +65,15 @@ UNASSIGNED_LIST = EventList(
     Role.EVENT_COORDINATOR,
     "No submitted event requests are waiting for a coordinator.",
 )
-ROLE_LISTS = [ORGANISATION_LIST, ASSIGNED_LIST, UNASSIGNED_LIST]
-NEW_LISTS = [UNASSIGNED_LIST]
+EQUIPMENT_LIST = EventList(
+    "events.list_requests_with_equipment",
+    "/api/events/requests/with-equipment",
+    "list_event_requests_with_equipment",
+    Role.TECHNICAL_SUPPORT_STAFF,
+    "No events have an equipment request yet.",
+)
+ROLE_LISTS = [ORGANISATION_LIST, ASSIGNED_LIST, UNASSIGNED_LIST, EQUIPMENT_LIST]
+NEW_LISTS = [UNASSIGNED_LIST, EQUIPMENT_LIST]
 
 OpenList = Callable[[EventList, list[EventRequest]], tuple[dict[str, Any], int, MagicMock]]
 
@@ -221,4 +229,19 @@ def test_the_unassigned_list_shows_each_whole_request_without_internal_ids(
     assert row["expected_attendance"] == 250
     assert "coordinator_id" not in row
     assert "organiser_id" not in row
+    mock.assert_called_once_with()
+
+
+# --------------------------------------------------------------------------
+# AC4 — Technical Support can open the list of events with an equipment request
+# --------------------------------------------------------------------------
+
+
+def test_the_equipment_list_shows_only_each_events_summary(
+    open_list: OpenList, shown_event: EventRequest, event_as_shown: dict[str, Any]
+) -> None:
+    body, status, mock = open_list(EQUIPMENT_LIST, [shown_event])
+
+    assert status == 200
+    assert body == {"event_requests": [{**event_as_shown, "status": "submitted"}]}
     mock.assert_called_once_with()
