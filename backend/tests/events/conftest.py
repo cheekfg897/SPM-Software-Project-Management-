@@ -32,11 +32,14 @@ from app.modules.events.models import (
 from app.modules.events.services import (
     CoordinatorContact,
     reassign_coordinator,
+    save_draft_event_request,
     submit_event_request,
 )
 from app.modules.notifications.services import list_notifications_for_recipient
+from tests.events.cases import DRAFT_REFERENCE
 
 MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "migrations" / "versions"
+
 
 #: Every role but Event Coordinator, in a fixed order so test ids are stable.
 NON_COORDINATOR_ROLES = sorted(ALL_ROLES - {Role.EVENT_COORDINATOR}, key=lambda role: role.value)
@@ -324,6 +327,35 @@ def saved_event_request(
     event_request = make_event_request(coordinator_id=3)
     save(event_request)
     return event_request
+
+
+@pytest.fixture()
+def save_draft(db_session: Session) -> Callable[[int, dict[str, Any]], EventRequest]:
+    """Save a draft through the service, always under ``DRAFT_REFERENCE`` (SCRUM-20).
+
+    Runs on ``db_session``, so the draft is really persisted and can be read back or
+    reopened by another service call in the same test.
+    """
+
+    def _save(organiser_id: int, payload: dict[str, Any]) -> EventRequest:
+        return save_draft_event_request(
+            organiser_id, payload, session=db_session, reference_factory=lambda: DRAFT_REFERENCE
+        )
+
+    return _save
+
+
+@pytest.fixture()
+def reload_event_request(db_session: Session) -> Callable[[int], EventRequest]:
+    """Read an event request back from the database rather than the session's cache."""
+
+    def _reload(event_request_id: int) -> EventRequest:
+        db_session.expire_all()
+        event_request = db_session.get(EventRequest, event_request_id)
+        assert event_request is not None
+        return event_request
+
+    return _reload
 
 
 @pytest.fixture()

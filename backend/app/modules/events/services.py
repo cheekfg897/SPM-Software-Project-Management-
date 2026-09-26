@@ -49,6 +49,7 @@ from app.modules.events.models import (
 from app.modules.events.schemas import (
     EditEquipmentLineSchema,
     ReassignCoordinatorSchema,
+    SaveDraftSchema,
     SubmitEventRequestSchema,
 )
 from app.modules.notifications.services import EventSummary, NotificationKind, notify_users
@@ -567,6 +568,62 @@ def get_event_record_for_organiser(
     sess = resolve_session(session)
     event_request = get_event_request_for_organiser(organiser_id, reference, session=sess)
     return event_request, _coordinator_contact(event_request, sess)
+
+
+# --------------------------------------------------------------------------
+# SCRUM-20 — save and resume a draft event request
+# --------------------------------------------------------------------------
+
+
+def save_draft_event_request(
+    organiser_id: int | str,
+    payload: Mapping[str, Any] | None,
+    *,
+    session: Session | None = None,
+    reference_factory: Callable[[], str] = generate_reference,
+) -> EventRequest:
+    """Save a new draft event request with only its name required (SCRUM-20 AC1).
+
+    Every other field is optional and, when sent, is checked on its own; the rules
+    that only apply once a request is submitted wait for that (ADR-0024). The draft
+    is filed under the organiser's client organisation like any other request
+    (SCRUM-66 AC4), under a fresh reference kept if it is later submitted (ADR-0004).
+    It gets no coordinator, no event history and no notification: nothing has
+    happened to it yet but its own saving.
+
+    Args:
+        organiser_id: The caller's user id, taken from their token.
+        payload: Decoded JSON body.
+        session: Database session; defaults to ``db.session``.
+        reference_factory: Makes references; tests swap it out.
+
+    Returns:
+        The saved, draft :class:`EventRequest`.
+
+    Raises:
+        ValidationError: 400 — payload invalid (details per field).
+        OrganiserWithoutOrganisationError: 403 — the organiser has no client
+            organisation (ADR-0013).
+        NotFoundError: 404 — the token names a user that no longer exists.
+        ReferenceGenerationError: 500 — every attempt hit a used reference.
+    """
+    data = load_or_raise(SaveDraftSchema(), payload)
+    sess = resolve_session(session)
+    organisation_id = _organisation_of_organiser(organiser_id, sess)
+
+    def draft_under(reference: str) -> EventRequest:
+        """Build a draft under ``reference`` and add it to the session."""
+        draft = EventRequest(
+            organiser_id=int(organiser_id),
+            organisation_id=organisation_id,
+            reference=reference,
+            status=EventRequestStatus.DRAFT,
+            **data,
+        )
+        sess.add(draft)
+        return draft
+
+    return _save_under_new_reference(draft_under, sess, reference_factory)
 
 
 # --------------------------------------------------------------------------

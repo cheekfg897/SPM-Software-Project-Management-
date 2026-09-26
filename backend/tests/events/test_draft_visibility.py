@@ -32,6 +32,7 @@ from app.modules.events.services import (
     remove_equipment_line,
     update_equipment_line,
 )
+from tests.events.cases import DRAFT_REFERENCE
 
 pytestmark = pytest.mark.scrum_20
 
@@ -43,8 +44,6 @@ ORGANISER_ID = 7
 COLLEAGUE_ID = 8
 #: A request that colleague has submitted, which the organiser does see.
 COLLEAGUES_SUBMITTED_REFERENCE = "EVR-SSSSSSSS"
-
-DRAFT_REFERENCE = "EVR-DDDDDDDD"
 
 #: Every status but draft, so "past the draft stage" can be checked as a whole.
 NON_DRAFT_STATUSES = [
