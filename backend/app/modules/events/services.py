@@ -107,12 +107,29 @@ class CoordinatorContact:
 
 
 @dataclass(frozen=True)
+class DecisionAsShown:
+    """The request's current decision as its record shows it (SCRUM-31 AC9, ADR-0028).
+
+    No user ids: the coordinator who made it is shown by name.
+    """
+
+    #: ``approved`` or ``rejected``.
+    outcome: str | None
+    reason: str | None
+    #: The deciding coordinator's full name, or ``None`` if they no longer exist.
+    decided_by: str | None
+    decided_at: datetime
+
+
+@dataclass(frozen=True)
 class EventRecord:
     """A request with what its record shows beside it (SCRUM-30 AC3, ADR-0026)."""
 
     event_request: EventRequest
     #: The assigned coordinator's contact, or ``None`` while it has none (ADR-0018).
     coordinator: CoordinatorContact | None
+    #: The current decision, or ``None`` until one is recorded (SCRUM-31 AC9).
+    decision: DecisionAsShown | None = None
 
 
 def generate_reference() -> str:
@@ -172,6 +189,29 @@ def record_event_history(
     )
     resolve_session(session).add(entry)
     return entry
+
+
+def _user_ids_named_in(entries: list[EventHistoryEntry]) -> set[int]:
+    """Every user id showing ``entries`` needs a name for (ADR-0025, ADR-0028).
+
+    The actors, and the coordinator a ``coordinator_assigned`` entry names.
+    """
+    user_ids: set[int] = set()
+    for entry in entries:
+        if entry.actor_id is not None:
+            user_ids.add(entry.actor_id)
+        if entry.kind is EventHistoryKind.COORDINATOR_ASSIGNED:
+            coordinator_id = (entry.details or {}).get("coordinator_id")
+            if coordinator_id is not None:
+                user_ids.add(coordinator_id)
+    return user_ids
+
+
+def _actor_name(entry: EventHistoryEntry, names: Mapping[int, str]) -> str | None:
+    """Who made ``entry``, by name: ``None`` for the system or a removed user."""
+    if entry.actor_id is None:
+        return None
+    return names.get(entry.actor_id)
 
 
 def _organisation_of_organiser(organiser_id: int | str, session: Session) -> int:
@@ -560,10 +600,42 @@ def _coordinator_contact(
     return _contact_of_coordinator(event_request.coordinator_id, session)
 
 
+def _current_decision_of(event_request: EventRequest, session: Session) -> DecisionAsShown | None:
+    """The request's current decision, or ``None`` until one is recorded (AC9).
+
+    Every decision stays in the history, and the most recent is the current one (AC8);
+    of two at the same instant, the one recorded last wins. The coordinator's name is
+    looked up now, so a removed coordinator shows as ``None`` (SCRUM-31, ADR-0028).
+    """
+    stmt = (
+        select(EventHistoryEntry)
+        .where(
+            EventHistoryEntry.event_request_id == event_request.id,
+            EventHistoryEntry.kind == EventHistoryKind.DECISION_RECORDED,
+        )
+        .order_by(EventHistoryEntry.occurred_at.desc(), EventHistoryEntry.id.desc())
+        .limit(1)
+    )
+    entry = session.scalar(stmt)
+    if entry is None:
+        return None
+
+    details = entry.details or {}
+    names = get_user_full_names(_user_ids_named_in([entry]), session=session)
+    return DecisionAsShown(
+        outcome=details.get("outcome"),
+        reason=details.get("reason"),
+        decided_by=_actor_name(entry, names),
+        decided_at=entry.occurred_at,
+    )
+
+
 def _event_record(event_request: EventRequest, session: Session) -> EventRecord:
-    """The request with the sections its record shows (SCRUM-30 AC3, ADR-0026)."""
+    """The request with the sections its record shows (SCRUM-30 AC3, SCRUM-31 AC9)."""
     return EventRecord(
-        event_request=event_request, coordinator=_coordinator_contact(event_request, session)
+        event_request=event_request,
+        coordinator=_coordinator_contact(event_request, session),
+        decision=_current_decision_of(event_request, session),
     )
 
 
@@ -1517,19 +1589,6 @@ def _shown_to_organiser(entry: EventHistoryEntry) -> bool:
     return details.get("field") not in INTERNAL_ONLY_FIELDS
 
 
-def _user_ids_named_in(entries: list[EventHistoryEntry]) -> set[int]:
-    """Every user id :func:`_details_as_shown` needs a name for (ADR-0025)."""
-    user_ids: set[int] = set()
-    for entry in entries:
-        if entry.actor_id is not None:
-            user_ids.add(entry.actor_id)
-        if entry.kind is EventHistoryKind.COORDINATOR_ASSIGNED:
-            coordinator_id = (entry.details or {}).get("coordinator_id")
-            if coordinator_id is not None:
-                user_ids.add(coordinator_id)
-    return user_ids
-
-
 def _details_as_shown(entry: EventHistoryEntry, names: dict[int, str]) -> dict[str, Any]:
     """``entry.details`` as the API shows it: names resolved, no ids (ADR-0025).
 
@@ -1592,14 +1651,11 @@ def list_event_history(
     names = get_user_full_names(_user_ids_named_in(entries), session=sess)
     shown = []
     for entry in entries:
-        actor_name = None
-        if entry.actor_id is not None:
-            actor_name = names.get(entry.actor_id)
         shown.append(
             HistoryEntryAsShown(
                 kind=entry.kind,
                 occurred_at=entry.occurred_at,
-                actor_name=actor_name,
+                actor_name=_actor_name(entry, names),
                 details=_details_as_shown(entry, names),
             )
         )

@@ -344,6 +344,19 @@ class CoordinatorContactSchema(Schema):
     email = fields.Email(dump_only=True)
 
 
+class DecisionSchema(Schema):
+    """A request's current decision as its record shows it (SCRUM-31 AC9, ADR-0028).
+
+    The coordinator is shown by name, never by id; the time is in business time
+    (ADR-0009).
+    """
+
+    outcome = fields.String(dump_only=True, allow_none=True)
+    reason = fields.String(dump_only=True, allow_none=True)
+    decided_by = fields.String(dump_only=True, allow_none=True)
+    decided_at = BusinessDateTime(dump_only=True)
+
+
 #: What the equipment list says about its event: when it is, so Technical Support know
 #: by when the equipment is needed (SCRUM-37, ADR-0019). Dumped with
 #: :class:`EventRequestSchema`, so the names and formats match the request itself.

@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 from flask import Blueprint, Response, g, jsonify, request
+from marshmallow import Schema
 
 from app.common.decorators import requires_role
 from app.modules.auth.permissions import INTERNAL_ROLES, Role
@@ -17,6 +18,7 @@ from app.modules.events.schemas import (
     EQUIPMENT_EVENT_FIELDS,
     EVENT_LIST_FIELDS,
     CoordinatorContactSchema,
+    DecisionSchema,
     EditedEventRequestSchema,
     EquipmentAwaitingActionSchema,
     EquipmentLineSchema,
@@ -51,6 +53,7 @@ bp = Blueprint("events", __name__, url_prefix="/api/events")
 
 _event_request_schema = EventRequestSchema()
 _coordinator_contact_schema = CoordinatorContactSchema()
+_decision_schema = DecisionSchema()
 _event_request_detail_schema = EventRequestDetailSchema()
 _equipment_line_schema = EquipmentLineSchema()
 _equipment_event_schema = EventRequestSchema(only=EQUIPMENT_EVENT_FIELDS)
@@ -78,13 +81,18 @@ def _event_list_body(listed: list[dict[str, Any]], empty_message: str) -> dict[s
     return body
 
 
+def _shown_or_none(schema: Schema, value: object | None) -> dict[str, Any] | None:
+    """``value`` dumped with ``schema``, or ``None`` when there is nothing to show."""
+    if value is None:
+        return None
+    return schema.dump(value)
+
+
 def _event_record_body(record: EventRecord) -> dict[str, Any]:
-    """A request's record as the API shows it: the request and its coordinator."""
+    """A request's record as the API shows it: the request, coordinator and decision."""
     body = _event_request_detail_schema.dump(record.event_request)
-    if record.coordinator is None:
-        body["coordinator"] = None
-    else:
-        body["coordinator"] = _coordinator_contact_schema.dump(record.coordinator)
+    body["coordinator"] = _shown_or_none(_coordinator_contact_schema, record.coordinator)
+    body["decision"] = _shown_or_none(_decision_schema, record.decision)
     return body
 
 
@@ -192,7 +200,7 @@ def list_requests_with_equipment() -> tuple[Response, int]:
 @bp.get("/requests/<reference>")
 @requires_role(Role.EVENT_ORGANISER, Role.EVENT_COORDINATOR)
 def get_my_request(reference: str) -> tuple[Response, int]:
-    """An event request's record: its status, coordinator and equipment.
+    """An event request's record: its status, coordinator, equipment and decision.
 
     Any organiser of the request's client organisation may open it; another
     organisation's request is ``404`` like an unknown reference (SCRUM-7 AC2, AC3,
@@ -200,7 +208,9 @@ def get_my_request(reference: str) -> tuple[Response, int]:
     assigned to them (SCRUM-24 AC2, AC9; ADR-0026, ADR-0034).
     The current status is SCRUM-22's; the assigned coordinator's name and email are
     SCRUM-30 AC3's, ``null`` until one is assigned (ADR-0018); the equipment lines are
-    SCRUM-37 AC4's. Technical Support's view of the equipment is ``/equipment``.
+    SCRUM-37 AC4's; the current decision, its reason and who made it are SCRUM-31
+    AC9's, ``null`` until one is recorded (ADR-0028). Technical Support's view of the
+    equipment is ``/equipment``.
     """
     if Role(g.current_user_role) is Role.EVENT_COORDINATOR:
         record = get_event_record_for_coordinator(g.current_user_id, reference)
