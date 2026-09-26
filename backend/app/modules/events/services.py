@@ -927,7 +927,9 @@ def _group_lines_by_event(
 
     awaiting = []
     for event_request in events:
-        days_remaining = (event_request.proposed_date - today).days
+        # The query above keeps only events with a proposed_date (SCRUM-38 AC1); only a
+        # draft has none, and a draft never reaches this list (SCRUM-20, ADR-0024).
+        days_remaining = (event_request.proposed_date - today).days  # type: ignore[operator]
         awaiting.append(
             EquipmentAwaitingAction(
                 event_request=event_request,
