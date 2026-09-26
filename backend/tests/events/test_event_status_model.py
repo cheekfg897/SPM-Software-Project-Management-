@@ -1,7 +1,8 @@
 """Unit tests for SCRUM-22 "Define the event status model".
 
-AC1: an event request holds exactly one of the story's seven statuses, and each one
-survives a trip through the database. AC2: the status is shown by its value, and the
+AC1: an event request holds exactly one of the story's seven statuses, plus
+``approved``, which SCRUM-31 adds (ADR-0028), and each one survives a trip through the
+database. AC2: the status is shown by its value, and the
 organiser who submitted a request can open it to see its current status. Coordinators'
 access is SCRUM-24's (ADR-0026); the other viewers wait on later stories. An unknown
 reference is a 404, and a typed reference ignores case and spaces (ADR-0004). Which
@@ -50,17 +51,18 @@ def _open_request(app: Flask, token: str | None) -> tuple[Response, int]:
 
 
 # --------------------------------------------------------------------------
-# AC1 — exactly one of the seven statuses
+# AC1 — exactly one of the seven statuses, plus SCRUM-31's approved
 # --------------------------------------------------------------------------
 
 
-def test_status_values_are_exactly_the_seven_in_the_story() -> None:
+def test_status_values_are_the_seven_in_the_story_plus_approved() -> None:
     values = [status.value for status in EventRequestStatus]
 
     assert values == [
         "draft",
         "submitted",
         "under_review",
+        "approved",
         "confirmed",
         "completed",
         "cancelled",

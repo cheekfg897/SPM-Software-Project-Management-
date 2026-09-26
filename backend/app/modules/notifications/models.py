@@ -35,6 +35,10 @@ class NotificationKind(str, enum.Enum):
     #: A significant change to an event affects arrangements already made for it
     #: (SCRUM-33, ADR-0025).
     SIGNIFICANT_CHANGE = "significant_change"
+    #: The assigned coordinator approved or rejected the organiser's request; the
+    #: reason, if any, is the notification's ``detail`` (SCRUM-31 AC10, ADR-0028).
+    EVENT_REQUEST_APPROVED = "event_request_approved"
+    EVENT_REQUEST_REJECTED = "event_request_rejected"
 
 
 class Notification(db.Model):  # type: ignore[name-defined]
@@ -74,6 +78,9 @@ class Notification(db.Model):  # type: ignore[name-defined]
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)
     #: ``None`` until the recipient marks it read (SCRUM-28 AC4).
     read_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    #: More about what happened, such as the reason for a decision; ``None`` for
+    #: kinds that carry none (SCRUM-31 AC10, ADR-0028).
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     def __repr__(self) -> str:  # pragma: no cover - debugging aid
         return (

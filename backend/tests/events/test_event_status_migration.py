@@ -28,7 +28,9 @@ def test_migration_and_model_agree_on_the_status_values(load_migration: LoadMigr
     previous = set(migration.PREVIOUS_STATUS_VALUES)
     added = set(migration.ADDED_STATUS_VALUES)
 
-    assert previous | added == {status.value for status in EventRequestStatus}
+    # Subset, not equality: a later migration could add a further status this one
+    # doesn't know about, as 0017 later did with SCRUM-31's approved.
+    assert previous | added <= {status.value for status in EventRequestStatus}
     assert previous.isdisjoint(added)
 
 
