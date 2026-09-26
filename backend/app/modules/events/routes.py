@@ -31,6 +31,7 @@ from app.modules.events.services import (
     EventRecord,
     add_equipment_line,
     complete_event_request,
+    decide_event_request,
     get_event_record_for_coordinator,
     get_event_record_for_organiser,
     list_equipment_lines,
@@ -363,4 +364,20 @@ def review_request(reference: str) -> tuple[Response, int]:
     request.
     """
     event_request = start_event_request_review(g.current_user_id, reference)
+    return jsonify(_event_request_schema.dump(event_request)), 200
+
+
+@bp.post("/requests/<reference>/decide")
+@requires_role(Role.EVENT_COORDINATOR)
+def decide_request(reference: str) -> tuple[Response, int]:
+    """Approve or reject a request assigned to the caller (SCRUM-31 AC1, AC4).
+
+    The body is ``{"outcome": "approved" | "rejected", "reason": ...}``; a rejection
+    needs a reason. Only the request's own coordinator may; the service answers
+    anyone else with the "not yours" 404 (AC5, ADR-0028). Returns ``200`` with the
+    request in its new status.
+    """
+    event_request = decide_event_request(
+        g.current_user_id, reference, request.get_json(silent=True)
+    )
     return jsonify(_event_request_schema.dump(event_request)), 200

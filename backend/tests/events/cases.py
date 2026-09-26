@@ -43,3 +43,7 @@ FIELD_REJECTED_CASES = [
     ("expected_attendance", True),
     ("registration_required", "yes"),
 ]
+
+#: Reasons a coordinator gives for a decision (SCRUM-31 AC4, AC6).
+APPROVAL_REASON = "The venue and date fit the brief."
+REJECTION_REASON = "The venue is too small for the expected attendance."

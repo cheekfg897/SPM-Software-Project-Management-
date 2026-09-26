@@ -32,6 +32,7 @@ from app.modules.events.models import (
 from app.modules.events.services import (
     CoordinatorContact,
     EventEdit,
+    decide_event_request,
     reassign_coordinator,
     save_draft_event_request,
     start_event_request_review,
@@ -582,3 +583,40 @@ def start_review(
         return start_event_request_review(actor_id, "EVR-AAAAAAAA")
 
     return _start
+
+
+@pytest.fixture()
+def decide(
+    saved_users: list[User], saved_event_request: EventRequest
+) -> Callable[..., EventRequest]:
+    """Decide ``saved_event_request`` as ``actor_id``, with a reason if one is given.
+
+    The request, ``EVR-AAAAAAAA``, is submitted and assigned to Event Coordinator 3
+    (SCRUM-31). Runs on ``db_session`` with ``saved_users``.
+    """
+
+    def _decide(actor_id: int, outcome: str, reason: str | None = None) -> EventRequest:
+        payload = {"outcome": outcome}
+        if reason is not None:
+            payload["reason"] = reason
+        return decide_event_request(actor_id, "EVR-AAAAAAAA", payload)
+
+    return _decide
+
+
+@pytest.fixture()
+def assert_status_unchanged(
+    saved_event_request: EventRequest,
+    reload_event_request: Callable[[int], EventRequest],
+    history_of: Callable[[int], list[tuple[EventHistoryKind, int | None, dict[str, Any] | None]]],
+) -> Callable[[EventRequestStatus], None]:
+    """Check ``saved_event_request`` still has this status and no history was written.
+
+    For SCRUM-31's refusals: a review or a decision that is refused changes nothing.
+    """
+
+    def _assert(status: EventRequestStatus) -> None:
+        assert reload_event_request(saved_event_request.id).status is status
+        assert history_of(saved_event_request.id) == []
+
+    return _assert

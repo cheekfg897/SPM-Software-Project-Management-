@@ -41,6 +41,7 @@ from app.modules.auth.services import (
 from app.modules.equipment.services import get_equipment_type
 from app.modules.events.models import (
     REFERENCE_UNIQUE_CONSTRAINT,
+    DecisionOutcome,
     EquipmentLineStatus,
     EventEquipmentLine,
     EventHistoryEntry,
@@ -49,6 +50,7 @@ from app.modules.events.models import (
     EventRequestStatus,
 )
 from app.modules.events.schemas import (
+    DecideEventRequestSchema,
     EditEquipmentLineSchema,
     EditEventRequestSchema,
     EventRequestSchema,
@@ -1794,12 +1796,34 @@ def complete_event_request(
 
 NOT_REVIEWABLE_MESSAGE = "Only a submitted event request can be moved to under review."
 
+#: Statuses in which a request awaits its first decision: straight from submission,
+#: or once its review has started (SCRUM-31 AC4, ADR-0028).
+AWAITING_DECISION_STATUSES: frozenset[EventRequestStatus] = frozenset(
+    {EventRequestStatus.SUBMITTED, EventRequestStatus.UNDER_REVIEW}
+)
+#: Statuses in which a request may be decided.
+DECIDABLE_STATUSES = AWAITING_DECISION_STATUSES
+#: The status each outcome moves a request to (AC4).
+STATUS_BY_OUTCOME: dict[DecisionOutcome, EventRequestStatus] = {
+    DecisionOutcome.APPROVED: EventRequestStatus.APPROVED,
+    DecisionOutcome.REJECTED: EventRequestStatus.REJECTED,
+}
+NOT_DECIDABLE_MESSAGE = "Only a submitted or under-review event request can be decided."
+REASON_REQUIRED_MESSAGE = "A reason is required to reject a request or to change a decision."
+
 
 class RequestNotReviewableError(AppError):
     """The request isn't submitted, so it can't be moved to under review (409)."""
 
     status_code = 409
     error_code = "request_not_reviewable"
+
+
+class RequestNotDecidableError(AppError):
+    """The request's status doesn't allow a decision (409)."""
+
+    status_code = 409
+    error_code = "request_not_decidable"
 
 
 def start_event_request_review(
@@ -1836,5 +1860,98 @@ def start_event_request_review(
         actor_id=int(coordinator_id),
         session=sess,
     )
+    sess.commit()
+    return event_request
+
+
+def _event_request_decidable_by(
+    coordinator_id: int | str, reference: str, session: Session
+) -> EventRequest:
+    """The coordinator's request, if its status lets it be decided (AC5, ADR-0028).
+
+    Raises:
+        NotFoundError: 404 — no such request among the coordinator's own; a draft is
+            never found (ADR-0024).
+        RequestNotDecidableError: 409 — the request's status doesn't allow a decision.
+    """
+    event_request = _event_request_assigned_to(coordinator_id, reference, session)
+    if event_request.status not in DECIDABLE_STATUSES:
+        raise RequestNotDecidableError(NOT_DECIDABLE_MESSAGE)
+    return event_request
+
+
+def _check_reason_given(decision: Mapping[str, Any]) -> None:
+    """Refuse a rejection without a reason (AC4); a first approval needs none.
+
+    Raises:
+        ValidationError: 400 — a rejection with no reason.
+    """
+    if decision["reason"] is not None:
+        return
+    if decision["outcome"] is DecisionOutcome.REJECTED:
+        raise ValidationError("Invalid request.", details={"reason": [REASON_REQUIRED_MESSAGE]})
+
+
+def _apply_decision(
+    coordinator_id: int | str,
+    event_request: EventRequest,
+    decision: Mapping[str, Any],
+    session: Session,
+) -> None:
+    """Move the request to the outcome's status and record the decision (AC4, AC8).
+
+    The ``decision_recorded`` entry names the coordinator and keeps the outcome and
+    reason, so every decision stays in the history. Nothing is committed here.
+    """
+    outcome = decision["outcome"]
+    event_request.status = STATUS_BY_OUTCOME[outcome]
+    record_event_history(
+        event_request,
+        EventHistoryKind.DECISION_RECORDED,
+        actor_id=int(coordinator_id),
+        details={"outcome": outcome.value, "reason": decision["reason"]},
+        session=session,
+    )
+
+
+def decide_event_request(
+    coordinator_id: int | str,
+    reference: str,
+    payload: Mapping[str, Any] | None,
+    *,
+    session: Session | None = None,
+) -> EventRequest:
+    """Approve or reject a request (SCRUM-31 AC1, AC4).
+
+    Only the request's assigned coordinator may (AC5), while it is submitted or under
+    review (ADR-0028). Approving moves it to ``approved``; rejecting moves it to
+    ``rejected`` and needs a reason. The status change and a ``decision_recorded``
+    history entry, with the outcome, the reason and the coordinator, are saved in one
+    commit (AC8). The checks run in this order: the reference, the coordinator, the
+    status, then the payload.
+
+    Args:
+        coordinator_id: The caller's user id, taken from their token.
+        reference: The ``EVR-…`` reference; case and surrounding spaces are ignored.
+        payload: Decoded JSON body: ``outcome`` and an optional ``reason``.
+        session: Database session; defaults to ``db.session``.
+
+    Returns:
+        The request, in its new status.
+
+    Raises:
+        NotFoundError: 404 — no such request among the coordinator's own; a draft is
+            never found (ADR-0024).
+        RequestNotDecidableError: 409 — the request isn't submitted or under review.
+        ValidationError: 400 — payload invalid, or a rejection with no reason.
+    """
+    sess = resolve_session(session)
+    event_request = _event_request_decidable_by(coordinator_id, reference, sess)
+    decision = load_or_raise(DecideEventRequestSchema(), payload)
+    _check_reason_given(decision)
+    # TODO: SCRUM-32 refuses an approval here, with a 409, while a clarification
+    # request is outstanding: it needs the validated outcome, so it sits after the
+    # payload check and before anything is written.
+    _apply_decision(coordinator_id, event_request, decision, sess)
     sess.commit()
     return event_request

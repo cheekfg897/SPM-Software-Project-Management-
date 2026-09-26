@@ -34,8 +34,10 @@ from marshmallow import (
 
 from app.common.clock import local_today
 from app.common.fields import BusinessDateTime, WholeNumber
+from app.common.validation import not_blank
 from app.modules.events.models import (
     NAME_MAX_LENGTH,
+    DecisionOutcome,
     EquipmentLineStatus,
     EventHistoryKind,
     EventRequest,
@@ -382,6 +384,30 @@ class ReassignCoordinatorSchema(Schema):
     """
 
     coordinator_email = fields.Email(required=True)
+
+
+class DecideEventRequestSchema(Schema):
+    """Payload for ``POST /api/events/requests/<reference>/decide`` (SCRUM-31 AC1, AC4).
+
+    ``outcome`` is ``approved`` or ``rejected``. ``reason`` may be left out here:
+    whether one is required depends on the outcome and the request's status, so the
+    service checks it (ADR-0028). A reason that is sent must not be blank, and is
+    trimmed.
+    """
+
+    outcome = fields.Enum(
+        DecisionOutcome,
+        by_value=True,
+        required=True,
+        error_messages={"unknown": "Outcome must be approved or rejected."},
+    )
+    reason = fields.String(allow_none=True, load_default=None, validate=not_blank)
+
+    @post_load
+    def _trim_reason(self, data: dict[str, Any], **_: Any) -> dict[str, Any]:
+        if data["reason"] is not None:
+            data["reason"] = data["reason"].strip()
+        return data
 
 
 class EditEquipmentLineSchema(Schema):
