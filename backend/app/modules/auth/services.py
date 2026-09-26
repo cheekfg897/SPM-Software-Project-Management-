@@ -11,7 +11,7 @@ instead of a real database session. In production the default
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -126,6 +126,29 @@ def _save_new_user(data: Mapping[str, Any], session: Session) -> User:
         raise ConflictError("An account with this email already exists.") from exc
 
     return user
+
+
+def get_user_full_names(
+    user_ids: Iterable[int], *, session: Session | None = None
+) -> dict[int, str]:
+    """Look up several users' full names in one query (SCRUM-33, ADR-0025).
+
+    Showing an event's history resolves the names in ids stored on it (an actor, a
+    coordinator) without a query per entry.
+
+    Args:
+        user_ids: The ids to look up.
+        session: Database session; defaults to ``db.session``.
+
+    Returns:
+        User id to full name, for the ids that still have an account. An id with no
+        matching user is left out, not mapped to ``None``.
+    """
+    stmt = select(User.id, User.full_name).where(User.id.in_(user_ids))
+    names: dict[int, str] = {}
+    for user_id, full_name in resolve_session(session).execute(stmt):
+        names[user_id] = full_name
+    return names
 
 
 def register_user(payload: Mapping[str, Any] | None, *, session: Session | None = None) -> User:
