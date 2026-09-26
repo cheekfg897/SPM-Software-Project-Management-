@@ -427,3 +427,24 @@ class EventRequestDetailSchema(EventRequestSchema):
     """
 
     equipment_lines = fields.Nested(EquipmentLineSchema, many=True, dump_only=True)
+
+
+class FieldChangeSchema(Schema):
+    """One field an edit changed, as the API shows it (SCRUM-33 AC2, AC4, ADR-0025)."""
+
+    field = fields.String(dump_only=True)
+    previous_value = fields.Raw(dump_only=True, allow_none=True)
+    new_value = fields.Raw(dump_only=True, allow_none=True)
+    significant = fields.Boolean(dump_only=True)
+
+
+class EditedEventRequestSchema(EventRequestDetailSchema):
+    """An edited event request, as the API shows it to its assigned coordinator.
+
+    Adds the two fields SCRUM-33 introduces that ``EventRequestDetailSchema`` does
+    not (yet) show on the organiser's own record: ``programme_notes`` reaches it in
+    a later commit, ``internal_planning_notes`` never does (ADR-0025).
+    """
+
+    programme_notes = fields.String(dump_only=True, allow_none=True)
+    internal_planning_notes = fields.String(dump_only=True, allow_none=True)

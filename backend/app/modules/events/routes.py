@@ -14,10 +14,12 @@ from app.modules.auth.permissions import Role
 from app.modules.events.schemas import (
     EQUIPMENT_EVENT_FIELDS,
     CoordinatorContactSchema,
+    EditedEventRequestSchema,
     EquipmentAwaitingActionSchema,
     EquipmentLineSchema,
     EventRequestDetailSchema,
     EventRequestSchema,
+    FieldChangeSchema,
 )
 from app.modules.events.services import (
     add_equipment_line,
@@ -33,6 +35,7 @@ from app.modules.events.services import (
     submit_event_request,
     update_draft_event_request,
     update_equipment_line,
+    update_event_request,
 )
 
 bp = Blueprint("events", __name__, url_prefix="/api/events")
@@ -43,6 +46,8 @@ _event_request_detail_schema = EventRequestDetailSchema()
 _equipment_line_schema = EquipmentLineSchema()
 _equipment_event_schema = EventRequestSchema(only=EQUIPMENT_EVENT_FIELDS)
 _equipment_awaiting_action_schema = EquipmentAwaitingActionSchema()
+_edited_event_request_schema = EditedEventRequestSchema()
+_field_change_schema = FieldChangeSchema()
 
 
 @bp.post("/requests")
@@ -226,4 +231,23 @@ def reassign_request(reference: str) -> tuple[Response, int]:
     )
     body = _event_request_schema.dump(event_request)
     body["coordinator"] = _coordinator_contact_schema.dump(coordinator)
+    return jsonify(body), 200
+
+
+# --------------------------------------------------------------------------
+# SCRUM-33 — update event information and flag significant changes
+# --------------------------------------------------------------------------
+
+
+@bp.patch("/requests/<reference>")
+@requires_role(Role.EVENT_COORDINATOR)
+def update_request(reference: str) -> tuple[Response, int]:
+    """Edit fields of a request assigned to the caller (SCRUM-33 AC1-AC4).
+
+    Returns ``200`` with the edited request (including its programme and internal
+    planning notes) and the list of changes made.
+    """
+    edit = update_event_request(g.current_user_id, reference, request.get_json(silent=True))
+    body = _edited_event_request_schema.dump(edit.event_request)
+    body["changes"] = _field_change_schema.dump(edit.changes, many=True)
     return jsonify(body), 200
