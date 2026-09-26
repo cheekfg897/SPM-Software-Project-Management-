@@ -194,11 +194,12 @@ def _open_request_counts(coordinator_ids: list[int], session: Session) -> dict[i
     return counts
 
 
-def _least_loaded_coordinator(coordinator_ids: list[int], session: Session) -> int | None:
+def _least_loaded_coordinator(session: Session) -> int | None:
     """The Event Coordinator with the fewest open requests (SCRUM-30 AC1, ADR-0018).
 
     The lowest user id wins a tie. ``None`` when there is no Event Coordinator at all.
     """
+    coordinator_ids = list_user_ids_with_role(Role.EVENT_COORDINATOR, session=session)
     if not coordinator_ids:
         return None
     counts = _open_request_counts(coordinator_ids, session)
@@ -207,6 +208,34 @@ def _least_loaded_coordinator(coordinator_ids: list[int], session: Session) -> i
         return counts[coordinator_id], coordinator_id
 
     return min(coordinator_ids, key=load_then_id)
+
+
+def _mark_submitted(
+    event_request: EventRequest, coordinator_id: int | None, session: Session
+) -> None:
+    """Move ``event_request`` to ``submitted`` and assign its coordinator, uncommitted.
+
+    Sets both together, and records the assignment to the event history in the same
+    transaction when there is a coordinator to assign (SCRUM-30 AC1, AC2, ADR-0018).
+    Shared by submitting a new request and submitting a draft (SCRUM-20), so both
+    reach ``submitted`` the same way. Does not commit: the caller decides when.
+
+    Args:
+        event_request: The request being submitted.
+        coordinator_id: The coordinator to assign, or ``None`` to save unassigned.
+        session: Database session the history entry is added to.
+    """
+    event_request.status = EventRequestStatus.SUBMITTED
+    event_request.coordinator_id = coordinator_id
+    if coordinator_id is not None:
+        # Same commit as the request: a rolled-back attempt leaves no entry (AC2).
+        record_event_history(
+            event_request,
+            EventHistoryKind.COORDINATOR_ASSIGNED,
+            actor_id=None,
+            details={"coordinator_id": coordinator_id},
+            session=session,
+        )
 
 
 def _raise_notifications(
@@ -339,29 +368,18 @@ def submit_event_request(
     sess = resolve_session(session)
     organisation_id = _organisation_of_organiser(organiser_id, sess)
     # Chosen before the retry loop: a retry changes nobody's load.
-    coordinator_ids = list_user_ids_with_role(Role.EVENT_COORDINATOR, session=sess)
-    coordinator_id = _least_loaded_coordinator(coordinator_ids, sess)
+    coordinator_id = _least_loaded_coordinator(sess)
 
     def submitted_under(reference: str) -> EventRequest:
-        """Build a submitted request under ``reference`` with its assignment history."""
+        """Build a request under ``reference``, then submit and assign it."""
         event_request = EventRequest(
             organiser_id=int(organiser_id),
             organisation_id=organisation_id,
-            coordinator_id=coordinator_id,
             reference=reference,
-            status=EventRequestStatus.SUBMITTED,
             **data,
         )
         sess.add(event_request)
-        if coordinator_id is not None:
-            # Same commit as the request: a rolled-back attempt leaves no entry (AC2).
-            record_event_history(
-                event_request,
-                EventHistoryKind.COORDINATOR_ASSIGNED,
-                actor_id=None,
-                details={"coordinator_id": coordinator_id},
-                session=sess,
-            )
+        _mark_submitted(event_request, coordinator_id, sess)
         return event_request
 
     event_request = _save_under_new_reference(submitted_under, sess, reference_factory)
