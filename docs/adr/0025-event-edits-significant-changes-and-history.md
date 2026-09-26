@@ -1,0 +1,72 @@
+# ADR-0025: An assigned coordinator edits set fields; a significant change asks Technical Support to recheck equipment; history is shown with names resolved, not ids
+
+- **Status:** Accepted
+- **Date:** 2026-09-26
+- **Story:** SCRUM-33 Update event information and flag significant changes
+- **Extends:** [ADR-0018](0018-least-loaded-coordinator-and-event-history.md): the event history table; [ADR-0019](0019-event-equipment-lines.md): notifying Technical Support Staff; [ADR-0021](0021-coordinator-reassignment.md): the coordinator's ownership check
+
+## Context
+SCRUM-33's ACs say:
+
+* **AC1:** an Event Coordinator can edit an event's description, programme notes, accessibility notes and internal planning notes, with no further step.
+* **AC2:** a change to proposed date, start or end time, expected attendance, venue requirements or equipment requirements is marked significant and raises a reassessment of the affected arrangements.
+* **AC3:** venue or equipment preparation details cannot be edited here — they belong to Venue Staff and Technical Support Staff.
+* **AC4:** every change records the field, the previous value, the new value, the user and the timestamp.
+* **AC5:** the change history is visible to internal users, and to the Event Organiser for their own event.
+
+The story carries a `needs-customer-clarification` label, but has no comment saying what specifically is unclear, so this ADR resolves the points below from the ACs' own wording and the codebase's existing patterns rather than a customer answer. It leaves the rest open:
+
+1. **Which fields are editable**, beyond the four notes AC1 names. Dates, times, attendance and the requirements text (venue, equipment) all plausibly change as plans firm up.
+2. **What a reassessment actually does.** AC2's "raises a reassessment of the affected arrangements" covers two different kinds of arrangement: equipment already requested, which this story can act on since SCRUM-37 already exists, and a venue booking, which can't be reassessed yet because nothing books a venue for an event: that's SCRUM-42 "Request a venue for an event" (Sprint 3), and reassessing it once booked is SCRUM-58 "Reassess the venue booking after a significant change".
+3. **Who may edit**, and while the request is in which status. ADR-0012's seven statuses include drafts and finished events; ADR-0019's and ADR-0021's "only the assigned coordinator" precedent doesn't automatically extend to editing. SCRUM-68 "Mark an event as completed" specifies that a completed event can no longer be edited at all, which this story's status rule has to leave room for.
+4. **Edit semantics**: is this a full replace or a partial update, and does sending the value already saved count as a change?
+5. **The history's shape** for an edit: one entry per field, or one per edit; what `details` holds; whether values need to be JSON-safe.
+6. **Who reads the history** (AC5), a route this story is the first to expose (ADR-0018 deferred it), and whether internal planning notes belong in an organiser's view of it.
+7. **Names in the history.** ADR-0018 stores `coordinator_id` only for `coordinator_assigned` and resolves the name when shown; ADR-0021 snapshots names into `coordinator_reassigned`'s `details` instead.
+8. **Programme notes on the organiser's own record**, separate from the history route.
+
+## Decision
+1. **"Accessibility notes" is the existing `accessibility_needs` column.** No new column: the story's wording is the same field SCRUM-19 already collects, not a second one.
+2. **Two new nullable `Text` columns:** `programme_notes` (shown to the organiser, decision 20) and `internal_planning_notes` (never shown to an organiser, decision 17). Only the coordinator's edit sets them; submitting a request still doesn't accept either.
+3. **"Venue/equipment requirements" are the event's `venue_requirements`/`equipment_requirements` text.** Equipment *lines* (SCRUM-37) are the arrangements already made against that text; this story doesn't touch their routes, and a line's own edit isn't written to the event's history.
+4. **Editable fields, declared and nothing else (AC1, AC3):** the four notes, `proposed_date`, `end_date`, `start_time`, `end_time`, `expected_attendance`, `venue_requirements`, `equipment_requirements`. `name`, `purpose`, `registration_required`, `status`, `reference`, the coordinator, equipment lines and a venue's setup/turnaround are not declared on the edit schema, so marshmallow's default `RAISE` answers them as `400` "Unknown field." — a caller learns immediately that a field isn't editable, rather than have it silently ignored.
+5. **`end_date` is editable, not null, and significant.** Sending `proposed_date` without `end_date` moves the end date by the same number of days, so an overnight or multi-day event keeps its length (ADR-0002); sending both keeps exactly what was sent.
+6. **Only the request's assigned coordinator may edit it,** the same "not yours" `404` as the equipment routes and reassignment (ADR-0019, ADR-0021): `_event_request_assigned_to` is reused rather than a new check invented.
+7. **`EDITABLE_STATUSES = {submitted, under_review, confirmed}`,** refused otherwise with `409 request_not_editable`. SCRUM-68 makes a completed event read-only, and since `completed` isn't in `EDITABLE_STATUSES`, SCRUM-68 only has to set the status — it never has to also refuse an edit. A cancelled or rejected request is over. A draft is never found by staff at all (ADR-0024), so editing one is a `404`, like a request that isn't the coordinator's; the history route treats a draft the same way for every internal role.
+8. **Check order:** reference `404` → ownership `404` → status `409` → payload `400`. Ownership before status, as in reassignment (ADR-0021), so a finished event tells another coordinator no more than an open one would.
+9. **Edit semantics: `PATCH`, partial, no-op is a no-op.** Only fields sent are considered; a sent value equal to what is already saved is not a change; an edit that changes nothing writes and commits nothing and returns `200` with `"changes": []`.
+10. **History shape: one entry per changed field (AC4).** Kind `field_changed`, `actor_id` the caller, `details = {"field", "previous_value", "new_value", "significant"}`. Values are stored JSON-safe: a `date`/`time` becomes its ISO string, everything else keeps its native type. Every entry from one edit shares one `occurred_at` and is added in the same commit as the field it records, so the history can never show a change that wasn't saved or vice versa.
+11. **Significance is a `details` key, not a separate kind.** A boolean next to the field it describes reads naturally in one entry; a second kind would double the kinds the enum and every reader has to handle for no new information.
+12. **Reassessment (AC2): after the edit's own commit,** if a changed field is in `EQUIPMENT_AFFECTING_FIELDS` (the timing/size fields plus `equipment_requirements`) **and** the event already has at least one equipment line, every Technical Support Staff member gets **one** `significant_change` notification for the edit, however many affecting fields changed. Nobody else is told. An event with no equipment lines yet has nothing to reassess, so nobody is notified. The notification is its own commit, after the edit's; a failure there is logged, not raised (ADR-0015), so a coordinator's save is never lost because a notification couldn't be written.
+13. **Notification kind `significant_change`:** "An event you have arrangements for has changed significantly. Please check they still fit." — addressed to whoever holds the arrangements, not restating what changed (that's in the history).
+14. **A venue hook, not a venue feature.** `VENUE_AFFECTING_FIELDS` (the timing/size fields plus `venue_requirements`) is declared now and `_reassess_arrangements` carries a `# TODO: SCRUM-58 …` comment, but nothing reads it yet: SCRUM-42 hasn't given an event request a venue booking to reassess. Declaring the field list now means SCRUM-58 doesn't have to rediscover which fields matter.
+15. **AC3's other systems are untouched by declining to accept their fields, not by a deny-list.** Equipment lines and their status stay Technical Support's (ADR-0019); a venue's `setup_minutes`/`turnaround_minutes` stay Venue Staff's (ADR-0011); a venue booking is SCRUM-42's. The edit schema simply doesn't declare any of them, so sending one is the same "Unknown field." `400` as any other unrecognised key — no separate `403` and no special-casing per field.
+16. **History route and its readers (AC5, ADR-0018's deferred item):** `GET /api/events/requests/<reference>/history` for `*INTERNAL_ROLES, Role.EVENT_ORGANISER`. Internal staff may open any event's history; an organiser only their own client organisation's, through the same `get_event_request_for_organiser` the record route already uses (`404` another organisation's or unknown, `403` no organisation, ADR-0020).
+17. **Internal planning notes never reach an organiser.** Every kind but a `field_changed` entry about `internal_planning_notes` (decision 2) is shown to an organiser; that one entry is left out of their history entirely, not shown with the note redacted, so its existence isn't hinted at either.
+18. **Names are resolved when the history is shown, not stored on write, except where ADR-0021 already snapshots them.** A new auth service, `get_user_full_names(user_ids) -> dict[int, str]`, does every lookup a page of history needs in one query. `coordinator_assigned` (which ADR-0018 stores as `coordinator_id` only) becomes `coordinator_name`, looked up by that id; `coordinator_reassigned` keeps the two names its own `details` already carries from ADR-0021 and drops the ids; `field_changed` is shown unchanged, since its values are already JSON-safe and it never carried a user id. A removed user's id resolves to `null` rather than failing the read. **No user id appears anywhere in the response.**
+19. **Oldest first:** `occurred_at`, then `id` on a tie — the order something happened, not the order most recently changed, matching how a history is usually read.
+20. **The organiser's own record gains `programme_notes` (AC1):** added to `EventRequestDetailSchema`, so `GET /api/events/requests/<reference>` shows it too. `internal_planning_notes` is never added there. Which other views should show it (SCRUM-24) is left open.
+21. **The edit response:** `200` with the event as `EditedEventRequestSchema` (`EventRequestDetailSchema`, which decision 20 gives `programme_notes`, plus `internal_planning_notes`) shows, plus `"changes": [{"field", "previous_value", "new_value", "significant"}, …]`. `204` was rejected: a caller editing several fields at once wants to see what was actually recorded as significant without a second request.
+22. **Edit validation reuses submission's rules (ADR-0001, ADR-0002, ADR-0003):** attendance a whole number of at least 1, no timezone offset on a time, a sent proposed date not in the past. The window check (end after start) runs on the **merged** value — the sent field where one was sent, the request's current value otherwise — so leaving a field out never fails a check it wasn't part of. `_EventTimingSchema` (the past-date rule and the `today` it is measured from) and `_check_time_window` were extracted so submitting and editing share them instead of each keeping its own copy; the no-offset rule is a validator on every time field, drafts' included (ADR-0024).
+23. **No approval step.** A significant change is applied immediately, marked in the history, and triggers reassessment; nothing here holds it for anyone's sign-off. Whether a confirmed event's changes ever need approval is left to a future story.
+24. **Concurrent edits: last write wins, both in the history.** No optimistic locking: two coordinators editing the same request at once is rare, and the history shows what happened either way, in order.
+
+The checks inside `update_event_request` run in this order: reference `404` → ownership `404` → status `409` → payload `400`; the payload is validated before any field is compared or written, so a rejected edit changes nothing and writes no history.
+
+**Known gap:** only equipment is reassessed today. `VENUE_AFFECTING_FIELDS` is declared and `_reassess_arrangements` names `SCRUM-58` in a `# TODO`, but no venue booking exists yet for a change to affect: that's `SCRUM-42`, not due until Sprint 3. Nothing reads `VENUE_AFFECTING_FIELDS` until `SCRUM-58` lands.
+
+## Consequences
+- Every edit that changes N fields writes N history rows sharing one timestamp, rather than one row describing the whole edit; a reader counts distinct `occurred_at` values to see "how many edits", not `COUNT(*)`.
+- `get_user_full_names` is a new small piece of the auth module's public surface; any future reader that needs several users' names in one query should use it rather than looping `get_user_by_id`.
+- `EDITABLE_STATUSES` and `REASSIGNABLE_STATUSES` (ADR-0021) happen to hold the same three values today; they are declared separately because the two stories could diverge (a `confirmed` event might stop being editable, or reassignable, on its own timeline).
+- Reassessment only ever produces at most one `significant_change` notification per edit per Technical Support Staff member, however many affecting fields changed, so a coordinator who fixes several details at once doesn't spam the team.
+- A `field_changed` entry with no `details` (a malformed row, never produced by `update_event_request` itself) is shown with `details: {}` rather than raising, so one bad row doesn't take down a whole history read.
+
+## Revisit when
+- SCRUM-42 gives an event request a venue booking: `_reassess_arrangements` reads `VENUE_AFFECTING_FIELDS` the same way it reads `EQUIPMENT_AFFECTING_FIELDS`, and SCRUM-58 decides who is told.
+- The customer wants a significant change to a `confirmed` event held for approval before it applies (decision 23).
+- SCRUM-46 lands: whether only *reserved* equipment lines (not merely requested ones) should gate reassessment.
+- SCRUM-24 decides which other organiser-facing views should show `programme_notes`.
+- A story wants line-level equipment or venue-setup edits written to the event's own history too (decision 3 keeps them out for now).
+- Optimistic locking is wanted for concurrent edits (decision 24).
+- Name/purpose become editable, or a lead/admin role needs to edit an event it doesn't own.
