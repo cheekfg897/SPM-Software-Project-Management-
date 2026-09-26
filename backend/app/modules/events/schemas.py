@@ -424,10 +424,13 @@ class EventRequestDetailSchema(EventRequestSchema):
     """An event request as its own record shows it: the summary and its equipment lines.
 
     SCRUM-37 AC4. The list of requests keeps :class:`EventRequestSchema`, so listing
-    never loads every request's lines.
+    never loads every request's lines. ``programme_notes`` is the assigned
+    coordinator's note the organiser may see (SCRUM-33, ADR-0025);
+    ``internal_planning_notes`` never appears here.
     """
 
     equipment_lines = fields.Nested(EquipmentLineSchema, many=True, dump_only=True)
+    programme_notes = fields.String(dump_only=True, allow_none=True)
 
 
 class FieldChangeSchema(Schema):
@@ -442,12 +445,11 @@ class FieldChangeSchema(Schema):
 class EditedEventRequestSchema(EventRequestDetailSchema):
     """An edited event request, as the API shows it to its assigned coordinator.
 
-    Adds the two fields SCRUM-33 introduces that ``EventRequestDetailSchema`` does
-    not (yet) show on the organiser's own record: ``programme_notes`` reaches it in
-    a later commit, ``internal_planning_notes`` never does (ADR-0025).
+    Adds ``internal_planning_notes``, the one field SCRUM-33 introduces that
+    ``EventRequestDetailSchema`` never shows on the organiser's own record
+    (ADR-0025); ``programme_notes`` is already inherited from it.
     """
 
-    programme_notes = fields.String(dump_only=True, allow_none=True)
     internal_planning_notes = fields.String(dump_only=True, allow_none=True)
 
 
