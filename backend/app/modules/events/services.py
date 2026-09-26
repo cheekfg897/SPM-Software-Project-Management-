@@ -626,6 +626,78 @@ def save_draft_event_request(
     return _save_under_new_reference(draft_under, sess, reference_factory)
 
 
+#: Shared by editing a draft and submitting one: both work only on a draft, and
+#: refuse the same way once the request has moved on (SCRUM-20 AC3, ADR-0024).
+NOT_A_DRAFT_MESSAGE = "Only a draft event request can be changed or submitted this way."
+
+
+class RequestNotDraftError(AppError):
+    """The request has moved past the draft stage, so it can't be used as one (409)."""
+
+    status_code = 409
+    error_code = "request_not_draft"
+
+
+def _draft_of_organiser(organiser_id: int | str, reference: str, session: Session) -> EventRequest:
+    """The organiser's own draft by reference (SCRUM-20 AC3, AC4).
+
+    Goes through :func:`get_event_request_for_organiser`, so a colleague's draft is
+    the same 404 as any other request outside the organiser's scope (ADR-0024); only
+    once the request is found and is genuinely theirs does its status decide whether
+    it may still be handled as a draft.
+
+    Raises:
+        OrganiserWithoutOrganisationError: 403 — the organiser has no organisation.
+        NotFoundError: 404 — no such request, or it is a colleague's draft.
+        RequestNotDraftError: 409 — the request has already been submitted.
+    """
+    event_request = get_event_request_for_organiser(organiser_id, reference, session=session)
+    if event_request.status is not EventRequestStatus.DRAFT:
+        raise RequestNotDraftError(NOT_A_DRAFT_MESSAGE)
+    return event_request
+
+
+def update_draft_event_request(
+    organiser_id: int | str,
+    reference: str,
+    payload: Mapping[str, Any] | None,
+    *,
+    session: Session | None = None,
+) -> EventRequest:
+    """Change the fields sent on one of the organiser's own drafts (SCRUM-20 AC3).
+
+    Only the fields in ``payload`` change; a field sent as ``null`` clears it, except
+    ``name``, which still identifies the draft to its author and so can never be
+    blank or null. An empty body changes nothing. Every field sent is checked the
+    same way a save is (SCRUM-20 AC1); the rules that only apply on submission still
+    wait (ADR-0024).
+
+    Args:
+        organiser_id: The caller's user id, taken from their token.
+        reference: The draft's ``EVR-…`` reference; case and surrounding spaces are
+            ignored.
+        payload: Decoded JSON body: any subset of the fields a draft may hold.
+        session: Database session; defaults to ``db.session``.
+
+    Returns:
+        The updated, still-draft :class:`EventRequest`.
+
+    Raises:
+        ValidationError: 400 — a field sent is invalid (details per field).
+        OrganiserWithoutOrganisationError: 403 — the organiser has no organisation.
+        NotFoundError: 404 — no such draft, or it is a colleague's.
+        RequestNotDraftError: 409 — the request has already been submitted.
+    """
+    schema = SaveDraftSchema()
+    data = load_or_raise(schema, payload, partial=tuple(schema.fields))
+    sess = resolve_session(session)
+    draft = _draft_of_organiser(organiser_id, reference, sess)
+    for key, value in data.items():
+        setattr(draft, key, value)
+    sess.commit()
+    return draft
+
+
 # --------------------------------------------------------------------------
 # SCRUM-37 — record what equipment an event needs
 # --------------------------------------------------------------------------
