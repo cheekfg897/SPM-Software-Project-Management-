@@ -251,6 +251,7 @@ Each feature lives in `backend/app/modules/<name>/`:
 | `schemas.py` | Marshmallow input and output schemas | touch the DB |
 | `models.py` | SQLAlchemy models and their constants | import another module's models |
 | `permissions.py` | Role vocabulary (auth module only) | — |
+| `commands.py` | Flask CLI commands: options → service → echo, registered in `register(app)` | validate, or touch the DB |
 
 - **Boundaries:** modules talk through each other's `services.py` (and `auth.permissions` for
   roles). A foreign key to another module's table is a plain `ForeignKey("users.id")` — no
