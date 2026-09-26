@@ -1604,3 +1604,36 @@ def list_event_requests_with_equipment(*, session: Session | None = None) -> lis
     return _list_event_requests_newest_first(
         EventRequest.equipment_lines.any(), resolve_session(session)
     )
+
+
+def _visible_to_coordinator(coordinator_id: int | str) -> ColumnElement[bool]:
+    """Requests a coordinator may open: their own, or any awaiting one (ADR-0026)."""
+    return or_(_assigned_to(coordinator_id), _awaiting_assignment())
+
+
+def get_event_record_for_coordinator(
+    coordinator_id: int | str, reference: str, *, session: Session | None = None
+) -> tuple[EventRequest, CoordinatorContact | None]:
+    """A request the coordinator may open, and its coordinator (SCRUM-24 AC7).
+
+    A coordinator may open a request assigned to them, or a submitted one no
+    coordinator has yet (ADR-0026), with the same sections as the organiser's
+    record. The coordinator is ``None`` for an unassigned request.
+
+    Args:
+        coordinator_id: The caller's user id, taken from their token.
+        reference: The ``EVR-…`` reference; case and surrounding spaces are ignored.
+        session: Database session; defaults to ``db.session``.
+
+    Returns:
+        The request, and its coordinator's name and email or ``None``.
+
+    Raises:
+        NotFoundError: 404 — no such request, another coordinator's, or one without a
+            coordinator that isn't submitted.
+    """
+    sess = resolve_session(session)
+    event_request = _event_request_by_reference(
+        reference, sess, belongs_to=_visible_to_coordinator(coordinator_id)
+    )
+    return event_request, _coordinator_contact(event_request, sess)
