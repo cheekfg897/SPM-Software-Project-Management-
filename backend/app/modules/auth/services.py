@@ -92,6 +92,42 @@ def list_user_ids_with_role(role: Role, *, session: Session | None = None) -> li
     return list(resolve_session(session).scalars(stmt))
 
 
+def _save_new_user(data: Mapping[str, Any], session: Session) -> User:
+    """Hash the password and persist a new account from already-validated ``data``.
+
+    Shared by :func:`register_user` and :func:`create_staff_user` (SCRUM-88): both
+    validate the payload against their own schema first, then save it the same way.
+
+    Raises:
+        ConflictError: 409 — email already registered.
+    """
+    email = normalise_email(data["email"])
+    if get_user_by_email(email, session=session) is not None:
+        raise ConflictError("An account with this email already exists.")
+
+    user = User(
+        email=email,
+        full_name=data["full_name"].strip(),
+        # Only an Event Organiser's registration payload carries this (ADR-0013);
+        # CreateStaffUserSchema has no such field, so it is always None there.
+        organisation_id=data.get("organisation_id"),
+        role=Role.from_value(data["role"]),
+    )
+    user.set_password(data["password"])
+
+    session.add(user)
+    try:
+        session.commit()
+    except IntegrityError as exc:
+        # Race: another request inserted the same email between our check and
+        # the commit. The DB unique index is the real guarantee; translate it
+        # into the same 409 rather than a 500.
+        session.rollback()
+        raise ConflictError("An account with this email already exists.") from exc
+
+    return user
+
+
 def register_user(payload: Mapping[str, Any] | None, *, session: Session | None = None) -> User:
     """Create a new account (SCRUM-65).
 
@@ -121,29 +157,7 @@ def register_user(payload: Mapping[str, Any] | None, *, session: Session | None 
     if organisation_id is not None:
         _check_organisation_exists(organisation_id, sess)
 
-    email = normalise_email(data["email"])
-    if get_user_by_email(email, session=sess) is not None:
-        raise ConflictError("An account with this email already exists.")
-
-    user = User(
-        email=email,
-        full_name=data["full_name"].strip(),
-        role=Role.from_value(data["role"]),
-        organisation_id=organisation_id,
-    )
-    user.set_password(data["password"])
-
-    sess.add(user)
-    try:
-        sess.commit()
-    except IntegrityError as exc:
-        # Race: another request inserted the same email between our check and
-        # the commit. The DB unique index is the real guarantee; translate it
-        # into the same 409 rather than a 500.
-        sess.rollback()
-        raise ConflictError("An account with this email already exists.") from exc
-
-    return user
+    return _save_new_user(data, sess)
 
 
 def issue_access_token(user: User) -> str:
