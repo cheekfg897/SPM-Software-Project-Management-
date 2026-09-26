@@ -43,7 +43,7 @@ StartReview = Callable[[int], EventRequest]
 SetStatus = Callable[[EventRequestStatus], None]
 ReloadEventRequest = Callable[[int], EventRequest]
 HistoryOf = Callable[[int], list[tuple[EventHistoryKind, int | None, dict[str, Any] | None]]]
-AssertNothingChanged = Callable[[EventRequestStatus], None]
+AssertStatusUnchanged = Callable[[EventRequestStatus], None]
 
 REFERENCE = "EVR-AAAAAAAA"
 #: The Event Coordinator ``saved_event_request`` is assigned to.
@@ -59,21 +59,6 @@ NOT_REVIEWABLE = [
     EventRequestStatus.CANCELLED,
     EventRequestStatus.REJECTED,
 ]
-
-
-@pytest.fixture()
-def assert_nothing_changed(
-    saved_event_request: EventRequest,
-    reload_event_request: ReloadEventRequest,
-    history_of: HistoryOf,
-) -> AssertNothingChanged:
-    """Check the request still has this status and no history was written."""
-
-    def _assert(status: EventRequestStatus) -> None:
-        assert reload_event_request(saved_event_request.id).status is status
-        assert history_of(saved_event_request.id) == []
-
-    return _assert
 
 
 # --------------------------------------------------------------------------
@@ -161,7 +146,7 @@ def test_starting_review_notifies_nobody(
 def test_only_the_assigned_coordinator_may_start_review(
     start_review: StartReview,
     set_status: SetStatus,
-    assert_nothing_changed: AssertNothingChanged,
+    assert_status_unchanged: AssertStatusUnchanged,
     status: EventRequestStatus,
 ) -> None:
     """Another coordinator gets the "not yours" 404 whatever the status (ADR-0019)."""
@@ -172,14 +157,14 @@ def test_only_the_assigned_coordinator_may_start_review(
 
     assert exc_info.value.status_code == 404
     assert exc_info.value.message == EVENT_REQUEST_NOT_FOUND_MESSAGE
-    assert_nothing_changed(status)
+    assert_status_unchanged(status)
 
 
 def test_an_unassigned_request_cannot_be_reviewed(
     start_review: StartReview,
     saved_event_request: EventRequest,
     save: Callable[..., None],
-    assert_nothing_changed: AssertNothingChanged,
+    assert_status_unchanged: AssertStatusUnchanged,
 ) -> None:
     saved_event_request.coordinator_id = None
     save(saved_event_request)
@@ -189,14 +174,14 @@ def test_an_unassigned_request_cannot_be_reviewed(
 
     assert exc_info.value.status_code == 404
     assert exc_info.value.message == EVENT_REQUEST_NOT_FOUND_MESSAGE
-    assert_nothing_changed(EventRequestStatus.SUBMITTED)
+    assert_status_unchanged(EventRequestStatus.SUBMITTED)
 
 
 @pytest.mark.parametrize("status", NOT_REVIEWABLE, ids=lambda status: status.value)
 def test_a_request_that_is_not_submitted_cannot_be_moved_to_under_review(
     start_review: StartReview,
     set_status: SetStatus,
-    assert_nothing_changed: AssertNothingChanged,
+    assert_status_unchanged: AssertStatusUnchanged,
     status: EventRequestStatus,
 ) -> None:
     set_status(status)
@@ -207,13 +192,13 @@ def test_a_request_that_is_not_submitted_cannot_be_moved_to_under_review(
     refused = exc_info.value
     assert (refused.status_code, refused.error_code) == (409, "request_not_reviewable")
     assert refused.message == NOT_REVIEWABLE_MESSAGE
-    assert_nothing_changed(status)
+    assert_status_unchanged(status)
 
 
 def test_a_draft_is_not_found_by_its_coordinator(
     start_review: StartReview,
     set_status: SetStatus,
-    assert_nothing_changed: AssertNothingChanged,
+    assert_status_unchanged: AssertStatusUnchanged,
 ) -> None:
     """Staff never see a draft (ADR-0024): reviewing one is a 404, like no request."""
     set_status(EventRequestStatus.DRAFT)
@@ -222,15 +207,15 @@ def test_a_draft_is_not_found_by_its_coordinator(
         start_review(COORDINATOR_ID)
 
     assert exc_info.value.status_code == 404
-    assert_nothing_changed(EventRequestStatus.DRAFT)
+    assert_status_unchanged(EventRequestStatus.DRAFT)
 
 
 def test_an_unknown_reference_is_404(
-    saved_users: list[User], assert_nothing_changed: AssertNothingChanged
+    saved_users: list[User], assert_status_unchanged: AssertStatusUnchanged
 ) -> None:
     with pytest.raises(NotFoundError) as exc_info:
         start_event_request_review(COORDINATOR_ID, "EVR-ZZZZZZZZ")
 
     assert exc_info.value.status_code == 404
     assert exc_info.value.message == EVENT_REQUEST_NOT_FOUND_MESSAGE
-    assert_nothing_changed(EventRequestStatus.SUBMITTED)
+    assert_status_unchanged(EventRequestStatus.SUBMITTED)

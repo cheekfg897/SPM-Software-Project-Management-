@@ -95,6 +95,17 @@ class EventHistoryKind(str, enum.Enum):
     DECISION_RECORDED = "decision_recorded"
 
 
+class DecisionOutcome(str, enum.Enum):
+    """A coordinator's ruling on a request (SCRUM-31 AC1, ADR-0028).
+
+    Not a database enum: it is stored as the ``outcome`` in a ``decision_recorded``
+    history entry's ``details``.
+    """
+
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
 class EquipmentLineStatus(str, enum.Enum):
     """Where an event's equipment line stands (SCRUM-37 AC4, ADR-0019).
 
