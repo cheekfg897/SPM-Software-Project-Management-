@@ -1,0 +1,88 @@
+"""Unit tests for SCRUM-68 "Mark an event as completed after it has taken place".
+
+The route: ``POST /api/events/requests/<reference>/complete``, with no body, is for
+Event Coordinators only; the service checks the caller is the event's own
+coordinator, that it is confirmed and that it has ended (ADR-0027). It answers
+``200`` with the completed request, and never shows a user id.
+
+The *registered* view function is called inside a request context, so the real
+decorators run. The service is replaced with a mock: a refused request must be
+stopped before it is called.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from types import ModuleType
+from typing import Any
+from unittest.mock import MagicMock
+
+import pytest
+from flask import Flask
+
+from app.common.errors import AuthenticationError, AuthorizationError
+from app.modules.auth.permissions import Role
+from app.modules.events import routes
+from app.modules.events.models import EventRequest, EventRequestStatus
+
+pytestmark = pytest.mark.scrum_68
+
+CallRoute = Callable[..., Any]
+ReplaceServices = Callable[[ModuleType, dict[str, Any]], dict[str, MagicMock]]
+
+REFERENCE = "EVR-AAAAAAAA"
+ENDPOINT = "events.complete_request"
+PATH = f"/api/events/requests/{REFERENCE}/complete"
+VIEW_KWARGS = {"reference": REFERENCE}
+
+
+@pytest.fixture()
+def complete_service(
+    replace_services: ReplaceServices, make_event_request: Callable[..., EventRequest]
+) -> MagicMock:
+    """Replace the service with a mock returning coordinator 3's completed request."""
+    completed = make_event_request(status=EventRequestStatus.COMPLETED, coordinator_id=3)
+    mocks = replace_services(routes, {"complete_event_request": completed})
+    return mocks["complete_event_request"]
+
+
+def test_complete_route_allows_only_event_coordinators(app: Flask) -> None:
+    assert app.view_functions[ENDPOINT].allowed_roles == frozenset({"event_coordinator"})
+
+
+def test_other_roles_cannot_complete_an_event(
+    call_route: CallRoute,
+    token_for: Callable[..., str],
+    complete_service: MagicMock,
+    non_coordinator_role: Role,
+) -> None:
+    with pytest.raises(AuthorizationError) as exc_info:
+        call_route(ENDPOINT, "POST", PATH, VIEW_KWARGS, token_for(role=non_coordinator_role))
+
+    assert exc_info.value.status_code == 403
+    complete_service.assert_not_called()
+
+
+def test_completing_without_a_token_is_401(
+    call_route: CallRoute, complete_service: MagicMock
+) -> None:
+    with pytest.raises(AuthenticationError) as exc_info:
+        call_route(ENDPOINT, "POST", PATH, VIEW_KWARGS, None)
+
+    assert exc_info.value.status_code == 401
+    complete_service.assert_not_called()
+
+
+def test_complete_route_returns_the_completed_request(
+    call_route: CallRoute, token_for: Callable[..., str], complete_service: MagicMock
+) -> None:
+    response, status = call_route(
+        ENDPOINT, "POST", PATH, VIEW_KWARGS, token_for(role=Role.EVENT_COORDINATOR)
+    )
+
+    assert status == 200
+    # The caller is the actor, taken from their token; there is no body to pass on.
+    complete_service.assert_called_once_with("999", REFERENCE)
+    body = response.get_json()
+    assert (body["reference"], body["status"]) == (REFERENCE, "completed")
+    assert {"id", "organiser_id", "coordinator_id"}.isdisjoint(body)

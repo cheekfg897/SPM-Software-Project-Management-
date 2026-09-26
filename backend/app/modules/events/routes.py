@@ -27,6 +27,7 @@ from app.modules.events.schemas import (
 )
 from app.modules.events.services import (
     add_equipment_line,
+    complete_event_request,
     get_event_record_for_coordinator,
     get_event_record_for_organiser,
     list_equipment_lines,
@@ -310,3 +311,21 @@ def list_history(reference: str) -> tuple[Response, int]:
     )
     body = {"history": _event_history_entry_schema.dump(history, many=True)}
     return jsonify(body), 200
+
+
+# --------------------------------------------------------------------------
+# SCRUM-68 — mark an event as completed after it has taken place
+# --------------------------------------------------------------------------
+
+
+@bp.post("/requests/<reference>/complete")
+@requires_role(Role.EVENT_COORDINATOR)
+def complete_request(reference: str) -> tuple[Response, int]:
+    """Mark a confirmed event completed once it has ended (SCRUM-68, ADR-0027).
+
+    Only the request's assigned coordinator may; the service answers anyone else
+    with the equipment routes' "not yours" 404. Returns ``200`` with the completed
+    request. The caller is recorded in the event history as having done it (AC5).
+    """
+    event_request = complete_event_request(g.current_user_id, reference)
+    return jsonify(_event_request_schema.dump(event_request)), 200
