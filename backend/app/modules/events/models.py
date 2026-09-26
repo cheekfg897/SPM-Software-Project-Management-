@@ -44,15 +44,17 @@ REFERENCE_UNIQUE_CONSTRAINT = "uq_event_requests_reference"
 class EventRequestStatus(str, enum.Enum):
     """The stages an event request passes through (SCRUM-22, ADR-0012).
 
-    ``UNDER_REVIEW`` is the story's "Under Review / Planning". ``SUBMITTED`` and
-    ``DRAFT`` are written so far (SCRUM-20), and ``COMPLETED`` by SCRUM-68; each
-    other value arrives with the story that performs the transition (SCRUM-31,
-    SCRUM-49, SCRUM-61).
+    ``UNDER_REVIEW`` is the story's "Under Review / Planning". ``APPROVED`` is not one
+    of SCRUM-22's seven: SCRUM-31 adds it for a request the coordinator has approved,
+    before it is confirmed (ADR-0028). ``SUBMITTED`` and ``DRAFT`` are written so far
+    (SCRUM-20), and ``COMPLETED`` by SCRUM-68; each other value arrives with the story
+    that performs the transition (SCRUM-31, SCRUM-49, SCRUM-61).
     """
 
     DRAFT = "draft"
     SUBMITTED = "submitted"
     UNDER_REVIEW = "under_review"
+    APPROVED = "approved"
     CONFIRMED = "confirmed"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
@@ -62,8 +64,8 @@ class EventRequestStatus(str, enum.Enum):
 class EventHistoryKind(str, enum.Enum):
     """What an event history entry records (SCRUM-30, ADR-0018).
 
-    Later stories add kinds: SCRUM-31 decisions, SCRUM-33 edits, SCRUM-68
-    completions.
+    Later stories add kinds: SCRUM-33 edits, SCRUM-68 completions, SCRUM-31 reviews
+    and decisions.
     """
 
     #: The system assigned a coordinator to a new request; ``details`` holds
@@ -82,6 +84,15 @@ class EventHistoryKind(str, enum.Enum):
     #: The assigned coordinator marked the event completed after it ended;
     #: ``actor_id`` is who did it and ``details`` is NULL (SCRUM-68, ADR-0027).
     EVENT_COMPLETED = "event_completed"
+    #: The assigned coordinator moved a submitted request to under review;
+    #: ``details`` is ``None`` and ``actor_id`` is the coordinator (SCRUM-31 AC3,
+    #: ADR-0028).
+    REVIEW_STARTED = "review_started"
+    #: The assigned coordinator approved or rejected the request; ``details`` holds
+    #: ``outcome`` and ``reason`` (``None`` when none was given), and ``actor_id`` is
+    #: the coordinator. The latest one is the current decision (SCRUM-31 AC8,
+    #: ADR-0028).
+    DECISION_RECORDED = "decision_recorded"
 
 
 class EquipmentLineStatus(str, enum.Enum):

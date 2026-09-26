@@ -20,6 +20,8 @@ MESSAGE_BY_KIND: dict[NotificationKind, str] = {
     NotificationKind.SIGNIFICANT_CHANGE: (
         "An event you have arrangements for has changed significantly. Please check they still fit."
     ),
+    NotificationKind.EVENT_REQUEST_APPROVED: "Your event request was approved.",
+    NotificationKind.EVENT_REQUEST_REJECTED: "Your event request was rejected.",
 }
 
 #: Where a notification links to: the event's page, found by its reference
