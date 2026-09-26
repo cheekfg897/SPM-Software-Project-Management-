@@ -69,6 +69,7 @@ def _shown(notification_id: int, created_at: str, read_at: str | None = None) ->
         "link": "/events/EVR-AAAAAAAA",
         "created_at": created_at,
         "read_at": read_at,
+        "detail": None,
     }
 
 

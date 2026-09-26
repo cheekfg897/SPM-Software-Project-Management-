@@ -103,6 +103,7 @@ def test_a_notification_names_the_event_says_what_happened_when_and_links_to_it(
         "link": "/events/EVR-AAAAAAAA",
         "created_at": "2026-10-01T09:00:00+08:00",
         "read_at": None,
+        "detail": None,
     }
 
 
