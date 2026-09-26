@@ -136,7 +136,15 @@ def test_contact_phone_can_be_left_out(
 
 
 @pytest.mark.parametrize(
-    "phone", ["61234567", "6123-4567", "+65 6123 4567", "+1 (415) 555-0100", "1234567"]
+    "phone",
+    [
+        "61234567",
+        "6123-4567",
+        "+65 6123 4567",
+        "+1 (415) 555-0100",
+        "1234567",
+        "7890123",
+    ],
 )
 def test_contact_phone_in_a_usual_format_is_accepted(
     db_session: Session, phone: str, valid_organisation_payload: dict[str, Any]
