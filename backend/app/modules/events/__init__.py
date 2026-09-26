@@ -7,6 +7,9 @@ Public surface for other modules (import from here, not from sub-files):
 * :func:`app.modules.events.services.get_event_request_for_organiser`
 * :func:`app.modules.events.services.get_event_record_for_organiser`
 * :func:`app.modules.events.services.list_equipment_requests_awaiting_action`
+* :func:`app.modules.events.services.save_draft_event_request`
+* :func:`app.modules.events.services.update_draft_event_request`
+* :func:`app.modules.events.services.submit_draft_event_request`
 """
 
 from __future__ import annotations
