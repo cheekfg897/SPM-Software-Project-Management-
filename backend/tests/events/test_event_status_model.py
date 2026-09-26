@@ -2,10 +2,10 @@
 
 AC1: an event request holds exactly one of the story's seven statuses, and each one
 survives a trip through the database. AC2: the status is shown by its value, and the
-organiser who submitted a request can open it to see its current status. The other
-four viewers in AC2 wait on later stories (ADR-0012). An unknown reference is a 404,
-and a typed reference ignores case and spaces (ADR-0004). Which organisers may open
-a request, and the 404 for everyone else, are SCRUM-7's
+organiser who submitted a request can open it to see its current status. Coordinators'
+access is SCRUM-24's (ADR-0026); the other viewers wait on later stories. An unknown
+reference is a 404, and a typed reference ignores case and spaces (ADR-0004). Which
+organisers may open a request, and the 404 for everyone else, are SCRUM-7's
 (``test_organisation_event_visibility.py``).
 """
 
@@ -20,7 +20,7 @@ from flask import Flask, Response
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.common.errors import AuthenticationError, AuthorizationError, NotFoundError
+from app.common.errors import AuthenticationError, NotFoundError
 from app.modules.auth.models import User
 from app.modules.auth.permissions import Role
 from app.modules.events import routes
@@ -138,28 +138,8 @@ def test_reference_lookup_ignores_case_and_surrounding_spaces(
 
 
 # --------------------------------------------------------------------------
-# Detail route — Event Organisers only, identified by their token
+# Detail route — the organiser is identified by their token
 # --------------------------------------------------------------------------
-
-
-def test_detail_route_allows_only_event_organisers() -> None:
-    assert routes.get_my_request.allowed_roles == frozenset({"event_organiser"})  # type: ignore[attr-defined]
-
-
-def test_other_roles_cannot_open_a_request(
-    app: Flask,
-    token_for: Callable[..., str],
-    monkeypatch: pytest.MonkeyPatch,
-    non_organiser_role: Role,
-) -> None:
-    service = MagicMock()
-    monkeypatch.setattr(routes, "get_event_record_for_organiser", service)
-
-    with pytest.raises(AuthorizationError) as exc_info:
-        _open_request(app, token_for(role=non_organiser_role))
-
-    assert exc_info.value.status_code == 403
-    service.assert_not_called()
 
 
 def test_detail_without_a_token_is_401(app: Flask, monkeypatch: pytest.MonkeyPatch) -> None:

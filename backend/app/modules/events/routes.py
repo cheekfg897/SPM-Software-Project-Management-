@@ -27,6 +27,7 @@ from app.modules.events.schemas import (
 )
 from app.modules.events.services import (
     add_equipment_line,
+    get_event_record_for_coordinator,
     get_event_record_for_organiser,
     list_equipment_lines,
     list_equipment_requests_awaiting_action,
@@ -188,17 +189,22 @@ def list_requests_with_equipment() -> tuple[Response, int]:
 
 
 @bp.get("/requests/<reference>")
-@requires_role(Role.EVENT_ORGANISER)
+@requires_role(Role.EVENT_ORGANISER, Role.EVENT_COORDINATOR)
 def get_my_request(reference: str) -> tuple[Response, int]:
-    """One of the organisation's event requests: its status, coordinator and equipment.
+    """An event request's record: its status, coordinator and equipment.
 
     Any organiser of the request's client organisation may open it; another
     organisation's request is ``404`` like an unknown reference (SCRUM-7 AC2, AC3,
-    ADR-0012). The current status is SCRUM-22's; the assigned coordinator's name and
-    email are SCRUM-30 AC3's, ``null`` until one is assigned (ADR-0018); the
-    equipment lines are SCRUM-37 AC4's.
+    ADR-0012). An Event Coordinator opens the same sections for a request assigned to
+    them, or a submitted one still awaiting a coordinator (SCRUM-24 AC7, ADR-0026).
+    The current status is SCRUM-22's; the assigned coordinator's name and email are
+    SCRUM-30 AC3's, ``null`` until one is assigned (ADR-0018); the equipment lines are
+    SCRUM-37 AC4's. Technical Support's view of the equipment is ``/equipment``.
     """
-    event_request, coordinator = get_event_record_for_organiser(g.current_user_id, reference)
+    if Role(g.current_user_role) is Role.EVENT_COORDINATOR:
+        event_request, coordinator = get_event_record_for_coordinator(g.current_user_id, reference)
+    else:
+        event_request, coordinator = get_event_record_for_organiser(g.current_user_id, reference)
     body = _event_request_detail_schema.dump(event_request)
     if coordinator is None:
         body["coordinator"] = None

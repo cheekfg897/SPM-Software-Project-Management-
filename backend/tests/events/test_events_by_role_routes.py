@@ -3,13 +3,13 @@
 AC2: Event Coordinators can open the list of submitted requests no coordinator has
 yet, separate from their own assigned list. AC4: Technical Support can open the list
 of events that have an equipment request. AC6: every role's event list shows each
-event's name, date, time and status. AC8: a list with no matching events says so,
-instead of an empty list looking the same as "nothing loaded yet" (copying
-``search_venues``'s precedent, SCRUM-35 AC4).
+event's name, date, time and status. AC7: the event record widens to Event
+Coordinators, the same sections as the organiser's. AC8: a list with no matching
+events says so, instead of an empty list looking the same as "nothing loaded yet"
+(copying ``search_venues``'s precedent, SCRUM-35 AC4).
 
 Covers the organiser's own list, the coordinator's assigned and unassigned lists,
-and Technical Support's equipment list; a later commit adds the event record
-opened to coordinators (AC7).
+Technical Support's equipment list, and the event record opened to coordinators.
 """
 
 from __future__ import annotations
@@ -23,9 +23,11 @@ import pytest
 from flask import Flask
 
 from app.common.errors import AuthenticationError, AuthorizationError
+from app.modules.auth.models import User
 from app.modules.auth.permissions import ALL_ROLES, Role
 from app.modules.events import routes
-from app.modules.events.models import EventRequest
+from app.modules.events.models import EventEquipmentLine, EventRequest
+from app.modules.events.services import CoordinatorContact
 
 pytestmark = pytest.mark.scrum_24
 
@@ -245,3 +247,80 @@ def test_the_equipment_list_shows_only_each_events_summary(
     assert status == 200
     assert body == {"event_requests": [{**event_as_shown, "status": "submitted"}]}
     mock.assert_called_once_with()
+
+
+# --------------------------------------------------------------------------
+# AC7 — the event record opens to organisers and coordinators
+# --------------------------------------------------------------------------
+
+RECORD_ENDPOINT = "events.get_my_request"
+RECORD_PATH = "/api/events/requests/EVR-AAAAAAAA"
+NON_RECORD_ROLES = sorted(
+    ALL_ROLES - {Role.EVENT_ORGANISER, Role.EVENT_COORDINATOR}, key=lambda role: role.value
+)
+
+
+def test_the_event_record_opens_to_organisers_and_coordinators(app: Flask) -> None:
+    allowed_roles = app.view_functions[RECORD_ENDPOINT].allowed_roles  # type: ignore[attr-defined]
+
+    assert allowed_roles == frozenset({Role.EVENT_ORGANISER.value, Role.EVENT_COORDINATOR.value})
+
+
+@pytest.mark.parametrize("role", NON_RECORD_ROLES, ids=lambda role: role.value)
+def test_other_roles_cannot_open_an_event_record(
+    call_route: CallRoute, replace_services: ReplaceServices, token_for: TokenFor, role: Role
+) -> None:
+    mocks = replace_services(
+        routes,
+        {
+            "get_event_record_for_organiser": (None, None),
+            "get_event_record_for_coordinator": (None, None),
+        },
+    )
+
+    with pytest.raises(AuthorizationError) as exc_info:
+        call_route(
+            RECORD_ENDPOINT, "GET", RECORD_PATH, {"reference": "EVR-AAAAAAAA"}, token_for(role=role)
+        )
+
+    assert exc_info.value.status_code == 403
+    mocks["get_event_record_for_organiser"].assert_not_called()
+    mocks["get_event_record_for_coordinator"].assert_not_called()
+
+
+def test_a_coordinator_opening_a_record_sees_the_request_its_equipment_and_its_coordinator(
+    call_route: CallRoute,
+    replace_services: ReplaceServices,
+    token_for: TokenFor,
+    make_user: Callable[..., User],
+    make_event_request: Callable[..., EventRequest],
+    shown_line: EventEquipmentLine,
+    line_as_shown: dict[str, Any],
+    coordinator_three: CoordinatorContact,
+) -> None:
+    event_request = make_event_request(coordinator_id=3)
+    event_request.equipment_lines = [shown_line]
+    mocks = replace_services(
+        routes,
+        {
+            "get_event_record_for_coordinator": (event_request, coordinator_three),
+            "get_event_record_for_organiser": (event_request, None),
+        },
+    )
+    coordinator = make_user(role=Role.EVENT_COORDINATOR, user_id=3)
+
+    response, status = call_route(
+        RECORD_ENDPOINT, "GET", RECORD_PATH, {"reference": "EVR-AAAAAAAA"}, token_for(coordinator)
+    )
+
+    assert status == 200
+    mocks["get_event_record_for_coordinator"].assert_called_once_with("3", "EVR-AAAAAAAA")
+    mocks["get_event_record_for_organiser"].assert_not_called()
+    body = response.get_json()
+    assert body["expected_attendance"] == 250
+    assert body["equipment_lines"] == [line_as_shown]
+    assert body["coordinator"] == {
+        "full_name": "Coordinator Three",
+        "email": "coordinator3@example.com",
+    }
+    assert "coordinator_id" not in body
