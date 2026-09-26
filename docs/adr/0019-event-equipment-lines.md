@@ -1,6 +1,6 @@
 # ADR-0019: Equipment lines are recorded per event by Event Coordinators while the request awaits review
 
-- **Status:** Accepted
+- **Status:** Accepted; a draft is `404` to staff, not `409`, superseded by [ADR-0024](0024-draft-event-requests.md)
 - **Date:** 2026-09-25
 - **Story:** SCRUM-37 Record what equipment an event needs
 

@@ -31,13 +31,13 @@ To change a decision, don't rewrite history. Add a new ADR that **supersedes** t
 | [0016](0016-venue-block-warns-not-refuses.md) | A venue block is saved even over a confirmed booking, and reports what it cuts into | Accepted | SCRUM-34 |
 | [0017](0017-suitability-check-takes-requirements.md) | The suitability check takes an event's requirements explicitly; the justification rule waits for booking requests | Accepted | SCRUM-36 |
 | [0018](0018-least-loaded-coordinator-and-event-history.md) | A submitted request goes to the least-loaded Event Coordinator; one event history table records what happens to an event | Accepted | SCRUM-30 |
-| [0019](0019-event-equipment-lines.md) | Equipment lines are recorded per event by Event Coordinators while the request awaits review, one per type, each notifying Technical Support | Accepted | SCRUM-37 |
+| [0019](0019-event-equipment-lines.md) | Equipment lines are recorded per event by Event Coordinators while the request awaits review, one per type, each notifying Technical Support | Accepted; a draft is `404` to staff, not `409`, superseded by [0024](0024-draft-event-requests.md) | SCRUM-37 |
 | [0020](0020-organisers-see-their-organisations-events.md) | Event Organisers see their client organisation's event requests, scoped by one condition; another organisation's is `404` | Accepted | SCRUM-7 |
-| [0021](0021-coordinator-reassignment.md) | An event's own coordinator may hand it, while open or confirmed, to another coordinator named by email; the history keeps both coordinators' ids and names | Accepted | SCRUM-87 |
+| [0021](0021-coordinator-reassignment.md) | An event's own coordinator may hand it, while open or confirmed, to another coordinator named by email; the history keeps both coordinators' ids and names | Accepted; reassigning a draft is `404`, not `409`, superseded by [0024](0024-draft-event-requests.md) | SCRUM-87 |
 | [0022](0022-equipment-awaiting-action.md) | Technical Support see one shared list of upcoming events whose equipment lines are still `requested`, soonest first | Accepted | SCRUM-38 |
 | [0023](0023-staff-accounts-created-by-command.md) | Staff accounts are created by a `flask create-staff-user` command, not self-registration | Accepted | SCRUM-88 |
+| [0024](0024-draft-event-requests.md) | A draft is an event request in status draft: saved with only a name, seen only by its author, submitted in place under the full submission rules | Accepted | SCRUM-20 |
 | [0032](0032-event-catalogue-contract.md) | The event catalogue API, proposed by the frontend ahead of SCRUM-52 | Proposed | SCRUM-52 |
-
 
 ## Template
 

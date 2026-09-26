@@ -14,7 +14,7 @@ backend/            Flask application (see below)
     extensions.py   db, migrate, jwt instances
     common/         cross-cutting: error handlers, requires_auth / requires_role
     modules/auth/   models, routes, schemas, services, permissions
-    modules/events/ event requests (SCRUM-19), event status model (SCRUM-22), filed under the organiser's organisation (SCRUM-66) and seen by its organisers (SCRUM-7), coordinator assignment and event history (SCRUM-30), equipment lines (SCRUM-37), equipment awaiting Technical Support (SCRUM-38)
+    modules/events/ event requests (SCRUM-19), event status model (SCRUM-22), filed under the organiser's organisation (SCRUM-66) and seen by its organisers (SCRUM-7), coordinator assignment and event history (SCRUM-30), equipment lines (SCRUM-37), equipment awaiting Technical Support (SCRUM-38), save and resume a draft (SCRUM-20)
     modules/organisations/ client organisations that Event Organisers belong to (SCRUM-66)
     modules/notifications/ in-app notifications about events (SCRUM-28)
     modules/venue/  venue catalogue (SCRUM-25), availability calendar (SCRUM-26), search (SCRUM-35), suitability check (SCRUM-36), setup/turnaround (SCRUM-67), blocks (SCRUM-34)
@@ -121,12 +121,15 @@ curl http://localhost:5000/api/auth/internal-only -H "Authorization: Bearer <tok
 | `GET  /api/auth/me`            | any authenticated user                                          |
 | `GET  /api/auth/internal-only` | `event_coordinator`, `venue_staff`, `technical_support_staff`   |
 | `POST /api/events/requests`    | `event_organiser` — submit an event request                     |
-| `GET  /api/events/requests`    | `event_organiser` — list your client organisation's event requests, whoever submitted them, newest first (`403` if your account has no organisation) |
+| `GET  /api/events/requests`    | `event_organiser` — list your client organisation's event requests and your own drafts, whoever submitted them, newest first; a colleague's drafts are hidden (`403` if your account has no organisation) |
+| `POST /api/events/requests/drafts` | `event_organiser` — save a draft with only the event name required; every other field is optional and checked on its own |
+| `PATCH /api/events/requests/drafts/<reference>` | `event_organiser` — on one of your own drafts, change only the fields sent; a field sent as `null` clears it, `name` cannot be (`404` if it isn't yours or doesn't exist; `409` if it is no longer a draft) |
+| `POST /api/events/requests/drafts/<reference>/submit` | `event_organiser` — submit one of your own drafts under the full submission rules, keeping its reference; assigned and notified exactly as a fresh submission is (`400` if a detail is missing or fails a rule) |
 | `GET  /api/events/requests/assigned` | `event_coordinator` — the event requests assigned to you, newest first |
 | `GET  /api/events/requests/awaiting-equipment` | `technical_support_staff` — every upcoming event with equipment lines still `requested`: the event's name, date and times, those lines, and the days remaining; soonest first |
-| `GET  /api/events/requests/<reference>` | `event_organiser` — one of your client organisation's event requests, with its current status, the assigned coordinator's name and email (`null` until assigned) and its equipment lines (`404` if it is another organisation's; `403` if your account has no organisation) |
+| `GET  /api/events/requests/<reference>` | `event_organiser` — one of your client organisation's event requests and your own drafts, with its current status, the assigned coordinator's name and email (`null` until assigned) and its equipment lines (`404` if it is another organisation's or a colleague's draft; `403` if your account has no organisation) |
 | `POST /api/events/requests/<reference>/equipment` | `event_coordinator` — add an equipment line (type, quantity, notes) to a request assigned to you, while it is awaiting review; notifies Technical Support Staff (`404` if it isn't assigned to you) |
-| `GET  /api/events/requests/<reference>/equipment` | `event_coordinator` (requests assigned to you), `technical_support_staff` (any request) — the event's date and times (`event`, so Technical Support know by when) and its equipment lines with their status |
+| `GET  /api/events/requests/<reference>/equipment` | `event_coordinator` (requests assigned to you), `technical_support_staff` (any request but a draft) — the event's date and times (`event`, so Technical Support know by when) and its equipment lines with their status |
 | `PATCH /api/events/requests/<reference>/equipment/<line_id>` | `event_coordinator` — on a request assigned to you, change only the fields sent, while it is awaiting review |
 | `DELETE /api/events/requests/<reference>/equipment/<line_id>` | `event_coordinator` — on a request assigned to you, remove a line, while it is awaiting review |
 | `POST /api/events/requests/<reference>/reassign` | `event_coordinator` — on a request assigned to you, move it while submitted, under review or confirmed to the Event Coordinator named by `coordinator_email`; recorded in its history and the new coordinator is notified. Returns the request and the new coordinator's name and email |
@@ -158,6 +161,8 @@ Password policy: at least 8 characters, with at least one letter and one digit.
 
 An `event_organiser` registers with the `organisation_id` of an existing client organisation, which an internal user records first; an attendee must leave it out ([ADR-0013](docs/adr/0013-client-organisations-recorded-by-internal-users.md)). Every organiser of an organisation sees all of its event requests, and no other organisation's ([ADR-0020](docs/adr/0020-organisers-see-their-organisations-events.md)).
 
+A draft is an event request in status `draft`: it can be saved with only a name, reopened and changed field by field, and submitted in place once it is complete, keeping its reference. It is visible only to the organiser who saved it — never to a colleague, and never to Event Coordinators or Technical Support Staff — until it is submitted ([ADR-0024](docs/adr/0024-draft-event-requests.md)).
+
 A submitted event request is assigned to the Event Coordinator with the fewest open requests (`submitted` or `under_review`), lowest user id on a tie, and only that coordinator is notified; with no Event Coordinator registered it stays unassigned and nobody is notified ([ADR-0018](docs/adr/0018-least-loaded-coordinator-and-event-history.md)). Everything that happens to an event is written to an event history table that later stories append to.
 
 All errors share one shape: `{"error": "<code>", "message": "<text>", "details": {...}}` (`details` only for validation errors).
@@ -186,6 +191,7 @@ pytest -m scrum_65   # create an account
 pytest -m scrum_6    # log in
 pytest -m scrum_21   # enforce permissions
 pytest -m scrum_19   # submit an event request
+pytest -m scrum_20   # save and resume a draft event request
 pytest -m scrum_22   # event status model
 pytest -m scrum_25   # update venue catalogue
 pytest -m scrum_26   # view a venue's availability calendar
