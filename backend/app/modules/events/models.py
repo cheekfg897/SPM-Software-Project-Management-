@@ -45,8 +45,9 @@ class EventRequestStatus(str, enum.Enum):
     """The stages an event request passes through (SCRUM-22, ADR-0012).
 
     ``UNDER_REVIEW`` is the story's "Under Review / Planning". ``SUBMITTED`` and
-    ``DRAFT`` are written so far (SCRUM-20); each other value arrives with the story
-    that performs the transition (SCRUM-31, SCRUM-49, SCRUM-61, SCRUM-68).
+    ``DRAFT`` are written so far (SCRUM-20), and ``COMPLETED`` by SCRUM-68; each
+    other value arrives with the story that performs the transition (SCRUM-31,
+    SCRUM-49, SCRUM-61).
     """
 
     DRAFT = "draft"
@@ -61,7 +62,8 @@ class EventRequestStatus(str, enum.Enum):
 class EventHistoryKind(str, enum.Enum):
     """What an event history entry records (SCRUM-30, ADR-0018).
 
-    Later stories add kinds: SCRUM-31 decisions, SCRUM-33 edits.
+    Later stories add kinds: SCRUM-31 decisions, SCRUM-33 edits, SCRUM-68
+    completions.
     """
 
     #: The system assigned a coordinator to a new request; ``details`` holds
@@ -77,6 +79,9 @@ class EventHistoryKind(str, enum.Enum):
     #: ISO strings) and ``significant``, and ``actor_id`` is who made the edit
     #: (SCRUM-33, ADR-0025).
     FIELD_CHANGED = "field_changed"
+    #: The assigned coordinator marked the event completed after it ended;
+    #: ``actor_id`` is who did it and ``details`` is NULL (SCRUM-68, ADR-0027).
+    EVENT_COMPLETED = "event_completed"
 
 
 class EquipmentLineStatus(str, enum.Enum):
