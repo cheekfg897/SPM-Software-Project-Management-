@@ -296,20 +296,26 @@ def _mark_submitted(
 
 
 def _raise_notifications(
-    recipient_ids: list[int], event_request: EventRequest, kind: NotificationKind, session: Session
+    recipient_ids: list[int],
+    event_request: EventRequest,
+    kind: NotificationKind,
+    session: Session,
+    *,
+    detail: str | None = None,
 ) -> None:
     """Notify ``recipient_ids`` that ``kind`` happened to ``event_request``.
 
     Runs after the change's own commit, so the notifications refer to a saved row
     (ADR-0015). If they can't be saved, only they are lost and a warning is logged:
     what they announce is already saved, and failing the reply would invite the
-    caller to do it again.
+    caller to do it again. ``detail`` says more, such as a decision's reason
+    (SCRUM-31 AC10).
     """
     event = EventSummary(
         id=event_request.id, reference=event_request.reference, name=event_request.name
     )
     try:
-        notify_users(recipient_ids, event, kind, session=session)
+        notify_users(recipient_ids, event, kind, session=session, detail=detail)
     except SQLAlchemyError:
         session.rollback()
         logger.warning(
@@ -1808,6 +1814,11 @@ STATUS_BY_OUTCOME: dict[DecisionOutcome, EventRequestStatus] = {
     DecisionOutcome.APPROVED: EventRequestStatus.APPROVED,
     DecisionOutcome.REJECTED: EventRequestStatus.REJECTED,
 }
+#: What the organiser is told for each outcome (AC10).
+NOTIFICATION_KIND_BY_OUTCOME: dict[DecisionOutcome, NotificationKind] = {
+    DecisionOutcome.APPROVED: NotificationKind.EVENT_REQUEST_APPROVED,
+    DecisionOutcome.REJECTED: NotificationKind.EVENT_REQUEST_REJECTED,
+}
 NOT_DECIDABLE_MESSAGE = "Only a submitted or under-review event request can be decided."
 REASON_REQUIRED_MESSAGE = "A reason is required to reject a request or to change a decision."
 
@@ -1914,6 +1925,23 @@ def _apply_decision(
     )
 
 
+def _notify_organiser_of_decision(
+    event_request: EventRequest, decision: Mapping[str, Any], session: Session
+) -> None:
+    """Tell the organiser who submitted the request of the decision and its reason.
+
+    Only the submitting organiser, not their whole organisation (AC10, ADR-0028); the
+    reason goes in the notification's ``detail``.
+    """
+    _raise_notifications(
+        [event_request.organiser_id],
+        event_request,
+        NOTIFICATION_KIND_BY_OUTCOME[decision["outcome"]],
+        session,
+        detail=decision["reason"],
+    )
+
+
 def decide_event_request(
     coordinator_id: int | str,
     reference: str,
@@ -1927,8 +1955,10 @@ def decide_event_request(
     review (ADR-0028). Approving moves it to ``approved``; rejecting moves it to
     ``rejected`` and needs a reason. The status change and a ``decision_recorded``
     history entry, with the outcome, the reason and the coordinator, are saved in one
-    commit (AC8). The checks run in this order: the reference, the coordinator, the
-    status, then the payload.
+    commit (AC8). Once saved, the organiser who submitted the request is notified,
+    with the reason (AC10); a failure there is logged, not raised (ADR-0015). The
+    checks run in this order: the reference, the coordinator, the status, then the
+    payload.
 
     Args:
         coordinator_id: The caller's user id, taken from their token.
@@ -1954,4 +1984,5 @@ def decide_event_request(
     # payload check and before anything is written.
     _apply_decision(coordinator_id, event_request, decision, sess)
     sess.commit()
+    _notify_organiser_of_decision(event_request, decision, sess)
     return event_request
