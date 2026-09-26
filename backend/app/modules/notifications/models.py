@@ -45,6 +45,9 @@ class NotificationKind(str, enum.Enum):
     #: The organiser answered, and the answer is the notification's ``detail``
     #: (SCRUM-32 AC2, ADR-0029).
     CLARIFICATION_ANSWERED = "clarification_answered"
+    #: Tells the organiser who submitted a request that an Event Coordinator has been
+    #: assigned to it, on submission or reassignment (SCRUM-39 AC1, ADR-0030).
+    REQUEST_ASSIGNED = "request_assigned"
 
 
 class Notification(db.Model):  # type: ignore[name-defined]
