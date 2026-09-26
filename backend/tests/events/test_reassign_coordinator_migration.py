@@ -35,7 +35,9 @@ def test_migration_and_model_agree_on_the_history_kinds(load_migration: LoadMigr
     added = set(migration.ADDED_HISTORY_KIND_VALUES)
 
     assert previous == created_by_0010
-    assert previous | added == {kind.value for kind in EventHistoryKind}
+    # Subset, not equality: a later migration (SCRUM-33) adds more kinds this
+    # migration doesn't know about.
+    assert previous | added <= {kind.value for kind in EventHistoryKind}
     assert previous.isdisjoint(added)
 
 
