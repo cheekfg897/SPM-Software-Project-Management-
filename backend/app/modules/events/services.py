@@ -357,23 +357,37 @@ def _warn_unassigned(event_request: EventRequest) -> None:
     logger.warning("event_request_unassigned reference=%s", event_request.reference)
 
 
+def _notify_about_assignment(
+    event_request: EventRequest, coordinator_id: int, session: Session
+) -> None:
+    """Tell the new coordinator, then the organiser, that the request is assigned.
+
+    The coordinator hears the event is theirs (SCRUM-30 AC4, SCRUM-87 AC4, SCRUM-39
+    AC4), and the organiser who submitted it hears a coordinator has been assigned
+    (SCRUM-39 AC1, ADR-0030). They are two separate writes, so losing one notice
+    doesn't lose the other (ADR-0015).
+    """
+    _raise_notifications(
+        [coordinator_id], event_request, NotificationKind.COORDINATOR_ASSIGNED, session
+    )
+    _raise_notifications(
+        [event_request.organiser_id], event_request, NotificationKind.REQUEST_ASSIGNED, session
+    )
+
+
 def _notify_about_submission(event_request: EventRequest, session: Session) -> None:
-    """Tell the assigned coordinator the new request is theirs (SCRUM-30 AC4).
+    """Tell the assigned coordinator and the organiser about a new assignment.
 
     SCRUM-28 AC3 raises a new request to the coordinators; only the assigned one is
-    told (ADR-0018, replacing ADR-0015's notice to every coordinator). With no
+    told (ADR-0018, replacing ADR-0015's notice to every coordinator), and the
+    organiser hears a coordinator has been assigned (SCRUM-39 AC1, ADR-0030). With no
     coordinator to assign the request stays unassigned and nobody is told; that is
     logged so someone can pick it up.
     """
     if event_request.coordinator_id is None:
         _warn_unassigned(event_request)
         return
-    _raise_notifications(
-        [event_request.coordinator_id],
-        event_request,
-        NotificationKind.COORDINATOR_ASSIGNED,
-        session,
-    )
+    _notify_about_assignment(event_request, event_request.coordinator_id, session)
 
 
 def _save_under_new_reference(
@@ -440,7 +454,8 @@ def submit_event_request(
     AC1, AC2, ADR-0018); with no Event Coordinator it is saved unassigned. If the
     reference is already taken, the save is rolled back and retried with a new
     one, up to :data:`MAX_REFERENCE_ATTEMPTS` times. Once saved, the assigned
-    coordinator is told it is theirs (SCRUM-28 AC3, SCRUM-30 AC4).
+    coordinator is told it is theirs (SCRUM-28 AC3, SCRUM-30 AC4), and the organiser
+    that a coordinator has been assigned (SCRUM-39 AC1, ADR-0030).
 
     Args:
         organiser_id: The caller's user id, taken from their token.
@@ -932,8 +947,8 @@ def submit_draft_event_request(
     reported the same way ``POST /requests`` reports it, and nothing changes unless
     every rule passes. Its reference does not change (ADR-0004); like a fresh
     submission, it is assigned to the least-loaded Event Coordinator, the assignment
-    is recorded to its event history, and that coordinator is notified (SCRUM-30 AC1,
-    AC2, AC4, ADR-0018).
+    is recorded to its event history, and that coordinator and the organiser are
+    notified (SCRUM-30 AC1, AC2, AC4, ADR-0018; SCRUM-39 AC1, ADR-0030).
 
     Args:
         organiser_id: The caller's user id, taken from their token.
@@ -1307,8 +1322,9 @@ def reassign_coordinator(
     commit: the previous and the new coordinator's ids and names as they were then,
     who did it and when (AC3, AC7). The event then lists, and gives access to, the new
     coordinator only (AC4, AC5). Once saved, the new coordinator gets the usual
-    ``coordinator_assigned`` notification (AC4); a failure there is logged, not raised
-    (ADR-0015). The previous coordinator isn't notified, since they made the change.
+    ``coordinator_assigned`` notification (AC4) and the organiser a ``request_assigned``
+    one (SCRUM-39 AC1, ADR-0030); a failure there is logged, not raised (ADR-0015).
+    The previous coordinator isn't notified, since they made the change.
 
     Args:
         actor_id: The caller's user id, taken from their token.
@@ -1355,9 +1371,7 @@ def reassign_coordinator(
     )
     sess.commit()
     # The previous coordinator isn't told: only they may reassign, so they did this.
-    _raise_notifications(
-        [coordinator_id], event_request, NotificationKind.COORDINATOR_ASSIGNED, sess
-    )
+    _notify_about_assignment(event_request, coordinator_id, sess)
     return event_request, coordinator
 
 
