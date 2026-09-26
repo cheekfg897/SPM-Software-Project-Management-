@@ -1,6 +1,6 @@
 # ADR-0019: Equipment lines are recorded per event by Event Coordinators while the request awaits review
 
-- **Status:** Accepted; a draft is `404` to staff, not `409`, superseded by [ADR-0024](0024-draft-event-requests.md)
+- **Status:** Accepted; a draft is `404` to staff, not `409`, superseded by [ADR-0024](0024-draft-event-requests.md); decision 3 superseded by [ADR-0028](0028-review-and-decide.md): equipment may also change while `approved`, and the refusal is `409 equipment_not_editable`
 - **Date:** 2026-09-25
 - **Story:** SCRUM-37 Record what equipment an event needs
 
@@ -19,7 +19,7 @@ Several things are left open:
 ## Decision
 1. **Coordinators write, coordinators and Technical Support read, the organiser sees their own.** Adding, editing and removing lines is `event_coordinator` only. `GET /api/events/requests/<reference>/equipment` is open to `event_coordinator` and `technical_support_staff`. Decision 2 narrows which coordinator. The Event Organiser sees the lines embedded in their own `GET /api/events/requests/<reference>`.
 2. **Only the event's assigned coordinator (SCRUM-30, ADR-0018).** A coordinator adds, edits, removes and lists lines only on a request assigned to them; the services take the caller's user id, as the organiser's do. Another coordinator's request, or an unassigned one, is a `404` "Event request not found.", the same answer as an unknown reference and the organiser's "not yours" (ADR-0012): a `403` would confirm the reference exists. Technical Support Staff list the lines of any request. The reference ignores case and surrounding spaces (ADR-0004).
-3. **"Awaiting review" is `submitted` or `under_review`.** In `draft`, `confirmed`, `completed`, `cancelled` or `rejected`, adding, editing and removing are all refused with `409 request_not_awaiting_review`.
+3. **"Awaiting review" is `submitted` or `under_review`.** In `draft`, `confirmed`, `completed`, `cancelled` or `rejected`, adding, editing and removing are all refused with `409 request_not_awaiting_review`. *(Superseded by [ADR-0028](0028-review-and-decide.md): the set is now `EQUIPMENT_EDITABLE_STATUSES = {submitted, under_review, approved}` and the refusal is `409 equipment_not_editable`.)*
 4. **One line per equipment type per event,** enforced by a unique constraint. A second line for the same type is a `409` telling the caller to edit the existing line.
 5. **"Current state" is a per-line `status`.** Only `requested` exists for now (the Postgres enum `event_equipment_line_status`); SCRUM-46 adds `reserved`.
 6. **Every Technical Support Staff member is notified once per added line** (notification kind `equipment_requested`). The notification is raised after the line's own commit, in a second commit that may fail without failing the add (ADR-0015). Editing or removing a line notifies nobody.
