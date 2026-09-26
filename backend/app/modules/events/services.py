@@ -456,13 +456,16 @@ def list_event_requests_for_organiser(
     return _list_event_requests_newest_first(_visible_to_organiser(organiser_id, sess), sess)
 
 
+def _assigned_to(coordinator_id: int | str) -> ColumnElement[bool]:
+    """The requests assigned to a coordinator (SCRUM-30 AC5)."""
+    return EventRequest.coordinator_id == int(coordinator_id)
+
+
 def list_event_requests_for_coordinator(
     coordinator_id: int | str, *, session: Session | None = None
 ) -> list[EventRequest]:
     """Return the requests assigned to the coordinator, newest first (SCRUM-30 AC5)."""
-    return _list_event_requests_newest_first(
-        EventRequest.coordinator_id == int(coordinator_id), resolve_session(session)
-    )
+    return _list_event_requests_newest_first(_assigned_to(coordinator_id), resolve_session(session))
 
 
 def _normalise_reference(reference: str) -> str:
