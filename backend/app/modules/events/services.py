@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from typing import Any
 
+from marshmallow import Schema
 from sqlalchemy import Row, and_, func, or_, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -48,6 +49,7 @@ from app.modules.events.models import (
 )
 from app.modules.events.schemas import (
     EditEquipmentLineSchema,
+    EventRequestSchema,
     ReassignCoordinatorSchema,
     SaveDraftSchema,
     SubmitEventRequestSchema,
@@ -695,6 +697,75 @@ def update_draft_event_request(
     for key, value in data.items():
         setattr(draft, key, value)
     sess.commit()
+    return draft
+
+
+def _draft_as_payload(draft: EventRequest, schema: Schema) -> dict[str, Any]:
+    """The draft's fields, as a payload ready for ``schema`` to load (SCRUM-20 AC3).
+
+    Dumped with :class:`EventRequestSchema` and then loaded straight back through
+    ``schema``, so submitting a draft is checked exactly the way a brand new
+    submission is (ADR-0001 to ADR-0003): the two paths can never quietly diverge.
+    A detail the draft never got comes back from the dump as ``None``; leaving it
+    out here, rather than sending an explicit ``null``, is what makes a still-missing
+    required field report "Missing data for required field.", the same message
+    ``POST /requests`` gives for a field left out altogether.
+
+    Args:
+        draft: The draft being submitted.
+        schema: The schema the payload will be loaded by; only its fields are dumped.
+
+    Returns:
+        The draft's non-``None`` fields, keyed the way ``schema`` expects them.
+    """
+    dumped = EventRequestSchema(only=tuple(schema.fields)).dump(draft)
+    return {key: value for key, value in dumped.items() if value is not None}
+
+
+def submit_draft_event_request(
+    organiser_id: int | str,
+    reference: str,
+    *,
+    session: Session | None = None,
+    today: date | None = None,
+) -> EventRequest:
+    """Submit one of the organiser's own drafts under the submission rules (SCRUM-20).
+
+    The stored draft is run back through :class:`SubmitEventRequestSchema` exactly as
+    a new submission would be (ADR-0001 to ADR-0003, ADR-0024): a detail the draft
+    never got, or one that fails a rule (a past date, an end before the start), is
+    reported the same way ``POST /requests`` reports it, and nothing changes unless
+    every rule passes. Its reference does not change (ADR-0004); like a fresh
+    submission, it is assigned to the least-loaded Event Coordinator, the assignment
+    is recorded to its event history, and that coordinator is notified (SCRUM-30 AC1,
+    AC2, AC4, ADR-0018).
+
+    Args:
+        organiser_id: The caller's user id, taken from their token.
+        reference: The draft's ``EVR-…`` reference; case and surrounding spaces are
+            ignored.
+        session: Database session; defaults to ``db.session``.
+        today: Reference date for the "not in the past" rule; defaults to today in
+            the business timezone.
+
+    Returns:
+        The now-submitted :class:`EventRequest`.
+
+    Raises:
+        OrganiserWithoutOrganisationError: 403 — the organiser has no organisation.
+        NotFoundError: 404 — no such draft, or it is a colleague's.
+        RequestNotDraftError: 409 — the request has already been submitted.
+        ValidationError: 400 — a detail is missing, or fails a submission rule.
+    """
+    sess = resolve_session(session)
+    draft = _draft_of_organiser(organiser_id, reference, sess)
+    schema = SubmitEventRequestSchema(today=today)
+    data = load_or_raise(schema, _draft_as_payload(draft, schema))
+    for key, value in data.items():
+        setattr(draft, key, value)
+    _mark_submitted(draft, _least_loaded_coordinator(sess), sess)
+    sess.commit()
+    _notify_about_submission(draft, sess)
     return draft
 
 
