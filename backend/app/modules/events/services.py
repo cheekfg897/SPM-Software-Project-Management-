@@ -874,6 +874,19 @@ def _line_of_event(
     return line
 
 
+def _notify_technical_support(
+    event_request: EventRequest, kind: NotificationKind, session: Session
+) -> None:
+    """Tell every Technical Support Staff member about ``event_request`` (ADR-0019).
+
+    Used when equipment is requested for it (SCRUM-37 AC5) and when a significant
+    change means equipment already requested for it may no longer fit (SCRUM-33 AC2,
+    ADR-0025).
+    """
+    technical_support_ids = list_user_ids_with_role(Role.TECHNICAL_SUPPORT_STAFF, session=session)
+    _raise_notifications(technical_support_ids, event_request, kind, session)
+
+
 def add_equipment_line(
     coordinator_id: int | str,
     reference: str,
@@ -914,10 +927,7 @@ def add_equipment_line(
     )
     sess.add(line)
     _commit_line_or_conflict(sess)
-    technical_support_ids = list_user_ids_with_role(Role.TECHNICAL_SUPPORT_STAFF, session=sess)
-    _raise_notifications(
-        technical_support_ids, event_request, NotificationKind.EQUIPMENT_REQUESTED, sess
-    )
+    _notify_technical_support(event_request, NotificationKind.EQUIPMENT_REQUESTED, sess)
     return line
 
 
@@ -1351,6 +1361,29 @@ def _changes_to(event_request: EventRequest, data: Mapping[str, Any]) -> list[Fi
     return changes
 
 
+def _affects_equipment(changes: list[FieldChange]) -> bool:
+    """Whether any of ``changes`` touches a field in EQUIPMENT_AFFECTING_FIELDS."""
+    return any(change.field in EQUIPMENT_AFFECTING_FIELDS for change in changes)
+
+
+def _reassess_arrangements(
+    event_request: EventRequest, changes: list[FieldChange], session: Session
+) -> None:
+    """Warn whoever has arrangements riding on the event that it changed (ADR-0025).
+
+    Technical Support Staff get one ``significant_change`` notification per edit
+    when a changed field could affect equipment already requested and the event has
+    at least one equipment line (AC2); with no lines there is nothing to reassess.
+    Runs after the edit's own commit, so a failed notification never rolls back a
+    saved edit; the failure is logged, not raised (ADR-0015).
+    """
+    # TODO: SCRUM-58 flags the event's venue booking here when a change touches
+    # VENUE_AFFECTING_FIELDS, once SCRUM-42 has given events one to reassess.
+    if not _affects_equipment(changes) or not event_request.equipment_lines:
+        return
+    _notify_technical_support(event_request, NotificationKind.SIGNIFICANT_CHANGE, session)
+
+
 def update_event_request(
     coordinator_id: int | str,
     reference: str,
@@ -1406,4 +1439,5 @@ def update_event_request(
             now=edited_at,
         )
     sess.commit()
+    _reassess_arrangements(event_request, changes, sess)
     return EventEdit(event_request, changes)
