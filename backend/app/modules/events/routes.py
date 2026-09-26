@@ -7,6 +7,8 @@ error responses come from the handlers in :mod:`app.common.errors`.
 
 from __future__ import annotations
 
+from typing import Any
+
 from flask import Blueprint, Response, g, jsonify, request
 
 from app.common.decorators import requires_role
@@ -52,6 +54,22 @@ _edited_event_request_schema = EditedEventRequestSchema()
 _field_change_schema = FieldChangeSchema()
 _event_history_entry_schema = EventHistoryEntrySchema()
 
+#: What each role's event list says when it is empty (SCRUM-24 AC8, ADR-0026).
+NO_ORGANISATION_REQUESTS_MESSAGE = "Your organisation has no event requests yet."
+NO_ASSIGNED_REQUESTS_MESSAGE = "No event requests are assigned to you yet."
+
+
+def _event_list_body(listed: list[dict[str, Any]], empty_message: str) -> dict[str, Any]:
+    """A role's event list; an empty one also says there are none (SCRUM-24 AC8).
+
+    Copies ``search_venues``'s precedent (SCRUM-35 AC4): ``message`` is added only
+    when the list is empty, so a client shows it whenever it is present.
+    """
+    body: dict[str, Any] = {"event_requests": listed}
+    if not listed:
+        body["message"] = empty_message
+    return body
+
 
 @bp.post("/requests")
 @requires_role(Role.EVENT_ORGANISER)
@@ -74,10 +92,8 @@ def list_my_requests() -> tuple[Response, int]:
     SCRUM-19 AC5); an organiser with no organisation gets ``403`` (ADR-0020).
     """
     event_requests = list_event_requests_for_organiser(g.current_user_id)
-    return (
-        jsonify({"event_requests": _event_request_schema.dump(event_requests, many=True)}),
-        200,
-    )
+    listed = _event_request_schema.dump(event_requests, many=True)
+    return jsonify(_event_list_body(listed, NO_ORGANISATION_REQUESTS_MESSAGE)), 200
 
 
 # --------------------------------------------------------------------------
@@ -124,10 +140,8 @@ def submit_draft(reference: str) -> tuple[Response, int]:
 def list_assigned_requests() -> tuple[Response, int]:
     """List the event requests assigned to the caller, newest first (SCRUM-30 AC5)."""
     event_requests = list_event_requests_for_coordinator(g.current_user_id)
-    return (
-        jsonify({"event_requests": _event_request_schema.dump(event_requests, many=True)}),
-        200,
-    )
+    listed = _event_request_schema.dump(event_requests, many=True)
+    return jsonify(_event_list_body(listed, NO_ASSIGNED_REQUESTS_MESSAGE)), 200
 
 
 @bp.get("/requests/awaiting-equipment")
