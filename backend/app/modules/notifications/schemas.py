@@ -43,6 +43,8 @@ class NotificationSchema(Schema):
     link = fields.Method("get_link", dump_only=True)
     created_at = BusinessDateTime(dump_only=True)
     read_at = BusinessDateTime(dump_only=True, allow_none=True)
+    #: More about what happened, such as the reason for a decision (SCRUM-31 AC10).
+    detail = fields.String(dump_only=True, allow_none=True)
 
     def get_message(self, notification: Notification) -> str:
         """What happened, in words."""

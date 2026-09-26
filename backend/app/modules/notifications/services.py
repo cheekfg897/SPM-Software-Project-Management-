@@ -39,6 +39,7 @@ def notify_users(
     *,
     session: Session | None = None,
     now: datetime | None = None,
+    detail: str | None = None,
 ) -> list[Notification]:
     """Raise one notification per recipient about ``event`` (SCRUM-28 AC1, AC2).
 
@@ -51,6 +52,8 @@ def notify_users(
         kind: What happened to it.
         session: Database session; defaults to ``db.session``.
         now: When it happened; defaults to the current instant.
+        detail: More about what happened, such as the reason for a decision
+            (SCRUM-31 AC10); ``None`` for kinds that carry none.
 
     Returns:
         The saved notifications, in the order of ``recipient_ids``.
@@ -70,6 +73,7 @@ def notify_users(
             event_name=event.name,
             kind=kind,
             created_at=now,
+            detail=detail,
         )
         notifications.append(notification)
 
