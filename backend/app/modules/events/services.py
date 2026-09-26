@@ -778,22 +778,24 @@ def submit_draft_event_request(
 # SCRUM-37 — record what equipment an event needs
 # --------------------------------------------------------------------------
 
-#: Statuses in which a request is still awaiting review, so its equipment may change
+#: Statuses in which an event's equipment may change: while its request awaits review
 #: (SCRUM-37 AC2, ADR-0019).
-AWAITING_REVIEW_STATUSES: frozenset[EventRequestStatus] = frozenset(
+EQUIPMENT_EDITABLE_STATUSES: frozenset[EventRequestStatus] = frozenset(
     {EventRequestStatus.SUBMITTED, EventRequestStatus.UNDER_REVIEW}
 )
-NOT_AWAITING_REVIEW_MESSAGE = "Equipment can only be changed while the request is awaiting review."
+EQUIPMENT_NOT_EDITABLE_MESSAGE = (
+    "Equipment can only be changed while the request is awaiting review."
+)
 DUPLICATE_LINE_MESSAGE = (
     "This event already has a line for that equipment type. Edit that line instead."
 )
 
 
-class RequestNotAwaitingReviewError(AppError):
-    """The request is no longer awaiting review, so its equipment can't change (409)."""
+class EquipmentNotEditableError(AppError):
+    """The request's status no longer lets its equipment change (409)."""
 
     status_code = 409
-    error_code = "request_not_awaiting_review"
+    error_code = "equipment_not_editable"
 
 
 def _check_assigned_to(coordinator_id: int | str, event_request: EventRequest) -> None:
@@ -823,7 +825,7 @@ def _event_request_assigned_to(
     return event_request
 
 
-def _event_request_awaiting_review(
+def _event_request_with_editable_equipment(
     coordinator_id: int | str, reference: str, session: Session
 ) -> EventRequest:
     """The coordinator's request, if its equipment may still change (SCRUM-37 AC2).
@@ -831,11 +833,11 @@ def _event_request_awaiting_review(
     Raises:
         NotFoundError: 404 — no such request among the coordinator's own; a draft is
             never found (ADR-0024).
-        RequestNotAwaitingReviewError: 409 — the request is no longer awaiting review.
+        EquipmentNotEditableError: 409 — the request's equipment can no longer change.
     """
     event_request = _event_request_assigned_to(coordinator_id, reference, session)
-    if event_request.status not in AWAITING_REVIEW_STATUSES:
-        raise RequestNotAwaitingReviewError(NOT_AWAITING_REVIEW_MESSAGE)
+    if event_request.status not in EQUIPMENT_EDITABLE_STATUSES:
+        raise EquipmentNotEditableError(EQUIPMENT_NOT_EDITABLE_MESSAGE)
     return event_request
 
 
@@ -918,12 +920,12 @@ def add_equipment_line(
     Raises:
         ValidationError: 400 — payload invalid, or no such equipment type.
         NotFoundError: 404 — no such event request among the coordinator's own.
-        RequestNotAwaitingReviewError: 409 — the request is no longer awaiting review.
+        EquipmentNotEditableError: 409 — the request's equipment can no longer change.
         ConflictError: 409 — the event already has a line for that equipment type.
     """
     data = load_or_raise(EditEquipmentLineSchema(), payload)
     sess = resolve_session(session)
-    event_request = _event_request_awaiting_review(coordinator_id, reference, sess)
+    event_request = _event_request_with_editable_equipment(coordinator_id, reference, sess)
     _check_equipment_type(data["equipment_type_id"], sess)
 
     line = EventEquipmentLine(
@@ -977,8 +979,8 @@ def update_equipment_line(
     """Change a line's equipment type, quantity or notes (SCRUM-37 AC2, AC3).
 
     Only the fields in ``payload`` change; ``notes`` is cleared only when sent as
-    ``null``. Only the event's assigned coordinator may, while the request is awaiting
-    review (ADR-0019).
+    ``null``. Only the event's assigned coordinator may, while its equipment may still
+    change (ADR-0019).
 
     Returns:
         The updated :class:`EventEquipmentLine`.
@@ -988,13 +990,13 @@ def update_equipment_line(
             equipment type.
         NotFoundError: 404 — no such event request among the coordinator's own, or no
             such line on it.
-        RequestNotAwaitingReviewError: 409 — the request is no longer awaiting review.
+        EquipmentNotEditableError: 409 — the request's equipment can no longer change.
         ConflictError: 409 — another line on the event already has that equipment type.
     """
     schema = EditEquipmentLineSchema()
     data = load_or_raise(schema, payload, partial=tuple(schema.fields))
     sess = resolve_session(session)
-    event_request = _event_request_awaiting_review(coordinator_id, reference, sess)
+    event_request = _event_request_with_editable_equipment(coordinator_id, reference, sess)
     line = _line_of_event(event_request, line_id, sess)
     if "equipment_type_id" in data:
         _check_equipment_type(data["equipment_type_id"], sess)
@@ -1010,16 +1012,16 @@ def remove_equipment_line(
 ) -> None:
     """Delete one of an event's equipment lines (SCRUM-37 AC2).
 
-    Only the event's assigned coordinator may, while the request is awaiting review.
+    Only the event's assigned coordinator may, while its equipment may still change.
     Nobody is notified (ADR-0019).
 
     Raises:
         NotFoundError: 404 — no such event request among the coordinator's own, or no
             such line on it.
-        RequestNotAwaitingReviewError: 409 — the request is no longer awaiting review.
+        EquipmentNotEditableError: 409 — the request's equipment can no longer change.
     """
     sess = resolve_session(session)
-    event_request = _event_request_awaiting_review(coordinator_id, reference, sess)
+    event_request = _event_request_with_editable_equipment(coordinator_id, reference, sess)
     line = _line_of_event(event_request, line_id, sess)
     sess.delete(line)
     sess.commit()

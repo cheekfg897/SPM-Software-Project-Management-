@@ -36,8 +36,8 @@ from app.modules.events.models import (
 from app.modules.events.schemas import EquipmentLineSchema, EventRequestDetailSchema
 from app.modules.events.services import (
     DUPLICATE_LINE_MESSAGE,
-    NOT_AWAITING_REVIEW_MESSAGE,
-    RequestNotAwaitingReviewError,
+    EQUIPMENT_NOT_EDITABLE_MESSAGE,
+    EquipmentNotEditableError,
     add_equipment_line,
     get_event_request_for_organiser,
     list_equipment_lines,
@@ -63,8 +63,8 @@ UNKNOWN_REFERENCE = "EVR-ZZZZZZZZ"
 UNKNOWN_ID = 999
 REQUESTED = EquipmentLineStatus.REQUESTED
 #: A draft is out of scope here: it is hidden from coordinators altogether
-#: (SCRUM-20, ADR-0024), not merely refused as "not awaiting review".
-NO_LONGER_AWAITING_REVIEW = [
+#: (SCRUM-20, ADR-0024), not merely refused as locked.
+EQUIPMENT_LOCKED_STATUSES = [
     EventRequestStatus.CONFIRMED,
     EventRequestStatus.COMPLETED,
     EventRequestStatus.CANCELLED,
@@ -554,8 +554,8 @@ def test_lines_may_change_while_the_request_is_submitted_or_under_review(
     assert _stored_lines(db_session) == []
 
 
-@pytest.mark.parametrize("status", NO_LONGER_AWAITING_REVIEW, ids=lambda status: status.value)
-def test_lines_cannot_be_added_once_the_request_is_no_longer_awaiting_review(
+@pytest.mark.parametrize("status", EQUIPMENT_LOCKED_STATUSES, ids=lambda status: status.value)
+def test_lines_cannot_be_added_once_the_requests_equipment_is_locked(
     db_session: Session,
     saved_event_request: EventRequest,
     valid_equipment_line_payload: dict[str, Any],
@@ -565,17 +565,17 @@ def test_lines_cannot_be_added_once_the_request_is_no_longer_awaiting_review(
     saved_event_request.status = status
     save(saved_event_request)
 
-    with pytest.raises(RequestNotAwaitingReviewError) as exc_info:
+    with pytest.raises(EquipmentNotEditableError) as exc_info:
         add_equipment_line(COORDINATOR_ID, REFERENCE, valid_equipment_line_payload)
 
     assert exc_info.value.status_code == 409
-    assert exc_info.value.error_code == "request_not_awaiting_review"
-    assert exc_info.value.message == NOT_AWAITING_REVIEW_MESSAGE
+    assert exc_info.value.error_code == "equipment_not_editable"
+    assert exc_info.value.message == EQUIPMENT_NOT_EDITABLE_MESSAGE
     assert _stored_lines(db_session) == []
 
 
 @pytest.mark.parametrize("operation", LINE_OPERATIONS, ids=LINE_OPERATION_IDS)
-def test_lines_cannot_be_edited_or_removed_once_the_request_is_no_longer_awaiting_review(
+def test_lines_cannot_be_edited_or_removed_once_the_requests_equipment_is_locked(
     saved_event_request: EventRequest,
     saved_line: EventEquipmentLine,
     save: Save,
@@ -585,7 +585,7 @@ def test_lines_cannot_be_edited_or_removed_once_the_request_is_no_longer_awaitin
     saved_event_request.status = EventRequestStatus.CONFIRMED
     save(saved_event_request)
 
-    with pytest.raises(RequestNotAwaitingReviewError) as exc_info:
+    with pytest.raises(EquipmentNotEditableError) as exc_info:
         operation(COORDINATOR_ID, REFERENCE, saved_line.id)
 
     assert exc_info.value.status_code == 409
