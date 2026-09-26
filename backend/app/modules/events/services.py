@@ -1807,8 +1807,14 @@ NOT_REVIEWABLE_MESSAGE = "Only a submitted event request can be moved to under r
 AWAITING_DECISION_STATUSES: frozenset[EventRequestStatus] = frozenset(
     {EventRequestStatus.SUBMITTED, EventRequestStatus.UNDER_REVIEW}
 )
-#: Statuses in which a request may be decided.
-DECIDABLE_STATUSES = AWAITING_DECISION_STATUSES
+#: Statuses in which a request has been decided, and may be decided again with a
+#: reason until arrangements exist for it (SCRUM-31 AC6, AC7).
+DECIDED_STATUSES: frozenset[EventRequestStatus] = frozenset(
+    {EventRequestStatus.APPROVED, EventRequestStatus.REJECTED}
+)
+#: Statuses in which a request may be decided. A confirmed, completed or cancelled
+#: event is past its decision (ADR-0028).
+DECIDABLE_STATUSES: frozenset[EventRequestStatus] = AWAITING_DECISION_STATUSES | DECIDED_STATUSES
 #: The status each outcome moves a request to (AC4).
 STATUS_BY_OUTCOME: dict[DecisionOutcome, EventRequestStatus] = {
     DecisionOutcome.APPROVED: EventRequestStatus.APPROVED,
@@ -1819,8 +1825,14 @@ NOTIFICATION_KIND_BY_OUTCOME: dict[DecisionOutcome, NotificationKind] = {
     DecisionOutcome.APPROVED: NotificationKind.EVENT_REQUEST_APPROVED,
     DecisionOutcome.REJECTED: NotificationKind.EVENT_REQUEST_REJECTED,
 }
-NOT_DECIDABLE_MESSAGE = "Only a submitted or under-review event request can be decided."
+NOT_DECIDABLE_MESSAGE = (
+    "Only a submitted, under-review, approved or rejected event request can be decided."
+)
 REASON_REQUIRED_MESSAGE = "A reason is required to reject a request or to change a decision."
+DECISION_LOCKED_MESSAGE = (
+    "The decision can't be changed once the event has an equipment request or a venue "
+    "booking request."
+)
 
 
 class RequestNotReviewableError(AppError):
@@ -1835,6 +1847,13 @@ class RequestNotDecidableError(AppError):
 
     status_code = 409
     error_code = "request_not_decidable"
+
+
+class DecisionLockedError(AppError):
+    """Arrangements have been made for the event, so its decision can't change (409)."""
+
+    status_code = 409
+    error_code = "decision_locked"
 
 
 def start_event_request_review(
@@ -1875,31 +1894,48 @@ def start_event_request_review(
     return event_request
 
 
+def _has_arrangements(event_request: EventRequest) -> bool:
+    """Whether arrangements have been made for the event (SCRUM-31 AC7, ADR-0028)."""
+    # TODO: SCRUM-42 also counts the event's venue booking requests here.
+    return len(event_request.equipment_lines) > 0
+
+
 def _event_request_decidable_by(
     coordinator_id: int | str, reference: str, session: Session
 ) -> EventRequest:
-    """The coordinator's request, if its status lets it be decided (AC5, ADR-0028).
+    """The coordinator's request, if it may be decided now (AC5, AC7, ADR-0028).
+
+    A decided request may be decided again only until arrangements exist for it; its
+    first decision is never blocked.
 
     Raises:
         NotFoundError: 404 — no such request among the coordinator's own; a draft is
             never found (ADR-0024).
         RequestNotDecidableError: 409 — the request's status doesn't allow a decision.
+        DecisionLockedError: 409 — it is decided and has arrangements.
     """
     event_request = _event_request_assigned_to(coordinator_id, reference, session)
     if event_request.status not in DECIDABLE_STATUSES:
         raise RequestNotDecidableError(NOT_DECIDABLE_MESSAGE)
+    if event_request.status in DECIDED_STATUSES and _has_arrangements(event_request):
+        raise DecisionLockedError(DECISION_LOCKED_MESSAGE)
     return event_request
 
 
-def _check_reason_given(decision: Mapping[str, Any]) -> None:
-    """Refuse a rejection without a reason (AC4); a first approval needs none.
+def _check_reason_given(decision: Mapping[str, Any], event_request: EventRequest) -> None:
+    """Refuse a rejection, or a change of decision, without a reason (AC4, AC6).
+
+    Only a first approval may leave the reason out. ``event_request`` is still in the
+    status it had before this decision.
 
     Raises:
-        ValidationError: 400 — a rejection with no reason.
+        ValidationError: 400 — no reason where one is required.
     """
     if decision["reason"] is not None:
         return
-    if decision["outcome"] is DecisionOutcome.REJECTED:
+    is_rejection = decision["outcome"] is DecisionOutcome.REJECTED
+    is_new_decision = event_request.status in DECIDED_STATUSES
+    if is_rejection or is_new_decision:
         raise ValidationError("Invalid request.", details={"reason": [REASON_REQUIRED_MESSAGE]})
 
 
@@ -1953,12 +1989,14 @@ def decide_event_request(
 
     Only the request's assigned coordinator may (AC5), while it is submitted or under
     review (ADR-0028). Approving moves it to ``approved``; rejecting moves it to
-    ``rejected`` and needs a reason. The status change and a ``decision_recorded``
-    history entry, with the outcome, the reason and the coordinator, are saved in one
-    commit (AC8). Once saved, the organiser who submitted the request is notified,
-    with the reason (AC10); a failure there is logged, not raised (ADR-0015). The
-    checks run in this order: the reference, the coordinator, the status, then the
-    payload.
+    ``rejected`` and needs a reason. An approved or rejected request may be decided
+    again, with a reason, until the event has an equipment request (AC6, AC7). The
+    status change and a ``decision_recorded`` history entry, with the outcome, the
+    reason and the coordinator, are saved in one commit, so every decision stays in
+    the history and the latest is current (AC8). Once saved, the organiser who
+    submitted the request is notified, with the reason (AC10); a failure there is
+    logged, not raised (ADR-0015). The checks run in this order: the reference, the
+    coordinator, the status, the lock, then the payload.
 
     Args:
         coordinator_id: The caller's user id, taken from their token.
@@ -1972,13 +2010,17 @@ def decide_event_request(
     Raises:
         NotFoundError: 404 — no such request among the coordinator's own; a draft is
             never found (ADR-0024).
-        RequestNotDecidableError: 409 — the request isn't submitted or under review.
-        ValidationError: 400 — payload invalid, or a rejection with no reason.
+        RequestNotDecidableError: 409 — the request is confirmed, completed or
+            cancelled.
+        DecisionLockedError: 409 — a new decision once the event has an equipment
+            request.
+        ValidationError: 400 — payload invalid, or no reason for a rejection or a new
+            decision.
     """
     sess = resolve_session(session)
     event_request = _event_request_decidable_by(coordinator_id, reference, sess)
     decision = load_or_raise(DecideEventRequestSchema(), payload)
-    _check_reason_given(decision)
+    _check_reason_given(decision, event_request)
     # TODO: SCRUM-32 refuses an approval here, with a 409, while a clarification
     # request is outstanding: it needs the validated outcome, so it sits after the
     # payload check and before anything is written.
