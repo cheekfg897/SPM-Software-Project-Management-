@@ -1,6 +1,6 @@
 # ADR-0012: Seven event statuses, `under_review` for "Under Review / Planning", and organiser-only visibility for now
 
-- **Status:** Accepted; the organiser's scope (the submitter only) is superseded by ADR-0020
+- **Status:** Accepted; the organiser's scope (the submitter only) is superseded by ADR-0020; the detail view's viewers extended by ADR-0026
 - **Date:** 2026-09-25
 - **Story:** SCRUM-22 Define the event status model
 

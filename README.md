@@ -14,7 +14,7 @@ backend/            Flask application (see below)
     extensions.py   db, migrate, jwt instances
     common/         cross-cutting: error handlers, requires_auth / requires_role
     modules/auth/   models, routes, schemas, services, permissions
-    modules/events/ event requests (SCRUM-19), event status model (SCRUM-22), filed under the organiser's organisation (SCRUM-66) and seen by its organisers (SCRUM-7), coordinator assignment and event history (SCRUM-30), equipment lines (SCRUM-37), equipment awaiting Technical Support (SCRUM-38), save and resume a draft (SCRUM-20), editing an event and its history (SCRUM-33)
+    modules/events/ event requests (SCRUM-19), event status model (SCRUM-22), filed under the organiser's organisation (SCRUM-66) and seen by its organisers (SCRUM-7), coordinator assignment and event history (SCRUM-30), equipment lines (SCRUM-37), equipment awaiting Technical Support (SCRUM-38), save and resume a draft (SCRUM-20), editing an event and its history (SCRUM-33), each role's event lists and the coordinator's event record (SCRUM-24)
     modules/organisations/ client organisations that Event Organisers belong to (SCRUM-66)
     modules/notifications/ in-app notifications about events (SCRUM-28)
     modules/venue/  venue catalogue (SCRUM-25), availability calendar (SCRUM-26), search (SCRUM-35), suitability check (SCRUM-36), setup/turnaround (SCRUM-67), blocks (SCRUM-34)
@@ -121,13 +121,15 @@ curl http://localhost:5000/api/auth/internal-only -H "Authorization: Bearer <tok
 | `GET  /api/auth/me`            | any authenticated user                                          |
 | `GET  /api/auth/internal-only` | `event_coordinator`, `venue_staff`, `technical_support_staff`   |
 | `POST /api/events/requests`    | `event_organiser` — submit an event request                     |
-| `GET  /api/events/requests`    | `event_organiser` — list your client organisation's event requests and your own drafts, whoever submitted them, newest first; a colleague's drafts are hidden (`403` if your account has no organisation) |
+| `GET  /api/events/requests`    | `event_organiser` — list your client organisation's event requests and your own drafts, whoever submitted them, newest first; a colleague's drafts are hidden (`403` if your account has no organisation); an empty list comes with a `message` |
 | `POST /api/events/requests/drafts` | `event_organiser` — save a draft with only the event name required; every other field is optional and checked on its own |
 | `PATCH /api/events/requests/drafts/<reference>` | `event_organiser` — on one of your own drafts, change only the fields sent; a field sent as `null` clears it, `name` cannot be (`404` if it isn't yours or doesn't exist; `409` if it is no longer a draft) |
 | `POST /api/events/requests/drafts/<reference>/submit` | `event_organiser` — submit one of your own drafts under the full submission rules, keeping its reference; assigned and notified exactly as a fresh submission is (`400` if a detail is missing or fails a rule) |
-| `GET  /api/events/requests/assigned` | `event_coordinator` — the event requests assigned to you, newest first |
+| `GET  /api/events/requests/assigned` | `event_coordinator` — the event requests assigned to you, newest first; an empty list comes with a `message` |
+| `GET  /api/events/requests/unassigned` | `event_coordinator` — the submitted event requests no coordinator has yet, newest first; an empty list comes with a `message` |
+| `GET  /api/events/requests/with-equipment` | `technical_support_staff` — every event that has an equipment request, whatever its status or date: name, date, times and status; an empty list comes with a `message` |
 | `GET  /api/events/requests/awaiting-equipment` | `technical_support_staff` — every upcoming event with equipment lines still `requested`: the event's name, date and times, those lines, and the days remaining; soonest first |
-| `GET  /api/events/requests/<reference>` | `event_organiser` — one of your client organisation's event requests and your own drafts, with its current status, the assigned coordinator's name and email (`null` until assigned) and its equipment lines (`404` if it is another organisation's or a colleague's draft; `403` if your account has no organisation) |
+| `GET  /api/events/requests/<reference>` | `event_organiser` — one of your client organisation's event requests and your own drafts, with its current status, the assigned coordinator's name and email (`null` until assigned) and its equipment lines (`404` if it is another organisation's or a colleague's draft; `403` if your account has no organisation). `event_coordinator` — the same, for a request assigned to you or a submitted one no coordinator has yet; otherwise `404` |
 | `POST /api/events/requests/<reference>/equipment` | `event_coordinator` — add an equipment line (type, quantity, notes) to a request assigned to you, while it is awaiting review; notifies Technical Support Staff (`404` if it isn't assigned to you) |
 | `GET  /api/events/requests/<reference>/equipment` | `event_coordinator` (requests assigned to you), `technical_support_staff` (any request but a draft) — the event's date and times (`event`, so Technical Support know by when) and its equipment lines with their status |
 | `PATCH /api/events/requests/<reference>/equipment/<line_id>` | `event_coordinator` — on a request assigned to you, change only the fields sent, while it is awaiting review |
@@ -197,6 +199,7 @@ pytest -m scrum_21   # enforce permissions
 pytest -m scrum_19   # submit an event request
 pytest -m scrum_20   # save and resume a draft event request
 pytest -m scrum_22   # event status model
+pytest -m scrum_24   # see the events my role is involved in
 pytest -m scrum_25   # update venue catalogue
 pytest -m scrum_26   # view a venue's availability calendar
 pytest -m scrum_27   # maintain the equipment catalogue

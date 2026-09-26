@@ -1,6 +1,6 @@
 # ADR-0018: A submitted request goes to the least-loaded Event Coordinator; one event history table records what happens to an event
 
-- **Status:** Accepted
+- **Status:** Accepted; the coordinator's detail view taken up by ADR-0026
 - **Date:** 2026-09-25
 - **Story:** SCRUM-30 Assign a coordinator to a submitted event (labelled `needs-customer-clarification`; no comments yet)
 - **Supersedes:** part of ADR-0015: who is told about a new request
