@@ -28,6 +28,9 @@ MESSAGE_BY_KIND: dict[NotificationKind, str] = {
     NotificationKind.CLARIFICATION_ANSWERED: (
         "The organiser has answered your request for clarification."
     ),
+    NotificationKind.REQUEST_ASSIGNED: (
+        "An Event Coordinator has been assigned to your event request."
+    ),
 }
 
 #: Where a notification links to: the event's page, found by its reference
