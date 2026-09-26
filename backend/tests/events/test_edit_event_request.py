@@ -37,6 +37,7 @@ from app.modules.events.models import (
     EventRequest,
     EventRequestStatus,
 )
+from app.modules.events.schemas import EventRequestDetailSchema
 from app.modules.events.services import (
     EVENT_REQUEST_NOT_FOUND_MESSAGE,
     NOT_EDITABLE_MESSAGE,
@@ -453,3 +454,27 @@ def test_ownership_is_checked_before_status(edit_event: EditEvent, set_status: S
         edit_event(OTHER_COORDINATOR_ID, {"description": "Revised"})
 
     assert exc_info.value.status_code == 404
+
+
+# --------------------------------------------------------------------------
+# ADR-0025 — the organiser's record shows the programme notes, never the internal ones
+# --------------------------------------------------------------------------
+
+
+def test_the_organiser_sees_the_programme_notes_but_not_the_internal_planning_notes(
+    edit_event: EditEvent,
+    reload_event_request: ReloadEventRequest,
+    saved_event_request: EventRequest,
+) -> None:
+    edit_event(
+        COORDINATOR_ID,
+        {
+            "programme_notes": "Doors open at 08:30.",
+            "internal_planning_notes": "Reserve the loading dock.",
+        },
+    )
+
+    shown = EventRequestDetailSchema().dump(reload_event_request(saved_event_request.id))
+
+    assert shown["programme_notes"] == "Doors open at 08:30."
+    assert "internal_planning_notes" not in shown
