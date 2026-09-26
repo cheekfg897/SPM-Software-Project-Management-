@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 
 from app.common.errors import AuthenticationError, AuthorizationError, NotFoundError
 from app.modules.auth.models import User
-from app.modules.auth.permissions import ALL_ROLES, Role
+from app.modules.auth.permissions import Role
 from app.modules.events import routes
 from app.modules.events.models import EventRequest, EventRequestStatus
 from app.modules.events.schemas import EventRequestSchema
@@ -34,7 +34,6 @@ MakeEventRequest = Callable[..., EventRequest]
 
 REFERENCE = "EVR-AAAAAAAA"
 REQUEST_PATH = f"/api/events/requests/{REFERENCE}"
-NON_ORGANISER_ROLES = sorted(ALL_ROLES - {Role.EVENT_ORGANISER}, key=lambda role: role.value)
 
 
 def _saved(db_session: Session, event_request: EventRequest) -> EventRequest:
@@ -147,15 +146,17 @@ def test_detail_route_allows_only_event_organisers() -> None:
     assert routes.get_my_request.allowed_roles == frozenset({"event_organiser"})  # type: ignore[attr-defined]
 
 
-@pytest.mark.parametrize("role", NON_ORGANISER_ROLES, ids=lambda role: role.value)
 def test_other_roles_cannot_open_a_request(
-    app: Flask, token_for: Callable[..., str], monkeypatch: pytest.MonkeyPatch, role: Role
+    app: Flask,
+    token_for: Callable[..., str],
+    monkeypatch: pytest.MonkeyPatch,
+    non_organiser_role: Role,
 ) -> None:
     service = MagicMock()
     monkeypatch.setattr(routes, "get_event_record_for_organiser", service)
 
     with pytest.raises(AuthorizationError) as exc_info:
-        _open_request(app, token_for(role=role))
+        _open_request(app, token_for(role=non_organiser_role))
 
     assert exc_info.value.status_code == 403
     service.assert_not_called()
