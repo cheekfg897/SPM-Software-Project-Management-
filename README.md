@@ -134,8 +134,9 @@ curl http://localhost:5000/api/auth/internal-only -H "Authorization: Bearer <tok
 | `PATCH /api/events/requests/<reference>/equipment/<line_id>` | `event_coordinator` — on a request assigned to you, change only the fields sent, while it is awaiting review |
 | `DELETE /api/events/requests/<reference>/equipment/<line_id>` | `event_coordinator` — on a request assigned to you, remove a line, while it is awaiting review |
 | `POST /api/events/requests/<reference>/reassign` | `event_coordinator` — on a request assigned to you, move it while submitted, under review or confirmed to the Event Coordinator named by `coordinator_email`; recorded in its history and the new coordinator is notified. Returns the request and the new coordinator's name and email |
+| `POST /api/events/requests/<reference>/complete` | `event_coordinator` — on a request assigned to you, mark it completed once it is confirmed and its end date and time have passed (business time); recorded in its history with who did it and when. `409` if it isn't confirmed or hasn't ended yet. Returns the request |
 | `PATCH /api/events/requests/<reference>` | `event_coordinator` — on a request assigned to you, while it is submitted, under review or confirmed, change only the fields sent (notes, dates, times, attendance, venue/equipment requirements); a value equal to what's saved is not a change. Returns the request, its programme and internal planning notes, and the list of changes made, each flagged `significant` if it could affect a venue booking or requested equipment. A significant change that could affect equipment already requested notifies Technical Support Staff |
-| `GET  /api/events/requests/<reference>/history` | internal roles (any event but a draft), `event_organiser` (your own client organisation's) — the event's history oldest first: coordinator assignment and reassignment, and each field edited, with who did it and when, names resolved and no user ids. An organiser never sees an internal planning notes change |
+| `GET  /api/events/requests/<reference>/history` | internal roles (any event but a draft), `event_organiser` (your own client organisation's) — the event's history oldest first: coordinator assignment and reassignment, each field edited, and completion, with who did it and when, names resolved and no user ids. An organiser never sees an internal planning notes change |
 | `POST /api/organisations`      | internal roles — record a client organisation                   |
 | `GET  /api/organisations`      | internal roles — list client organisations, by name             |
 | `POST /api/venues`             | `venue_staff` — add a venue                                     |
@@ -178,6 +179,8 @@ Technical Support Staff share one list of the equipment awaiting them: an event 
 
 An event's assigned coordinator can edit its notes, dates, times, attendance and requirements text while it is `submitted`, `under_review` or `confirmed`; a value equal to what's already saved is not a change. Every changed field is written to the event's history, flagged `significant` if it could affect a venue booking or the equipment already requested; a significant change that could affect equipment notifies every Technical Support Staff member once per edit, but only if the event already has an equipment line to reassess ([ADR-0025](docs/adr/0025-event-edits-significant-changes-and-history.md)).
 
+An event's assigned coordinator marks it completed once it is `confirmed` and its end (`end_date` and `end_time`, in business time) has passed, the end instant included. The change is recorded in the event history with who did it and when, and a completed event can no longer be edited ([ADR-0027](docs/adr/0027-event-completion.md)).
+
 Date-times (bookings, blocks, calendar ranges) should carry an offset, such as `Z` or `+08:00`. One sent without an offset is read as business time (`APP_TIMEZONE`, Singapore by default). They're stored in UTC and come back in business time, e.g. `2026-10-01T17:00:00+08:00` ([ADR-0009](docs/adr/0009-booking-times-in-utc.md)). Notification times (`created_at`, `read_at`) come back the same way.
 
 ## 5. Run the tests
@@ -215,6 +218,7 @@ pytest -m scrum_7    # see only my own organisation's events
 pytest -m scrum_87   # reassign an event to a different coordinator
 pytest -m scrum_88   # staff accounts come from a command, not self-registration
 pytest -m scrum_33   # update event information and flag significant changes
+pytest -m scrum_68   # mark an event as completed after it has taken place
 ```
 
 ## Database migrations
