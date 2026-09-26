@@ -32,6 +32,7 @@ from app.modules.events.services import (
     list_event_history,
     list_event_requests_for_coordinator,
     list_event_requests_for_organiser,
+    list_unassigned_event_requests,
     reassign_coordinator,
     remove_equipment_line,
     save_draft_event_request,
@@ -57,6 +58,7 @@ _event_history_entry_schema = EventHistoryEntrySchema()
 #: What each role's event list says when it is empty (SCRUM-24 AC8, ADR-0026).
 NO_ORGANISATION_REQUESTS_MESSAGE = "Your organisation has no event requests yet."
 NO_ASSIGNED_REQUESTS_MESSAGE = "No event requests are assigned to you yet."
+NO_UNASSIGNED_REQUESTS_MESSAGE = "No submitted event requests are waiting for a coordinator."
 
 
 def _event_list_body(listed: list[dict[str, Any]], empty_message: str) -> dict[str, Any]:
@@ -133,8 +135,7 @@ def submit_draft(reference: str) -> tuple[Response, int]:
 
 # The static ``/requests/...`` paths above and below are declared before
 # ``/requests/<reference>`` for readers; Werkzeug matches a static segment first
-# either way, so "drafts", "assigned" and "awaiting-equipment" are never taken for a
-# reference.
+# either way, so none is ever taken for a reference.
 @bp.get("/requests/assigned")
 @requires_role(Role.EVENT_COORDINATOR)
 def list_assigned_requests() -> tuple[Response, int]:
@@ -154,6 +155,15 @@ def list_equipment_awaiting_action() -> tuple[Response, int]:
     awaiting = list_equipment_requests_awaiting_action()
     body = {"equipment_requests": _equipment_awaiting_action_schema.dump(awaiting, many=True)}
     return jsonify(body), 200
+
+
+@bp.get("/requests/unassigned")
+@requires_role(Role.EVENT_COORDINATOR)
+def list_unassigned_requests() -> tuple[Response, int]:
+    """The submitted requests no coordinator has yet, newest first (SCRUM-24 AC2)."""
+    event_requests = list_unassigned_event_requests()
+    listed = _event_request_schema.dump(event_requests, many=True)
+    return jsonify(_event_list_body(listed, NO_UNASSIGNED_REQUESTS_MESSAGE)), 200
 
 
 @bp.get("/requests/<reference>")
