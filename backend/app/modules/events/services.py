@@ -250,6 +250,52 @@ def _notify_about_submission(event_request: EventRequest, session: Session) -> N
     )
 
 
+def _save_under_new_reference(
+    new_request: Callable[[str], EventRequest],
+    session: Session,
+    reference_factory: Callable[[], str],
+) -> EventRequest:
+    """Build and save one row through ``new_request``, retrying a reference clash.
+
+    Shared by every place that saves a request under a fresh reference (SCRUM-19,
+    SCRUM-20 AC1, ADR-0004): only what the row looks like differs between them.
+    ``new_request(reference)`` builds the row for that candidate reference and adds
+    it, and anything that must be saved in the same commit (such as a history
+    entry), to ``session``; this function only chooses the reference and commits. A
+    reference collision rolls the attempt back and tries again with a new one, up
+    to :data:`MAX_REFERENCE_ATTEMPTS` times; any other integrity error is raised as
+    is, since a new reference would not fix it.
+
+    Args:
+        new_request: Builds and adds the row for a candidate reference.
+        session: Database session to commit on.
+        reference_factory: Makes a candidate reference each attempt.
+
+    Returns:
+        The row ``new_request`` built, once its commit has succeeded.
+
+    Raises:
+        ReferenceGenerationError: 500 — every attempt hit a used reference.
+        IntegrityError: any other constraint failure; not retried.
+    """
+    for attempt in range(1, MAX_REFERENCE_ATTEMPTS + 1):
+        reference = reference_factory()
+        event_request = new_request(reference)
+        try:
+            session.commit()
+        except IntegrityError as exc:
+            session.rollback()
+            if not is_reference_collision(exc):
+                raise
+            logger.warning(
+                "event_request_reference_collision reference=%s attempt=%d", reference, attempt
+            )
+            continue
+        return event_request
+
+    raise ReferenceGenerationError("Could not create the event request. Please try again.")
+
+
 def submit_event_request(
     organiser_id: int | str,
     payload: Mapping[str, Any] | None,
@@ -296,12 +342,13 @@ def submit_event_request(
     coordinator_ids = list_user_ids_with_role(Role.EVENT_COORDINATOR, session=sess)
     coordinator_id = _least_loaded_coordinator(coordinator_ids, sess)
 
-    for attempt in range(1, MAX_REFERENCE_ATTEMPTS + 1):
+    def submitted_under(reference: str) -> EventRequest:
+        """Build a submitted request under ``reference`` with its assignment history."""
         event_request = EventRequest(
             organiser_id=int(organiser_id),
             organisation_id=organisation_id,
             coordinator_id=coordinator_id,
-            reference=reference_factory(),
+            reference=reference,
             status=EventRequestStatus.SUBMITTED,
             **data,
         )
@@ -315,23 +362,12 @@ def submit_event_request(
                 details={"coordinator_id": coordinator_id},
                 session=sess,
             )
-        try:
-            sess.commit()
-        except IntegrityError as exc:
-            sess.rollback()
-            if not is_reference_collision(exc):
-                raise
-            logger.warning(
-                "event_request_reference_collision reference=%s attempt=%d",
-                event_request.reference,
-                attempt,
-            )
-            continue
-        # Outside the try: a failed notification commit is not a reference collision.
-        _notify_about_submission(event_request, sess)
         return event_request
 
-    raise ReferenceGenerationError("Could not create the event request. Please try again.")
+    event_request = _save_under_new_reference(submitted_under, sess, reference_factory)
+    # Outside the retry: a failed notification commit is not a reference collision.
+    _notify_about_submission(event_request, sess)
+    return event_request
 
 
 def _list_event_requests_newest_first(
