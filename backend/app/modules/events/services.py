@@ -1588,3 +1588,16 @@ def _awaiting_assignment() -> ColumnElement[bool]:
 def list_unassigned_event_requests(*, session: Session | None = None) -> list[EventRequest]:
     """The submitted requests no coordinator has yet, newest first (SCRUM-24 AC2)."""
     return _list_event_requests_newest_first(_awaiting_assignment(), resolve_session(session))
+
+
+def list_event_requests_with_equipment(*, session: Session | None = None) -> list[EventRequest]:
+    """Every event with at least one equipment line, newest first (SCRUM-24 AC4).
+
+    Whatever the event's status or date and whatever state its lines are in: this is
+    everything Technical Support are involved in. SCRUM-38's list is the part still
+    awaiting them (ADR-0026). An ``EXISTS`` on the lines, so an event with several lines
+    is listed once.
+    """
+    return _list_event_requests_newest_first(
+        EventRequest.equipment_lines.any(), resolve_session(session)
+    )

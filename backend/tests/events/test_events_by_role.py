@@ -1,23 +1,30 @@
 """Service tests for SCRUM-24 "see the events my role is involved in".
 
 AC2: an Event Coordinator sees the submitted requests no coordinator has yet, as a
-list separate from their own assigned one (``test_list_assigned_requests.py``).
-Later commits add AC4 (the events with an equipment request) and AC7 (a coordinator
-reading an event record).
+list separate from their own assigned one (``test_list_assigned_requests.py``). AC4:
+Technical Support see every event that has an equipment request, whatever its status
+or date. Later commits add AC7 (a coordinator reading an event record).
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import date
 
 import pytest
 
-from app.modules.events.models import EventRequest, EventRequestStatus
-from app.modules.events.services import list_unassigned_event_requests
+from app.modules.equipment.models import EquipmentType
+from app.modules.events.models import EventEquipmentLine, EventRequest, EventRequestStatus
+from app.modules.events.services import (
+    list_event_requests_with_equipment,
+    list_unassigned_event_requests,
+)
 
 pytestmark = pytest.mark.scrum_24
 
 MakeEventRequest = Callable[..., EventRequest]
+MakeEquipmentLine = Callable[..., EventEquipmentLine]
+EventNeeding = Callable[..., EventRequest]
 Save = Callable[..., None]
 
 #: Every status but ``submitted``, so a request in it is never mistaken for one
@@ -57,3 +64,46 @@ def test_unassigned_requests_in_any_other_status_are_not_listed(
     save(make_event_request(status=status, coordinator_id=None))
 
     assert list_unassigned_event_requests() == []
+
+
+# --------------------------------------------------------------------------
+# AC4 — the events that have an equipment request
+# --------------------------------------------------------------------------
+
+
+def test_events_with_an_equipment_request_are_listed_newest_first(
+    event_needing: EventNeeding, save: Save, make_event_request: MakeEventRequest
+) -> None:
+    event_needing("EVR-AAAAAAAA")
+    save(make_event_request(reference="EVR-BBBBBBBB"))
+    event_needing("EVR-CCCCCCCC")
+
+    assert _references(list_event_requests_with_equipment()) == ["EVR-CCCCCCCC", "EVR-AAAAAAAA"]
+
+
+def test_an_event_with_several_lines_is_listed_once(
+    saved_event_request: EventRequest,
+    equipment_type: EquipmentType,
+    microphone: EquipmentType,
+    make_equipment_line: MakeEquipmentLine,
+    save: Save,
+) -> None:
+    save(make_equipment_line(saved_event_request, equipment_type))
+    save(make_equipment_line(saved_event_request, microphone))
+
+    assert _references(list_event_requests_with_equipment()) == ["EVR-AAAAAAAA"]
+
+
+@pytest.mark.parametrize("status", list(EventRequestStatus), ids=lambda status: status.value)
+def test_an_event_with_equipment_is_listed_whatever_its_status(
+    event_needing: EventNeeding, status: EventRequestStatus
+) -> None:
+    event_needing(status=status)
+
+    assert _references(list_event_requests_with_equipment()) == ["EVR-AAAAAAAA"]
+
+
+def test_an_event_that_has_taken_place_is_still_listed(event_needing: EventNeeding) -> None:
+    event_needing(proposed_date=date(2026, 1, 10))
+
+    assert _references(list_event_requests_with_equipment()) == ["EVR-AAAAAAAA"]
