@@ -34,6 +34,7 @@ from app.modules.events.services import (
     EventEdit,
     reassign_coordinator,
     save_draft_event_request,
+    start_event_request_review,
     submit_event_request,
     update_event_request,
 )
@@ -565,3 +566,19 @@ def reassignment_lookups(
     mock_session.scalar.side_effect = [event_request, coordinators[9]]
     mock_session.get.side_effect = get_coordinator
     return event_request
+
+
+@pytest.fixture()
+def start_review(
+    saved_users: list[User], saved_event_request: EventRequest
+) -> Callable[[int], EventRequest]:
+    """Move ``saved_event_request`` to under review as ``actor_id`` (SCRUM-31).
+
+    The request, ``EVR-AAAAAAAA``, is submitted and assigned to Event Coordinator 3.
+    Runs on ``db_session`` with ``saved_users``.
+    """
+
+    def _start(actor_id: int) -> EventRequest:
+        return start_event_request_review(actor_id, "EVR-AAAAAAAA")
+
+    return _start
