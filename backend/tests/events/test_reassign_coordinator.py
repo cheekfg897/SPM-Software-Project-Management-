@@ -71,8 +71,9 @@ REASSIGNABLE = [
     EventRequestStatus.UNDER_REVIEW,
     EventRequestStatus.CONFIRMED,
 ]
+#: A draft is out of scope here: it is hidden from coordinators altogether
+#: (SCRUM-20, ADR-0024), not merely refused as "not reassignable".
 NOT_REASSIGNABLE = [
-    EventRequestStatus.DRAFT,
     EventRequestStatus.COMPLETED,
     EventRequestStatus.CANCELLED,
     EventRequestStatus.REJECTED,
@@ -184,7 +185,7 @@ def test_only_the_events_own_coordinator_may_reassign_it(
 
 
 @pytest.mark.parametrize("status", NOT_REASSIGNABLE, ids=lambda status: status.value)
-def test_a_draft_or_finished_event_cannot_be_reassigned(
+def test_a_finished_event_cannot_be_reassigned(
     reassign: Reassign,
     set_status: Callable[[EventRequestStatus], None],
     assert_nothing_changed: AssertNothingChanged,

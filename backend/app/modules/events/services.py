@@ -412,25 +412,39 @@ def _normalise_reference(reference: str) -> str:
 
 
 def _event_request_by_reference(
-    reference: str, session: Session, *, belongs_to: ColumnElement[bool] | None = None
+    reference: str, session: Session, *, belongs_to: ColumnElement[bool]
 ) -> EventRequest:
-    """An event request by its reference, among those matching ``belongs_to`` if given.
+    """An event request by its reference, among those matching ``belongs_to``.
 
     Case and surrounding spaces are ignored (ADR-0004). A request outside
     ``belongs_to`` is not found, the same 404 as a reference that doesn't exist, so
     "not yours" can't be told apart from "no such request" (ADR-0012). Callers that
-    check ownership afterwards answer "not yours" with that same 404 too.
+    check ownership afterwards answer "not yours" with that same 404 too. ``belongs_to``
+    is required so that no caller can look a request up unscoped by accident and
+    surface a draft it should never see (SCRUM-20, ADR-0024).
 
     Raises:
         NotFoundError: 404 — no such request, or none matching ``belongs_to``.
     """
-    stmt = select(EventRequest).where(EventRequest.reference == _normalise_reference(reference))
-    if belongs_to is not None:
-        stmt = stmt.where(belongs_to)
+    stmt = select(EventRequest).where(
+        EventRequest.reference == _normalise_reference(reference), belongs_to
+    )
     event_request = session.scalar(stmt)
     if event_request is None:
         raise NotFoundError(EVENT_REQUEST_NOT_FOUND_MESSAGE)
     return event_request
+
+
+def _event_request_for_staff(reference: str, session: Session) -> EventRequest:
+    """An event request by its reference, for internal staff (ADR-0019, ADR-0021).
+
+    A draft is hidden from every internal role, not just the coordinator lookups:
+    it belongs to its author alone until it is submitted (SCRUM-20 AC4, ADR-0024).
+
+    Raises:
+        NotFoundError: 404 — no such request, or it is still a draft.
+    """
+    return _event_request_by_reference(reference, session, belongs_to=_not_a_draft())
 
 
 def get_event_request_for_organiser(
@@ -542,9 +556,10 @@ def _event_request_assigned_to(
     """The request, if ``coordinator_id`` is its assigned coordinator (ADR-0019).
 
     Raises:
-        NotFoundError: 404 — no such request among the coordinator's own.
+        NotFoundError: 404 — no such request among the coordinator's own, or it is
+            still a draft (SCRUM-20, ADR-0024).
     """
-    event_request = _event_request_by_reference(reference, session)
+    event_request = _event_request_for_staff(reference, session)
     _check_assigned_to(coordinator_id, event_request)
     return event_request
 
@@ -675,7 +690,7 @@ def list_equipment_lines(
     """
     sess = resolve_session(session)
     if viewer_role is Role.TECHNICAL_SUPPORT_STAFF:
-        event_request = _event_request_by_reference(reference, sess)
+        event_request = _event_request_for_staff(reference, sess)
     else:
         event_request = _event_request_assigned_to(viewer_id, reference, sess)
     return event_request, list(event_request.equipment_lines)
@@ -745,8 +760,9 @@ def remove_equipment_line(
 # --------------------------------------------------------------------------
 
 #: Statuses in which an event request may move to another coordinator: from
-#: submission until the event is over (SCRUM-87, ADR-0021). A draft has no coordinator
-#: yet, and a completed, cancelled or rejected event has nothing left to coordinate.
+#: submission until the event is over (SCRUM-87, ADR-0021). A completed, cancelled or
+#: rejected event has nothing left to coordinate; a draft is hidden from coordinators
+#: altogether, so it never reaches this check (SCRUM-20, ADR-0024).
 REASSIGNABLE_STATUSES: frozenset[EventRequestStatus] = frozenset(
     {EventRequestStatus.SUBMITTED, EventRequestStatus.UNDER_REVIEW, EventRequestStatus.CONFIRMED}
 )
@@ -842,7 +858,7 @@ def reassign_coordinator(
     """
     data = load_or_raise(ReassignCoordinatorSchema(), payload)
     sess = resolve_session(session)
-    event_request = _event_request_by_reference(reference, sess)
+    event_request = _event_request_for_staff(reference, sess)
     previous_coordinator_id = _coordinator_to_replace(actor_id, event_request)
     coordinator_id = _event_coordinator_id_by_email(data["coordinator_email"], sess)
     if coordinator_id == previous_coordinator_id:

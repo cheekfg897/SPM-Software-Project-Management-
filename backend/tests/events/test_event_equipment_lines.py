@@ -62,8 +62,9 @@ OTHER_REFERENCE = "EVR-BBBBBBBB"
 UNKNOWN_REFERENCE = "EVR-ZZZZZZZZ"
 UNKNOWN_ID = 999
 REQUESTED = EquipmentLineStatus.REQUESTED
+#: A draft is out of scope here: it is hidden from coordinators altogether
+#: (SCRUM-20, ADR-0024), not merely refused as "not awaiting review".
 NO_LONGER_AWAITING_REVIEW = [
-    EventRequestStatus.DRAFT,
     EventRequestStatus.CONFIRMED,
     EventRequestStatus.COMPLETED,
     EventRequestStatus.CANCELLED,
