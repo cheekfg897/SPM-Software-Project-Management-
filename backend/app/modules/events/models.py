@@ -44,9 +44,9 @@ REFERENCE_UNIQUE_CONSTRAINT = "uq_event_requests_reference"
 class EventRequestStatus(str, enum.Enum):
     """The stages an event request passes through (SCRUM-22, ADR-0012).
 
-    ``UNDER_REVIEW`` is the story's "Under Review / Planning". Only ``SUBMITTED`` is
-    written so far; each other value arrives with the story that performs the
-    transition (SCRUM-20, SCRUM-31, SCRUM-49, SCRUM-61, SCRUM-68).
+    ``UNDER_REVIEW`` is the story's "Under Review / Planning". ``SUBMITTED`` and
+    ``DRAFT`` are written so far (SCRUM-20); each other value arrives with the story
+    that performs the transition (SCRUM-31, SCRUM-49, SCRUM-61, SCRUM-68).
     """
 
     DRAFT = "draft"
@@ -93,6 +93,16 @@ class EventRequest(db.Model):  # type: ignore[name-defined]
         CheckConstraint(
             "expected_attendance >= 1", name="ck_event_requests_expected_attendance_min"
         ),
+        # NULL passes a CHECK, so this stays alongside the rule below: a draft's NULL
+        # attendance is untouched, and a non-draft's must both exist and be >= 1.
+        CheckConstraint(
+            "status = 'draft' OR ("
+            "proposed_date IS NOT NULL AND end_date IS NOT NULL AND "
+            "start_time IS NOT NULL AND end_time IS NOT NULL AND "
+            "expected_attendance IS NOT NULL"
+            ")",
+            name="ck_event_requests_details_unless_draft",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -121,12 +131,17 @@ class EventRequest(db.Model):  # type: ignore[name-defined]
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     #: Indexed because Technical Support's list of equipment awaiting action keeps only
     #: events from today on, soonest first (SCRUM-38, ADR-0022).
-    proposed_date: Mapped[date] = mapped_column(Date, index=True, nullable=False)
+    #: NULL only on a draft (SCRUM-20, ADR-0024).
+    proposed_date: Mapped[date | None] = mapped_column(Date, index=True, nullable=True)
     #: Same as ``proposed_date`` unless the event runs past midnight (ADR-0002).
-    end_date: Mapped[date] = mapped_column(Date, nullable=False)
-    start_time: Mapped[time] = mapped_column(Time, nullable=False)
-    end_time: Mapped[time] = mapped_column(Time, nullable=False)
-    expected_attendance: Mapped[int] = mapped_column(Integer, nullable=False)
+    #: NULL only on a draft (SCRUM-20, ADR-0024).
+    end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    #: NULL only on a draft (SCRUM-20, ADR-0024).
+    start_time: Mapped[time | None] = mapped_column(Time, nullable=True)
+    #: NULL only on a draft (SCRUM-20, ADR-0024).
+    end_time: Mapped[time | None] = mapped_column(Time, nullable=True)
+    #: NULL only on a draft (SCRUM-20, ADR-0024).
+    expected_attendance: Mapped[int | None] = mapped_column(Integer, nullable=True)
     venue_requirements: Mapped[str | None] = mapped_column(Text, nullable=True)
     accessibility_needs: Mapped[str | None] = mapped_column(Text, nullable=True)
     equipment_requirements: Mapped[str | None] = mapped_column(Text, nullable=True)
