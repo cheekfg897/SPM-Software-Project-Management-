@@ -47,6 +47,16 @@ def non_coordinator_role(request: pytest.FixtureRequest) -> Role:
     return request.param
 
 
+#: Every role but Event Organiser, in a fixed order so test ids are stable.
+NON_ORGANISER_ROLES = sorted(ALL_ROLES - {Role.EVENT_ORGANISER}, key=lambda role: role.value)
+
+
+@pytest.fixture(params=NON_ORGANISER_ROLES, ids=lambda role: role.value)
+def non_organiser_role(request: pytest.FixtureRequest) -> Role:
+    """Each role but Event Organiser in turn, for routes only organisers call."""
+    return request.param
+
+
 @pytest.fixture()
 def other_organisers(
     saved_users: list[User], make_user: Callable[..., User], save: Callable[..., None]
