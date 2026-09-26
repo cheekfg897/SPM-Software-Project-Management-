@@ -11,6 +11,7 @@ Public surface for other modules (import from here, not from sub-files):
 * :func:`app.modules.events.services.update_draft_event_request`
 * :func:`app.modules.events.services.submit_draft_event_request`
 * :func:`app.modules.events.services.update_event_request`
+* :func:`app.modules.events.services.list_event_history`
 """
 
 from __future__ import annotations

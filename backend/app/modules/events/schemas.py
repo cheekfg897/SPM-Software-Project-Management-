@@ -32,10 +32,11 @@ from marshmallow import (
 )
 
 from app.common.clock import local_today
-from app.common.fields import WholeNumber
+from app.common.fields import BusinessDateTime, WholeNumber
 from app.modules.events.models import (
     NAME_MAX_LENGTH,
     EquipmentLineStatus,
+    EventHistoryKind,
     EventRequest,
     EventRequestStatus,
 )
@@ -448,3 +449,15 @@ class EditedEventRequestSchema(EventRequestDetailSchema):
 
     programme_notes = fields.String(dump_only=True, allow_none=True)
     internal_planning_notes = fields.String(dump_only=True, allow_none=True)
+
+
+class EventHistoryEntrySchema(Schema):
+    """One event history entry as the API shows it (SCRUM-33, ADR-0025).
+
+    Times are shown in business time (ADR-0009); no user id appears anywhere.
+    """
+
+    kind = fields.Enum(EventHistoryKind, by_value=True, dump_only=True)
+    occurred_at = BusinessDateTime(dump_only=True)
+    actor_name = fields.String(dump_only=True, allow_none=True)
+    details = fields.Dict(dump_only=True)
