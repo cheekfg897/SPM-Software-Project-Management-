@@ -20,7 +20,6 @@ import pytest
 
 from app.common.errors import NotFoundError
 from app.modules.auth.models import User
-from app.modules.auth.permissions import Role
 from app.modules.events.models import EventRequest
 from app.modules.events.services import (
     CoordinatorContact,
@@ -66,34 +65,6 @@ def _assert_refused_as_unlinked(
 ) -> None:
     assert exc_info.value.status_code == 403
     assert exc_info.value.error_code == "organiser_without_organisation"
-
-
-@pytest.fixture()
-def other_organisers(
-    saved_users: list[User], make_user: Callable[..., User], save: Callable[..., None]
-) -> list[User]:
-    """Save three more organisers: 8 and 6 of organisations 3 and 4, and unlinked 10."""
-    organisers = [
-        make_user(
-            email="organiser8@example.com",
-            role=Role.EVENT_ORGANISER,
-            user_id=COLLEAGUE_ID,
-            organisation_id=3,
-        ),
-        make_user(
-            email="organiser6@example.com",
-            role=Role.EVENT_ORGANISER,
-            user_id=OTHER_ORGANISATION_ORGANISER_ID,
-            organisation_id=4,
-        ),
-        make_user(
-            email="organiser10@example.com",
-            role=Role.EVENT_ORGANISER,
-            user_id=UNLINKED_ORGANISER_ID,
-        ),
-    ]
-    save(*organisers)
-    return organisers
 
 
 @pytest.fixture()

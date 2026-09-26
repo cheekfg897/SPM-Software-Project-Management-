@@ -48,6 +48,29 @@ def non_coordinator_role(request: pytest.FixtureRequest) -> Role:
 
 
 @pytest.fixture()
+def other_organisers(
+    saved_users: list[User], make_user: Callable[..., User], save: Callable[..., None]
+) -> list[User]:
+    """Save three more organisers: 8 and 6 of organisations 3 and 4, and unlinked 10.
+
+    Alongside organiser 7 (``saved_users``), these give tests a colleague in the same
+    organisation (8), one in another organisation (6), and an account SCRUM-66 has not
+    linked to any organisation yet (10).
+    """
+    organisers = [
+        make_user(
+            email="organiser8@example.com", role=Role.EVENT_ORGANISER, user_id=8, organisation_id=3
+        ),
+        make_user(
+            email="organiser6@example.com", role=Role.EVENT_ORGANISER, user_id=6, organisation_id=4
+        ),
+        make_user(email="organiser10@example.com", role=Role.EVENT_ORGANISER, user_id=10),
+    ]
+    save(*organisers)
+    return organisers
+
+
+@pytest.fixture()
 def today() -> date:
     """A fixed "today" so date rules don't depend on when the tests run."""
     return date(2026, 9, 15)
