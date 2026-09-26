@@ -359,6 +359,19 @@ def reload_event_request(db_session: Session) -> Callable[[int], EventRequest]:
 
 
 @pytest.fixture()
+def set_status(
+    saved_event_request: EventRequest, save: Callable[..., None]
+) -> Callable[[EventRequestStatus], None]:
+    """Move ``saved_event_request`` to another status and save it."""
+
+    def _set(status: EventRequestStatus) -> None:
+        saved_event_request.status = status
+        save(saved_event_request)
+
+    return _set
+
+
+@pytest.fixture()
 def valid_equipment_line_payload(equipment_type: EquipmentType) -> dict[str, Any]:
     """An equipment line body that satisfies every rule: two of the saved type."""
     return {"equipment_type_id": equipment_type.id, "quantity": 2, "notes": "Needs HDMI"}

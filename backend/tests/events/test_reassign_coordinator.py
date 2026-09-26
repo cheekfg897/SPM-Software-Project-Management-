@@ -93,19 +93,6 @@ def assert_nothing_changed(
     return _assert
 
 
-@pytest.fixture()
-def set_status(
-    saved_event_request: EventRequest, save: Callable[..., None]
-) -> Callable[[EventRequestStatus], None]:
-    """Move ``saved_event_request`` to another status and save it."""
-
-    def _set(status: EventRequestStatus) -> None:
-        saved_event_request.status = status
-        save(saved_event_request)
-
-    return _set
-
-
 # --------------------------------------------------------------------------
 # AC1, AC2 — an assigned event moves to another Event Coordinator, and only one
 # --------------------------------------------------------------------------
