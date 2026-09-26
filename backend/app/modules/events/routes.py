@@ -10,13 +10,14 @@ from __future__ import annotations
 from flask import Blueprint, Response, g, jsonify, request
 
 from app.common.decorators import requires_role
-from app.modules.auth.permissions import Role
+from app.modules.auth.permissions import INTERNAL_ROLES, Role
 from app.modules.events.schemas import (
     EQUIPMENT_EVENT_FIELDS,
     CoordinatorContactSchema,
     EditedEventRequestSchema,
     EquipmentAwaitingActionSchema,
     EquipmentLineSchema,
+    EventHistoryEntrySchema,
     EventRequestDetailSchema,
     EventRequestSchema,
     FieldChangeSchema,
@@ -26,6 +27,7 @@ from app.modules.events.services import (
     get_event_record_for_organiser,
     list_equipment_lines,
     list_equipment_requests_awaiting_action,
+    list_event_history,
     list_event_requests_for_coordinator,
     list_event_requests_for_organiser,
     reassign_coordinator,
@@ -48,6 +50,7 @@ _equipment_event_schema = EventRequestSchema(only=EQUIPMENT_EVENT_FIELDS)
 _equipment_awaiting_action_schema = EquipmentAwaitingActionSchema()
 _edited_event_request_schema = EditedEventRequestSchema()
 _field_change_schema = FieldChangeSchema()
+_event_history_entry_schema = EventHistoryEntrySchema()
 
 
 @bp.post("/requests")
@@ -250,4 +253,20 @@ def update_request(reference: str) -> tuple[Response, int]:
     edit = update_event_request(g.current_user_id, reference, request.get_json(silent=True))
     body = _edited_event_request_schema.dump(edit.event_request)
     body["changes"] = _field_change_schema.dump(edit.changes, many=True)
+    return jsonify(body), 200
+
+
+@bp.get("/requests/<reference>/history")
+@requires_role(*INTERNAL_ROLES, Role.EVENT_ORGANISER)
+def list_history(reference: str) -> tuple[Response, int]:
+    """An event's history, oldest first (SCRUM-33).
+
+    Internal staff may open any event's history; an Event Organiser only their own
+    client organisation's, and never a ``field_changed`` entry about
+    ``internal_planning_notes``.
+    """
+    history = list_event_history(
+        g.current_user_id, reference, viewer_role=Role(g.current_user_role)
+    )
+    body = {"history": _event_history_entry_schema.dump(history, many=True)}
     return jsonify(body), 200
