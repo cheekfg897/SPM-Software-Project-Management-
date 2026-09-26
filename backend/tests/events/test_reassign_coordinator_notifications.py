@@ -4,7 +4,9 @@ AC4: the newly assigned coordinator is notified, with the same
 ``coordinator_assigned`` notification a coordinator gets on submission (ADR-0021).
 Nobody else is: the previous coordinator made the change themselves, and telling the
 organiser is SCRUM-39's. A refused reassignment notifies nobody, and a failed
-notification write doesn't fail the saved reassignment (ADR-0015).
+notification write doesn't fail the saved reassignment (ADR-0015). The same notice
+is how SCRUM-39 AC4 tells the new coordinator on reassignment, so these tests are
+also its regression guards.
 
 Runs against ``db_session`` with ``saved_users`` and ``saved_event_request``
 (``EVR-AAAAAAAA``, assigned to Event Coordinator 3); the failed-write test uses
@@ -31,7 +33,7 @@ from app.modules.notifications.services import (
     NotificationKind,
 )
 
-pytestmark = pytest.mark.scrum_87
+pytestmark = [pytest.mark.scrum_87, pytest.mark.scrum_39]
 
 Reassign = Callable[[int, str], tuple[EventRequest, CoordinatorContact]]
 NotificationsOf = Callable[[int], list[tuple[Any, ...]]]
