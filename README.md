@@ -133,7 +133,7 @@ curl http://localhost:5000/api/auth/internal-only -H "Authorization: Bearer <tok
 | `GET  /api/events/requests/<reference>/equipment` | `event_coordinator` (requests assigned to you), `technical_support_staff` (any request but a draft) — the event's date and times (`event`, so Technical Support know by when) and its equipment lines with their status |
 | `PATCH /api/events/requests/<reference>/equipment/<line_id>` | `event_coordinator` — on a request assigned to you, change only the fields sent, while it is submitted, under review or approved |
 | `DELETE /api/events/requests/<reference>/equipment/<line_id>` | `event_coordinator` — on a request assigned to you, remove a line, while it is submitted, under review or approved |
-| `POST /api/events/requests/<reference>/reassign` | `event_coordinator` — on a request assigned to you, move it while submitted, under review, awaiting clarification, approved or confirmed to the Event Coordinator named by `coordinator_email`; recorded in its history and the new coordinator is notified. Returns the request and the new coordinator's name and email |
+| `POST /api/events/requests/<reference>/reassign` | `event_coordinator` — on a request assigned to you, move it while submitted, under review, awaiting clarification, approved or confirmed to the Event Coordinator named by `coordinator_email`; recorded in its history, and the new coordinator and the organiser are notified. Returns the request and the new coordinator's name and email |
 | `POST /api/events/requests/<reference>/complete` | `event_coordinator` — on a request assigned to you, mark it completed once it is confirmed and its end date and time have passed (business time); recorded in its history with who did it and when. `409` if it isn't confirmed or hasn't ended yet. Returns the request |
 | `PATCH /api/events/requests/<reference>` | `event_coordinator` — on a request assigned to you, while it is submitted, under review, approved or confirmed, change only the fields sent (notes, dates, times, attendance, venue/equipment requirements); a value equal to what's saved is not a change. Returns the request, its programme and internal planning notes, and the list of changes made, each flagged `significant` if it could affect a venue booking or requested equipment. A significant change that could affect equipment already requested notifies Technical Support Staff |
 | `GET  /api/events/requests/<reference>/history` | internal roles (any event but a draft), `event_organiser` (your own client organisation's) — the event's history oldest first: coordinator assignment and reassignment, each field edited, the start of its review, every clarification question and answer, every decision and completion, with who did it and when, names resolved and no user ids. An organiser never sees an internal planning notes change |
@@ -171,7 +171,7 @@ An `event_organiser` registers with the `organisation_id` of an existing client 
 
 A draft is an event request in status `draft`: it can be saved with only a name, reopened and changed field by field, and submitted in place once it is complete, keeping its reference. It is visible only to the organiser who saved it — never to a colleague, and never to Event Coordinators or Technical Support Staff — until it is submitted ([ADR-0024](docs/adr/0024-draft-event-requests.md)).
 
-A submitted event request is assigned to the Event Coordinator with the fewest open requests (`submitted`, `under_review`, `awaiting_clarification` or `approved`), lowest user id on a tie, and only that coordinator is notified; with no Event Coordinator registered it stays unassigned and nobody is notified ([ADR-0018](docs/adr/0018-least-loaded-coordinator-and-event-history.md)). Everything that happens to an event is written to an event history table that later stories append to.
+A submitted event request is assigned to the Event Coordinator with the fewest open requests (`submitted`, `under_review`, `awaiting_clarification` or `approved`), lowest user id on a tie, and that coordinator is notified; with no Event Coordinator registered it stays unassigned and nobody is notified ([ADR-0018](docs/adr/0018-least-loaded-coordinator-and-event-history.md)). The organiser who submitted it is told a coordinator has been assigned, on submission and again on each reassignment; their colleagues aren't ([ADR-0030](docs/adr/0030-organiser-told-about-assignment.md)). Everything that happens to an event is written to an event history table that later stories append to.
 
 All errors share one shape: `{"error": "<code>", "message": "<text>", "details": {...}}` (`details` only for validation errors).
 
@@ -222,6 +222,7 @@ pytest -m scrum_35   # search and filter venues
 pytest -m scrum_36   # check whether a venue suits an event
 pytest -m scrum_37   # record what equipment an event needs
 pytest -m scrum_38   # see the equipment requests awaiting my action
+pytest -m scrum_39   # be notified about review and approval decisions
 pytest -m scrum_67   # setup and turnaround time
 pytest -m scrum_66   # client organisations
 pytest -m scrum_7    # see only my own organisation's events
