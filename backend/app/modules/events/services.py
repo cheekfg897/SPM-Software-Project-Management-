@@ -1566,3 +1566,25 @@ def list_event_history(
             )
         )
     return shown
+
+
+# --------------------------------------------------------------------------
+# SCRUM-24 — see the events my role is involved in
+# --------------------------------------------------------------------------
+
+
+def _awaiting_assignment() -> ColumnElement[bool]:
+    """Submitted requests no coordinator has yet (SCRUM-24 AC2, ADR-0026).
+
+    Only ``submitted``: a draft (SCRUM-20) has no coordinator either but must never
+    reach coordinators.
+    """
+    return and_(
+        EventRequest.status == EventRequestStatus.SUBMITTED,
+        EventRequest.coordinator_id.is_(None),
+    )
+
+
+def list_unassigned_event_requests(*, session: Session | None = None) -> list[EventRequest]:
+    """The submitted requests no coordinator has yet, newest first (SCRUM-24 AC2)."""
+    return _list_event_requests_newest_first(_awaiting_assignment(), resolve_session(session))
