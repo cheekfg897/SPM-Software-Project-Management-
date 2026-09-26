@@ -15,6 +15,7 @@ import pytest
 from alembic.operations import Operations
 from alembic.runtime.migration import MigrationContext
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.modules.auth.models import User
@@ -55,6 +56,27 @@ NON_ORGANISER_ROLES = sorted(ALL_ROLES - {Role.EVENT_ORGANISER}, key=lambda role
 def non_organiser_role(request: pytest.FixtureRequest) -> Role:
     """Each role but Event Organiser in turn, for routes only organisers call."""
     return request.param
+
+
+@pytest.fixture()
+def integrity_error() -> Callable[[Exception], IntegrityError]:
+    """Wrap ``orig`` in an ``IntegrityError`` as SQLAlchemy would raise it."""
+
+    def _make(orig: Exception) -> IntegrityError:
+        return IntegrityError("INSERT INTO event_requests ...", {}, orig)
+
+    return _make
+
+
+@pytest.fixture()
+def references_in_order() -> Callable[..., Callable[[], str]]:
+    """Factory for a reference factory that hands out given references, in order."""
+
+    def _factory(*values: str) -> Callable[[], str]:
+        remaining = iter(values)
+        return lambda: next(remaining)
+
+    return _factory
 
 
 @pytest.fixture()

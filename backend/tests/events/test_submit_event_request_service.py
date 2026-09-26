@@ -13,7 +13,6 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 from datetime import date, time
-from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -38,30 +37,13 @@ from app.modules.events.services import (
     list_event_requests_for_organiser,
     submit_event_request,
 )
+from tests.events.cases import DriverError
 
 # Every submission looks up the organiser to copy their client organisation (SCRUM-66).
 pytestmark = [pytest.mark.scrum_19, pytest.mark.usefixtures("organiser_is_found")]
 
 REFERENCE_PATTERN = re.compile(r"^EVR-[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{8}$")
 REQUESTS_PATH = "/api/events/requests"
-
-
-class _DriverError(Exception):
-    """Stands in for a psycopg2 error, which names the constraint on ``diag``."""
-
-    def __init__(self, constraint_name: str | None, message: str = "integrity error") -> None:
-        super().__init__(message)
-        self.diag = SimpleNamespace(constraint_name=constraint_name)
-
-
-def _integrity_error(orig: Exception) -> IntegrityError:
-    return IntegrityError("INSERT INTO event_requests ...", {}, orig)
-
-
-def _references(*values: str) -> Callable[[], str]:
-    """A reference factory that hands out ``values`` in order."""
-    remaining = iter(values)
-    return lambda: next(remaining)
 
 
 # --------------------------------------------------------------------------
@@ -138,9 +120,13 @@ def test_generated_references_match_the_adr_format() -> None:
 
 
 def test_reference_collision_is_retried_with_a_new_reference(
-    mock_session: MagicMock, valid_event_request_payload: dict[str, Any], today: date
+    mock_session: MagicMock,
+    valid_event_request_payload: dict[str, Any],
+    today: date,
+    integrity_error: Callable[[Exception], IntegrityError],
+    references_in_order: Callable[..., Callable[[], str]],
 ) -> None:
-    collision = _integrity_error(_DriverError(REFERENCE_UNIQUE_CONSTRAINT))
+    collision = integrity_error(DriverError(REFERENCE_UNIQUE_CONSTRAINT))
     mock_session.commit.side_effect = [collision, None]
 
     event_request = submit_event_request(
@@ -148,7 +134,7 @@ def test_reference_collision_is_retried_with_a_new_reference(
         valid_event_request_payload,
         session=mock_session,
         today=today,
-        reference_factory=_references("EVR-AAAAAAAA", "EVR-BBBBBBBB"),
+        reference_factory=references_in_order("EVR-AAAAAAAA", "EVR-BBBBBBBB"),
     )
 
     assert event_request.reference == "EVR-BBBBBBBB"
@@ -158,9 +144,13 @@ def test_reference_collision_is_retried_with_a_new_reference(
 
 
 def test_collision_on_every_attempt_but_the_last_still_succeeds(
-    mock_session: MagicMock, valid_event_request_payload: dict[str, Any], today: date
+    mock_session: MagicMock,
+    valid_event_request_payload: dict[str, Any],
+    today: date,
+    integrity_error: Callable[[Exception], IntegrityError],
+    references_in_order: Callable[..., Callable[[], str]],
 ) -> None:
-    collision = _integrity_error(_DriverError(REFERENCE_UNIQUE_CONSTRAINT))
+    collision = integrity_error(DriverError(REFERENCE_UNIQUE_CONSTRAINT))
     mock_session.commit.side_effect = [collision] * (MAX_REFERENCE_ATTEMPTS - 1) + [None]
 
     event_request = submit_event_request(
@@ -168,7 +158,7 @@ def test_collision_on_every_attempt_but_the_last_still_succeeds(
         valid_event_request_payload,
         session=mock_session,
         today=today,
-        reference_factory=_references("EVR-AAAAAAAA", "EVR-BBBBBBBB", "EVR-CCCCCCCC"),
+        reference_factory=references_in_order("EVR-AAAAAAAA", "EVR-BBBBBBBB", "EVR-CCCCCCCC"),
     )
 
     assert event_request.reference == "EVR-CCCCCCCC"
@@ -176,9 +166,13 @@ def test_collision_on_every_attempt_but_the_last_still_succeeds(
 
 
 def test_collision_on_every_attempt_gives_up(
-    mock_session: MagicMock, valid_event_request_payload: dict[str, Any], today: date
+    mock_session: MagicMock,
+    valid_event_request_payload: dict[str, Any],
+    today: date,
+    integrity_error: Callable[[Exception], IntegrityError],
+    references_in_order: Callable[..., Callable[[], str]],
 ) -> None:
-    collision = _integrity_error(_DriverError(REFERENCE_UNIQUE_CONSTRAINT))
+    collision = integrity_error(DriverError(REFERENCE_UNIQUE_CONSTRAINT))
     mock_session.commit.side_effect = [collision] * MAX_REFERENCE_ATTEMPTS
 
     with pytest.raises(ReferenceGenerationError) as exc_info:
@@ -187,7 +181,7 @@ def test_collision_on_every_attempt_gives_up(
             valid_event_request_payload,
             session=mock_session,
             today=today,
-            reference_factory=_references("EVR-AAAAAAAA", "EVR-BBBBBBBB", "EVR-CCCCCCCC"),
+            reference_factory=references_in_order("EVR-AAAAAAAA", "EVR-BBBBBBBB", "EVR-CCCCCCCC"),
         )
 
     assert exc_info.value.status_code == 500
@@ -196,11 +190,14 @@ def test_collision_on_every_attempt_gives_up(
 
 
 def test_other_integrity_errors_are_not_retried(
-    mock_session: MagicMock, valid_event_request_payload: dict[str, Any], today: date
+    mock_session: MagicMock,
+    valid_event_request_payload: dict[str, Any],
+    today: date,
+    integrity_error: Callable[[Exception], IntegrityError],
 ) -> None:
     """A new reference can't fix, say, an organiser id that doesn't exist."""
-    mock_session.commit.side_effect = _integrity_error(
-        _DriverError("event_requests_organiser_id_fkey")
+    mock_session.commit.side_effect = integrity_error(
+        DriverError("event_requests_organiser_id_fkey")
     )
 
     with pytest.raises(IntegrityError):
@@ -213,15 +210,17 @@ def test_other_integrity_errors_are_not_retried(
 @pytest.mark.parametrize(
     ("orig", "expected"),
     [
-        (_DriverError(REFERENCE_UNIQUE_CONSTRAINT), True),
-        (_DriverError("uq_some_other_constraint"), False),
-        (_DriverError(None, "no constraint reported"), False),
+        (DriverError(REFERENCE_UNIQUE_CONSTRAINT), True),
+        (DriverError("uq_some_other_constraint"), False),
+        (DriverError(None, "no constraint reported"), False),
         (Exception("UNIQUE constraint failed: event_requests.reference"), True),  # SQLite
         (Exception("FOREIGN KEY constraint failed"), False),
     ],
 )
-def test_is_reference_collision(orig: Exception, expected: bool) -> None:
-    assert is_reference_collision(_integrity_error(orig)) is expected
+def test_is_reference_collision(
+    orig: Exception, expected: bool, integrity_error: Callable[[Exception], IntegrityError]
+) -> None:
+    assert is_reference_collision(integrity_error(orig)) is expected
 
 
 # --------------------------------------------------------------------------
