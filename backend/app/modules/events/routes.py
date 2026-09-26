@@ -28,7 +28,10 @@ from app.modules.events.services import (
     list_event_requests_for_organiser,
     reassign_coordinator,
     remove_equipment_line,
+    save_draft_event_request,
+    submit_draft_event_request,
     submit_event_request,
+    update_draft_event_request,
     update_equipment_line,
 )
 
@@ -69,9 +72,45 @@ def list_my_requests() -> tuple[Response, int]:
     )
 
 
-# The two static ``/requests/...`` paths are declared before ``/requests/<reference>``
-# for readers; Werkzeug matches a static segment first either way, so "assigned" and
-# "awaiting-equipment" are never taken for a reference.
+# --------------------------------------------------------------------------
+# SCRUM-20 — save and resume a draft event request
+# --------------------------------------------------------------------------
+
+
+@bp.post("/requests/drafts")
+@requires_role(Role.EVENT_ORGANISER)
+def save_draft() -> tuple[Response, int]:
+    """Save a new draft event request with only its name required (SCRUM-20 AC1).
+
+    Returns ``201`` with the draft's reference and status.
+    """
+    draft = save_draft_event_request(g.current_user_id, request.get_json(silent=True))
+    return jsonify(_event_request_schema.dump(draft)), 201
+
+
+@bp.patch("/requests/drafts/<reference>")
+@requires_role(Role.EVENT_ORGANISER)
+def update_draft(reference: str) -> tuple[Response, int]:
+    """Change the fields sent on one of the caller's own drafts (SCRUM-20 AC3)."""
+    draft = update_draft_event_request(g.current_user_id, reference, request.get_json(silent=True))
+    return jsonify(_event_request_schema.dump(draft)), 200
+
+
+@bp.post("/requests/drafts/<reference>/submit")
+@requires_role(Role.EVENT_ORGANISER)
+def submit_draft(reference: str) -> tuple[Response, int]:
+    """Submit one of the caller's own drafts under the full submission rules (SCRUM-20).
+
+    Takes no body: what gets submitted is whatever was already saved on the draft.
+    """
+    submitted = submit_draft_event_request(g.current_user_id, reference)
+    return jsonify(_event_request_schema.dump(submitted)), 200
+
+
+# The static ``/requests/...`` paths above and below are declared before
+# ``/requests/<reference>`` for readers; Werkzeug matches a static segment first
+# either way, so "drafts", "assigned" and "awaiting-equipment" are never taken for a
+# reference.
 @bp.get("/requests/assigned")
 @requires_role(Role.EVENT_COORDINATOR)
 def list_assigned_requests() -> tuple[Response, int]:
