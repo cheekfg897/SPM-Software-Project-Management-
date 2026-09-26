@@ -17,6 +17,9 @@ MESSAGE_BY_KIND: dict[NotificationKind, str] = {
     NotificationKind.EVENT_REQUEST_SUBMITTED: "A new event request was submitted.",
     NotificationKind.COORDINATOR_ASSIGNED: "You have been assigned to coordinate this event.",
     NotificationKind.EQUIPMENT_REQUESTED: "Equipment was requested for an event.",
+    NotificationKind.SIGNIFICANT_CHANGE: (
+        "An event you have arrangements for has changed significantly. Please check they still fit."
+    ),
 }
 
 #: Where a notification links to: the event's page, found by its reference

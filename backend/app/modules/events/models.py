@@ -72,6 +72,11 @@ class EventHistoryKind(str, enum.Enum):
     #: and ``coordinator_name``, the names as they were then, and ``actor_id`` is who
     #: did it (SCRUM-87, ADR-0021).
     COORDINATOR_REASSIGNED = "coordinator_reassigned"
+    #: The assigned coordinator changed one field; ``details`` holds ``field``,
+    #: ``previous_value``, ``new_value`` (JSON-safe forms: dates and times as
+    #: ISO strings) and ``significant``, and ``actor_id`` is who made the edit
+    #: (SCRUM-33, ADR-0025).
+    FIELD_CHANGED = "field_changed"
 
 
 class EquipmentLineStatus(str, enum.Enum):
@@ -145,6 +150,12 @@ class EventRequest(db.Model):  # type: ignore[name-defined]
     venue_requirements: Mapped[str | None] = mapped_column(Text, nullable=True)
     accessibility_needs: Mapped[str | None] = mapped_column(Text, nullable=True)
     equipment_requirements: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: What the event needs from planning, editable by the assigned coordinator and
+    #: shown to the organiser (SCRUM-33 AC1, ADR-0025).
+    programme_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: Notes for internal staff only; never shown to the organiser (SCRUM-33 AC1,
+    #: ADR-0025).
+    internal_planning_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     registration_required: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=false()
     )
