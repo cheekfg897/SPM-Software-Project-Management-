@@ -26,12 +26,12 @@ _user_schema = UserSchema()
 
 @bp.post("/register")
 def register() -> tuple[Response, int]:
-    """Create an account (SCRUM-65). Returns ``201`` with the public user shape."""
-    # TODO(product): confirm internal-role provisioning with customer.
-    # Currently every role — including event_coordinator, venue_staff and
-    # technical_support_staff — can self-register here. If the customer wants
-    # internal staff provisioned by an admin instead, restrict `role` in
-    # RegisterSchema to EXTERNAL_ROLES and add an admin-only provisioning story.
+    """Create an Event Organiser or Attendee account (SCRUM-65).
+
+    Staff accounts come from ``flask create-staff-user`` (ADR-0023).
+
+    Returns ``201`` with the public user shape.
+    """
     user = register_user(request.get_json(silent=True))
     return jsonify(_user_schema.dump(user)), 201
 

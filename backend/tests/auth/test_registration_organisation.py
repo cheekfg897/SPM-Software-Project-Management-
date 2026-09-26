@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.common.errors import ValidationError
 from app.modules.auth.models import User
-from app.modules.auth.permissions import ALL_ROLES, Role
+from app.modules.auth.permissions import EXTERNAL_ROLES, Role
 from app.modules.auth.schemas import UserSchema
 from app.modules.auth.services import register_user
 from app.modules.organisations.models import ClientOrganisation
@@ -26,7 +26,7 @@ pytestmark = pytest.mark.scrum_66
 
 OrganiserPayload = Callable[[Any], dict[str, Any]]
 
-NON_ORGANISER_ROLES = sorted(ALL_ROLES - {Role.EVENT_ORGANISER}, key=lambda r: r.value)
+NON_ORGANISER_ROLES = sorted(EXTERNAL_ROLES - {Role.EVENT_ORGANISER}, key=lambda r: r.value)
 
 
 @pytest.fixture()
