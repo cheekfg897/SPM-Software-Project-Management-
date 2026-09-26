@@ -31,10 +31,11 @@ from app.common.clock import local_today
 from app.common.database import resolve_session
 from app.common.errors import AppError, ConflictError, NotFoundError, ValidationError
 from app.common.validation import load_or_raise
-from app.modules.auth.permissions import Role
+from app.modules.auth.permissions import INTERNAL_ROLES, Role
 from app.modules.auth.services import (
     get_user_by_email,
     get_user_by_id,
+    get_user_full_names,
     list_user_ids_with_role,
 )
 from app.modules.equipment.services import get_equipment_type
@@ -1441,3 +1442,127 @@ def update_event_request(
     sess.commit()
     _reassess_arrangements(event_request, changes, sess)
     return EventEdit(event_request, changes)
+
+
+#: A field_changed entry about one of these is for internal eyes only (ADR-0025).
+INTERNAL_ONLY_FIELDS: frozenset[str] = frozenset({"internal_planning_notes"})
+
+
+@dataclass(frozen=True)
+class HistoryEntryAsShown:
+    """One event history entry as the API shows it (ADR-0025): no user ids."""
+
+    kind: EventHistoryKind
+    occurred_at: datetime
+    actor_name: str | None
+    details: dict[str, Any]
+
+
+def _history_entries(event_request: EventRequest, session: Session) -> list[EventHistoryEntry]:
+    """``event_request``'s history, oldest first (ADR-0025)."""
+    stmt = (
+        select(EventHistoryEntry)
+        .where(EventHistoryEntry.event_request_id == event_request.id)
+        .order_by(EventHistoryEntry.occurred_at, EventHistoryEntry.id)
+    )
+    return list(session.scalars(stmt))
+
+
+def _shown_to_organiser(entry: EventHistoryEntry) -> bool:
+    """Whether the organiser may see ``entry`` (ADR-0025).
+
+    Every kind but a ``field_changed`` entry about an internal-only field.
+    """
+    if entry.kind is not EventHistoryKind.FIELD_CHANGED:
+        return True
+    details = entry.details or {}
+    return details.get("field") not in INTERNAL_ONLY_FIELDS
+
+
+def _user_ids_named_in(entries: list[EventHistoryEntry]) -> set[int]:
+    """Every user id :func:`_details_as_shown` needs a name for (ADR-0025)."""
+    user_ids: set[int] = set()
+    for entry in entries:
+        if entry.actor_id is not None:
+            user_ids.add(entry.actor_id)
+        if entry.kind is EventHistoryKind.COORDINATOR_ASSIGNED:
+            coordinator_id = (entry.details or {}).get("coordinator_id")
+            if coordinator_id is not None:
+                user_ids.add(coordinator_id)
+    return user_ids
+
+
+def _details_as_shown(entry: EventHistoryEntry, names: dict[int, str]) -> dict[str, Any]:
+    """``entry.details`` as the API shows it: names resolved, no ids (ADR-0025).
+
+    ``coordinator_assigned`` shows the coordinator's current name, looked up by id.
+    ``coordinator_reassigned`` keeps the names its own ``details`` already stored from
+    when the change happened, and drops the ids. ``field_changed`` is shown
+    unchanged: its values are already JSON-safe and it carries no user id.
+    """
+    details = entry.details or {}
+    if entry.kind is EventHistoryKind.COORDINATOR_ASSIGNED:
+        coordinator_id = details.get("coordinator_id")
+        coordinator_name = None
+        if coordinator_id is not None:
+            coordinator_name = names.get(coordinator_id)
+        return {"coordinator_name": coordinator_name}
+    if entry.kind is EventHistoryKind.COORDINATOR_REASSIGNED:
+        return {
+            "previous_coordinator_name": details.get("previous_coordinator_name"),
+            "coordinator_name": details.get("coordinator_name"),
+        }
+    return details
+
+
+def list_event_history(
+    viewer_id: int | str, reference: str, *, viewer_role: Role, session: Session | None = None
+) -> list[HistoryEntryAsShown]:
+    """An event's history, oldest first, with names resolved and no user ids (SCRUM-33).
+
+    Internal staff may see any event's history; an Event Organiser only their client
+    organisation's, and never a ``field_changed`` entry about
+    ``internal_planning_notes`` (ADR-0025).
+
+    Args:
+        viewer_id: The caller's user id, taken from their token.
+        reference: The event request's ``EVR-…`` reference; case and surrounding
+            spaces are ignored.
+        viewer_role: The caller's role.
+        session: Database session; defaults to ``db.session``.
+
+    Returns:
+        One :class:`HistoryEntryAsShown` per visible entry, oldest first.
+
+    Raises:
+        OrganiserWithoutOrganisationError: 403 — an organiser with no client
+            organisation (ADR-0020).
+        NotFoundError: 404 — no such event request, or for an organiser, none in
+            their organisation.
+    """
+    sess = resolve_session(session)
+    is_internal_viewer = viewer_role in INTERNAL_ROLES
+    if is_internal_viewer:
+        event_request = _event_request_for_staff(reference, sess)
+    else:
+        event_request = get_event_request_for_organiser(viewer_id, reference, session=sess)
+
+    entries = _history_entries(event_request, sess)
+    if not is_internal_viewer:
+        entries = [entry for entry in entries if _shown_to_organiser(entry)]
+
+    names = get_user_full_names(_user_ids_named_in(entries), session=sess)
+    shown = []
+    for entry in entries:
+        actor_name = None
+        if entry.actor_id is not None:
+            actor_name = names.get(entry.actor_id)
+        shown.append(
+            HistoryEntryAsShown(
+                kind=entry.kind,
+                occurred_at=entry.occurred_at,
+                actor_name=actor_name,
+                details=_details_as_shown(entry, names),
+            )
+        )
+    return shown
