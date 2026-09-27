@@ -332,6 +332,11 @@ def _raise_notifications(
         )
 
 
+def _warn_unassigned(event_request: EventRequest) -> None:
+    """Log that ``event_request`` has no coordinator, so someone can pick it up."""
+    logger.warning("event_request_unassigned reference=%s", event_request.reference)
+
+
 def _notify_about_submission(event_request: EventRequest, session: Session) -> None:
     """Tell the assigned coordinator the new request is theirs (SCRUM-30 AC4).
 
@@ -341,7 +346,7 @@ def _notify_about_submission(event_request: EventRequest, session: Session) -> N
     logged so someone can pick it up.
     """
     if event_request.coordinator_id is None:
-        logger.warning("event_request_unassigned reference=%s", event_request.reference)
+        _warn_unassigned(event_request)
         return
     _raise_notifications(
         [event_request.coordinator_id],
@@ -2102,6 +2107,23 @@ def _event_request_under_review_by(
     return event_request
 
 
+def _notify_organiser_of_question(
+    event_request: EventRequest, message: str, session: Session
+) -> None:
+    """Tell the organiser who submitted the request of the question (SCRUM-32 AC1).
+
+    Only the submitting organiser, not their whole organisation, as with a decision
+    (ADR-0029); the question goes in the notification's ``detail``.
+    """
+    _raise_notifications(
+        [event_request.organiser_id],
+        event_request,
+        NotificationKind.CLARIFICATION_REQUESTED,
+        session,
+        detail=message,
+    )
+
+
 def request_clarification(
     coordinator_id: int | str,
     reference: str,
@@ -2115,7 +2137,8 @@ def request_clarification(
     so a second question can't be asked while one is outstanding (ADR-0029). The
     request goes back to the organiser as ``awaiting_clarification``, and a
     ``clarification_requested`` history entry holding the question and naming the
-    coordinator is saved in the same commit. The checks run in this order: the
+    coordinator is saved in the same commit. The submitting organiser is then told,
+    with the question as the notification's detail. The checks run in this order: the
     reference, the coordinator, the status, then the payload.
 
     Args:
@@ -2146,6 +2169,7 @@ def request_clarification(
         session=sess,
     )
     sess.commit()
+    _notify_organiser_of_question(event_request, question["message"], sess)
     return event_request
 
 
@@ -2178,6 +2202,27 @@ def _event_request_awaiting_clarification(
     return event_request
 
 
+def _notify_coordinator_of_answer(
+    event_request: EventRequest, response: str, session: Session
+) -> None:
+    """Tell the request's current coordinator of the answer (SCRUM-32 AC2).
+
+    Whoever holds the request now, which may not be who asked (ADR-0029); the answer
+    goes in the notification's ``detail``. With no coordinator to tell, the answer is
+    still saved, and that is logged so someone can pick it up.
+    """
+    if event_request.coordinator_id is None:
+        _warn_unassigned(event_request)
+        return
+    _raise_notifications(
+        [event_request.coordinator_id],
+        event_request,
+        NotificationKind.CLARIFICATION_ANSWERED,
+        session,
+        detail=response,
+    )
+
+
 def resubmit_event_request(
     organiser_id: int | str,
     reference: str,
@@ -2193,9 +2238,11 @@ def resubmit_event_request(
     checked as on submission. Each amended field is written to the history as a
     ``field_changed`` entry by the organiser, then the answer as a
     ``clarification_answered`` entry holding the response, all at one instant; the
-    request goes back to ``under_review`` in the same commit (AC2, AC4). The checks run
-    in this order: the organiser's organisation, the reference, the status, then the
-    payload.
+    request goes back to ``under_review`` in the same commit (AC2, AC4). The current
+    coordinator is then told, with the answer as the notification's detail, and an
+    amendment that could affect equipment already requested asks Technical Support
+    to reassess it, as an edit does (ADR-0025). The checks run in this order: the
+    organiser's organisation, the reference, the status, then the payload.
 
     Args:
         organiser_id: The caller's user id, taken from their token.
@@ -2222,7 +2269,9 @@ def resubmit_event_request(
     response = data.pop("response")
 
     answered_at = datetime.now(timezone.utc)
-    _record_field_changes(event_request, int(organiser_id), data, session=sess, now=answered_at)
+    changes = _record_field_changes(
+        event_request, int(organiser_id), data, session=sess, now=answered_at
+    )
     event_request.status = EventRequestStatus.UNDER_REVIEW
     record_event_history(
         event_request,
@@ -2233,4 +2282,6 @@ def resubmit_event_request(
         now=answered_at,
     )
     sess.commit()
+    _notify_coordinator_of_answer(event_request, response, sess)
+    _reassess_arrangements(event_request, changes, sess)
     return event_request

@@ -28,27 +28,17 @@ from app.modules.auth.models import User
 from app.modules.events.models import EventRequest, EventRequestStatus
 from app.modules.events.services import decide_event_request
 from app.modules.notifications.models import Notification
-from app.modules.notifications.services import (
-    NotificationKind,
-    list_notifications_for_recipient,
-)
+from app.modules.notifications.services import NotificationKind
 from tests.events.cases import APPROVAL_REASON, REJECTION_REASON
 
 pytestmark = pytest.mark.scrum_31
 
 Decide = Callable[..., EventRequest]
+DetailedNotificationsOf = Callable[[int], list[tuple[Any, ...]]]
 
 REFERENCE = "EVR-AAAAAAAA"
 COORDINATOR_ID = 3
 ORGANISER_ID = 7
-
-
-def _decision_notifications_of(user_id: int) -> list[tuple[Any, ...]]:
-    """A user's notifications, newest first, as (reference, kind, detail) rows."""
-    rows = []
-    for notification in list_notifications_for_recipient(user_id):
-        rows.append((notification.event_reference, notification.kind, notification.detail))
-    return rows
 
 
 # --------------------------------------------------------------------------
@@ -66,11 +56,15 @@ def _decision_notifications_of(user_id: int) -> list[tuple[Any, ...]]:
     ids=["approved", "approved-with-reason", "rejected"],
 )
 def test_the_organiser_is_told_of_the_decision_with_its_reason(
-    decide: Decide, outcome: str, reason: str | None, kind: NotificationKind
+    decide: Decide,
+    detailed_notifications_of: DetailedNotificationsOf,
+    outcome: str,
+    reason: str | None,
+    kind: NotificationKind,
 ) -> None:
     decide(COORDINATOR_ID, outcome, reason)
 
-    assert _decision_notifications_of(ORGANISER_ID) == [(REFERENCE, kind, reason)]
+    assert detailed_notifications_of(ORGANISER_ID) == [(REFERENCE, kind, reason)]
 
 
 @pytest.mark.parametrize(
@@ -86,12 +80,15 @@ def test_the_organiser_is_told_of_the_decision_with_its_reason(
     ],
 )
 def test_nobody_else_is_told_of_a_decision(
-    decide: Decide, other_organisers: list[User], user_id: int
+    decide: Decide,
+    detailed_notifications_of: DetailedNotificationsOf,
+    other_organisers: list[User],
+    user_id: int,
 ) -> None:
     """Only the organiser who submitted it is told, not their whole organisation."""
     decide(COORDINATOR_ID, "rejected", REJECTION_REASON)
 
-    assert _decision_notifications_of(user_id) == []
+    assert detailed_notifications_of(user_id) == []
 
 
 def test_a_refused_decision_notifies_nobody(decide: Decide, db_session: Session) -> None:
