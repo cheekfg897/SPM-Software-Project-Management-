@@ -10,6 +10,8 @@ reassess it, as an edit does (ADR-0025). Nobody else is told, a refused question
 notifies nobody, and a failed notification write doesn't fail the saved change
 (ADR-0015).
 
+They are SCRUM-39's AC2 evidence too, so they also carry its marker (ADR-0030).
+
 Runs against ``db_session`` with ``saved_users`` and ``EVR-AAAAAAAA`` (organiser
 7's, assigned to Event Coordinator 3); the failed-write tests use ``mock_session``.
 """
@@ -36,7 +38,7 @@ from app.modules.notifications.models import Notification
 from app.modules.notifications.services import NotificationKind
 from tests.events.cases import CLARIFICATION_QUESTION, CLARIFICATION_RESPONSE
 
-pytestmark = pytest.mark.scrum_32
+pytestmark = [pytest.mark.scrum_32, pytest.mark.scrum_39]
 
 AskClarification = Callable[[int, Any], EventRequest]
 Resubmit = Callable[[int, Any], EventRequest]
