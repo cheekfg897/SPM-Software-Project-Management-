@@ -23,6 +23,7 @@ pytestmark = pytest.mark.scrum_31
 LoadMigration = Callable[[str], ModuleType]
 RenderMigrationSql = Callable[[Callable[[], None]], str]
 AssertInOrder = Callable[[str, list[str]], None]
+AssertMigrationAndModelAgree = Callable[[tuple[str, ...], tuple[str, ...], set[str]], None]
 
 MIGRATION = "0017_add_approved_status_and_decision_kinds.py"
 EVENT_REQUESTS_MIGRATION = "0002_create_event_requests_table.py"
@@ -33,18 +34,6 @@ EQUIPMENT_MIGRATION = "0011_create_event_equipment_lines_table.py"
 REASSIGNMENT_MIGRATION = "0012_add_reassignment_history_kind.py"
 NOTES_MIGRATION = "0015_add_event_notes_and_change_kinds.py"
 COMPLETION_MIGRATION = "0016_add_event_completed_history_kind.py"
-
-
-def _assert_migration_and_model_agree(
-    previous_values: tuple[str, ...], added_values: tuple[str, ...], model_values: set[str]
-) -> None:
-    previous = set(previous_values)
-    added = set(added_values)
-
-    # Subset, not equality: a later migration could add a further value this one
-    # doesn't know about, as 0015 later did to 0010 and 0012's history kinds.
-    assert previous | added <= model_values
-    assert previous.isdisjoint(added)
 
 
 # --------------------------------------------------------------------------
@@ -98,30 +87,36 @@ def test_the_previous_notification_kinds_are_what_exists_after_migration_0015(
 # --------------------------------------------------------------------------
 
 
-def test_migration_and_model_agree_on_the_status_values(load_migration: LoadMigration) -> None:
+def test_migration_and_model_agree_on_the_status_values(
+    load_migration: LoadMigration, assert_migration_and_model_agree: AssertMigrationAndModelAgree
+) -> None:
     migration = load_migration(MIGRATION)
 
-    _assert_migration_and_model_agree(
+    assert_migration_and_model_agree(
         migration.PREVIOUS_STATUS_VALUES,
         migration.ADDED_STATUS_VALUES,
         {status.value for status in EventRequestStatus},
     )
 
 
-def test_migration_and_model_agree_on_the_history_kinds(load_migration: LoadMigration) -> None:
+def test_migration_and_model_agree_on_the_history_kinds(
+    load_migration: LoadMigration, assert_migration_and_model_agree: AssertMigrationAndModelAgree
+) -> None:
     migration = load_migration(MIGRATION)
 
-    _assert_migration_and_model_agree(
+    assert_migration_and_model_agree(
         migration.PREVIOUS_HISTORY_KIND_VALUES,
         migration.ADDED_HISTORY_KIND_VALUES,
         {kind.value for kind in EventHistoryKind},
     )
 
 
-def test_migration_and_model_agree_on_the_notification_kinds(load_migration: LoadMigration) -> None:
+def test_migration_and_model_agree_on_the_notification_kinds(
+    load_migration: LoadMigration, assert_migration_and_model_agree: AssertMigrationAndModelAgree
+) -> None:
     migration = load_migration(MIGRATION)
 
-    _assert_migration_and_model_agree(
+    assert_migration_and_model_agree(
         migration.PREVIOUS_NOTIFICATION_KIND_VALUES,
         migration.ADDED_NOTIFICATION_KIND_VALUES,
         {kind.value for kind in NotificationKind},

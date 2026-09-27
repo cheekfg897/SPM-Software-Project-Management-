@@ -39,6 +39,12 @@ class NotificationKind(str, enum.Enum):
     #: reason, if any, is the notification's ``detail`` (SCRUM-31 AC10, ADR-0028).
     EVENT_REQUEST_APPROVED = "event_request_approved"
     EVENT_REQUEST_REJECTED = "event_request_rejected"
+    #: The assigned coordinator asked the organiser for clarification, and the
+    #: question is the notification's ``detail`` (SCRUM-32 AC1, ADR-0029).
+    CLARIFICATION_REQUESTED = "clarification_requested"
+    #: The organiser answered, and the answer is the notification's ``detail``
+    #: (SCRUM-32 AC2, ADR-0029).
+    CLARIFICATION_ANSWERED = "clarification_answered"
 
 
 class Notification(db.Model):  # type: ignore[name-defined]

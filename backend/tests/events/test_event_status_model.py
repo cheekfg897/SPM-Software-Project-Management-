@@ -1,12 +1,13 @@
 """Unit tests for SCRUM-22 "Define the event status model".
 
 AC1: an event request holds exactly one of the story's seven statuses, plus
-``approved``, which SCRUM-31 adds (ADR-0028), and each one survives a trip through the
-database. AC2: the status is shown by its value, and the
-organiser who submitted a request can open it to see its current status. Coordinators'
-access is SCRUM-24's (ADR-0026); the other viewers wait on later stories. An unknown
-reference is a 404, and a typed reference ignores case and spaces (ADR-0004). Which
-organisers may open a request, and the 404 for everyone else, are SCRUM-7's
+``approved``, which SCRUM-31 adds (ADR-0028), and ``awaiting_clarification``, which
+SCRUM-32 adds (ADR-0029), and each one survives a trip through the database. AC2:
+the status is shown by its value, and the organiser who submitted a request can open
+it to see its current status. Coordinators' access is SCRUM-24's (ADR-0026); the
+other viewers wait on later stories. An unknown reference is a 404, and a typed
+reference ignores case and spaces (ADR-0004). Which organisers may open a request,
+and the 404 for everyone else, are SCRUM-7's
 (``test_organisation_event_visibility.py``).
 """
 
@@ -51,17 +52,19 @@ def _open_request(app: Flask, token: str | None) -> tuple[Response, int]:
 
 
 # --------------------------------------------------------------------------
-# AC1 — exactly one of the seven statuses, plus SCRUM-31's approved
+# AC1 — exactly one of the seven statuses, plus SCRUM-31's approved and SCRUM-32's
+# awaiting_clarification
 # --------------------------------------------------------------------------
 
 
-def test_status_values_are_the_seven_in_the_story_plus_approved() -> None:
+def test_status_values_are_the_seven_in_the_story_plus_approved_and_clarification() -> None:
     values = [status.value for status in EventRequestStatus]
 
     assert values == [
         "draft",
         "submitted",
         "under_review",
+        "awaiting_clarification",
         "approved",
         "confirmed",
         "completed",

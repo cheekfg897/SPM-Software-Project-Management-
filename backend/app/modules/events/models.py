@@ -46,14 +46,18 @@ class EventRequestStatus(str, enum.Enum):
 
     ``UNDER_REVIEW`` is the story's "Under Review / Planning". ``APPROVED`` is not one
     of SCRUM-22's seven: SCRUM-31 adds it for a request the coordinator has approved,
-    before it is confirmed (ADR-0028). ``SUBMITTED`` and ``DRAFT`` are written so far
-    (SCRUM-20), and ``COMPLETED`` by SCRUM-68; each other value arrives with the story
-    that performs the transition (SCRUM-31, SCRUM-49, SCRUM-61).
+    before it is confirmed (ADR-0028). Nor is ``AWAITING_CLARIFICATION``: SCRUM-32 adds
+    it for a request under review whose coordinator has asked the organiser a
+    question, until the organiser answers (ADR-0029). ``SUBMITTED`` and ``DRAFT`` are
+    written so far (SCRUM-20), and ``COMPLETED`` by SCRUM-68; each other value arrives
+    with the story that performs the transition (SCRUM-31, SCRUM-32, SCRUM-49,
+    SCRUM-61).
     """
 
     DRAFT = "draft"
     SUBMITTED = "submitted"
     UNDER_REVIEW = "under_review"
+    AWAITING_CLARIFICATION = "awaiting_clarification"
     APPROVED = "approved"
     CONFIRMED = "confirmed"
     COMPLETED = "completed"
@@ -65,7 +69,7 @@ class EventHistoryKind(str, enum.Enum):
     """What an event history entry records (SCRUM-30, ADR-0018).
 
     Later stories add kinds: SCRUM-33 edits, SCRUM-68 completions, SCRUM-31 reviews
-    and decisions.
+    and decisions, SCRUM-32 clarification requests and answers.
     """
 
     #: The system assigned a coordinator to a new request; ``details`` holds
@@ -93,6 +97,14 @@ class EventHistoryKind(str, enum.Enum):
     #: the coordinator. The latest one is the current decision (SCRUM-31 AC8,
     #: ADR-0028).
     DECISION_RECORDED = "decision_recorded"
+    #: The assigned coordinator asked the organiser for clarification; ``details``
+    #: holds ``message``, and ``actor_id`` is the coordinator (SCRUM-32 AC1, AC4,
+    #: ADR-0029).
+    CLARIFICATION_REQUESTED = "clarification_requested"
+    #: An organiser answered the clarification request and resubmitted; ``details``
+    #: holds ``response``, and ``actor_id`` is the organiser (SCRUM-32 AC2, AC4,
+    #: ADR-0029).
+    CLARIFICATION_ANSWERED = "clarification_answered"
 
 
 class DecisionOutcome(str, enum.Enum):
