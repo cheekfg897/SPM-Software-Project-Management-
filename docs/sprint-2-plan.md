@@ -5,47 +5,55 @@ new session can pick it up. Requirements still live only in Jira (`SCRUM-<n>` on
 `smu-team-uu78imq6.atlassian.net`), so this file lists order and dependencies, not ACs. Read each
 story's ACs and comments in Jira before planning it.
 
-Written 2026-09-25, when `main` was at `bf4652c`. Updated 2026-09-26 after rounds 2 and 3.
+Written 2026-09-25, when `main` was at `bf4652c`. Updated 2026-09-27 after rounds 4 and 5.
 
 Sprint 2 ends on 2026-10-04. Sprint 3 runs from 2026-10-04 to 2026-10-18.
 
 ## Where things stand
 
-Rounds 1 to 3 are one stack of twelve PRs. Each PR is based on the one listed above it, and
-nothing has merged yet. Every PR has keene-ng-2024 as a reviewer.
+**Every Sprint 2 story that can be built this sprint is built and in review.** #17 has merged. The
+rest form one stack of 21 PRs, each based on the one listed above it. Every PR has keene-ng-2024 as
+a reviewer. Only #18 is approved so far.
 
 | # | PR | Branch | Migration | ADR |
 |---|---|---|---|---|
-| 1 | #17 SCRUM-22 event status model | `feat/SCRUM-22-event-status-model` (base `main`) | 0006 | 0012 |
-| 2 | #18 SCRUM-66 client organisations | `feat/SCRUM-66-client-organisations` | 0007 | 0013 |
-| 3 | #19 SCRUM-27 equipment catalogue | `feat/SCRUM-27-equipment-catalogue` | 0008 | 0014 |
-| 4 | #20 SCRUM-28 notifications | `feat/SCRUM-28-notifications` | 0009 | 0015 |
-| 5 | #21 SCRUM-34 block a venue | `feat/SCRUM-34-block-venue` | none | 0016 |
-| 6 | #22 SCRUM-36 venue suitability | `feat/SCRUM-36-venue-suitability` | none | 0017 |
-| 7 | #24 SCRUM-30 assign a coordinator | `feat/SCRUM-30-assign-coordinator` | 0010 | 0018 |
-| 8 | #25 SCRUM-37 event equipment | `feat/SCRUM-37-event-equipment` | 0011 | 0019 |
-| 9 | #26 SCRUM-5/40 CI on every PR | `ci/SCRUM-5-stacked-pr-checks` | none | none |
-| 10 | #28 SCRUM-7 organisation's events | `feat/SCRUM-7-organisation-events` | none | 0020 |
-| 11 | #29 SCRUM-87 reassign a coordinator | `feat/SCRUM-87-reassign-coordinator` | 0012 | 0021 |
-| 12 | #30 SCRUM-38 equipment awaiting action | `feat/SCRUM-38-equipment-awaiting-action` | 0013 | 0022 |
+| — | #17 SCRUM-22 event status model | merged | 0006 | 0012 |
+| 1 | #18 SCRUM-66 client organisations | `feat/SCRUM-66-client-organisations` (base `main`) | 0007 | 0013 |
+| 2 | #19 SCRUM-27 equipment catalogue | `feat/SCRUM-27-equipment-catalogue` | 0008 | 0014 |
+| 3 | #20 SCRUM-28 notifications | `feat/SCRUM-28-notifications` | 0009 | 0015 |
+| 4 | #21 SCRUM-34 block a venue | `feat/SCRUM-34-block-venue` | none | 0016 |
+| 5 | #22 SCRUM-36 venue suitability | `feat/SCRUM-36-venue-suitability` | none | 0017 |
+| 6 | #24 SCRUM-30 assign a coordinator | `feat/SCRUM-30-assign-coordinator` | 0010 | 0018 |
+| 7 | #25 SCRUM-37 event equipment | `feat/SCRUM-37-event-equipment` | 0011 | 0019 |
+| 8 | #26 SCRUM-5/40 CI on every PR | `ci/SCRUM-5-stacked-pr-checks` | none | none |
+| 9 | #28 SCRUM-7 organisation's events | `feat/SCRUM-7-organisation-events` | none | 0020 |
+| 10 | #29 SCRUM-87 reassign a coordinator | `feat/SCRUM-87-reassign-coordinator` | 0012 | 0021 |
+| 11 | #30 SCRUM-38 equipment awaiting action | `feat/SCRUM-38-equipment-awaiting-action` | 0013 | 0022 |
+| 12 | #32 SCRUM-88 staff accounts by command | `feat/SCRUM-88-staff-registration` | none | 0023 |
+| 13 | #33 SCRUM-20 drafts | `feat/SCRUM-20-draft-requests` | 0014 | 0024 |
+| 14 | #34 SCRUM-33 edit an event, with history | `feat/SCRUM-33-edit-event-history` | 0015 | 0025 |
+| 15 | #35 SCRUM-24 each role's event lists | `feat/SCRUM-24-role-event-lists` | none | 0026 |
+| 16 | #36 SCRUM-68 mark an event completed | `feat/SCRUM-68-complete-event` | 0016 | 0027 |
+| 17 | #37 SCRUM-31 review and decide | `feat/SCRUM-31-review-decide` | 0017 | 0028 |
+| 18 | #38 SCRUM-32 ask for clarification | `feat/SCRUM-32-clarification` | 0018 | 0029 |
+| 19 | #39 SCRUM-39 assignment notices | `feat/SCRUM-39-decision-notifications` | 0019 | 0030 |
+| 20 | #40 SCRUM-41 end-to-end journey | `feat/SCRUM-41-e2e-journey` | none | 0031 |
 
 #27 (SCRUM-5, the PR description template) is separate, based on `main`.
 
-- **Next free numbers:** migration **0014**, ADR **0023**.
-- **Checks:** every commit passes lint, format and tests on its own. `diff-cover` is 100% for
-  each PR against the branch below it. The migration chain 0001 to 0013 was checked on
-  Postgres 16: one head, upgrade, `db check`, downgrade to base, upgrade.
-- **CI:** since #26, CI runs on every PR whatever its base. It measures `diff-cover` against the
-  PR's own base and posts the coverage figures as a comment on the PR.
-- **Merging:** bottom up, with **Rebase and merge**. Automatic branch deletion is **off** in
-  this repo, so delete each merged branch by hand. GitHub then retargets the next PR to `main`.
-- **Review is the bottleneck.** Twelve stacked PRs are waiting for review. A change requested
-  low in the stack means rebasing everything above it, so get #17 to #22 reviewed before the
-  stack grows much taller.
+- **Next free numbers:** migration **0020**, ADR **0032**.
+- **Checks:**
+  - Every commit passes lint, format and tests on its own.
+  - `diff-cover` is 100% for each PR against the branch below it.
+  - The migration chain 0001 to 0019 was checked on Postgres 16, on the top of the stack: one head, upgrade, `db check`, downgrade to base, upgrade.
+  - The tip has 1491 tests; `pytest -m "not e2e"` gives 1487.
+- **CI:** it runs on every PR whatever its base, measures `diff-cover` against the PR's own base, and posts the coverage as a comment.
+- **Merging:** bottom up, with **Rebase and merge**. Automatic branch deletion is **off**, so delete each merged branch by hand. GitHub then retargets the next PR to `main`.
+- **Review is the bottleneck.** With 20 open PRs in one stack, a change requested low down means rebasing everything above it. Get #18 to #26 reviewed first.
+- **Open with the repo owner:** make *Backend — migrate + unit tests* a **required** status check on `main`. SCRUM-41's AC2 ("a failure blocks the merge") depends on it (ADR-0031, 41-10).
 
-This file sits on its own branch, `docs/sprint-2-plan`, on top of #22. **Don't build on this
-branch.** Start each new branch from `feat/SCRUM-38-equipment-awaiting-action`, the top of the
-stack, or from `main` once the stack has merged.
+This file sits on its own branch, `docs/sprint-2-plan`. **Don't build on this branch.** Start new
+work from `feat/SCRUM-41-e2e-journey`, the top of the stack, or from `main` once the stack has merged.
 
 ## What earlier rounds give later stories
 
@@ -61,8 +69,10 @@ stack, or from `main` once the stack has merged.
   in `app.common.validation`.
 - **Suitability:** `check_venue_suitability` in `app.modules.venue.services`. SCRUM-42 will call
   it to require a justification when a venue is unsuitable.
-- **Event statuses (ADR-0012):** `draft`, `submitted`, `under_review`, `confirmed`, `completed`,
-  `cancelled`, `rejected`.
+- **Event statuses (ADR-0012, 0028, 0029):** nine: `draft`, `submitted`, `under_review`,
+  `awaiting_clarification`, `approved`, `confirmed`, `completed`, `cancelled`, `rejected`. Any
+  migration that rebuilds `event_request_status` must drop and re-create 0014's
+  `ck_event_requests_details_unless_draft` around the re-type (see 0017 and 0018).
 - **Event requests:** they carry `organiser_id`, `organisation_id` and `coordinator_id`.
   Submitting refuses an organiser who has no organisation, so test fixtures must give organisers
   one (see `organiser_is_found` and `saved_users`).
@@ -80,71 +90,49 @@ stack, or from `main` once the stack has merged.
   `requested`; SCRUM-46 adds `reserved`. Technical Support's list of what's awaiting them
   (SCRUM-38) is every upcoming event with a `requested` line.
 
+- **Drafts (SCRUM-20, ADR-0024):** a draft is a `draft`-status row with nullable details. Staff lookups (`_event_request_for_staff`) exclude drafts with a 404.
+- **Editing and history (SCRUM-33, ADR-0025):** `update_event_request` records one `field_changed` entry per field, and a significant change asks Technical Support to recheck equipment. `_record_field_changes` and `_EditedTimingSchema` are shared with SCRUM-32's resubmit.
+- **Decisions (SCRUM-31, ADR-0028):** `start_event_request_review` and `decide_event_request`. The current decision is the latest `decision_recorded` entry. `_has_arrangements` is where SCRUM-42 adds venue booking requests.
+- **Clarification (SCRUM-32, ADR-0029):** `request_clarification` and `resubmit_event_request`. `EventRecord` carries `coordinator`, `decision` and `clarifications`.
+- **Notifications carry a `detail`** (the reason or the question/answer text). The organiser gets `request_assigned` on every assignment (SCRUM-39, ADR-0030).
+- **Completion (SCRUM-68, ADR-0027):** `complete_event_request`, for a confirmed event after its end. Nothing sets `confirmed` until SCRUM-49.
+- **End-to-end tests (SCRUM-41, ADR-0031):** `tests/e2e/` drives the app with Flask's test client (`Actor`, `sign_in`). It's the only place a test client is used.
+
 ## What's left in Sprint 2
 
-Done: 22, 66, 27, 28, 34, 36, 30, 37, 5/40, 7, 87, 38 (all in review).
+**Nothing buildable.** Done: 22, 66, 27, 28, 34, 36, 30, 37, 5/40, 7, 87, 38, 88, 20, 33, 24, 68,
+31, 32, 39, 41 (all in review; 22 merged).
 
-### Can start now
+- **SCRUM-84** (venue preparation details) and **SCRUM-85** (equipment preparation details) are in the sprint, but need SCRUM-42 and SCRUM-46, which are Sprint 3. Move them to Sprint 3.
+- **Parts deferred to Sprint 3, each recorded in its ADR:**
+  - SCRUM-24's Venue Staff and Attendee lists (42, 52);
+  - SCRUM-33 and SCRUM-31's venue-booking halves (42);
+  - SCRUM-68's "no new registrations" (52).
 
-| Ticket | Needs | Notes |
-|---|---|---|
-| SCRUM-20 Save and resume drafts | 22, 7, 30 | Other organisers in the same organisation mustn't see a draft: narrow `_visible_to_organiser`. A draft is assigned only when submitted. Saving a draft sends no notification. |
-| SCRUM-33 Edit event info with change history | 30 | Four of its five ACs can be built now. AC2 marks a change significant and "raises a reassessment of the affected arrangements": equipment lines exist, so reassess those, but venue bookings don't exist until SCRUM-42 (Sprint 3). Record that gap in an ADR, or ask the PO to split the venue part into a Sprint 3 ticket. It also has the `needs-customer-clarification` label, with no comment saying what's unclear; ask the team first. |
-| SCRUM-24 See the events my role is involved in | 7, 30 | Only the organiser and coordinator views can be built now. The Venue Staff, Technical Support and attendee views wait on 42, 46 and 52. It may also be where unassigned requests get picked up (see ADR-0018 and ADR-0021). |
-| SCRUM-88 Internal staff roles can self-register | none | A security bug in public registration. It's related to organisers registering under a guessed organisation id (ADR-0013), which #28 now lets them use to read that organisation's events. It needs a design decision first, e.g. whether an internal user must create or approve accounts. |
+### Sprint 3, next
 
-### After SCRUM-33
+- **SCRUM-42** (request a venue for an event): it calls `check_venue_suitability`, and adds venue booking requests to `_has_arrangements` (31) and `_reassess_arrangements` (33).
+- **SCRUM-46** (reserve equipment), then 84 and 85.
+- **SCRUM-49** (confirm an event), which unlocks completing one for real (68).
+- **SCRUM-52** (attendee registration).
 
-| Ticket | Needs | Notes |
-|---|---|---|
-| SCRUM-68 Mark an event completed | 30, 33 | "Can no longer be edited" relies on 33. Nothing sets Confirmed until SCRUM-49 (Sprint 3), so tests set the status directly. |
+### Tickets to open (collected from the PRs)
 
-### Blocked on the "Approved" decision (SCRUM-23)
-
-| Ticket | Needs | Notes |
-|---|---|---|
-| SCRUM-31 Review and decide a request | 30, decision | It uses an "Approved" status that isn't among ADR-0012's seven. Record decisions in the event history. |
-| SCRUM-32 Ask the organiser for clarification | 31 | Uses the `under_review` status. |
-| SCRUM-39 Notifications for review decisions | 30, 31, 32, 87 | 30, 87 and 31/32 send their own notifications. 39 fills the gaps: telling the organiser a coordinator was assigned or reassigned. |
-| SCRUM-41 End-to-end test from request to approval | 20, 30, 31, 32 | draft → submit → assign → clarify → resubmit → approve. |
-
-Four of the nine tickets left wait on this one answer. If the customer can't answer soon, decide it
-in an ADR and build SCRUM-31 on that assumption.
-
-### Sprint 3, not this sprint
-
-- **SCRUM-42** (request a venue for an event) and **SCRUM-46** (reserve equipment).
-- **SCRUM-84** needs venue bookings (SCRUM-42).
-- **SCRUM-85** needs equipment reservations (SCRUM-46).
-
-## Suggested round 4
-
-**88 → 20 → 33 → 24**, each on the one before, on top of #30.
-
-- 88 goes first because it's a security fix, and it only touches the auth module.
-- 20, 33 and 24 all touch the events module. In this order each builds on the scope and history
-  code the one before it leaves.
-- Reserve, in that order: migrations 0014 to 0016 and ADRs 0023 to 0026, each used only if needed.
-  Renumber unused ones away when stacking (see below).
-- Settle SCRUM-88's design decision, and ask what SCRUM-33's clarification label is about, before
-  launching.
+- Organisers can register under a guessed organisation id (ADR-0013, from SCRUM-88).
+- Pick up an unassigned request (ADR-0018, 0021, 0026).
+- Extract the shared "assigned coordinator + status guard" check (four copies after 31 and 68).
+- A "needs your answer" list for organisers (ADR-0029, 32-9).
+- Run the e2e journey against CI's Postgres, and add a rejection journey (ADR-0031).
+- Customer questions: SCRUM-23 (is `approved` a status?), SCRUM-68 (manual or automatic completion), SCRUM-33's clarification label, and SCRUM-65 (who provisions staff accounts).
 
 ## Decisions that unblock the most
 
-1. **"Approved" status:** is it an eighth status, or does approval move a request to
-   `under_review`/Planning? Blocks SCRUM-31, and through it 32, 39 and 41 (see ADR-0012 and
-   SCRUM-23). **Open.**
-2. **Coordinator assignment rule:** **settled**. The least-loaded coordinator gets the request
-   (ADR-0018).
-3. **SCRUM-36 input:** should the suitability check take an event id instead of requirements
-   (ADR-0017)? Needed by SCRUM-42. **Open.**
-4. **Registration security (SCRUM-88):** anyone can self-register, including under a guessed
-   organisation id (ADR-0013). SCRUM-7 shipped anyway (#28 carries a warning), so this is now the
-   most urgent. **Open.**
-5. **Role limits:** should routes follow each story's Roles field? SCRUM-34's field lists Event
-   Coordinator, but its routes are Venue Staff only. **Open.**
-6. **SCRUM-33 AC2's venue half:** build it with SCRUM-42 later, or split it into its own ticket?
-   **Open.**
+1. **"Approved" status:** **settled for now.** It's an eighth status, and `awaiting_clarification` a ninth (ADR-0028, ADR-0029). Confirm with the customer (SCRUM-23).
+2. **Coordinator assignment rule:** **settled** (ADR-0018).
+3. **SCRUM-36 input:** requirements, or an event id? Needed by SCRUM-42 (ADR-0017). **Open.**
+4. **Registration security:** staff accounts now come from a command (SCRUM-88, ADR-0023). Organisation-id guessing is still a ticket to open. **Partly open.**
+5. **Role limits:** should routes follow each story's Roles field? **Open.**
+6. **SCRUM-33 AC2's venue half:** a hook is left for SCRUM-42 (ADR-0025). **Settled.**
 
 ## How the rounds were run, to repeat
 
@@ -167,7 +155,15 @@ in an ADR and build SCRUM-31 on that assumption.
 - **Postgres checks in parallel** need a different port and container name for each agent.
 - **No attribution:** no `Co-Authored-By` line or any AI attribution in commits or PRs.
 
-## Stacking the branches afterwards (lessons from rounds 1 to 3)
+- **Round 5 (the process to keep):**
+  - A Fable planner writes a test-first plan per ticket. An Opus executor implements it. A **separate test runner** (Sonnet) witnesses every RED step before any code is written, then runs a final gate: every commit on its own, plus diff-cover.
+  - The process is written down in `../spm-worktrees/plans/PROTOCOL.md`.
+  - For small REDs, the orchestrator can witness them with a script (the diff, the named tests, the full suite) in about 2–3 minutes, against about 10 for the runner.
+  - For a test-only ticket (the e2e journey), the RED is **mutation checks**: break one line at a time in a scratch copy, and confirm the test goes red at the right step.
+- **Replay migrations on Postgres while writing them.** Give each executor a throwaway Docker container on its own port, not only the orchestrator at stacking time.
+- **Parallel commits only when they're independent.** SCRUM-32's C9 read history directly, so it could be built in parallel with C5–C8 and cherry-picked after.
+
+## Stacking the branches afterwards (lessons from rounds 1 to 5)
 
 1. **Keep a backup** before rebasing: `git branch backup/SCRUM-<n>-pre-stack`.
 2. **Rebase in order.** Rebase each branch onto the one below it, in the stack order.
@@ -217,3 +213,13 @@ in an ADR and build SCRUM-31 on that assumption.
    - add a "Stack" section listing the whole stack, marking this PR, and stating the merge order.
 
    Then request the reviewer.
+
+9. **Lessons from rounds 4 and 5:**
+   - **Never run `git stash`.** The stash is shared across worktrees, and in round 4 an agent popped another ticket's stash.
+   - **Alembic revision ids are at most 32 characters** (`alembic_version.version_num`).
+   - **A rebuilt enum type needs its dependants dropped first:** constraints that compare the column block the re-type on Postgres (bug journal, 2026-09-27).
+   - **A subclass schema reorders marshmallow fields:** inherited fields come first. Pin the order with `Meta.fields` where the order matters (history).
+   - **"Keep both sides" can split a shared closing line** (`),` or `]`) between the two sides. Run ruff after every resolution, and never chain `git add` after a failing check.
+   - **Re-chain each migration's `PREVIOUS_*` tuples** to include every kind the branches below added, in Postgres (append) order.
+   - **Secret scanners flag strong-looking test passwords.** Reuse an existing fixture's value (`valid_registration_payload`) rather than adding a new literal.
+
