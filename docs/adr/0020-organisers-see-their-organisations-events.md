@@ -1,6 +1,6 @@
 # ADR-0020: Event Organisers see their client organisation's event requests, scoped by one condition
 
-- **Status:** Accepted
+- **Status:** Accepted; the same scope decides who may answer a clarification request, in [ADR-0029](0029-clarification-requests.md)
 - **Date:** 2026-09-26
 - **Story:** SCRUM-7 See only my own organisation's events
 - **Supersedes:** part of ADR-0012: an organiser sees only the requests they submitted
