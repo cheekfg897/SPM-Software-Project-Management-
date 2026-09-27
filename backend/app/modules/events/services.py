@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 import secrets
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import date, datetime, time, timezone
 from typing import Any
 
@@ -133,6 +133,24 @@ class DecisionAsShown:
 
 
 @dataclass(frozen=True)
+class ClarificationAsShown:
+    """One clarification question and its answer as the record shows them (SCRUM-32).
+
+    No user ids: the coordinator who asked and the organiser who answered are shown by
+    name. The answer's fields stay ``None`` while the question is outstanding.
+    """
+
+    message: str | None
+    #: The asking coordinator's full name, or ``None`` if they no longer exist.
+    requested_by: str | None
+    requested_at: datetime
+    response: str | None = None
+    #: The answering organiser's full name, or ``None`` if they no longer exist.
+    answered_by: str | None = None
+    answered_at: datetime | None = None
+
+
+@dataclass(frozen=True)
 class EventRecord:
     """A request with what its record shows beside it (SCRUM-30 AC3, ADR-0026)."""
 
@@ -141,6 +159,8 @@ class EventRecord:
     coordinator: CoordinatorContact | None
     #: The current decision, or ``None`` until one is recorded (SCRUM-31 AC9).
     decision: DecisionAsShown | None = None
+    #: Every clarification question in the order asked, each with its answer (SCRUM-32).
+    clarifications: tuple[ClarificationAsShown, ...] = ()
 
 
 def generate_reference() -> str:
@@ -652,12 +672,70 @@ def _current_decision_of(event_request: EventRequest, session: Session) -> Decis
     )
 
 
+def _clarification_entries(
+    event_request: EventRequest, session: Session
+) -> list[EventHistoryEntry]:
+    """The request's clarification questions and answers, oldest first (SCRUM-32).
+
+    Of two entries at the same instant, the one recorded first comes first.
+    """
+    stmt = (
+        select(EventHistoryEntry)
+        .where(
+            EventHistoryEntry.event_request_id == event_request.id,
+            EventHistoryEntry.kind.in_(
+                [EventHistoryKind.CLARIFICATION_REQUESTED, EventHistoryKind.CLARIFICATION_ANSWERED]
+            ),
+        )
+        .order_by(EventHistoryEntry.occurred_at, EventHistoryEntry.id)
+    )
+    return list(session.scalars(stmt))
+
+
+def _clarifications_of(
+    event_request: EventRequest, session: Session
+) -> tuple[ClarificationAsShown, ...]:
+    """Every clarification question in the order asked, each with its answer (AC4).
+
+    An answer belongs to the question just before it; an answer with no question
+    before it has nothing to belong to and is skipped. Names are looked up now, so a
+    removed user shows as ``None`` (as SCRUM-31's decision does, ADR-0028).
+    """
+    entries = _clarification_entries(event_request, session)
+    names = get_user_full_names(_user_ids_named_in(entries), session=session)
+
+    shown: list[ClarificationAsShown] = []
+    for entry in entries:
+        details = entry.details or {}
+        if entry.kind is EventHistoryKind.CLARIFICATION_REQUESTED:
+            question = ClarificationAsShown(
+                message=details.get("message"),
+                requested_by=_actor_name(entry, names),
+                requested_at=entry.occurred_at,
+            )
+            shown.append(question)
+        elif shown:
+            # An answer: it answers the last question asked.
+            shown[-1] = replace(
+                shown[-1],
+                response=details.get("response"),
+                answered_by=_actor_name(entry, names),
+                answered_at=entry.occurred_at,
+            )
+    return tuple(shown)
+
+
 def _event_record(event_request: EventRequest, session: Session) -> EventRecord:
-    """The request with the sections its record shows (SCRUM-30 AC3, SCRUM-31 AC9)."""
+    """The request with the sections its record shows.
+
+    Its coordinator (SCRUM-30 AC3), its decision (SCRUM-31 AC9) and its clarification
+    exchange (SCRUM-32 AC4).
+    """
     return EventRecord(
         event_request=event_request,
         coordinator=_coordinator_contact(event_request, session),
         decision=_current_decision_of(event_request, session),
+        clarifications=_clarifications_of(event_request, session),
     )
 
 

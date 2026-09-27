@@ -17,6 +17,7 @@ from app.modules.auth.permissions import INTERNAL_ROLES, Role
 from app.modules.events.schemas import (
     EQUIPMENT_EVENT_FIELDS,
     EVENT_LIST_FIELDS,
+    ClarificationSchema,
     CoordinatorContactSchema,
     DecisionSchema,
     EditedEventRequestSchema,
@@ -58,6 +59,7 @@ bp = Blueprint("events", __name__, url_prefix="/api/events")
 _event_request_schema = EventRequestSchema()
 _coordinator_contact_schema = CoordinatorContactSchema()
 _decision_schema = DecisionSchema()
+_clarification_schema = ClarificationSchema(many=True)
 _event_request_detail_schema = EventRequestDetailSchema()
 _equipment_line_schema = EquipmentLineSchema()
 _equipment_event_schema = EventRequestSchema(only=EQUIPMENT_EVENT_FIELDS)
@@ -93,10 +95,14 @@ def _shown_or_none(schema: Schema, value: object | None) -> dict[str, Any] | Non
 
 
 def _event_record_body(record: EventRecord) -> dict[str, Any]:
-    """A request's record as the API shows it: the request, coordinator and decision."""
+    """A request's record as the API shows it.
+
+    The request, its coordinator, its decision and its clarification exchange.
+    """
     body = _event_request_detail_schema.dump(record.event_request)
     body["coordinator"] = _shown_or_none(_coordinator_contact_schema, record.coordinator)
     body["decision"] = _shown_or_none(_decision_schema, record.decision)
+    body["clarifications"] = _clarification_schema.dump(record.clarifications)
     return body
 
 

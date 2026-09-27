@@ -443,6 +443,22 @@ class DecisionSchema(Schema):
     decided_at = BusinessDateTime(dump_only=True)
 
 
+class ClarificationSchema(Schema):
+    """A clarification question and its answer as the record shows them (SCRUM-32 AC4).
+
+    The coordinator and organiser are shown by name, never by id; the answer's fields
+    are ``null`` while the question is outstanding. Times are in business time
+    (ADR-0009).
+    """
+
+    message = fields.String(dump_only=True, allow_none=True)
+    requested_by = fields.String(dump_only=True, allow_none=True)
+    requested_at = BusinessDateTime(dump_only=True)
+    response = fields.String(dump_only=True, allow_none=True)
+    answered_by = fields.String(dump_only=True, allow_none=True)
+    answered_at = BusinessDateTime(dump_only=True, allow_none=True)
+
+
 #: What the equipment list says about its event: when it is, so Technical Support know
 #: by when the equipment is needed (SCRUM-37, ADR-0019). Dumped with
 #: :class:`EventRequestSchema`, so the names and formats match the request itself.

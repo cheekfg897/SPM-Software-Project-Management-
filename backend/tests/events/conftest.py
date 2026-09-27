@@ -5,7 +5,7 @@ from __future__ import annotations
 import importlib.util
 import io
 from collections.abc import Callable
-from datetime import date, time
+from datetime import date, datetime, time
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from app.modules.auth.models import User
 from app.modules.auth.permissions import ALL_ROLES, Role
 from app.modules.equipment.models import EquipmentType
+from app.modules.events import routes
 from app.modules.events.models import (
     EquipmentLineStatus,
     EventEquipmentLine,
@@ -32,8 +33,12 @@ from app.modules.events.models import (
 from app.modules.events.services import (
     CoordinatorContact,
     EventEdit,
+    EventRecord,
     decide_event_request,
+    get_event_record_for_coordinator,
+    get_event_record_for_organiser,
     reassign_coordinator,
+    record_event_history,
     request_clarification,
     resubmit_event_request,
     save_draft_event_request,
@@ -717,3 +722,77 @@ def resubmit(
         return resubmit_event_request(actor_id, "EVR-AAAAAAAA", payload, today=today)
 
     return _resubmit
+
+
+@pytest.fixture(
+    params=[(get_event_record_for_organiser, 7), (get_event_record_for_coordinator, 3)],
+    ids=["organiser", "coordinator"],
+)
+def open_record(
+    request: pytest.FixtureRequest, saved_users: list[User]
+) -> Callable[[], EventRecord]:
+    """Open ``EVR-AAAAAAAA``'s record as organiser 7, then as its coordinator, 3.
+
+    For the sections both views of the record show (SCRUM-31, SCRUM-32; ADR-0026).
+    """
+    get_record, viewer_id = request.param
+
+    def _open() -> EventRecord:
+        return get_record(viewer_id, "EVR-AAAAAAAA")
+
+    return _open
+
+
+@pytest.fixture()
+def open_record_route(
+    call_route: Callable[..., Any],
+    replace_services: Callable[[ModuleType, dict[str, Any]], dict[str, MagicMock]],
+    token_for: Callable[..., str],
+    make_user: Callable[..., User],
+) -> Callable[[EventRecord], dict[str, Any]]:
+    """Call the record route for ``EVR-AAAAAAAA`` as organiser 7, returning ``record``.
+
+    The service is replaced, so the test checks only how the route shows the record.
+    """
+    token = token_for(make_user(role=Role.EVENT_ORGANISER, user_id=7))
+
+    def _open(record: EventRecord) -> dict[str, Any]:
+        replace_services(routes, {"get_event_record_for_organiser": record})
+        response, status = call_route(
+            "events.get_my_request",
+            "GET",
+            "/api/events/requests/EVR-AAAAAAAA",
+            {"reference": "EVR-AAAAAAAA"},
+            token,
+        )
+        assert status == 200
+        return response.get_json()
+
+    return _open
+
+
+@pytest.fixture()
+def record_entry(saved_event_request: EventRequest, db_session: Session) -> Callable[..., None]:
+    """Save a history entry of ``kind`` on ``saved_event_request`` at a pinned time.
+
+    Written directly, so tests can pin times out of insertion order.
+    """
+
+    def _record(
+        kind: EventHistoryKind,
+        occurred_at: datetime,
+        *,
+        actor_id: int,
+        details: dict[str, Any] | None,
+    ) -> None:
+        record_event_history(
+            saved_event_request,
+            kind,
+            actor_id=actor_id,
+            details=details,
+            session=db_session,
+            now=occurred_at,
+        )
+        db_session.commit()
+
+    return _record
