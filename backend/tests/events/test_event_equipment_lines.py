@@ -63,8 +63,11 @@ UNKNOWN_REFERENCE = "EVR-ZZZZZZZZ"
 UNKNOWN_ID = 999
 REQUESTED = EquipmentLineStatus.REQUESTED
 #: A draft is out of scope here: it is hidden from coordinators altogether
-#: (SCRUM-20, ADR-0024), not merely refused as locked.
+#: (SCRUM-20, ADR-0024), not merely refused as locked. A request awaiting
+#: clarification is back with its organiser, so its coordinator can't change it
+#: (SCRUM-32, ADR-0029).
 EQUIPMENT_LOCKED_STATUSES = [
+    EventRequestStatus.AWAITING_CLARIFICATION,
     EventRequestStatus.CONFIRMED,
     EventRequestStatus.COMPLETED,
     EventRequestStatus.CANCELLED,

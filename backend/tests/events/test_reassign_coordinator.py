@@ -69,6 +69,7 @@ FROM_3_TO_9 = {
 REASSIGNABLE = [
     EventRequestStatus.SUBMITTED,
     EventRequestStatus.UNDER_REVIEW,
+    EventRequestStatus.AWAITING_CLARIFICATION,
     EventRequestStatus.APPROVED,
     EventRequestStatus.CONFIRMED,
 ]
@@ -127,7 +128,7 @@ def test_the_reference_ignores_case_and_surrounding_spaces(
 
 
 @pytest.mark.parametrize("status", REASSIGNABLE, ids=lambda status: status.value)
-def test_a_submitted_under_review_approved_or_confirmed_event_can_be_reassigned(
+def test_an_event_that_is_not_over_can_be_reassigned(
     reassign: Reassign,
     set_status: Callable[[EventRequestStatus], None],
     coordinator_of: CoordinatorOf,

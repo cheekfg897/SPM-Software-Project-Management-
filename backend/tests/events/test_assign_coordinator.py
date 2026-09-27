@@ -48,6 +48,7 @@ NEXT_ASSIGNEE_BY_STATUS = [
     (EventRequestStatus.DRAFT, 3),
     (EventRequestStatus.SUBMITTED, 9),
     (EventRequestStatus.UNDER_REVIEW, 9),
+    (EventRequestStatus.AWAITING_CLARIFICATION, 9),
     (EventRequestStatus.APPROVED, 9),
     (EventRequestStatus.CONFIRMED, 3),
     (EventRequestStatus.COMPLETED, 3),
