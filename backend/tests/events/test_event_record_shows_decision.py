@@ -15,35 +15,20 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import datetime, timezone
-from types import ModuleType
 from typing import Any
-from unittest.mock import MagicMock
 
 import pytest
-from sqlalchemy.orm import Session
 
-from app.modules.auth.models import User
-from app.modules.auth.permissions import Role
-from app.modules.events import routes
 from app.modules.events.models import EventHistoryKind, EventRequest
-from app.modules.events.services import (
-    DecisionAsShown,
-    EventRecord,
-    get_event_record_for_coordinator,
-    get_event_record_for_organiser,
-    record_event_history,
-)
+from app.modules.events.services import DecisionAsShown, EventRecord
 
 pytestmark = pytest.mark.scrum_31
 
 OpenRecord = Callable[[], EventRecord]
 RecordDecision = Callable[..., None]
+RecordEntry = Callable[..., None]
 OpenRecordRoute = Callable[[EventRecord], dict[str, Any]]
-CallRoute = Callable[..., Any]
-ReplaceServices = Callable[[ModuleType, dict[str, Any]], dict[str, MagicMock]]
 
-REFERENCE = "EVR-AAAAAAAA"
-ORGANISER_ID = 7
 #: The Event Coordinator ``saved_event_request`` is assigned to.
 COORDINATOR_ID = 3
 REASON = "The venue is too small for the expected attendance."
@@ -51,25 +36,8 @@ FIRST_DECIDED_AT = datetime(2026, 9, 15, 1, 0, tzinfo=timezone.utc)
 LATEST_DECIDED_AT = datetime(2026, 9, 15, 2, 30, tzinfo=timezone.utc)
 
 
-@pytest.fixture(
-    params=[
-        (get_event_record_for_organiser, ORGANISER_ID),
-        (get_event_record_for_coordinator, COORDINATOR_ID),
-    ],
-    ids=["organiser", "coordinator"],
-)
-def open_record(request: pytest.FixtureRequest, saved_users: list[User]) -> OpenRecord:
-    """Open ``REFERENCE``'s record as its organiser, or as its assigned coordinator."""
-    get_record, viewer_id = request.param
-
-    def _open() -> EventRecord:
-        return get_record(viewer_id, REFERENCE)
-
-    return _open
-
-
 @pytest.fixture()
-def record_decision(saved_event_request: EventRequest, db_session: Session) -> RecordDecision:
+def record_decision(record_entry: RecordEntry) -> RecordDecision:
     """Save a history entry on ``saved_event_request`` at a pinned time.
 
     A ``decision_recorded`` entry by its coordinator unless told otherwise.
@@ -82,42 +50,9 @@ def record_decision(saved_event_request: EventRequest, db_session: Session) -> R
         details: dict[str, Any] | None = None,
         kind: EventHistoryKind = EventHistoryKind.DECISION_RECORDED,
     ) -> None:
-        record_event_history(
-            saved_event_request,
-            kind,
-            actor_id=actor_id,
-            details=details,
-            session=db_session,
-            now=occurred_at,
-        )
-        db_session.commit()
+        record_entry(kind, occurred_at, actor_id=actor_id, details=details)
 
     return _record
-
-
-@pytest.fixture()
-def open_record_route(
-    call_route: CallRoute,
-    replace_services: ReplaceServices,
-    token_for: Callable[..., str],
-    make_user: Callable[..., User],
-) -> OpenRecordRoute:
-    """Call the record route as organiser 7, whose record is the one given."""
-    token = token_for(make_user(role=Role.EVENT_ORGANISER, user_id=ORGANISER_ID))
-
-    def _open(record: EventRecord) -> dict[str, Any]:
-        replace_services(routes, {"get_event_record_for_organiser": record})
-        response, status = call_route(
-            "events.get_my_request",
-            "GET",
-            f"/api/events/requests/{REFERENCE}",
-            {"reference": REFERENCE},
-            token,
-        )
-        assert status == 200
-        return response.get_json()
-
-    return _open
 
 
 # --------------------------------------------------------------------------
