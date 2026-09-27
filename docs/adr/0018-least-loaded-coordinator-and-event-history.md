@@ -1,6 +1,6 @@
 # ADR-0018: A submitted request goes to the least-loaded Event Coordinator; one event history table records what happens to an event
 
-- **Status:** Accepted; the coordinator's detail view taken up by ADR-0026; `approved` added to the open statuses, and the review and decision history kinds, by [ADR-0028](0028-review-and-decide.md)
+- **Status:** Accepted; the coordinator's detail view taken up by ADR-0026; `approved` added to the open statuses, and the review and decision history kinds, by [ADR-0028](0028-review-and-decide.md); `awaiting_clarification` added to the open statuses, and the clarification history kinds, by [ADR-0029](0029-clarification-requests.md)
 - **Date:** 2026-09-25
 - **Story:** SCRUM-30 Assign a coordinator to a submitted event (labelled `needs-customer-clarification`; no comments yet)
 - **Supersedes:** part of ADR-0015: who is told about a new request
