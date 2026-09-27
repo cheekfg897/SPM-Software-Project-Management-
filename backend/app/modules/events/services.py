@@ -50,12 +50,14 @@ from app.modules.events.models import (
     EventRequestStatus,
 )
 from app.modules.events.schemas import (
+    AMENDABLE_FIELDS,
     DecideEventRequestSchema,
     EditEquipmentLineSchema,
     EditEventRequestSchema,
     EventRequestSchema,
     ReassignCoordinatorSchema,
     RequestClarificationSchema,
+    ResubmitEventRequestSchema,
     SaveDraftSchema,
     SubmitEventRequestSchema,
 )
@@ -2142,6 +2144,93 @@ def request_clarification(
         actor_id=int(coordinator_id),
         details={"message": question["message"]},
         session=sess,
+    )
+    sess.commit()
+    return event_request
+
+
+NOT_AWAITING_CLARIFICATION_MESSAGE = (
+    "Only an event request awaiting clarification can be answered and resubmitted."
+)
+
+
+class RequestNotAwaitingClarificationError(AppError):
+    """The request isn't awaiting clarification, so it can't be resubmitted (409)."""
+
+    status_code = 409
+    error_code = "request_not_awaiting_clarification"
+
+
+def _event_request_awaiting_clarification(
+    organiser_id: int | str, reference: str, session: Session
+) -> EventRequest:
+    """The organiser's organisation's request, if it awaits clarification (ADR-0029).
+
+    Raises:
+        OrganiserWithoutOrganisationError: 403 — the organiser has no organisation.
+        NotFoundError: 404 — no such request in the organiser's organisation.
+        RequestNotAwaitingClarificationError: 409 — the request isn't awaiting
+            clarification.
+    """
+    event_request = get_event_request_for_organiser(organiser_id, reference, session=session)
+    if event_request.status is not EventRequestStatus.AWAITING_CLARIFICATION:
+        raise RequestNotAwaitingClarificationError(NOT_AWAITING_CLARIFICATION_MESSAGE)
+    return event_request
+
+
+def resubmit_event_request(
+    organiser_id: int | str,
+    reference: str,
+    payload: Mapping[str, Any] | None,
+    *,
+    session: Session | None = None,
+    today: date | None = None,
+) -> EventRequest:
+    """Answer the coordinator's question, amend the request and resubmit (SCRUM-32 AC2).
+
+    Any organiser of the request's client organisation may (ADR-0029), while it awaits
+    clarification. The body holds a required ``response`` and any amendments, each
+    checked as on submission. Each amended field is written to the history as a
+    ``field_changed`` entry by the organiser, then the answer as a
+    ``clarification_answered`` entry holding the response, all at one instant; the
+    request goes back to ``under_review`` in the same commit (AC2, AC4). The checks run
+    in this order: the organiser's organisation, the reference, the status, then the
+    payload.
+
+    Args:
+        organiser_id: The caller's user id, taken from their token.
+        reference: The ``EVR-…`` reference; case and surrounding spaces are ignored.
+        payload: Decoded JSON body: ``response`` and any fields to amend.
+        session: Database session; defaults to ``db.session``.
+        today: Reference date for the "not in the past" rule; defaults to today in
+            the business timezone.
+
+    Returns:
+        The request, back ``under_review``.
+
+    Raises:
+        OrganiserWithoutOrganisationError: 403 — the organiser has no organisation.
+        NotFoundError: 404 — no such request in the organiser's organisation.
+        RequestNotAwaitingClarificationError: 409 — the request isn't awaiting
+            clarification.
+        ValidationError: 400 — payload invalid (details per field).
+    """
+    sess = resolve_session(session)
+    event_request = _event_request_awaiting_clarification(organiser_id, reference, sess)
+    schema = ResubmitEventRequestSchema(event_request, today=today)
+    data = load_or_raise(schema, payload, partial=AMENDABLE_FIELDS)
+    response = data.pop("response")
+
+    answered_at = datetime.now(timezone.utc)
+    _record_field_changes(event_request, int(organiser_id), data, session=sess, now=answered_at)
+    event_request.status = EventRequestStatus.UNDER_REVIEW
+    record_event_history(
+        event_request,
+        EventHistoryKind.CLARIFICATION_ANSWERED,
+        actor_id=int(organiser_id),
+        details={"response": response},
+        session=sess,
+        now=answered_at,
     )
     sess.commit()
     return event_request

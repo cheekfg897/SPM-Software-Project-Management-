@@ -16,7 +16,8 @@ request is submitted (ADR-0024), and SCRUM-24 the summary fields each role's eve
 list shows (ADR-0026). ``_EventTimingSchema`` holds the date rules that depend on
 today (ADR-0001), shared by submitting and editing a request, and
 ``_EditedTimingSchema`` the rules for changing a saved request's dates, times and
-attendance (ADR-0025).
+attendance (ADR-0025). SCRUM-32 adds the coordinator's clarification question and
+the organiser's resubmission, which answers it and may amend the request (ADR-0029).
 """
 
 from __future__ import annotations
@@ -356,6 +357,42 @@ class EditEventRequestSchema(_EditedTimingSchema):
         for key in EDITABLE_TEXT_FIELDS:
             if key in data:
                 data[key] = _blank_as_none(data[key])
+        return data
+
+
+#: The fields an organiser may amend when answering a clarification request: every
+#: field of a submission (SCRUM-32, ADR-0029). Each may be left out.
+AMENDABLE_FIELDS = tuple(SaveDraftSchema().fields)
+
+
+class ResubmitEventRequestSchema(_EditedTimingSchema, SaveDraftSchema):
+    """Payload for ``POST /api/events/requests/<reference>/resubmit`` (SCRUM-32 AC2).
+
+    ``response`` is the organiser's answer to the coordinator's question: required,
+    not blank, and trimmed. Any field of a submission may be amended alongside it,
+    each checked as on submission; the service loads this schema with ``partial``
+    set to :data:`AMENDABLE_FIELDS`, so every amendment may be left out but the
+    response may not. The timing fields and their rules come from
+    :class:`_EditedTimingSchema`, which comes first so its fields, which can't be
+    cleared, replace the draft's nullable ones; the window is checked against the
+    saved values where a field is left out (ADR-0025). The coordinator's notes and
+    the fields the server controls are not declared, so sending them is rejected as
+    an unknown field (ADR-0029).
+
+    Args:
+        event_request: The request being resubmitted (see
+            :class:`_EditedTimingSchema`).
+        today: The date "in the past" is measured against. Defaults to today in the
+            business timezone; tests pass a fixed date.
+    """
+
+    response = fields.String(required=True, validate=not_blank)
+
+    # Not named _normalise: SaveDraftSchema's hook of that name trims the amendments,
+    # and a method of the same name here would replace it.
+    @post_load
+    def _trim_response(self, data: dict[str, Any], **_: Any) -> dict[str, Any]:
+        data["response"] = data["response"].strip()
         return data
 
 

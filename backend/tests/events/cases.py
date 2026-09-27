@@ -50,3 +50,22 @@ REJECTION_REASON = "The venue is too small for the expected attendance."
 
 #: A coordinator's question to the organiser (SCRUM-32 AC1).
 CLARIFICATION_QUESTION = "Will any guests need step-free access to the stage?"
+#: The organiser's answer to it (SCRUM-32 AC2).
+CLARIFICATION_RESPONSE = "Yes: two speakers use wheelchairs, so we need a ramp."
+
+#: Changes that break the time window once merged with a saved request running
+#: 2026-10-15 09:00-17:00, with the error each gets (ADR-0002, ADR-0025). Shared by the
+#: coordinator's edit (SCRUM-33) and the organiser's amendment (SCRUM-32).
+WINDOW_VIOLATIONS = [
+    ({"end_time": "08:00"}, {"end_time": ["Event must end after it starts."]}),
+    ({"start_time": "18:00"}, {"end_time": ["Event must end after it starts."]}),
+    (
+        {"end_date": "2026-10-14"},
+        {"end_date": ["End date cannot be before the proposed date."]},
+    ),
+]
+WINDOW_VIOLATION_IDS = [
+    "end-time-before-current-start",
+    "start-time-after-current-end",
+    "end-date-before-current-proposed-date",
+]

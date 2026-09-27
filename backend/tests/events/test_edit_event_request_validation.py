@@ -22,6 +22,7 @@ import pytest
 from app.common.errors import ValidationError
 from app.modules.events.models import EventHistoryKind, EventRequest
 from app.modules.events.services import EventEdit
+from tests.events.cases import WINDOW_VIOLATION_IDS, WINDOW_VIOLATIONS
 
 pytestmark = pytest.mark.scrum_33
 
@@ -105,21 +106,6 @@ def test_a_time_with_a_timezone_offset_is_rejected(
 # --------------------------------------------------------------------------
 # ADR-0002 — the window is checked on the merged values, not only what was sent
 # --------------------------------------------------------------------------
-
-
-WINDOW_VIOLATIONS = [
-    ({"end_time": "08:00"}, {"end_time": ["Event must end after it starts."]}),
-    ({"start_time": "18:00"}, {"end_time": ["Event must end after it starts."]}),
-    (
-        {"end_date": "2026-10-14"},
-        {"end_date": ["End date cannot be before the proposed date."]},
-    ),
-]
-WINDOW_VIOLATION_IDS = [
-    "end-time-before-current-start",
-    "start-time-after-current-end",
-    "end-date-before-current-proposed-date",
-]
 
 
 @pytest.mark.parametrize(
