@@ -352,6 +352,23 @@ def notifications_of() -> Callable[[int], list[tuple[Any, ...]]]:
 
 
 @pytest.fixture()
+def detailed_notifications_of() -> Callable[[int], list[tuple[Any, ...]]]:
+    """A user's notifications, newest first, as (reference, kind, detail) rows.
+
+    For notifications whose ``detail`` carries text, such as a decision's reason
+    (SCRUM-31) or a clarification's question and answer (SCRUM-32).
+    """
+
+    def _detailed_notifications_of(user_id: int) -> list[tuple[Any, ...]]:
+        rows = []
+        for notification in list_notifications_for_recipient(user_id):
+            rows.append((notification.event_reference, notification.kind, notification.detail))
+        return rows
+
+    return _detailed_notifications_of
+
+
+@pytest.fixture()
 def saved_event_request(
     make_event_request: Callable[..., EventRequest], save: Callable[..., None]
 ) -> EventRequest:
