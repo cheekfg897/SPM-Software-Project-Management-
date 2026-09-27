@@ -74,9 +74,15 @@ EVENT_REQUEST_NOT_FOUND_MESSAGE = "Event request not found."
 
 #: Statuses in which an assigned coordinator is still working a request, so they count
 #: towards the coordinator's load (ADR-0018). An approved request is still being
-#: planned until it is confirmed (SCRUM-31, ADR-0028).
+#: planned until it is confirmed (SCRUM-31, ADR-0028), and one awaiting clarification
+#: comes back to its coordinator once the organiser answers (SCRUM-32, ADR-0029).
 OPEN_STATUSES: frozenset[EventRequestStatus] = frozenset(
-    {EventRequestStatus.SUBMITTED, EventRequestStatus.UNDER_REVIEW, EventRequestStatus.APPROVED}
+    {
+        EventRequestStatus.SUBMITTED,
+        EventRequestStatus.UNDER_REVIEW,
+        EventRequestStatus.AWAITING_CLARIFICATION,
+        EventRequestStatus.APPROVED,
+    }
 )
 
 
@@ -878,7 +884,8 @@ def submit_draft_event_request(
 
 #: Statuses in which an event's equipment may change: while its request awaits review
 #: (SCRUM-37 AC2, ADR-0019), and once it is approved, while the event is planned
-#: (SCRUM-31, ADR-0028).
+#: (SCRUM-31, ADR-0028). Not while it awaits clarification: the request is then the
+#: organiser's to change, not the coordinator's (SCRUM-32, ADR-0029).
 EQUIPMENT_EDITABLE_STATUSES: frozenset[EventRequestStatus] = frozenset(
     {EventRequestStatus.SUBMITTED, EventRequestStatus.UNDER_REVIEW, EventRequestStatus.APPROVED}
 )
@@ -1132,19 +1139,21 @@ def remove_equipment_line(
 
 #: Statuses in which an event request may move to another coordinator: from
 #: submission until the event is over (SCRUM-87, ADR-0021; ``approved`` from SCRUM-31,
-#: ADR-0028). A completed, cancelled or rejected event has nothing left to coordinate;
-#: a draft is hidden from coordinators altogether, so it never reaches this check
-#: (SCRUM-20, ADR-0024).
+#: ADR-0028; ``awaiting_clarification`` from SCRUM-32, ADR-0029). A completed, cancelled
+#: or rejected event has nothing left to coordinate; a draft is hidden from
+#: coordinators altogether, so it never reaches this check (SCRUM-20, ADR-0024).
 REASSIGNABLE_STATUSES: frozenset[EventRequestStatus] = frozenset(
     {
         EventRequestStatus.SUBMITTED,
         EventRequestStatus.UNDER_REVIEW,
+        EventRequestStatus.AWAITING_CLARIFICATION,
         EventRequestStatus.APPROVED,
         EventRequestStatus.CONFIRMED,
     }
 )
 NOT_REASSIGNABLE_MESSAGE = (
-    "Only a submitted, under-review, approved or confirmed event request can be reassigned."
+    "Only a submitted, under-review, awaiting-clarification, approved or confirmed event "
+    "request can be reassigned."
 )
 NOT_ASSIGNED_MESSAGE = "This event request has no coordinator to reassign from."
 NOT_A_COORDINATOR_MESSAGE = "No Event Coordinator has this email address."
@@ -1367,6 +1376,8 @@ def list_equipment_requests_awaiting_action(
 #: ``approved`` from SCRUM-31, ADR-0028).
 #: A completed event is set in stone (SCRUM-68 only changes its status to that); a
 #: draft has no coordinator to edit it, and a cancelled or rejected event is over.
+#: A request awaiting clarification is the organiser's to change, not the
+#: coordinator's, until the organiser answers (SCRUM-32, ADR-0029).
 EDITABLE_STATUSES: frozenset[EventRequestStatus] = frozenset(
     {
         EventRequestStatus.SUBMITTED,

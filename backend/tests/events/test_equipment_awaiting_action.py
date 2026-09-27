@@ -131,6 +131,7 @@ def test_only_events_from_today_on_are_listed(
         EventRequestStatus.DRAFT,
         EventRequestStatus.SUBMITTED,
         EventRequestStatus.UNDER_REVIEW,
+        EventRequestStatus.AWAITING_CLARIFICATION,
         EventRequestStatus.APPROVED,
         EventRequestStatus.CONFIRMED,
     ],
