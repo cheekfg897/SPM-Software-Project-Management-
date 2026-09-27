@@ -303,6 +303,29 @@ def assert_in_order() -> Callable[[str, list[str]], None]:
 
 
 @pytest.fixture()
+def assert_migration_and_model_agree() -> Callable[
+    [tuple[str, ...], tuple[str, ...], set[str]], None
+]:
+    """Check that an enum migration's previous and added values are all in the model.
+
+    Pass the migration's previous values, the values it adds, and the model's values.
+    """
+
+    def _assert(
+        previous_values: tuple[str, ...], added_values: tuple[str, ...], model_values: set[str]
+    ) -> None:
+        previous = set(previous_values)
+        added = set(added_values)
+
+        # Subset, not equality: a later migration could add a further value this one
+        # doesn't know about, as 0015 later did to 0010 and 0012's history kinds.
+        assert previous | added <= model_values
+        assert previous.isdisjoint(added)
+
+    return _assert
+
+
+@pytest.fixture()
 def notifications_of() -> Callable[[int], list[tuple[Any, ...]]]:
     """A user's notifications, newest first, as rows of what each one records.
 

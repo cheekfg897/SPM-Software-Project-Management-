@@ -22,6 +22,12 @@ MESSAGE_BY_KIND: dict[NotificationKind, str] = {
     ),
     NotificationKind.EVENT_REQUEST_APPROVED: "Your event request was approved.",
     NotificationKind.EVENT_REQUEST_REJECTED: "Your event request was rejected.",
+    NotificationKind.CLARIFICATION_REQUESTED: (
+        "Your Event Coordinator has asked for clarification on your event request."
+    ),
+    NotificationKind.CLARIFICATION_ANSWERED: (
+        "The organiser has answered your request for clarification."
+    ),
 }
 
 #: Where a notification links to: the event's page, found by its reference
