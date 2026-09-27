@@ -34,6 +34,7 @@ from app.modules.events.services import (
     EventEdit,
     decide_event_request,
     reassign_coordinator,
+    request_clarification,
     save_draft_event_request,
     start_event_request_review,
     submit_event_request,
@@ -643,3 +644,42 @@ def assert_status_unchanged(
         assert history_of(saved_event_request.id) == []
 
     return _assert
+
+
+@pytest.fixture()
+def under_review_request(
+    saved_event_request: EventRequest, set_status: Callable[[EventRequestStatus], None]
+) -> EventRequest:
+    """``saved_event_request`` (``EVR-AAAAAAAA``), under review with Coordinator 3.
+
+    Set directly, so its history is still empty (SCRUM-32).
+    """
+    set_status(EventRequestStatus.UNDER_REVIEW)
+    return saved_event_request
+
+
+@pytest.fixture()
+def ask_clarification(
+    saved_users: list[User], under_review_request: EventRequest
+) -> Callable[[int, Any], EventRequest]:
+    """Ask the organiser about ``under_review_request`` as ``actor_id`` (SCRUM-32).
+
+    Runs on ``db_session`` with ``saved_users``; the payload is passed on as it is.
+    """
+
+    def _ask(actor_id: int, payload: Any) -> EventRequest:
+        return request_clarification(actor_id, "EVR-AAAAAAAA", payload)
+
+    return _ask
+
+
+@pytest.fixture()
+def awaiting_clarification_request(
+    saved_event_request: EventRequest, set_status: Callable[[EventRequestStatus], None]
+) -> EventRequest:
+    """``saved_event_request`` (``EVR-AAAAAAAA``), awaiting the organiser's answer.
+
+    Set directly, so its history is still empty (SCRUM-32).
+    """
+    set_status(EventRequestStatus.AWAITING_CLARIFICATION)
+    return saved_event_request

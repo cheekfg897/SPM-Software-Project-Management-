@@ -457,6 +457,21 @@ class DecideEventRequestSchema(Schema):
         return data
 
 
+class RequestClarificationSchema(Schema):
+    """Payload for ``POST .../<reference>/request-clarification`` (SCRUM-32 AC1).
+
+    ``message`` is the coordinator's question to the organiser: required, not blank,
+    and trimmed. It has no maximum length (ADR-0029).
+    """
+
+    message = fields.String(required=True, validate=not_blank)
+
+    @post_load
+    def _trim_message(self, data: dict[str, Any], **_: Any) -> dict[str, Any]:
+        data["message"] = data["message"].strip()
+        return data
+
+
 class EditEquipmentLineSchema(Schema):
     """Payload for adding (``POST``) or editing (``PATCH``) an equipment line.
 

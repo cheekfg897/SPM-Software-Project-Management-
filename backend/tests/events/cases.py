@@ -47,3 +47,6 @@ FIELD_REJECTED_CASES = [
 #: Reasons a coordinator gives for a decision (SCRUM-31 AC4, AC6).
 APPROVAL_REASON = "The venue and date fit the brief."
 REJECTION_REASON = "The venue is too small for the expected attendance."
+
+#: A coordinator's question to the organiser (SCRUM-32 AC1).
+CLARIFICATION_QUESTION = "Will any guests need step-free access to the stage?"

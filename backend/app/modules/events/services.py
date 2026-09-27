@@ -55,6 +55,7 @@ from app.modules.events.schemas import (
     EditEventRequestSchema,
     EventRequestSchema,
     ReassignCoordinatorSchema,
+    RequestClarificationSchema,
     SaveDraftSchema,
     SubmitEventRequestSchema,
 )
@@ -2064,4 +2065,83 @@ def decide_event_request(
     _apply_decision(coordinator_id, event_request, decision, sess)
     sess.commit()
     _notify_organiser_of_decision(event_request, decision, sess)
+    return event_request
+
+
+# --------------------------------------------------------------------------
+# SCRUM-32 — ask the organiser for clarification
+# --------------------------------------------------------------------------
+
+CLARIFICATION_NOT_ALLOWED_MESSAGE = (
+    "Clarification can only be requested while the event request is under review."
+)
+
+
+class ClarificationNotAllowedError(AppError):
+    """The request isn't under review, so no clarification can be asked (409)."""
+
+    status_code = 409
+    error_code = "clarification_not_allowed"
+
+
+def _event_request_under_review_by(
+    coordinator_id: int | str, reference: str, session: Session
+) -> EventRequest:
+    """The coordinator's request, if it is under review (SCRUM-32 AC1, ADR-0029).
+
+    Raises:
+        NotFoundError: 404 — no such request among the coordinator's own; a draft is
+            never found (ADR-0024).
+        ClarificationNotAllowedError: 409 — the request isn't under review.
+    """
+    event_request = _event_request_assigned_to(coordinator_id, reference, session)
+    if event_request.status is not EventRequestStatus.UNDER_REVIEW:
+        raise ClarificationNotAllowedError(CLARIFICATION_NOT_ALLOWED_MESSAGE)
+    return event_request
+
+
+def request_clarification(
+    coordinator_id: int | str,
+    reference: str,
+    payload: Mapping[str, Any] | None,
+    *,
+    session: Session | None = None,
+) -> EventRequest:
+    """Ask the organiser a question about a request under review (SCRUM-32 AC1, AC4).
+
+    Only the request's assigned coordinator may, and only while it is under review,
+    so a second question can't be asked while one is outstanding (ADR-0029). The
+    request goes back to the organiser as ``awaiting_clarification``, and a
+    ``clarification_requested`` history entry holding the question and naming the
+    coordinator is saved in the same commit. The checks run in this order: the
+    reference, the coordinator, the status, then the payload.
+
+    Args:
+        coordinator_id: The caller's user id, taken from their token.
+        reference: The ``EVR-…`` reference; case and surrounding spaces are ignored.
+        payload: Decoded JSON body: ``{"message": ...}``.
+        session: Database session; defaults to ``db.session``.
+
+    Returns:
+        The request, now ``awaiting_clarification``.
+
+    Raises:
+        NotFoundError: 404 — no such request among the coordinator's own; a draft is
+            never found (ADR-0024).
+        ClarificationNotAllowedError: 409 — the request isn't under review.
+        ValidationError: 400 — payload invalid.
+    """
+    sess = resolve_session(session)
+    event_request = _event_request_under_review_by(coordinator_id, reference, sess)
+    question = load_or_raise(RequestClarificationSchema(), payload)
+
+    event_request.status = EventRequestStatus.AWAITING_CLARIFICATION
+    record_event_history(
+        event_request,
+        EventHistoryKind.CLARIFICATION_REQUESTED,
+        actor_id=int(coordinator_id),
+        details={"message": question["message"]},
+        session=sess,
+    )
+    sess.commit()
     return event_request
