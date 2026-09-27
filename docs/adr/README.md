@@ -43,6 +43,7 @@ To change a decision, don't rewrite history. Add a new ADR that **supersedes** t
 | [0028](0028-review-and-decide.md) | The assigned coordinator reviews and decides a request; `approved` is an eighth status; decisions live in the event history | Accepted; "eighth and last status" superseded, and extended, by [0029](0029-clarification-requests.md) | SCRUM-31 |
 | [0029](0029-clarification-requests.md) | The assigned coordinator asks the organiser for clarification; `awaiting_clarification` is a ninth status; any organiser of the organisation answers and resubmits with amendments; approval waits for the answer | Accepted | SCRUM-32 |
 | [0030](0030-organiser-told-about-assignment.md) | The organiser who submitted a request is told whenever a coordinator is assigned to it, on submission and on reassignment, with its own `request_assigned` kind | Accepted | SCRUM-39 |
+| [0031](0031-end-to-end-journey-through-the-test-client.md) | The request-to-approval journey is one end-to-end test, driven through Flask's test client on the in-memory database; the test client stays in `tests/e2e` | Accepted | SCRUM-41 |
 | [0032](0032-event-catalogue-contract.md) | The event catalogue API, proposed by the frontend ahead of SCRUM-52 | Proposed | SCRUM-52 |
 | [0034](0034-coordinators-see-only-their-own-events.md) | Event Coordinators see and open only the events assigned to them; the unassigned queue waits for the Lead | Accepted | SCRUM-24 |
 

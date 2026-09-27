@@ -484,7 +484,8 @@ open** rather than leaving it unsaid.
 
 - **Unit tests only** for now: no real DB, no Flask test client. Services get the `mock_session`
   fixture; routes and decorators run inside `app.test_request_context(...)` and are called
-  directly (see `tests/conftest.py`).
+  directly (see `tests/conftest.py`). The one exception is `tests/e2e/` (marker `e2e`), whose
+  journeys drive the routes through Flask's test client on the in-memory database (ADR-0031).
 - **Layout:** `tests/<module>/test_<feature>_<aspect>.py`, e.g.
   `tests/events/test_submit_event_request_validation.py`. Module-specific fixtures go in
   `tests/<module>/conftest.py`.

@@ -97,6 +97,8 @@ flask db heads                # must print exactly one head
   and fix `down_revision`, or `flask db merge`.
 - The unit suite has no Flask test client and no real DB. Route/decorator tests use
   `app.test_request_context(...)` and call the view directly; see `tests/conftest.py`.
+  The one exception is `tests/e2e/` (marker `e2e`), whose journeys drive the routes through
+  Flask's test client on the in-memory database (ADR-0031).
 - Every test module sets `pytestmark = pytest.mark.<story_marker>`; new markers must be declared
   in `pytest.ini` (`--strict-markers`).
 - Spelling in code and API is British (`organiser`, `normalise`, `serialise`) — match it.

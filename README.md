@@ -193,7 +193,7 @@ Date-times (bookings, blocks, calendar ranges) should carry an offset, such as `
 
 ## 5. Run the tests
 
-The suite is unit tests only, and **Postgres does not need to be running**. Most tests mock the database; the venue, equipment, notifications, coordinator-assignment and event equipment service tests run against an in-memory SQLite database, so their queries really execute.
+The suite is unit tests only, and **Postgres does not need to be running**. Most tests mock the database; the venue, equipment, notifications, coordinator-assignment and event equipment service tests run against an in-memory SQLite database, so their queries really execute. The one exception is `tests/e2e/`: its journey walks an event request from draft to approval through the real routes with Flask's test client, on the same in-memory database (ADR-0031). `pytest -m "not e2e"` runs the unit tests alone.
 
 ```bash
 cd backend
@@ -230,6 +230,8 @@ pytest -m scrum_87   # reassign an event to a different coordinator
 pytest -m scrum_88   # staff accounts come from a command, not self-registration
 pytest -m scrum_33   # update event information and flag significant changes
 pytest -m scrum_68   # mark an event as completed after it has taken place
+pytest -m scrum_41   # end-to-end test: request to approval
+pytest -m e2e        # every journey driven through the HTTP layer
 ```
 
 ## Database migrations

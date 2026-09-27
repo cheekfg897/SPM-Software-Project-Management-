@@ -126,9 +126,9 @@ def invalid_token_response(*_callback_args: Any) -> tuple[Response, int]:
 def register_error_handlers(app: Flask) -> None:
     """Attach JSON error handlers to ``app``.
 
-    The handler bodies below are only reachable through the HTTP layer, so they
-    are deliberately not covered by this sprint's unit suite; they will be
-    exercised by the integration tests planned for next sprint.
+    The handler bodies below are only reachable through the HTTP layer, so the
+    unit suite doesn't reach them. The end-to-end journey in ``tests/e2e`` drives
+    ``AppError`` responses through them over HTTP (ADR-0031).
     """
 
     @app.errorhandler(AppError)
