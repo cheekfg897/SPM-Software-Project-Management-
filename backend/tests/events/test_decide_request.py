@@ -55,10 +55,16 @@ ORGANISER_ID = 7
 AWAITING_DECISION = [EventRequestStatus.SUBMITTED, EventRequestStatus.UNDER_REVIEW]
 #: The two statuses a decided request is in, and may be decided again from (ADR-0028).
 DECIDED = [EventRequestStatus.APPROVED, EventRequestStatus.REJECTED]
+#: May be rejected but not approved; SCRUM-32's tests cover it (ADR-0029).
+AWAITING_CLARIFICATION = [EventRequestStatus.AWAITING_CLARIFICATION]
 #: Every other status a coordinator can see, taken from the enum so a status added
 #: later is refused until a test says otherwise. A draft is out of scope here: it is
 #: hidden from coordinators altogether (SCRUM-20, ADR-0024).
-PAST_REVIEW = [status for status in NON_DRAFT_STATUSES if status not in AWAITING_DECISION + DECIDED]
+PAST_REVIEW = [
+    status
+    for status in NON_DRAFT_STATUSES
+    if status not in AWAITING_DECISION + DECIDED + AWAITING_CLARIFICATION
+]
 OUTCOME_MESSAGE = "Outcome must be approved or rejected."
 
 

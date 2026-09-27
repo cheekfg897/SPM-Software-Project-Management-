@@ -1848,9 +1848,15 @@ def complete_event_request(
 NOT_REVIEWABLE_MESSAGE = "Only a submitted event request can be moved to under review."
 
 #: Statuses in which a request awaits its first decision: straight from submission,
-#: or once its review has started (SCRUM-31 AC4, ADR-0028).
+#: or once its review has started (SCRUM-31 AC4, ADR-0028). One awaiting
+#: clarification may be rejected, but not approved until the organiser answers
+#: (SCRUM-32 AC3, ADR-0029).
 AWAITING_DECISION_STATUSES: frozenset[EventRequestStatus] = frozenset(
-    {EventRequestStatus.SUBMITTED, EventRequestStatus.UNDER_REVIEW}
+    {
+        EventRequestStatus.SUBMITTED,
+        EventRequestStatus.UNDER_REVIEW,
+        EventRequestStatus.AWAITING_CLARIFICATION,
+    }
 )
 #: Statuses in which a request has been decided, and may be decided again with a
 #: reason until arrangements exist for it (SCRUM-31 AC6, AC7).
@@ -1871,12 +1877,17 @@ NOTIFICATION_KIND_BY_OUTCOME: dict[DecisionOutcome, NotificationKind] = {
     DecisionOutcome.REJECTED: NotificationKind.EVENT_REQUEST_REJECTED,
 }
 NOT_DECIDABLE_MESSAGE = (
-    "Only a submitted, under-review, approved or rejected event request can be decided."
+    "Only a submitted, under-review, awaiting-clarification, approved or rejected event "
+    "request can be decided."
 )
 REASON_REQUIRED_MESSAGE = "A reason is required to reject a request or to change a decision."
 DECISION_LOCKED_MESSAGE = (
     "The decision can't be changed once the event has an equipment request or a venue "
     "booking request."
+)
+#: SCRUM-32 AC3: an approval waits for the organiser's answer (ADR-0029).
+CLARIFICATION_OUTSTANDING_MESSAGE = (
+    "The request can't be approved until the organiser has answered the clarification request."
 )
 
 
@@ -1899,6 +1910,13 @@ class DecisionLockedError(AppError):
 
     status_code = 409
     error_code = "decision_locked"
+
+
+class ClarificationOutstandingError(AppError):
+    """The organiser hasn't answered the clarification request yet (409, SCRUM-32)."""
+
+    status_code = 409
+    error_code = "clarification_outstanding"
 
 
 def start_event_request_review(
@@ -2023,6 +2041,23 @@ def _notify_organiser_of_decision(
     )
 
 
+def _check_no_clarification_outstanding(
+    decision: Mapping[str, Any], event_request: EventRequest
+) -> None:
+    """Refuse an approval while the organiser's answer is outstanding (SCRUM-32 AC3).
+
+    A rejection is still allowed (ADR-0029).
+
+    Raises:
+        ClarificationOutstandingError: 409 — an approval of a request awaiting
+            clarification.
+    """
+    if decision["outcome"] is not DecisionOutcome.APPROVED:
+        return
+    if event_request.status is EventRequestStatus.AWAITING_CLARIFICATION:
+        raise ClarificationOutstandingError(CLARIFICATION_OUTSTANDING_MESSAGE)
+
+
 def decide_event_request(
     coordinator_id: int | str,
     reference: str,
@@ -2040,8 +2075,10 @@ def decide_event_request(
     reason and the coordinator, are saved in one commit, so every decision stays in
     the history and the latest is current (AC8). Once saved, the organiser who
     submitted the request is notified, with the reason (AC10); a failure there is
-    logged, not raised (ADR-0015). The checks run in this order: the reference, the
-    coordinator, the status, the lock, then the payload.
+    logged, not raised (ADR-0015). A request awaiting clarification may be rejected
+    but not approved (SCRUM-32 AC3, ADR-0029). The checks run in this order: the
+    reference, the coordinator, the status, the lock, the payload, then the
+    outstanding clarification.
 
     Args:
         coordinator_id: The caller's user id, taken from their token.
@@ -2061,14 +2098,14 @@ def decide_event_request(
             request.
         ValidationError: 400 — payload invalid, or no reason for a rejection or a new
             decision.
+        ClarificationOutstandingError: 409 — an approval while a clarification
+            request is outstanding.
     """
     sess = resolve_session(session)
     event_request = _event_request_decidable_by(coordinator_id, reference, sess)
     decision = load_or_raise(DecideEventRequestSchema(), payload)
     _check_reason_given(decision, event_request)
-    # TODO: SCRUM-32 refuses an approval here, with a 409, while a clarification
-    # request is outstanding: it needs the validated outcome, so it sits after the
-    # payload check and before anything is written.
+    _check_no_clarification_outstanding(decision, event_request)
     _apply_decision(coordinator_id, event_request, decision, sess)
     sess.commit()
     _notify_organiser_of_decision(event_request, decision, sess)
