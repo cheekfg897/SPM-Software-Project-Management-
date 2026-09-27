@@ -43,6 +43,7 @@ from app.modules.events.services import (
     reassign_coordinator,
     remove_equipment_line,
     request_clarification,
+    resubmit_event_request,
     save_draft_event_request,
     start_event_request_review,
     submit_draft_event_request,
@@ -394,6 +395,21 @@ def ask_for_clarification(reference: str) -> tuple[Response, int]:
     with the request, now awaiting clarification.
     """
     event_request = request_clarification(
+        g.current_user_id, reference, request.get_json(silent=True)
+    )
+    return jsonify(_event_request_schema.dump(event_request)), 200
+
+
+@bp.post("/requests/<reference>/resubmit")
+@requires_role(Role.EVENT_ORGANISER)
+def resubmit_request(reference: str) -> tuple[Response, int]:
+    """Answer a clarification request, with any amendments, and resubmit (SCRUM-32 AC2).
+
+    The body is ``{"response": ..., <any submission field>: ...}``. Any organiser of
+    the request's client organisation may (ADR-0029). Returns ``200`` with the
+    request, back under review.
+    """
+    event_request = resubmit_event_request(
         g.current_user_id, reference, request.get_json(silent=True)
     )
     return jsonify(_event_request_schema.dump(event_request)), 200

@@ -1,9 +1,12 @@
 """Unit tests for SCRUM-32 "Ask the Organiser for clarification": the routes.
 
 ``POST /api/events/requests/<reference>/request-clarification`` with ``{"message"}``
-sends a request under review back to its organiser (AC1). Event Coordinators only;
-the service checks the caller is the request's own coordinator (ADR-0029). It
-answers ``200`` with the request, and never shows a user id.
+sends a request under review back to its organiser (AC1): Event Coordinators only,
+and the service checks the caller is the request's own coordinator.
+``POST /api/events/requests/<reference>/resubmit`` with ``{"response", ...}`` answers
+and resubmits it (AC2): Event Organisers only, and the service checks the request is
+their organisation's (ADR-0029). Both answer ``200`` with the request, and never show
+a user id.
 
 The *registered* view function is called inside a request context, so the real
 decorators run. The service is replaced with a mock: a refused request must be
@@ -45,7 +48,7 @@ class ClarificationRouteCase(NamedTuple):
     returned_status: EventRequestStatus
 
 
-#: The clarification routes (SCRUM-32 AC1). Each passes the caller's id from their
+#: The clarification routes (SCRUM-32 AC1, AC2). Each passes the caller's id from their
 #: token, the reference and the body to its service.
 CLARIFICATION_ROUTES = [
     pytest.param(
@@ -57,6 +60,16 @@ CLARIFICATION_ROUTES = [
             returned_status=EventRequestStatus.AWAITING_CLARIFICATION,
         ),
         id="request-clarification",
+    ),
+    pytest.param(
+        ClarificationRouteCase(
+            endpoint="events.resubmit_request",
+            path=f"/api/events/requests/{REFERENCE}/resubmit",
+            service_name="resubmit_event_request",
+            allowed_role=Role.EVENT_ORGANISER,
+            returned_status=EventRequestStatus.UNDER_REVIEW,
+        ),
+        id="resubmit",
     ),
 ]
 

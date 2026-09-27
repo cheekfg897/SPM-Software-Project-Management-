@@ -35,6 +35,7 @@ from app.modules.events.services import (
     decide_event_request,
     reassign_coordinator,
     request_clarification,
+    resubmit_event_request,
     save_draft_event_request,
     start_event_request_review,
     submit_event_request,
@@ -683,3 +684,19 @@ def awaiting_clarification_request(
     """
     set_status(EventRequestStatus.AWAITING_CLARIFICATION)
     return saved_event_request
+
+
+@pytest.fixture()
+def resubmit(
+    saved_users: list[User], saved_event_request: EventRequest, today: date
+) -> Callable[[int, Any], EventRequest]:
+    """Answer and resubmit ``saved_event_request`` (``EVR-AAAAAAAA``) as ``actor_id``.
+
+    SCRUM-32. The request is left in whatever status the test gives it; runs on
+    ``db_session`` with ``saved_users``, and the payload is passed on as it is.
+    """
+
+    def _resubmit(actor_id: int, payload: Any) -> EventRequest:
+        return resubmit_event_request(actor_id, "EVR-AAAAAAAA", payload, today=today)
+
+    return _resubmit
