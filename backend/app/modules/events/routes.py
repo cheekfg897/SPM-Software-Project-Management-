@@ -42,6 +42,7 @@ from app.modules.events.services import (
     list_event_requests_with_equipment,
     reassign_coordinator,
     remove_equipment_line,
+    request_clarification,
     save_draft_event_request,
     start_event_request_review,
     submit_draft_event_request,
@@ -378,6 +379,21 @@ def decide_request(reference: str) -> tuple[Response, int]:
     request in its new status.
     """
     event_request = decide_event_request(
+        g.current_user_id, reference, request.get_json(silent=True)
+    )
+    return jsonify(_event_request_schema.dump(event_request)), 200
+
+
+@bp.post("/requests/<reference>/request-clarification")
+@requires_role(Role.EVENT_COORDINATOR)
+def ask_for_clarification(reference: str) -> tuple[Response, int]:
+    """Ask the organiser a question about a request under review (SCRUM-32 AC1).
+
+    The body is ``{"message": ...}``. Only the request's own coordinator may; the
+    service answers anyone else with the "not yours" 404 (ADR-0029). Returns ``200``
+    with the request, now awaiting clarification.
+    """
+    event_request = request_clarification(
         g.current_user_id, reference, request.get_json(silent=True)
     )
     return jsonify(_event_request_schema.dump(event_request)), 200
