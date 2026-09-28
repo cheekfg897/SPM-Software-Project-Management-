@@ -12,7 +12,7 @@ diff-cover==10.6.0
 
 # Lint and format (configured in ruff.toml). Pinned so CI and laptops flag
 # the same things; bump it deliberately.
-ruff==0.14.5
+ruff==0.16.9
 
 # Dependency vulnerability scanning, run by the `audit` job.
 pip-audit==2.10.1
