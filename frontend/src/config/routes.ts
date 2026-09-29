@@ -10,3 +10,15 @@ export const ROUTES = {
 } as const
 
 export type RoutePath = (typeof ROUTES)[keyof typeof ROUTES]
+
+/** The search parameter that carries the page to return to after logging in. */
+export const NEXT_PARAM = 'next'
+
+/** The two log-in pages: one for Organisers and Attendees, one for staff. */
+export type LoginRoute = typeof ROUTES.LOGIN | typeof ROUTES.STAFF_LOGIN
+
+/** The log-in page, set to bring the user back to `path` once they've logged in. */
+export function loginPathReturningTo(path: string, loginRoute: LoginRoute = ROUTES.LOGIN): string {
+  const params = new URLSearchParams({ [NEXT_PARAM]: path })
+  return `${loginRoute}?${params.toString()}`
+}
