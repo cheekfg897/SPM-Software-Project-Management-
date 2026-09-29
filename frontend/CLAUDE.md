@@ -45,13 +45,16 @@ The frontend shows what the backend says. It doesn't work things out for itself.
   into Redux or `useState`.
 - **After a change, invalidate the queries it affects** so they're read again. Don't patch the
   cache by hand to guess the new state.
+- **A query key holds everything that changes the answer**, including who is asking when the
+  response depends on the viewer (`is_registered`, `/me`). Otherwise signing in shows the
+  previous viewer's copy.
 
 ## Layout
 
 ```
 src/
   app/            App shell: providers, route table (routes.tsx), query client, NotFoundPage
-  config/         constants used across features: ROUTES, ROLE and the role groups
+  config/         constants used across features: ROUTES, ROLE and the role groups, BUSINESS_TIME_ZONE
   lib/api/        the ONLY place that calls fetch: apiRequest, ApiError, error helpers
   lib/            small shared helpers (isRecord)
   store/          Redux: the session slice, its persistence, typed hooks
@@ -63,9 +66,14 @@ src/
     constants.ts  constants shared by several files in this feature (only if needed)
     components/   components only this feature uses
     pages/        the pages the route table points at
-  mocks/          MSW: handlers/<feature>.ts (+ fixtures), server.ts (tests), browser.ts (dev:mock, e2e)
+    test/         helpers only this feature's tests use (left out of coverage)
+  mocks/          the mock backend (MSW):
+    handlers/     one file per feature, plus index.ts (all handlers, resetMockBackend)
+    fixtures/     data shared with e2e: accounts, tokens, sessions (relative imports, no msw)
+    responses.ts  errorResponse, validationError, INVALID_TOKEN_MESSAGE in the backend's shape
+    server.ts / browser.ts   the mock backend for Vitest / for dev:mock and e2e
   integration/    tests against the real backend (*.int.test.ts)
-  test/           Vitest setup and render helpers (renderWithProviders, renderApp)
+  test/           Vitest setup and shared helpers: renderWithProviders, renderApp, recordRequests
 e2e/              Playwright journeys (*.spec.ts)
 ```
 
@@ -91,7 +99,8 @@ same thing, move it to `components/`, `lib/` or `config/`.
 
   export const catalogueKeys = {
     all: ['catalogue'] as const,
-    list: (params: CatalogueParams) => [...catalogueKeys.all, 'list', params] as const,
+    list: (params: CatalogueParams, viewerId: number | null) =>
+      [...catalogueKeys.all, 'list', viewerId, params] as const,
   }
 
   export function fetchCatalogue(params: CatalogueParams): Promise<CataloguePage> {
@@ -103,6 +112,11 @@ same thing, move it to `components/`, `lib/` or `config/`.
   use the hooks. Components never call `apiRequest` or `api.ts` functions directly.
 - **Mock handlers mirror the real responses**, including the error bodies. When the backend
   changes a shape, change the handler and the integration test together.
+- **The mocks are one backend.** There is one set of users (`MOCK_ACCOUNTS` in
+  `mocks/fixtures/accounts.ts`) and one token format (`mockTokenFor`, `mockSessionFor`). A
+  handler that needs the caller uses the auth mock's `accountForRequest`, the way the backend's
+  decorators do. A feature mock that keeps data (sign-ups, registrations) exports a
+  `reset...()` and adds it to `resetMockBackend`, which runs after every test.
 
 ## Constants
 
@@ -177,7 +191,13 @@ Rules:
   `server.use(http.get(...))`. An unhandled request fails the test.
 - **Render with the helpers:** `renderWithProviders(<Thing />, { session })` for one component,
   `renderApp(ROUTES.X, { session })` for a whole page with routing. Both return `user`
-  (user-event), `store` and, for `renderApp`, `router`.
+  (user-event), `store` and, for `renderApp`, `router`. Sign someone in with
+  `session: mockSessionFor(MOCK_ACCOUNTS.attendee)`.
+- **To check what was sent**, `const requests = recordRequests()` before acting, then read
+  `requests` (clones, so bodies can be read). Recording stops after each test.
+- **Assert on your own feature.** After a redirect, check the URL
+  (`router.state.location.pathname`), not another feature's heading or copy, which can change
+  under you.
 - **Find elements the way a user does:** `getByRole`, `getByLabelText`, `getByText`. No test ids
   unless nothing else works.
 - **Integration tests make their own data** (`uniqueEmail()`), never depend on another test's
@@ -186,9 +206,11 @@ Rules:
 - **e2e tests cover journeys, not every edge case.** Edge cases belong in component tests.
 - **Coverage:** `npm run test:coverage` enforces a 90% floor on lines, branches, functions and
   statements. Code you add or change should be fully covered. A line that can't be reached in
-  jsdom gets `/* v8 ignore next -- <reason> */`, and the reason is required (the same rule as
-  the backend's `# pragma: no cover - <reason>`). Browser-only wiring (`main.tsx`,
-  `app/App.tsx`) is excluded and covered by e2e.
+  jsdom gets `/* v8 ignore next -- <reason> */` (or `start` / `stop` around a block), and the
+  reason is required (the same rule as the backend's `# pragma: no cover - <reason>`). Keep the
+  ignored code thin: put the logic in a pure, tested module and leave only the drawing or
+  wiring out (see `features/landing/blackHole/`). Browser-only wiring (`main.tsx`,
+  `app/App.tsx`) and test helpers (`**/test/**`) are excluded; e2e covers the wiring.
 - **Mark the story** in each test file's top `describe` or the file name when a file belongs
   to one story, e.g. `describe('SCRUM-52 catalogue', ...)`, so a story's tests are easy to find.
 
@@ -226,5 +248,13 @@ and tests on its own.
   Format them for display with `Intl.DateTimeFormat` in the `Asia/Singapore` time zone. Send
   date-times without an offset only where the backend documents that it reads them as business
   time.
+- **Running e2e from two checkouts at once:** set `E2E_PORT` (e.g. `E2E_PORT=4181 npm run
+test:e2e`). Locally Playwright reuses a server already on its port, which may be another
+  checkout's code.
+- **In mock mode the app mounts only after the mock worker starts.** An e2e test that lists
+  elements (`locator.all()`) must first wait for one to be visible, or it checks an empty list
+  and passes for nothing.
+- **The header is `position: fixed`**, so something clipped inside it never widens the page. To
+  test that it fits, measure the elements' boxes, not the page's `scrollWidth`.
 - **Staff have no sign-up.** Their accounts come from `flask create-staff-user` (ADR-0023), so
   the staff login page never links to sign-up.
