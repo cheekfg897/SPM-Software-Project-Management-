@@ -31,6 +31,14 @@ export interface CataloguePage {
   total_pages: number
 }
 
+/** A place held at an event, as the backend returns it on registering. */
+export interface Registration {
+  id: number
+  event_id: number
+  status: 'registered'
+  registered_at: string
+}
+
 export const catalogueKeys = {
   all: ['catalogue'] as const,
   list: (params: CatalogueParams) => [...catalogueKeys.all, 'list', params] as const,
@@ -38,4 +46,11 @@ export const catalogueKeys = {
 
 export function fetchCatalogue(params: CatalogueParams): Promise<CataloguePage> {
   return apiRequest<CataloguePage>(CATALOGUE_PATHS.EVENTS, { query: params })
+}
+
+/** Register the signed-in Attendee for an event. No body: the account is the registration. */
+export function registerForEvent(eventId: number): Promise<Registration> {
+  return apiRequest<Registration>(`${CATALOGUE_PATHS.EVENTS}/${eventId}/registrations`, {
+    method: 'POST',
+  })
 }
