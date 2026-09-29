@@ -1,0 +1,12 @@
+/// <reference types="vite/client" />
+
+interface ImportMetaEnv {
+  /** "true" serves every API call from the mock handlers in src/mocks (no backend needed). */
+  readonly VITE_API_MOCKING?: string
+  /** The backend origin when it is not the page's own, e.g. http://localhost:5000 in integration tests. */
+  readonly VITE_API_ORIGIN?: string
+}
+
+interface ImportMeta {
+  readonly env: ImportMetaEnv
+}
