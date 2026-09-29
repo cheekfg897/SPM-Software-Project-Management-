@@ -26,7 +26,7 @@ from app.common.errors import (
 )
 from app.modules.auth.permissions import ALL_ROLES, Role
 from app.modules.venue import services
-from app.modules.venue.models import Venue
+from app.modules.venue.models import LayoutType, Venue
 
 pytestmark = pytest.mark.scrum_36
 
@@ -127,6 +127,16 @@ def test_an_unsupported_layout_is_named(db_session: Session, saved_venue: SavedV
     assert _reasons(venue, required_layout="theatre") == [
         ("layout", "The venue does not support the theatre layout.")
     ]
+
+
+@pytest.mark.parametrize("layout", LayoutType.values())
+def test_a_venue_supporting_the_requested_layout_is_not_named_for_it(
+    db_session: Session, saved_venue: SavedVenue, layout: str
+) -> None:
+    """Every ``LayoutType`` value is matched, not just the ones the other tests use."""
+    venue = saved_venue(supported_layouts=layout)
+
+    assert _reasons(venue, required_layout=layout) == []
 
 
 def test_every_unmet_requirement_is_reported_capacity_first(
