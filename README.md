@@ -25,7 +25,7 @@ docs/adr/           Architecture Decision Records: choices made where requiremen
 backend/CONVENTIONS.md   Python conventions: style, naming, typing, testing
 docs/code-review-checklist.md   what to check when reviewing a PR
 CLAUDE.md           working rules for Claude Code (commands, architecture rules, gotchas)
-frontend/           placeholder only — framework not yet decided
+frontend/           React + TypeScript web app (see frontend/README.md)
 docker-compose.yml  Postgres + backend for local development
 .github/workflows/  CI on every PR and push to main: lint, migrations, unit tests, coverage comment; PR title check
 ```

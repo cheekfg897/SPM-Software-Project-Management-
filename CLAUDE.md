@@ -42,6 +42,7 @@ the work is finished before the last one:
 | When | Read |
 |---|---|
 | Writing or changing Python | [backend/CONVENTIONS.md](backend/CONVENTIONS.md) — auto-loaded via `backend/CLAUDE.md` |
+| Writing or changing the frontend | [frontend/CLAUDE.md](frontend/CLAUDE.md) — auto-loaded when working in `frontend/` |
 | Reviewing code (a PR, a branch, or your own work) | the `review-checklist` skill, which walks [docs/code-review-checklist.md](docs/code-review-checklist.md) |
 | Implementing a story | The Jira story (`SCRUM-<n>` on `smu-team-uu78imq6.atlassian.net`, via the Atlassian MCP tools — read-only unless asked): ACs in the description, clarifications in comments. Then the relevant `docs/adr/` records. Jira is the only place requirements live; there is no local copy. |
 | Acceptance criteria are ambiguous | `docs/adr/README.md` — record the decision as a new ADR |
@@ -95,7 +96,8 @@ flask db heads                # must print exactly one head
 - Every test module sets `pytestmark = pytest.mark.<story_marker>`; new markers must be declared
   in `pytest.ini` (`--strict-markers`).
 - Spelling in code and API is British (`organiser`, `normalise`, `serialise`) — match it.
-- `frontend/` is a placeholder; the framework is not decided. Do not scaffold it.
+- `frontend/` is the React + TypeScript web app. Its own rules, commands and test layers are in
+  [frontend/CLAUDE.md](frontend/CLAUDE.md).
 
 ## Git and PRs
 
