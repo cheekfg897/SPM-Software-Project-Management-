@@ -1,9 +1,10 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 
 import { ROUTES } from '@/config/routes'
 import { MOCK_ACCOUNTS, mockSessionFor } from '@/mocks/handlers/auth'
 import { server } from '@/mocks/server'
+import { signedIn } from '@/store'
 import { renderApp } from '@/test/render'
 
 import { CATALOGUE_URL } from '../test/catalogueResponses'
@@ -91,5 +92,17 @@ describe('SCRUM-52 registering from the catalogue', () => {
 
     await findCard('Jazz by the Bay')
     await waitFor(() => expect(screen.queryAllByRole('button', { name: 'Register' })).toEqual([]))
+  })
+
+  it('reads the catalogue again for whoever signs in, so their registrations show', async () => {
+    const { store } = renderApp(ROUTES.EVENTS)
+    const card = await findCard('Startup Pitch Night')
+    expect(within(card).queryByText("You're registered")).not.toBeInTheDocument()
+
+    act(() => {
+      store.dispatch(signedIn(ATTENDEE_SESSION))
+    })
+
+    expect(await within(card).findByText("You're registered")).toBeInTheDocument()
   })
 })

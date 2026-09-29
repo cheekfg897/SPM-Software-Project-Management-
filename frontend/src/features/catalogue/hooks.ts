@@ -1,6 +1,8 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router'
 
+import { selectSessionUser, useAppSelector } from '@/store'
+
 import { catalogueKeys, fetchCatalogue, registerForEvent } from './api'
 import type { When } from './constants'
 import { readCatalogueParams, withPage, withPreset, withRangeEnd, withSearch } from './searchParams'
@@ -35,8 +37,9 @@ export function useCatalogueParams() {
 
 /** One page of the catalogue for these filters. The last page stays shown while the next loads. */
 export function useCatalogue(params: CatalogueParams) {
+  const viewer = useAppSelector(selectSessionUser)
   return useQuery({
-    queryKey: catalogueKeys.list(params),
+    queryKey: catalogueKeys.list(params, viewer?.id ?? null),
     queryFn: () => fetchCatalogue(params),
     placeholderData: keepPreviousData,
   })
