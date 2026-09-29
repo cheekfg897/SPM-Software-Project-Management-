@@ -1,4 +1,5 @@
-import { apiRequest, connectApiClient } from '@/lib/api'
+import { apiRequest } from '@/lib/api'
+import { sendRequestsAs } from '@/test/sendRequestsAs'
 
 import { resetMockCatalogue } from './catalogue'
 import { MOCK_ACCOUNTS, mockTokenFor } from '../fixtures/accounts'
@@ -26,10 +27,6 @@ interface Page {
 
 const CATALOGUE = '/api/events/catalogue'
 
-function signInAs(token: string | null) {
-  connectApiClient({ readAccessToken: () => token, handleUnauthorised: () => undefined })
-}
-
 function fetchPage(query: Record<string, string> = {}) {
   return apiRequest<Page>(CATALOGUE, { query })
 }
@@ -41,12 +38,6 @@ function register(eventId: number) {
 function startDates(page: Page): string[] {
   return page.items.map((item) => item.starts_at.slice(0, 10))
 }
-
-beforeEach(() => {
-  signInAs(null)
-})
-
-afterAll(() => signInAs(null))
 
 describe('SCRUM-52 catalogue mock: listing', () => {
   it('lists upcoming events soonest first, 12 to a page, with totals', async () => {
@@ -129,7 +120,7 @@ describe('SCRUM-52 catalogue mock: registering', () => {
   }
 
   it('registers an attendee, who then shows as registered with one place fewer', async () => {
-    signInAs(mockTokenFor(MOCK_ACCOUNTS.attendee))
+    sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.attendee))
     const eventId = await firstOpenEventId()
     const before = (await fetchPage()).items.find((item) => item.id === eventId)
 
@@ -144,7 +135,7 @@ describe('SCRUM-52 catalogue mock: registering', () => {
   })
 
   it('refuses a second registration for the same event', async () => {
-    signInAs(mockTokenFor(MOCK_ACCOUNTS.attendee))
+    sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.attendee))
     const eventId = await firstOpenEventId()
     await register(eventId)
 
@@ -155,14 +146,14 @@ describe('SCRUM-52 catalogue mock: registering', () => {
   })
 
   it('refuses a full event', async () => {
-    signInAs(mockTokenFor(MOCK_ACCOUNTS.attendee))
+    sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.attendee))
     const full = (await fetchPage({ page_size: '50' })).items.find((item) => item.is_full)
 
     await expect(register(full?.id ?? 0)).rejects.toMatchObject({ status: 409, code: 'event_full' })
   })
 
   it('refuses anyone who is not an attendee', async () => {
-    signInAs(mockTokenFor(MOCK_ACCOUNTS.organiser))
+    sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.organiser))
 
     await expect(register(await firstOpenEventId())).rejects.toMatchObject({
       status: 403,
@@ -178,13 +169,13 @@ describe('SCRUM-52 catalogue mock: registering', () => {
   })
 
   it('answers 404 for an event that is not in the catalogue', async () => {
-    signInAs(mockTokenFor(MOCK_ACCOUNTS.attendee))
+    sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.attendee))
 
     await expect(register(99999)).rejects.toMatchObject({ status: 404, code: 'not_found' })
   })
 
   it('forgets registrations when reset, so one test cannot leak into another', async () => {
-    signInAs(mockTokenFor(MOCK_ACCOUNTS.attendee))
+    sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.attendee))
     const eventId = await firstOpenEventId()
     await register(eventId)
     resetMockCatalogue()

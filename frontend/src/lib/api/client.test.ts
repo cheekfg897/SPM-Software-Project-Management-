@@ -2,13 +2,10 @@ import { http, HttpResponse } from 'msw'
 
 import { server } from '@/mocks/server'
 import { recordRequests } from '@/test/recordRequests'
+import { sendRequestsAs } from '@/test/sendRequestsAs'
 
 import { apiRequest, connectApiClient } from './client'
 import { ApiError } from './errors'
-
-afterEach(() => {
-  connectApiClient({ readAccessToken: () => null, handleUnauthorised: () => undefined })
-})
 
 describe('apiRequest', () => {
   it('returns the JSON body of a successful response', async () => {
@@ -46,7 +43,7 @@ describe('apiRequest', () => {
 
   it('sends the access token when there is one', async () => {
     const requests = recordRequests()
-    connectApiClient({ readAccessToken: () => 'abc', handleUnauthorised: () => undefined })
+    sendRequestsAs('abc')
     server.use(http.get('/api/things', () => HttpResponse.json({})))
 
     await apiRequest('/api/things')
