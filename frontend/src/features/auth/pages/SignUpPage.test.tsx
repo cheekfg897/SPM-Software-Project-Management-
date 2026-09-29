@@ -1,13 +1,8 @@
 import { screen, waitFor } from '@testing-library/react'
 
 import { ROUTES } from '@/config/routes'
-import {
-  EMAIL_IN_USE_MESSAGE,
-  MOCK_ACCOUNTS,
-  mockSessionFor,
-  resetMockAccounts,
-} from '@/mocks/handlers/auth'
-import { server } from '@/mocks/server'
+import { EMAIL_IN_USE_MESSAGE, MOCK_ACCOUNTS, mockSessionFor } from '@/mocks/handlers/auth'
+import { recordRequests } from '@/test/recordRequests'
 import { renderApp } from '@/test/render'
 
 type AppRender = ReturnType<typeof renderApp>
@@ -28,23 +23,11 @@ async function submit({ user }: AppRender) {
   await user.click(screen.getByRole('button', { name: 'Create account' }))
 }
 
-function captureRegistrations(): unknown[] {
-  const bodies: unknown[] = []
-  server.events.on('request:start', ({ request }) => {
-    if (request.url.endsWith('/api/auth/register')) {
-      void request
-        .clone()
-        .json()
-        .then((body: unknown) => bodies.push(body))
-    }
-  })
-  return bodies
+/** The JSON bodies of the sign-up requests among `requests` (from recordRequests). */
+async function registrationBodies(requests: Request[]): Promise<unknown[]> {
+  const registrations = requests.filter((request) => request.url.endsWith('/api/auth/register'))
+  return Promise.all(registrations.map((request): Promise<unknown> => request.json()))
 }
-
-afterEach(() => {
-  server.events.removeAllListeners()
-  resetMockAccounts()
-})
 
 describe('SCRUM-65 sign up', () => {
   it('creates an attendee account, signs them in and takes them to the events', async () => {
@@ -58,7 +41,7 @@ describe('SCRUM-65 sign up', () => {
   })
 
   it('sends no organisation for an attendee', async () => {
-    const bodies = captureRegistrations()
+    const requests = recordRequests()
     const app = renderApp(ROUTES.SIGN_UP)
 
     expect(screen.queryByLabelText('Organisation ID')).not.toBeInTheDocument()
@@ -66,11 +49,11 @@ describe('SCRUM-65 sign up', () => {
     await submit(app)
 
     await waitFor(() => expect(app.router.state.location.pathname).toBe(ROUTES.EVENTS))
-    expect(bodies).toEqual([{ ...NEW_ATTENDEE, role: 'attendee' }])
+    expect(await registrationBodies(requests)).toEqual([{ ...NEW_ATTENDEE, role: 'attendee' }])
   })
 
   it('asks an organiser for the organisation ID staff gave them, and sends it as a number', async () => {
-    const bodies = captureRegistrations()
+    const requests = recordRequests()
     const app = renderApp(ROUTES.SIGN_UP)
 
     await app.user.click(screen.getByRole('radio', { name: /Organise events/ }))
@@ -82,7 +65,9 @@ describe('SCRUM-65 sign up', () => {
 
     expect(await screen.findByText(`Welcome back, ${NEW_ATTENDEE.full_name}.`)).toBeInTheDocument()
     expect(app.router.state.location.pathname).toBe(ROUTES.ORGANISER_HOME)
-    expect(bodies).toEqual([{ ...NEW_ATTENDEE, role: 'event_organiser', organisation_id: 1 }])
+    expect(await registrationBodies(requests)).toEqual([
+      { ...NEW_ATTENDEE, role: 'event_organiser', organisation_id: 1 },
+    ])
   })
 
   it("shows the backend's message when an organiser leaves the organisation out", async () => {

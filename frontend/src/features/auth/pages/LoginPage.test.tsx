@@ -6,7 +6,7 @@ import { INVALID_CREDENTIALS_MESSAGE, MOCK_ACCOUNTS, mockSessionFor } from '@/mo
 import { server } from '@/mocks/server'
 import { renderApp } from '@/test/render'
 
-import { logInThroughForm } from '../logInThroughForm.testing'
+import { logInThroughForm } from '../test/logInThroughForm'
 
 describe('SCRUM-6 log in (organisers and attendees)', () => {
   it('logs an attendee in and takes them to the events', async () => {

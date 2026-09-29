@@ -4,7 +4,7 @@ import { ROUTES } from '@/config/routes'
 import { MOCK_ACCOUNTS } from '@/mocks/handlers/auth'
 import { renderApp } from '@/test/render'
 
-import { logInThroughForm } from '../logInThroughForm.testing'
+import { logInThroughForm } from '../test/logInThroughForm'
 
 describe('SCRUM-6 staff log in', () => {
   it('logs a coordinator in and takes them to the staff home', async () => {

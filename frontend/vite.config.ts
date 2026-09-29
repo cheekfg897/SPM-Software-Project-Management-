@@ -32,7 +32,8 @@ export default defineConfig({
       // main.tsx and App.tsx only wire the real browser together; the e2e tests cover them.
       exclude: [
         'src/**/*.test.{ts,tsx}',
-        'src/test/**',
+        // Test helpers: src/test for shared ones, <feature>/test for a feature's own.
+        'src/**/test/**',
         'src/mocks/**',
         'src/integration/**',
         'src/main.tsx',

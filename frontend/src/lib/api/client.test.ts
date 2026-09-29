@@ -1,18 +1,12 @@
 import { http, HttpResponse } from 'msw'
 
 import { server } from '@/mocks/server'
+import { recordRequests } from '@/test/recordRequests'
 
 import { apiRequest, connectApiClient } from './client'
 import { ApiError } from './errors'
 
-function captureRequests(): Request[] {
-  const seen: Request[] = []
-  server.events.on('request:start', ({ request }) => seen.push(request.clone()))
-  return seen
-}
-
 afterEach(() => {
-  server.events.removeAllListeners()
   connectApiClient({ readAccessToken: () => null, handleUnauthorised: () => undefined })
 })
 
@@ -24,7 +18,7 @@ describe('apiRequest', () => {
   })
 
   it('sends a JSON body with the method given', async () => {
-    const requests = captureRequests()
+    const requests = recordRequests()
     server.use(http.post('/api/things', () => HttpResponse.json({}, { status: 201 })))
 
     await apiRequest('/api/things', { method: 'POST', body: { name: 'Gala' } })
@@ -35,7 +29,7 @@ describe('apiRequest', () => {
   })
 
   it('adds query parameters, leaving out empty ones', async () => {
-    const requests = captureRequests()
+    const requests = recordRequests()
     server.use(http.get('/api/things', () => HttpResponse.json([])))
 
     await apiRequest('/api/things', { query: { q: 'jazz', page: 2, from: '', to: undefined } })
@@ -51,7 +45,7 @@ describe('apiRequest', () => {
   })
 
   it('sends the access token when there is one', async () => {
-    const requests = captureRequests()
+    const requests = recordRequests()
     connectApiClient({ readAccessToken: () => 'abc', handleUnauthorised: () => undefined })
     server.use(http.get('/api/things', () => HttpResponse.json({})))
 
@@ -61,7 +55,7 @@ describe('apiRequest', () => {
   })
 
   it('sends no Authorization header when signed out', async () => {
-    const requests = captureRequests()
+    const requests = recordRequests()
     server.use(http.get('/api/things', () => HttpResponse.json({})))
 
     await apiRequest('/api/things')
