@@ -1,4 +1,4 @@
-import { BUSINESS_TIME_ZONE } from './constants'
+import { BUSINESS_TIME_ZONE } from '@/config/time'
 
 /**
  * Display formats for the backend's date-times, always in business time so a visitor abroad
