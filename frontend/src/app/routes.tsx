@@ -1,7 +1,10 @@
 import type { RouteObject } from 'react-router'
 
 import { SiteLayout } from '@/components/layout'
+import { INTERNAL_ROLES, ROLE } from '@/config/roles'
+import type { Role } from '@/config/roles'
 import { ROUTES } from '@/config/routes'
+import { RequireRole } from '@/features/auth/components/RequireRole'
 import { LoginPage } from '@/features/auth/pages/LoginPage'
 import { OrganiserHomePage } from '@/features/auth/pages/OrganiserHomePage'
 import { SignUpPage } from '@/features/auth/pages/SignUpPage'
@@ -11,6 +14,8 @@ import { CataloguePage } from '@/features/catalogue/pages/CataloguePage'
 import { LandingPage } from '@/features/landing/pages/LandingPage'
 
 import { NotFoundPage } from './NotFoundPage'
+
+const ORGANISER_ROLES: readonly Role[] = [ROLE.EVENT_ORGANISER]
 
 /** The page tree. The browser router (App) and the test router (renderApp) both use it. */
 export const appRoutes: RouteObject[] = [
@@ -22,8 +27,22 @@ export const appRoutes: RouteObject[] = [
       { path: ROUTES.LOGIN, element: <LoginPage /> },
       { path: ROUTES.SIGN_UP, element: <SignUpPage /> },
       { path: ROUTES.STAFF_LOGIN, element: <StaffLoginPage /> },
-      { path: ROUTES.ORGANISER_HOME, element: <OrganiserHomePage /> },
-      { path: ROUTES.STAFF_HOME, element: <StaffHomePage /> },
+      {
+        path: ROUTES.ORGANISER_HOME,
+        element: (
+          <RequireRole allowedRoles={ORGANISER_ROLES} loginRoute={ROUTES.LOGIN}>
+            <OrganiserHomePage />
+          </RequireRole>
+        ),
+      },
+      {
+        path: ROUTES.STAFF_HOME,
+        element: (
+          <RequireRole allowedRoles={INTERNAL_ROLES} loginRoute={ROUTES.STAFF_LOGIN}>
+            <StaffHomePage />
+          </RequireRole>
+        ),
+      },
       { path: '*', element: <NotFoundPage /> },
     ],
   },
