@@ -1,7 +1,7 @@
 import { render } from '@testing-library/react'
 
 import { drawScene, fitCanvas } from '../blackHole/renderer'
-import { stubElementBox, stubPrefersReducedMotion } from '../motionStubs'
+import { stubElementBox, stubPrefersReducedMotion } from '../test/motionStubs'
 
 import { BlackHoleCanvas } from './BlackHoleCanvas'
 

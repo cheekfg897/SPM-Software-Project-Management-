@@ -1,6 +1,6 @@
 import { act, render, screen } from '@testing-library/react'
 
-import { stubIntersectionObserver, stubPrefersReducedMotion } from '../motionStubs'
+import { stubIntersectionObserver, stubPrefersReducedMotion } from '../test/motionStubs'
 
 import { Reveal } from './Reveal'
 
