@@ -30,3 +30,28 @@ export function stubElementBox(box: { top: number; height: number }): void {
     DOMRect.fromRect({ x: 0, y: box.top, width: 1000, height: box.height }),
   )
 }
+
+/**
+ * Stub `IntersectionObserver`. Returns a function that tells every observer whether its
+ * element is on screen, as the browser does when it first observes and on each change.
+ */
+export function stubIntersectionObserver(): (isIntersecting: boolean) => void {
+  const callbacks: IntersectionObserverCallback[] = []
+  const disconnect = vi.fn()
+  class StubObserver {
+    constructor(callback: IntersectionObserverCallback) {
+      callbacks.push(callback)
+    }
+    observe = vi.fn()
+    disconnect = disconnect
+  }
+  vi.stubGlobal('IntersectionObserver', StubObserver)
+
+  return (isIntersecting) => {
+    // Only isIntersecting is read, and the observer argument isn't read at all.
+    const entry = { isIntersecting } as IntersectionObserverEntry
+    for (const callback of callbacks) {
+      callback([entry], {} as IntersectionObserver)
+    }
+  }
+}
