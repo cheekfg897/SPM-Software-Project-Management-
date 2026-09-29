@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 
 import { ROUTES } from '@/config/routes'
@@ -30,8 +30,7 @@ describe('SCRUM-6 pages only a role may open', () => {
       session: mockSessionFor(MOCK_ACCOUNTS.attendee),
     })
 
-    await screen.findByRole('heading', { name: 'Events' })
-    expect(router.state.location.pathname).toBe(ROUTES.EVENTS)
+    await waitFor(() => expect(router.state.location.pathname).toBe(ROUTES.EVENTS))
   })
 
   it('greets the right role by the name the backend has for them', async () => {

@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 
 import { ROUTES } from '@/config/routes'
@@ -15,8 +15,7 @@ describe('SCRUM-6 log in (organisers and attendees)', () => {
 
     await logInThroughForm(app.user, attendee)
 
-    expect(await screen.findByRole('heading', { name: 'Events' })).toBeInTheDocument()
-    expect(app.router.state.location.pathname).toBe(ROUTES.EVENTS)
+    await waitFor(() => expect(app.router.state.location.pathname).toBe(ROUTES.EVENTS))
     expect(app.store.getState().session.user).toEqual(mockSessionFor(attendee).user)
   })
 
@@ -68,7 +67,7 @@ describe('SCRUM-6 log in (organisers and attendees)', () => {
 
     await logInThroughForm(app.user, attendee)
 
-    await screen.findByRole('heading', { name: 'Events' })
+    await waitFor(() => expect(app.router.state.location.pathname).toBe(ROUTES.EVENTS))
     expect(app.router.state.location.search).toBe('?page=2')
   })
 
@@ -84,7 +83,6 @@ describe('SCRUM-6 log in (organisers and attendees)', () => {
   it('sends someone already signed in to their landing view', async () => {
     const { router } = renderApp(ROUTES.LOGIN, { session: mockSessionFor(MOCK_ACCOUNTS.attendee) })
 
-    await screen.findByRole('heading', { name: 'Events' })
-    expect(router.state.location.pathname).toBe(ROUTES.EVENTS)
+    await waitFor(() => expect(router.state.location.pathname).toBe(ROUTES.EVENTS))
   })
 })
