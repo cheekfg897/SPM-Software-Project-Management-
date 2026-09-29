@@ -2,11 +2,11 @@ import { useLocation, useNavigate } from 'react-router'
 
 import { Button, ErrorAlert } from '@/components/ui'
 import { ROLE } from '@/config/roles'
+import { loginPathReturningTo } from '@/config/routes'
 import { selectSessionUser, useAppSelector } from '@/store'
 
 import type { CatalogueEvent } from '../api'
 import { useRegisterForEvent } from '../hooks'
-import { loginPathReturningTo } from '../loginRedirect'
 
 function VisitorRegisterButton() {
   const navigate = useNavigate()
