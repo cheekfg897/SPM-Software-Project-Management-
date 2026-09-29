@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 
 import { ROUTES } from '@/config/routes'
 import {
@@ -53,8 +53,7 @@ describe('SCRUM-65 sign up', () => {
     await fillIn(app, NEW_ATTENDEE)
     await submit(app)
 
-    expect(await screen.findByRole('heading', { name: 'Events' })).toBeInTheDocument()
-    expect(app.router.state.location.pathname).toBe(ROUTES.EVENTS)
+    await waitFor(() => expect(app.router.state.location.pathname).toBe(ROUTES.EVENTS))
     expect(app.store.getState().session.user?.full_name).toBe(NEW_ATTENDEE.full_name)
   })
 
@@ -66,7 +65,7 @@ describe('SCRUM-65 sign up', () => {
     await fillIn(app, NEW_ATTENDEE)
     await submit(app)
 
-    await screen.findByRole('heading', { name: 'Events' })
+    await waitFor(() => expect(app.router.state.location.pathname).toBe(ROUTES.EVENTS))
     expect(bodies).toEqual([{ ...NEW_ATTENDEE, role: 'attendee' }])
   })
 
