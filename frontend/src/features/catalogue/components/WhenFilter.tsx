@@ -39,8 +39,14 @@ export function WhenFilter() {
   const fieldErrors = fieldErrorsOf(error)
 
   function choose(value: string) {
-    setIsPickingDates(value === PICK_DATES)
-    choosePreset(isPreset(value) ? value : WHEN.UPCOMING)
+    if (isPreset(value)) {
+      setIsPickingDates(false)
+      choosePreset(value)
+      return
+    }
+    // "Pick dates": show the inputs, and drop any preset until a date is entered.
+    setIsPickingDates(true)
+    choosePreset(WHEN.UPCOMING)
   }
 
   return (
