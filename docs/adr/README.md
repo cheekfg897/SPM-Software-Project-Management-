@@ -35,6 +35,7 @@ To change a decision, don't rewrite history. Add a new ADR that **supersedes** t
 | [0020](0020-organisers-see-their-organisations-events.md) | Event Organisers see their client organisation's event requests, scoped by one condition; another organisation's is `404` | Accepted | SCRUM-7 |
 | [0021](0021-coordinator-reassignment.md) | An event's own coordinator may hand it, while open or confirmed, to another coordinator named by email; the history keeps both coordinators' ids and names | Accepted | SCRUM-87 |
 | [0022](0022-equipment-awaiting-action.md) | Technical Support see one shared list of upcoming events whose equipment lines are still `requested`, soonest first | Accepted | SCRUM-38 |
+| [0032](0032-event-catalogue-contract.md) | The event catalogue API, proposed by the frontend ahead of SCRUM-52 | Proposed | SCRUM-52 |
 
 ## Template
 
