@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react'
 
-import { stubElementBox } from '../motionStubs'
+import { stubElementBox } from '../test/motionStubs'
 
 import { useScrollProgress } from './useScrollProgress'
 

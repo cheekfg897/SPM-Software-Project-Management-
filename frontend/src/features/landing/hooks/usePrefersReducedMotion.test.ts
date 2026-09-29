@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react'
 
-import { stubPrefersReducedMotion } from '../motionStubs'
+import { stubPrefersReducedMotion } from '../test/motionStubs'
 
 import { usePrefersReducedMotion } from './usePrefersReducedMotion'
 

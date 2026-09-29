@@ -3,7 +3,7 @@ import { act, screen } from '@testing-library/react'
 import { ROUTES } from '@/config/routes'
 import { renderWithProviders } from '@/test/render'
 
-import { stubElementBox, stubPrefersReducedMotion } from '../motionStubs'
+import { stubElementBox, stubPrefersReducedMotion } from '../test/motionStubs'
 
 import { BlackHoleHero } from './BlackHoleHero'
 
