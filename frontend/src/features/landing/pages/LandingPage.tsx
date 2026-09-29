@@ -1,6 +1,9 @@
-import { PageContainer } from '@/components/layout'
+import { BlackHoleHero } from '../components/BlackHoleHero'
 
-// Placeholder: replaced when this page is built.
 export function LandingPage() {
-  return <PageContainer title="ConnectSphere" />
+  return (
+    <main>
+      <BlackHoleHero />
+    </main>
+  )
 }
