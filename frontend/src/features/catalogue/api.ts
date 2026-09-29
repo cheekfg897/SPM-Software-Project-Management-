@@ -41,7 +41,12 @@ export interface Registration {
 
 export const catalogueKeys = {
   all: ['catalogue'] as const,
-  list: (params: CatalogueParams) => [...catalogueKeys.all, 'list', params] as const,
+  /**
+   * One page for one viewer: `is_registered` depends on who asks, so a different user (or
+   * signing in) reads the page again instead of seeing someone else's.
+   */
+  list: (params: CatalogueParams, viewerId: number | null) =>
+    [...catalogueKeys.all, 'list', viewerId, params] as const,
 }
 
 export function fetchCatalogue(params: CatalogueParams): Promise<CataloguePage> {
