@@ -1,13 +1,14 @@
 import { http, HttpResponse } from 'msw'
 import type { RequestHandler } from 'msw'
 
-import { ROLE } from '@/config/roles'
+import { EXTERNAL_ROLES, ROLE } from '@/config/roles'
 import type { Role } from '@/config/roles'
 import { isRecord } from '@/lib/isRecord'
 
 /**
  * The auth endpoints, as the backend answers them (backend/app/modules/auth, with SCRUM-66's
- * organisation_id). Accounts live in memory, starting from MOCK_ACCOUNTS.
+ * organisation_id and SCRUM-88's external-only sign-up). Accounts live in memory: sign up, then
+ * log in with the same details, and it works until the page reloads or resetMockAccounts runs.
  */
 
 interface MockAccount {
@@ -47,12 +48,22 @@ export const MOCK_ACCOUNTS = {
   },
 } as const satisfies Record<string, MockAccount>
 
+/** Client organisations that exist in the mock (ADR-0013). */
+export const MOCK_ORGANISATION_IDS: readonly number[] = [1, 2]
+
 export const INVALID_CREDENTIALS_MESSAGE = 'Invalid email or password.'
+export const EMAIL_IN_USE_MESSAGE = 'An account with this email already exists.'
 const INVALID_TOKEN_MESSAGE = 'Missing, invalid or expired token.'
 const REQUIRED_MESSAGE = 'Missing data for required field.'
 const MOCK_TOKEN_PREFIX = 'mock-token-'
 
-const accounts: MockAccount[] = Object.values(MOCK_ACCOUNTS)
+let accounts: MockAccount[] = []
+
+/** Forget every account made by sign-up, keeping only MOCK_ACCOUNTS. */
+export function resetMockAccounts(): void {
+  accounts = Object.values(MOCK_ACCOUNTS).map((account) => ({ ...account }))
+}
+resetMockAccounts()
 
 /** A signed-in session for `account`, for renderApp's `session` option or a seeded browser. */
 export function mockSessionFor(account: MockAccount) {
@@ -94,6 +105,52 @@ function missingFields(body: Record<string, unknown>, names: string[]): Record<s
   return details
 }
 
+/** The first rule the password breaks, in the backend's order (ADR-0005). */
+function passwordProblem(password: string): string | null {
+  if (password.length < 8) {
+    return 'Password must be at least 8 characters long.'
+  }
+  if (!/[A-Za-z]/.test(password)) {
+    return 'Password must contain at least one letter.'
+  }
+  if (!/\d/.test(password)) {
+    return 'Password must contain at least one digit.'
+  }
+  return null
+}
+
+function organisationProblem(role: unknown, organisationId: unknown): string | null {
+  const hasOrganisation = organisationId !== null && organisationId !== undefined
+  if (role === ROLE.EVENT_ORGANISER && !hasOrganisation) {
+    return 'Event Organisers must belong to a client organisation.'
+  }
+  if (role !== ROLE.EVENT_ORGANISER && hasOrganisation) {
+    return 'Only Event Organisers belong to a client organisation.'
+  }
+  if (hasOrganisation && !MOCK_ORGANISATION_IDS.includes(Number(organisationId))) {
+    return 'Client organisation not found.'
+  }
+  return null
+}
+
+function registrationProblems(body: Record<string, unknown>): Record<string, string[]> {
+  const details = missingFields(body, ['email', 'password', 'full_name', 'role'])
+  const password = typeof body.password === 'string' ? body.password : ''
+  const passwordMessage = passwordProblem(password)
+  if (details.password === undefined && passwordMessage !== null) {
+    details.password = [passwordMessage]
+  }
+  const isExternalRole = EXTERNAL_ROLES.some((role) => role === body.role)
+  if (details.role === undefined && !isExternalRole) {
+    details.role = ['Role must be one of: attendee, event_organiser.']
+  }
+  const organisationMessage = organisationProblem(body.role, body.organisation_id)
+  if (Object.keys(details).length === 0 && organisationMessage !== null) {
+    details.organisation_id = [organisationMessage]
+  }
+  return details
+}
+
 async function readBody(request: Request): Promise<Record<string, unknown>> {
   const body: unknown = await request.json().catch(() => null)
   return isRecord(body) ? body : {}
@@ -126,6 +183,27 @@ export const authHandlers: RequestHandler[] = [
       token_type: 'Bearer',
       user: { id: account.id, full_name: account.full_name, role: account.role },
     })
+  }),
+
+  http.post('/api/auth/register', async ({ request }) => {
+    const body = await readBody(request)
+    const problems = registrationProblems(body)
+    if (Object.keys(problems).length > 0) {
+      return validationError(problems)
+    }
+    if (findByEmail(body.email) !== undefined) {
+      return errorResponse(409, 'conflict', EMAIL_IN_USE_MESSAGE)
+    }
+    const account: MockAccount = {
+      id: accounts.length + 100,
+      email: String(body.email).trim().toLowerCase(),
+      password: String(body.password),
+      full_name: String(body.full_name).trim(),
+      role: body.role === ROLE.EVENT_ORGANISER ? ROLE.EVENT_ORGANISER : ROLE.ATTENDEE,
+      organisation_id: typeof body.organisation_id === 'number' ? body.organisation_id : null,
+    }
+    accounts.push(account)
+    return HttpResponse.json(publicUser(account), { status: 201 })
   }),
 
   http.get('/api/auth/me', ({ request }) => {

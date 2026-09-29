@@ -4,6 +4,7 @@ import type { SessionUser } from '@/store'
 
 const AUTH_PATHS = {
   LOGIN: '/api/auth/login',
+  REGISTER: '/api/auth/register',
   ME: '/api/auth/me',
 } as const
 
@@ -17,6 +18,18 @@ export interface LoginResponse {
   access_token: string
   token_type: 'Bearer'
   user: SessionUser
+}
+
+/**
+ * `POST /api/auth/register` (SCRUM-65). Only an Event Organiser sends `organisation_id`: the
+ * id of the client organisation ConnectSphere staff recorded for them (ADR-0013).
+ */
+export interface Registration {
+  full_name: string
+  email: string
+  password: string
+  role: Role
+  organisation_id?: number | null
 }
 
 /** `GET /api/auth/me`: the fields the frontend reads from the backend's user. */
@@ -35,6 +48,11 @@ export const authKeys = {
 
 export function logIn(credentials: LoginCredentials): Promise<LoginResponse> {
   return apiRequest<LoginResponse>(AUTH_PATHS.LOGIN, { method: 'POST', body: credentials })
+}
+
+/** Create the account. The response is the new user, which sign-up doesn't need. */
+export async function register(registration: Registration): Promise<void> {
+  await apiRequest<unknown>(AUTH_PATHS.REGISTER, { method: 'POST', body: registration })
 }
 
 export function fetchCurrentUser(): Promise<CurrentUser> {
