@@ -152,12 +152,20 @@ def test_only_events_from_today_on_are_listed(
 
 @pytest.mark.parametrize(
     "status",
-    [EventRequestStatus.SUBMITTED, EventRequestStatus.UNDER_REVIEW, EventRequestStatus.CONFIRMED],
+    [
+        EventRequestStatus.DRAFT,
+        EventRequestStatus.SUBMITTED,
+        EventRequestStatus.UNDER_REVIEW,
+        EventRequestStatus.CONFIRMED,
+    ],
     ids=lambda status: status.value,
 )
 def test_events_that_may_still_run_are_listed(
     event_needing: EventNeeding, today: date, status: EventRequestStatus
 ) -> None:
+    # A draft can't hold a line through the service (ADR-0019), but the list's own
+    # filter would still show one if it existed (ADR-0022), so it's exercised here
+    # the same way AC4 is: written straight into the table.
     event_needing(status=status)
 
     assert _references(list_equipment_requests_awaiting_action(today=today)) == [REFERENCE]
