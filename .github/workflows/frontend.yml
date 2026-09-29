@@ -1,0 +1,178 @@
+name: Frontend
+
+# Every pull request, whatever branch it targets, and every push to main, the same
+# triggers as ci.yml and for the same reasons: a pull request stacked on another branch
+# gets its checks straight away, and with no paths filter these jobs can be required
+# status checks without blocking a pull request that doesn't touch the frontend. The
+# integration job checks the frontend's API calls against the real backend, so backend
+# changes need it too. The three jobs match the three test layers in frontend/CLAUDE.md.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    working-directory: frontend
+
+jobs:
+  checks:
+    name: Frontend — lint, types, unit + component tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      # Full history, so diff-cover can find where the pull request branched off.
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Type-check
+        run: npm run typecheck
+
+      # Fails under the 90% floor set in vite.config.ts.
+      - name: Unit and component tests with coverage
+        run: npm run test:coverage
+
+      # The floor above is for the whole app, so a pull request could add an untested
+      # component and still pass it. This holds every line it adds or changes to 100%,
+      # as the backend job does. A line marked `/* v8 ignore next -- <reason> */` is left
+      # out of the report, so it doesn't count against this.
+      - name: Changed lines are fully covered
+        if: github.event_name == 'pull_request'
+        run: |
+          pipx run diff-cover coverage/cobertura-coverage.xml \
+            --compare-branch=origin/${{ github.base_ref }} --fail-under=100
+
+      - name: Build
+        run: npm run build
+
+  integration:
+    name: Frontend — integration tests against the backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: connectsphere
+          POSTGRES_PASSWORD: ci-password
+          POSTGRES_DB: connectsphere_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U connectsphere -d connectsphere_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      FLASK_APP: wsgi
+      FLASK_ENV: development
+      SECRET_KEY: ci-secret
+      JWT_SECRET_KEY: ci-jwt-secret
+      DATABASE_URL: postgresql+psycopg2://connectsphere:ci-password@localhost:5432/connectsphere_ci
+      BACKEND_URL: http://127.0.0.1:5000
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: backend/.python-version
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install and migrate the backend
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          flask db upgrade
+
+      # Left running in the background for the next step; the runner stops it at the end.
+      - name: Start the backend
+        working-directory: backend
+        run: |
+          flask run --host 127.0.0.1 --port 5000 > flask.log 2>&1 &
+          curl --retry 20 --retry-delay 1 --retry-connrefused -fsS "$BACKEND_URL/health"
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Integration tests
+        run: npm run test:integration
+
+      - name: Backend log
+        if: failure()
+        working-directory: backend
+        run: cat flask.log
+
+  e2e:
+    name: Frontend — end-to-end (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install the browser
+        run: npx playwright install --with-deps chromium
+
+      - name: End-to-end tests
+        run: npm run test:e2e
+
+      - name: Upload the report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend/playwright-report
+          retention-days: 7
