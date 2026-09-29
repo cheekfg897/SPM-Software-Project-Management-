@@ -1,7 +1,7 @@
 import { ROLE } from '@/config/roles'
 import { fetchCurrentUser, logIn, register } from '@/features/auth/api'
-import { connectApiClient } from '@/lib/api'
-import type { ApiError } from '@/lib/api'
+import { ApiError } from '@/lib/api'
+import { sendRequestsAs } from '@/test/sendRequestsAs'
 
 import { uniqueEmail, VALID_PASSWORD } from './backend'
 
@@ -16,19 +16,19 @@ function newAttendee() {
   }
 }
 
-/** The ApiError a call was refused with. Fails the test if the call succeeded. */
+/** The ApiError a call was refused with. Fails the test if it succeeded or failed another way. */
 async function refusal(call: Promise<unknown>): Promise<ApiError> {
-  return call.then(
+  const error = await call.then(
     () => expect.fail('Expected the backend to refuse the request.'),
-    (error: unknown) => error as ApiError,
+    (caught: unknown) => caught,
   )
+  if (!(error instanceof ApiError)) {
+    throw new Error(`Expected an ApiError, got ${String(error)}`)
+  }
+  return error
 }
 
-function useToken(token: string | null) {
-  connectApiClient({ readAccessToken: () => token, handleUnauthorised: () => undefined })
-}
-
-afterEach(() => useToken(null))
+afterEach(() => sendRequestsAs(null))
 
 describe('SCRUM-65 and SCRUM-6 against the backend', () => {
   it('signs up an attendee, logs them in, and knows who they are', async () => {
@@ -36,7 +36,7 @@ describe('SCRUM-65 and SCRUM-6 against the backend', () => {
 
     await register(attendee)
     const session = await logIn({ email: attendee.email, password: attendee.password })
-    useToken(session.access_token)
+    sendRequestsAs(session.access_token)
     const currentUser = await fetchCurrentUser()
 
     expect(session).toEqual({
