@@ -1,1 +1,42 @@
-Frontend framework not yet decided — do not scaffold.
+# ConnectSphere frontend
+
+The web app for ConnectSphere: a landing page, the public event catalogue, sign-up for Event
+Organisers and Attendees, and separate log-in pages for external users and staff.
+
+React 19 + TypeScript, Vite, Tailwind CSS v4, Redux Toolkit (session only), TanStack Query,
+React Router v8. Conventions and the three test layers are in [CLAUDE.md](CLAUDE.md).
+
+## Run it
+
+Node 22.22 or later (`.nvmrc` pins 24).
+
+```bash
+cd frontend
+npm ci
+
+# Against the backend (see the root README to start it). /api is proxied to BACKEND_URL.
+npm run dev                                       # backend on :5000
+BACKEND_URL=http://localhost:5055 npm run dev     # backend elsewhere, e.g. on macOS where :5000 is AirPlay
+
+# Without a backend: every API call is answered by the mock handlers in src/mocks.
+npm run dev:mock
+```
+
+Open http://localhost:5173.
+
+## Test it
+
+```bash
+npm test                   # unit + component tests
+npm run test:coverage      # with the 90% coverage floor
+npm run test:e2e           # Playwright, desktop and mobile (first time: npx playwright install chromium)
+BACKEND_URL=http://localhost:5055 npm run test:integration   # against a running backend
+```
+
+## Accounts
+
+- **Event Organisers and Attendees** sign up at `/signup`. An Organiser needs the organisation
+  ID ConnectSphere staff gave them (ADR-0013).
+- **Staff** (Event Coordinator, Venue Staff, Technical Support Staff) can't sign up. Their
+  accounts are created with `flask create-staff-user` (ADR-0023), and they log in at
+  `/staff/login`.
