@@ -40,5 +40,29 @@ export const MOCK_ACCOUNTS = {
   },
 } as const satisfies Record<string, MockAccount>
 
+const MOCK_TOKEN_PREFIX = 'mock-token-'
+
+/** The access token the mock backend issues to `account` when it logs in. */
+export function mockTokenFor(account: MockAccount): string {
+  return `${MOCK_TOKEN_PREFIX}${account.id}`
+}
+
+/** The account id inside a mock token, or null for anything that isn't one. */
+export function accountIdFromMockToken(token: string): number | null {
+  if (!token.startsWith(MOCK_TOKEN_PREFIX)) {
+    return null
+  }
+  const id = Number(token.slice(MOCK_TOKEN_PREFIX.length))
+  return Number.isInteger(id) ? id : null
+}
+
+/** A signed-in session for `account`: for renderApp's `session` option or a seeded browser. */
+export function mockSessionFor(account: MockAccount) {
+  return {
+    accessToken: mockTokenFor(account),
+    user: { id: account.id, full_name: account.full_name, role: account.role },
+  }
+}
+
 /** Client organisations that exist in the mock (ADR-0013). */
 export const MOCK_ORGANISATION_IDS: readonly number[] = [1, 2]

@@ -4,10 +4,17 @@ import type { RequestHandler } from 'msw'
 import { EXTERNAL_ROLES, ROLE } from '@/config/roles'
 import { isRecord } from '@/lib/isRecord'
 
-import { MOCK_ACCOUNTS, MOCK_ORGANISATION_IDS } from '../fixtures/accounts'
+import {
+  accountIdFromMockToken,
+  MOCK_ACCOUNTS,
+  MOCK_ORGANISATION_IDS,
+  mockTokenFor,
+} from '../fixtures/accounts'
 import type { MockAccount } from '../fixtures/accounts'
 
-export { MOCK_ACCOUNTS } from '../fixtures/accounts'
+import { errorResponse, INVALID_TOKEN_MESSAGE, validationError } from '../responses'
+
+export { MOCK_ACCOUNTS, mockSessionFor } from '../fixtures/accounts'
 
 /**
  * The auth endpoints, as the backend answers them (backend/app/modules/auth, with SCRUM-66's
@@ -17,9 +24,7 @@ export { MOCK_ACCOUNTS } from '../fixtures/accounts'
 
 export const INVALID_CREDENTIALS_MESSAGE = 'Invalid email or password.'
 export const EMAIL_IN_USE_MESSAGE = 'An account with this email already exists.'
-const INVALID_TOKEN_MESSAGE = 'Missing, invalid or expired token.'
 const REQUIRED_MESSAGE = 'Missing data for required field.'
-const MOCK_TOKEN_PREFIX = 'mock-token-'
 
 let accounts: MockAccount[] = []
 
@@ -28,14 +33,6 @@ export function resetMockAccounts(): void {
   accounts = Object.values(MOCK_ACCOUNTS).map((account) => ({ ...account }))
 }
 resetMockAccounts()
-
-/** A signed-in session for `account`, for renderApp's `session` option or a seeded browser. */
-export function mockSessionFor(account: MockAccount) {
-  return {
-    accessToken: `${MOCK_TOKEN_PREFIX}${account.id}`,
-    user: { id: account.id, full_name: account.full_name, role: account.role },
-  }
-}
 
 function publicUser(account: MockAccount) {
   return {
@@ -46,17 +43,6 @@ function publicUser(account: MockAccount) {
     organisation_id: account.organisation_id,
     created_at: '2026-09-29T10:00:00+08:00',
   }
-}
-
-function errorResponse(status: number, error: string, message: string) {
-  return HttpResponse.json({ error, message }, { status })
-}
-
-function validationError(details: Record<string, string[]>) {
-  return HttpResponse.json(
-    { error: 'validation_error', message: 'Invalid request.', details },
-    { status: 400 },
-  )
 }
 
 function missingFields(body: Record<string, unknown>, names: string[]): Record<string, string[]> {
@@ -125,9 +111,13 @@ function findByEmail(email: unknown): MockAccount | undefined {
   return accounts.find((account) => account.email === wanted)
 }
 
-function accountForToken(request: Request): MockAccount | undefined {
-  const header = request.headers.get('Authorization') ?? ''
-  const id = Number(header.replace(`Bearer ${MOCK_TOKEN_PREFIX}`, ''))
+/**
+ * The account whose mock token the request carries, or undefined when it carries none. Every
+ * mock handler that needs to know who is calling uses this, as the backend's decorators do.
+ */
+export function accountForRequest(request: Request): MockAccount | undefined {
+  const token = (request.headers.get('Authorization') ?? '').replace('Bearer ', '')
+  const id = accountIdFromMockToken(token)
   return accounts.find((account) => account.id === id)
 }
 
@@ -143,7 +133,7 @@ export const authHandlers: RequestHandler[] = [
       return errorResponse(401, 'authentication_error', INVALID_CREDENTIALS_MESSAGE)
     }
     return HttpResponse.json({
-      access_token: `${MOCK_TOKEN_PREFIX}${account.id}`,
+      access_token: mockTokenFor(account),
       token_type: 'Bearer',
       user: { id: account.id, full_name: account.full_name, role: account.role },
     })
@@ -171,7 +161,7 @@ export const authHandlers: RequestHandler[] = [
   }),
 
   http.get('/api/auth/me', ({ request }) => {
-    const account = accountForToken(request)
+    const account = accountForRequest(request)
     if (account === undefined) {
       return errorResponse(401, 'authentication_error', INVALID_TOKEN_MESSAGE)
     }

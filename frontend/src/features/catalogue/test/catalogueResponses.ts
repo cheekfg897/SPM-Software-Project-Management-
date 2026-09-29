@@ -38,17 +38,14 @@ export function respondWithPage(page: CataloguePage): void {
   server.use(http.get(CATALOGUE_URL, () => HttpResponse.json(page)))
 }
 
-/** The query string of every catalogue request the page sends, in order. */
-export function recordCatalogueQueries(): string[] {
+/** The query string of each catalogue request among `requests` (from recordRequests), in order. */
+export function catalogueQueries(requests: Request[]): string[] {
   const queries: string[] = []
-  server.events.on('request:start', ({ request }) => {
+  for (const request of requests) {
     const url = new URL(request.url)
     if (request.method === 'GET' && url.pathname === CATALOGUE_URL) {
       queries.push(url.searchParams.toString())
     }
-  })
+  }
   return queries
 }
-
-// Importing this file stops recordCatalogueQueries' listeners after each test in that file.
-afterEach(() => server.events.removeAllListeners())

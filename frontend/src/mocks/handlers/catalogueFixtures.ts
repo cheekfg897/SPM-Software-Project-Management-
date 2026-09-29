@@ -1,7 +1,3 @@
-import { ROLE } from '@/config/roles'
-import type { Role } from '@/config/roles'
-import type { SignedInPayload } from '@/store'
-
 /**
  * Data for the catalogue mock (docs/adr/0032-event-catalogue-contract.md). Every date is
  * fixed, and "now" is fixed too, so unit tests, e2e runs and screenshots see the same page
@@ -11,35 +7,6 @@ import type { SignedInPayload } from '@/store'
 /** The mock backend's "now": Monday 5 October 2026, midday in Singapore. */
 export const MOCK_NOW = '2026-10-05T12:00:00+08:00'
 export const MOCK_TODAY = '2026-10-05'
-
-/** Tokens the mock accepts. Any other token is treated as signed out. */
-export const MOCK_CATALOGUE_TOKENS = {
-  ATTENDEE: 'mock-attendee-token',
-  ORGANISER: 'mock-organiser-token',
-} as const
-
-interface MockUser {
-  id: number
-  full_name: string
-  role: Role
-}
-
-export const MOCK_USERS_BY_TOKEN: Record<string, MockUser> = {
-  [MOCK_CATALOGUE_TOKENS.ATTENDEE]: { id: 101, full_name: 'Alice Tan', role: ROLE.ATTENDEE },
-  [MOCK_CATALOGUE_TOKENS.ORGANISER]: { id: 201, full_name: 'Omar Lee', role: ROLE.EVENT_ORGANISER },
-}
-
-function sessionFor(token: string): SignedInPayload {
-  const user = MOCK_USERS_BY_TOKEN[token]
-  if (user === undefined) {
-    throw new Error(`No mock user has the token ${token}.`)
-  }
-  return { accessToken: token, user }
-}
-
-/** Sessions for tests and e2e runs that need someone signed in. */
-export const MOCK_ATTENDEE_SESSION = sessionFor(MOCK_CATALOGUE_TOKENS.ATTENDEE)
-export const MOCK_ORGANISER_SESSION = sessionFor(MOCK_CATALOGUE_TOKENS.ORGANISER)
 
 export interface MockCatalogueEvent {
   id: number

@@ -2,12 +2,14 @@ import { screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 
 import { ROUTES } from '@/config/routes'
-import { createCatalogueHandlers } from '@/mocks/handlers/catalogue'
-import { MOCK_ATTENDEE_SESSION, MOCK_ORGANISER_SESSION } from '@/mocks/handlers/catalogueFixtures'
+import { MOCK_ACCOUNTS, mockSessionFor } from '@/mocks/handlers/auth'
 import { server } from '@/mocks/server'
 import { renderApp } from '@/test/render'
 
 import { CATALOGUE_URL } from '../test/catalogueResponses'
+
+const ATTENDEE_SESSION = mockSessionFor(MOCK_ACCOUNTS.attendee)
+const ORGANISER_SESSION = mockSessionFor(MOCK_ACCOUNTS.organiser)
 
 async function findCard(name: string): Promise<HTMLElement> {
   const heading = await screen.findByRole('heading', { name })
@@ -17,8 +19,6 @@ async function findCard(name: string): Promise<HTMLElement> {
   }
   return card
 }
-
-beforeEach(() => server.use(...createCatalogueHandlers()))
 
 describe('SCRUM-52 registering from the catalogue', () => {
   it('sends a visitor to log in, and back to the same results afterwards', async () => {
@@ -33,7 +33,7 @@ describe('SCRUM-52 registering from the catalogue', () => {
   })
 
   it("registers an attendee, then shows the backend's updated place", async () => {
-    const { user } = renderApp(ROUTES.EVENTS, { session: MOCK_ATTENDEE_SESSION })
+    const { user } = renderApp(ROUTES.EVENTS, { session: ATTENDEE_SESSION })
     const card = await findCard('Jazz by the Bay')
     expect(within(card).getByText('12 places left')).toBeInTheDocument()
 
@@ -50,7 +50,7 @@ describe('SCRUM-52 registering from the catalogue', () => {
         () => new Promise<never>(() => undefined),
       ),
     )
-    const { user } = renderApp(ROUTES.EVENTS, { session: MOCK_ATTENDEE_SESSION })
+    const { user } = renderApp(ROUTES.EVENTS, { session: ATTENDEE_SESSION })
     const card = await findCard('Jazz by the Bay')
 
     await user.click(within(card).getByRole('button', { name: 'Register' }))
@@ -67,7 +67,7 @@ describe('SCRUM-52 registering from the catalogue', () => {
         HttpResponse.json({ error: 'event_full', message: 'This event is full.' }, { status: 409 }),
       ),
     )
-    const { user } = renderApp(ROUTES.EVENTS, { session: MOCK_ATTENDEE_SESSION })
+    const { user } = renderApp(ROUTES.EVENTS, { session: ATTENDEE_SESSION })
     const card = await findCard('Jazz by the Bay')
 
     await user.click(within(card).getByRole('button', { name: 'Register' }))
@@ -77,7 +77,7 @@ describe('SCRUM-52 registering from the catalogue', () => {
   })
 
   it('offers nothing to register for on a full event or one already held', async () => {
-    renderApp(ROUTES.EVENTS, { session: MOCK_ATTENDEE_SESSION })
+    renderApp(ROUTES.EVENTS, { session: ATTENDEE_SESSION })
 
     const full = await findCard('Night Market Photography Walk')
     const held = await findCard('Startup Pitch Night')
@@ -87,7 +87,7 @@ describe('SCRUM-52 registering from the catalogue', () => {
   })
 
   it('shows no Register button to a signed-in user who is not an attendee (SCRUM-21)', async () => {
-    renderApp(ROUTES.EVENTS, { session: MOCK_ORGANISER_SESSION })
+    renderApp(ROUTES.EVENTS, { session: ORGANISER_SESSION })
 
     await findCard('Jazz by the Bay')
     await waitFor(() => expect(screen.queryAllByRole('button', { name: 'Register' })).toEqual([]))

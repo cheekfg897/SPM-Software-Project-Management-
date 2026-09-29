@@ -3,13 +3,14 @@ import { http, HttpResponse } from 'msw'
 
 import { ROUTES } from '@/config/routes'
 import { server } from '@/mocks/server'
+import { recordRequests } from '@/test/recordRequests'
 import { renderApp } from '@/test/render'
 
 import {
   CATALOGUE_URL,
   catalogueEvent,
   cataloguePage,
-  recordCatalogueQueries,
+  catalogueQueries,
   respondWithPage,
 } from '../test/catalogueResponses'
 
@@ -142,21 +143,21 @@ describe('SCRUM-52 catalogue page: what the backend sent', () => {
 
 describe('SCRUM-52 catalogue page: the URL is what gets asked for', () => {
   it("sends the URL's filters to the backend as they are", async () => {
-    const queries = recordCatalogueQueries()
+    const requests = recordRequests()
 
     renderApp(`${ROUTES.EVENTS}?q=jazz&when=today&page=2`)
 
-    await waitFor(() => expect(lastOf(queries)).toBe('q=jazz&when=today&page=2'))
+    await waitFor(() => expect(lastOf(catalogueQueries(requests))).toBe('q=jazz&when=today&page=2'))
   })
 
   it('searches as you type, from the first page', async () => {
-    const queries = recordCatalogueQueries()
+    const requests = recordRequests()
     const { user, router } = renderApp(`${ROUTES.EVENTS}?page=2`)
 
     await user.type(screen.getByRole('searchbox', { name: 'Search events' }), 'jazz')
 
     await waitFor(() => expect(router.state.location.search).toBe('?q=jazz'))
-    await waitFor(() => expect(lastOf(queries)).toBe('q=jazz'))
+    await waitFor(() => expect(lastOf(catalogueQueries(requests))).toBe('q=jazz'))
   })
 
   it('shows the search from the URL, and empties the box when the filters are cleared', async () => {
@@ -171,18 +172,18 @@ describe('SCRUM-52 catalogue page: the URL is what gets asked for', () => {
   })
 
   it('asks for a preset window when one is chosen', async () => {
-    const queries = recordCatalogueQueries()
+    const requests = recordRequests()
     const { user, router } = renderApp(ROUTES.EVENTS)
     expect(screen.getByRole('radio', { name: 'Upcoming' })).toBeChecked()
 
     await user.click(screen.getByRole('radio', { name: 'This week' }))
 
     expect(router.state.location.search).toBe('?when=this_week')
-    await waitFor(() => expect(lastOf(queries)).toBe('when=this_week'))
+    await waitFor(() => expect(lastOf(catalogueQueries(requests))).toBe('when=this_week'))
   })
 
   it('swaps the preset for a custom range when dates are picked', async () => {
-    const queries = recordCatalogueQueries()
+    const requests = recordRequests()
     const { user, router } = renderApp(`${ROUTES.EVENTS}?when=today`)
 
     await user.click(screen.getByRole('radio', { name: 'Pick dates' }))
@@ -193,7 +194,9 @@ describe('SCRUM-52 catalogue page: the URL is what gets asked for', () => {
       '?starts_from=2026-10-20T09%3A00&starts_to=2026-10-25T18%3A00',
     )
     await waitFor(() =>
-      expect(lastOf(queries)).toBe('starts_from=2026-10-20T09%3A00&starts_to=2026-10-25T18%3A00'),
+      expect(lastOf(catalogueQueries(requests))).toBe(
+        'starts_from=2026-10-20T09%3A00&starts_to=2026-10-25T18%3A00',
+      ),
     )
     expect(screen.getByRole('radio', { name: 'Pick dates' })).toBeChecked()
   })

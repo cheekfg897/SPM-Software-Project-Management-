@@ -1,7 +1,7 @@
 import type { RequestHandler } from 'msw'
 
-import { authHandlers } from './auth'
-import { catalogueHandlers } from './catalogue'
+import { authHandlers, resetMockAccounts } from './auth'
+import { catalogueHandlers, resetMockCatalogue } from './catalogue'
 
 /**
  * Every mock handler, one file per feature. They stand in for the backend in unit tests,
@@ -9,3 +9,9 @@ import { catalogueHandlers } from './catalogue'
  * shapes; the integration tests in src/integration check those shapes against the backend.
  */
 export const handlers: RequestHandler[] = [...authHandlers, ...catalogueHandlers]
+
+/** Put the mock backend's data back as it started, so no test sees another's sign-ups or registrations. */
+export function resetMockBackend(): void {
+  resetMockAccounts()
+  resetMockCatalogue()
+}

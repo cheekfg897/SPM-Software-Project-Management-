@@ -3,15 +3,19 @@ import type { RequestHandler } from 'msw'
 
 import { ROLE } from '@/config/roles'
 import { WHEN } from '@/features/catalogue/constants'
+import type { FieldErrors } from '@/lib/api'
+
+import { MOCK_ACCOUNTS } from '../fixtures/accounts'
+import { errorResponse, INVALID_TOKEN_MESSAGE, validationError } from '../responses'
+
+import { accountForRequest } from './auth'
 
 import {
   addDays,
   MOCK_ATTENDEE_REGISTRATIONS,
   MOCK_CATALOGUE_EVENTS,
-  MOCK_CATALOGUE_TOKENS,
   MOCK_NOW,
   MOCK_TODAY,
-  MOCK_USERS_BY_TOKEN,
 } from './catalogueFixtures'
 import type { MockCatalogueEvent } from './catalogueFixtures'
 
@@ -24,13 +28,10 @@ import type { MockCatalogueEvent } from './catalogueFixtures'
 const CATALOGUE_PATH = '/api/events/catalogue'
 const DEFAULT_PAGE_SIZE = 12
 const MAX_PAGE_SIZE = 50
-const INVALID_TOKEN_MESSAGE = 'Missing, invalid or expired token.'
 const KNOWN_WHEN: readonly string[] = Object.values(WHEN)
 /** A date-time as the browser's datetime-local input sends it, with optional seconds and offset. */
 const DATE_TIME_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(Z|[+-]\d{2}:\d{2})?$/
 const OFFSET_PATTERN = /(Z|[+-]\d{2}:\d{2})$/
-
-type FieldMessages = Record<string, string[]>
 
 interface CatalogueQuery {
   q: string
@@ -39,15 +40,6 @@ interface CatalogueQuery {
   startsTo: string | null
   page: number
   pageSize: number
-}
-
-function errorResponse(status: number, error: string, message: string, details?: FieldMessages) {
-  return HttpResponse.json(details ? { error, message, details } : { error, message }, { status })
-}
-
-function userFrom(request: Request) {
-  const token = request.headers.get('Authorization')?.replace('Bearer ', '') ?? ''
-  return MOCK_USERS_BY_TOKEN[token] ?? null
 }
 
 /** A date-time as business time to the minute ("2026-10-05T19:30"), comparable as text. */
@@ -63,7 +55,7 @@ function readWholeNumber(value: string | null, fallback: number): number {
   return value === null ? fallback : Number(value)
 }
 
-function readQuery(url: URL): { query: CatalogueQuery; errors: FieldMessages } {
+function readQuery(url: URL): { query: CatalogueQuery; errors: FieldErrors } {
   const params = url.searchParams
   const query: CatalogueQuery = {
     q: (params.get('q') ?? '').trim().toLowerCase(),
@@ -74,7 +66,7 @@ function readQuery(url: URL): { query: CatalogueQuery; errors: FieldMessages } {
     pageSize: readWholeNumber(params.get('page_size'), DEFAULT_PAGE_SIZE),
   }
 
-  const errors: FieldMessages = {}
+  const errors: FieldErrors = {}
   const hasRange = query.startsFrom !== null || query.startsTo !== null
   if (!KNOWN_WHEN.includes(query.when)) {
     errors.when = [`Must be one of: ${KNOWN_WHEN.join(', ')}.`]
@@ -147,104 +139,96 @@ function matchesQuery(event: MockCatalogueEvent, query: CatalogueQuery): boolean
   return true
 }
 
-/**
- * A fresh mock catalogue with its own registrations. Tests that register call
- * `server.use(...createCatalogueHandlers())` so nothing leaks between them.
- */
-export function createCatalogueHandlers(): RequestHandler[] {
-  const registrations = new Map<number, Set<number>>()
-  let lastRegistrationId = 0
+/** Who has registered for each event: event id to user ids. */
+const registrations = new Map<number, Set<number>>()
+let lastRegistrationId = 0
 
-  function registeredUsers(eventId: number): Set<number> {
-    const users = registrations.get(eventId) ?? new Set<number>()
-    registrations.set(eventId, users)
-    return users
-  }
-
-  const attendee = MOCK_USERS_BY_TOKEN[MOCK_CATALOGUE_TOKENS.ATTENDEE]
-  for (const eventId of MOCK_ATTENDEE_REGISTRATIONS) {
-    registeredUsers(eventId).add(attendee?.id ?? 0)
-  }
-
-  function toItem(event: MockCatalogueEvent, userId: number | null) {
-    const { taken, ...fields } = event
-    const users = registeredUsers(event.id)
-    const placesLeft = Math.max(event.capacity - taken - users.size, 0)
-    return {
-      ...fields,
-      places_left: placesLeft,
-      is_full: placesLeft === 0,
-      is_registered: userId !== null && users.has(userId),
-    }
-  }
-
-  return [
-    http.get(CATALOGUE_PATH, ({ request }) => {
-      const { query, errors } = readQuery(new URL(request.url))
-      if (Object.keys(errors).length > 0) {
-        return errorResponse(400, 'validation_error', 'Invalid request.', errors)
-      }
-
-      const user = userFrom(request)
-      const matching = MOCK_CATALOGUE_EVENTS.filter((event) => matchesQuery(event, query)).sort(
-        (first, second) => first.starts_at.localeCompare(second.starts_at),
-      )
-      const start = (query.page - 1) * query.pageSize
-      return HttpResponse.json({
-        items: matching
-          .slice(start, start + query.pageSize)
-          .map((event) => toItem(event, user?.id ?? null)),
-        page: query.page,
-        page_size: query.pageSize,
-        total: matching.length,
-        total_pages: Math.ceil(matching.length / query.pageSize),
-      })
-    }),
-
-    http.post(`${CATALOGUE_PATH}/:eventId/registrations`, ({ request, params }) => {
-      const user = userFrom(request)
-      if (user === null) {
-        return errorResponse(401, 'authentication_error', INVALID_TOKEN_MESSAGE)
-      }
-      if (user.role !== ROLE.ATTENDEE) {
-        return errorResponse(
-          403,
-          'authorization_error',
-          'You do not have permission to perform this action.',
-        )
-      }
-
-      const event = MOCK_CATALOGUE_EVENTS.find(
-        (candidate) => String(candidate.id) === params.eventId,
-      )
-      if (event === undefined) {
-        return errorResponse(404, 'not_found', 'Event not found.')
-      }
-      const item = toItem(event, user.id)
-      if (item.is_registered) {
-        return errorResponse(
-          409,
-          'already_registered',
-          'You are already registered for this event.',
-        )
-      }
-      if (item.is_full) {
-        return errorResponse(409, 'event_full', 'This event is full.')
-      }
-
-      registeredUsers(event.id).add(user.id)
-      lastRegistrationId += 1
-      return HttpResponse.json(
-        {
-          id: lastRegistrationId,
-          event_id: event.id,
-          status: 'registered',
-          registered_at: MOCK_NOW,
-        },
-        { status: 201 },
-      )
-    }),
-  ]
+function registeredUsers(eventId: number): Set<number> {
+  const users = registrations.get(eventId) ?? new Set<number>()
+  registrations.set(eventId, users)
+  return users
 }
 
-export const catalogueHandlers: RequestHandler[] = createCatalogueHandlers()
+/** Forget every registration made since, keeping the fixture's own. Runs after every test. */
+export function resetMockCatalogue(): void {
+  registrations.clear()
+  lastRegistrationId = 0
+  for (const eventId of MOCK_ATTENDEE_REGISTRATIONS) {
+    registeredUsers(eventId).add(MOCK_ACCOUNTS.attendee.id)
+  }
+}
+resetMockCatalogue()
+
+function toItem(event: MockCatalogueEvent, userId: number | null) {
+  const { taken, ...fields } = event
+  const users = registeredUsers(event.id)
+  const placesLeft = Math.max(event.capacity - taken - users.size, 0)
+  return {
+    ...fields,
+    places_left: placesLeft,
+    is_full: placesLeft === 0,
+    is_registered: userId !== null && users.has(userId),
+  }
+}
+
+export const catalogueHandlers: RequestHandler[] = [
+  http.get(CATALOGUE_PATH, ({ request }) => {
+    const { query, errors } = readQuery(new URL(request.url))
+    if (Object.keys(errors).length > 0) {
+      return validationError(errors)
+    }
+
+    const user = accountForRequest(request)
+    const matching = MOCK_CATALOGUE_EVENTS.filter((event) => matchesQuery(event, query)).sort(
+      (first, second) => first.starts_at.localeCompare(second.starts_at),
+    )
+    const start = (query.page - 1) * query.pageSize
+    return HttpResponse.json({
+      items: matching
+        .slice(start, start + query.pageSize)
+        .map((event) => toItem(event, user?.id ?? null)),
+      page: query.page,
+      page_size: query.pageSize,
+      total: matching.length,
+      total_pages: Math.ceil(matching.length / query.pageSize),
+    })
+  }),
+
+  http.post(`${CATALOGUE_PATH}/:eventId/registrations`, ({ request, params }) => {
+    const user = accountForRequest(request)
+    if (user === undefined) {
+      return errorResponse(401, 'authentication_error', INVALID_TOKEN_MESSAGE)
+    }
+    if (user.role !== ROLE.ATTENDEE) {
+      return errorResponse(
+        403,
+        'authorization_error',
+        'You do not have permission to perform this action.',
+      )
+    }
+
+    const event = MOCK_CATALOGUE_EVENTS.find((candidate) => String(candidate.id) === params.eventId)
+    if (event === undefined) {
+      return errorResponse(404, 'not_found', 'Event not found.')
+    }
+    const item = toItem(event, user.id)
+    if (item.is_registered) {
+      return errorResponse(409, 'already_registered', 'You are already registered for this event.')
+    }
+    if (item.is_full) {
+      return errorResponse(409, 'event_full', 'This event is full.')
+    }
+
+    registeredUsers(event.id).add(user.id)
+    lastRegistrationId += 1
+    return HttpResponse.json(
+      {
+        id: lastRegistrationId,
+        event_id: event.id,
+        status: 'registered',
+        registered_at: MOCK_NOW,
+      },
+      { status: 201 },
+    )
+  }),
+]

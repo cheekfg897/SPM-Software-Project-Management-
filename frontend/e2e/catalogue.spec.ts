@@ -1,16 +1,15 @@
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
 
+import { MOCK_ACCOUNTS, mockSessionFor } from '../src/mocks/fixtures/accounts'
+
 /**
  * SCRUM-52: the event catalogue, against the mock catalogue (docs/adr/0032). The mock's
  * "now" is Monday 5 October 2026, so the same events show on every run.
  */
 
 const SESSION_STORAGE_KEY = 'connectsphere.session'
-const ATTENDEE_SESSION = {
-  accessToken: 'mock-attendee-token',
-  user: { id: 101, full_name: 'Alice Tan', role: 'attendee' },
-}
+const ATTENDEE_SESSION = mockSessionFor(MOCK_ACCOUNTS.attendee)
 
 function card(page: Page, eventName: string) {
   return page.getByRole('article').filter({ has: page.getByRole('heading', { name: eventName }) })
