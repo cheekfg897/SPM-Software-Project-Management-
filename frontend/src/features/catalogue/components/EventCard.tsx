@@ -1,6 +1,8 @@
 import type { CatalogueEvent } from '../api'
 import { formatTimeRange } from '../formatDate'
 
+import { RegisterAction } from './RegisterAction'
+
 /** Decorative artwork, one of these picked by the event's id so a card always looks the same. */
 const ART_GRADIENTS = [
   'from-corona via-flare to-ember',
@@ -68,6 +70,7 @@ export function EventCard({ event }: { event: CatalogueEvent }) {
         <p className="text-ink-faint mt-2 line-clamp-2 text-sm">{event.description}</p>
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
           <PlacesStatus event={event} />
+          <RegisterAction event={event} />
         </div>
       </div>
       <EventArt eventId={event.id} />

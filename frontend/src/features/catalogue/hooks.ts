@@ -1,7 +1,7 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router'
 
-import { catalogueKeys, fetchCatalogue } from './api'
+import { catalogueKeys, fetchCatalogue, registerForEvent } from './api'
 import type { When } from './constants'
 import { readCatalogueParams, withPage, withPreset, withRangeEnd, withSearch } from './searchParams'
 import type { CatalogueParams, RangeEnd } from './searchParams'
@@ -39,5 +39,17 @@ export function useCatalogue(params: CatalogueParams) {
     queryKey: catalogueKeys.list(params),
     queryFn: () => fetchCatalogue(params),
     placeholderData: keepPreviousData,
+  })
+}
+
+/**
+ * Register for an event. Afterwards every catalogue page is read again, so places left and
+ * "registered" come from the backend rather than being guessed here.
+ */
+export function useRegisterForEvent() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: registerForEvent,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: catalogueKeys.all }),
   })
 }
