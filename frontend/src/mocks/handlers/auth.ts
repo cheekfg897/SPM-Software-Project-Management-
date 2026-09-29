@@ -2,54 +2,18 @@ import { http, HttpResponse } from 'msw'
 import type { RequestHandler } from 'msw'
 
 import { EXTERNAL_ROLES, ROLE } from '@/config/roles'
-import type { Role } from '@/config/roles'
 import { isRecord } from '@/lib/isRecord'
+
+import { MOCK_ACCOUNTS, MOCK_ORGANISATION_IDS } from '../fixtures/accounts'
+import type { MockAccount } from '../fixtures/accounts'
+
+export { MOCK_ACCOUNTS } from '../fixtures/accounts'
 
 /**
  * The auth endpoints, as the backend answers them (backend/app/modules/auth, with SCRUM-66's
  * organisation_id and SCRUM-88's external-only sign-up). Accounts live in memory: sign up, then
  * log in with the same details, and it works until the page reloads or resetMockAccounts runs.
  */
-
-interface MockAccount {
-  id: number
-  email: string
-  password: string
-  full_name: string
-  role: Role
-  organisation_id: number | null
-}
-
-/** Accounts every mock run starts with. Tests and e2e journeys log in as these. */
-export const MOCK_ACCOUNTS = {
-  attendee: {
-    id: 1,
-    email: 'alice@example.com',
-    password: 'Password123',
-    full_name: 'Alice Tan',
-    role: ROLE.ATTENDEE,
-    organisation_id: null,
-  },
-  organiser: {
-    id: 2,
-    email: 'omar@example.com',
-    password: 'Password123',
-    full_name: 'Omar Rahman',
-    role: ROLE.EVENT_ORGANISER,
-    organisation_id: 1,
-  },
-  coordinator: {
-    id: 3,
-    email: 'chloe@connectsphere.test',
-    password: 'Password123',
-    full_name: 'Chloe Lim',
-    role: ROLE.EVENT_COORDINATOR,
-    organisation_id: null,
-  },
-} as const satisfies Record<string, MockAccount>
-
-/** Client organisations that exist in the mock (ADR-0013). */
-export const MOCK_ORGANISATION_IDS: readonly number[] = [1, 2]
 
 export const INVALID_CREDENTIALS_MESSAGE = 'Invalid email or password.'
 export const EMAIL_IN_USE_MESSAGE = 'An account with this email already exists.'
