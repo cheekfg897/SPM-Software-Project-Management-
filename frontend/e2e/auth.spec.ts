@@ -19,7 +19,9 @@ test('SCRUM-65: a new attendee signs up, lands on the events, and logs out', asy
 
   await expect(page).toHaveURL('/events')
   const header = page.getByRole('banner')
-  await expect(header.getByText('Priya Nair')).toBeVisible()
+  await expect(header.getByRole('button', { name: 'Log out' })).toBeVisible()
+  // The name is in the header on every screen, but phones hide it to keep the header narrow.
+  await expect(header.getByText('Priya Nair')).toBeAttached()
 
   await header.getByRole('button', { name: 'Log out' }).click()
   await expect(page).toHaveURL('/')

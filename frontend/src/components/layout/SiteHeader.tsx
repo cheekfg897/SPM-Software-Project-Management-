@@ -36,7 +36,9 @@ function SessionActions() {
 
   return (
     <>
-      <span className="text-ink-muted text-sm">{user.full_name}</span>
+      <span className="text-ink-muted hidden max-w-40 truncate text-sm sm:inline">
+        {user.full_name}
+      </span>
       <Button variant="secondary" onClick={logOut}>
         Log out
       </Button>
@@ -47,8 +49,8 @@ function SessionActions() {
 export function SiteHeader() {
   return (
     <header className="border-line/60 bg-void/60 fixed inset-x-0 top-0 z-50 border-b backdrop-blur-md">
-      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-6 px-4 sm:px-6">
-        <div className="flex items-center gap-8">
+      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:gap-6 sm:px-6">
+        <div className="flex items-center gap-4 sm:gap-8">
           <Logo />
           <nav aria-label="Main">
             <NavLink to={ROUTES.EVENTS} className={NAV_LINK_CLASSES}>
