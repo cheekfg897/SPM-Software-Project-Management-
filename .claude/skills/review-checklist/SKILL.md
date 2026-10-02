@@ -1,6 +1,6 @@
 ---
 name: review-checklist
-description: Review code in this repo against its Jira story (acceptance criteria pulled live from the SCRUM project via the Atlassian MCP server), the team's checklist (docs/code-review-checklist.md) and the Python conventions (backend/CONVENTIONS.md), with extra weight on readability over cleverness. Use before declaring any code change done (self-review of your own work — required by CLAUDE.md's definition of done), when asked to review a PR, branch or diff, or when the user types /review-checklist. Accepts an optional target — a PR number, a branch name, or a path; defaults to the current branch plus uncommitted changes.
+description: Review code in this repo against its Jira story (acceptance criteria pulled live from the SCRUM project via the Atlassian MCP server), the team's checklist (docs/code-review-checklist.md) and the conventions for the code it touches (backend/CONVENTIONS.md for the backend, frontend/CLAUDE.md for the frontend), with extra weight on readability over cleverness. Use before declaring any code change done (self-review of your own work — required by CLAUDE.md's definition of done), when asked to review a PR, branch or diff, or when the user types /review-checklist. Accepts an optional target — a PR number, a branch name, or a path; defaults to the current branch plus uncommitted changes.
 ---
 
 # Review checklist
@@ -27,8 +27,9 @@ whose signature or behaviour changed. Bugs hide in the context the hunk doesn't 
 ## 2. Pull the story from Jira
 
 **Find the story key** (`SCRUM-<n>`), looking in this order: the PR title, the branch name, the
-commit subjects (`git log main..HEAD --format=%s`), and the `pytestmark` markers in changed
-tests (`scrum_19` → `SCRUM-19`). If more than one key turns up, review against each one. If
+commit subjects (`git log main..HEAD --format=%s`), the `pytestmark` markers in changed
+backend tests (`scrum_19` → `SCRUM-19`), and the story in changed frontend tests' top
+`describe` or file name (`describe('SCRUM-52 catalogue', ...)`). If more than one key turns up, review against each one. If
 none does, ask the user which story this is. Don't guess.
 
 **Fetch it** with the Atlassian MCP tools (`mcp__atlassian__*`; load them with ToolSearch if
@@ -64,7 +65,9 @@ Then read any ADR in `docs/adr/` that names this story.
 
 ## 3. Run the automated checks
 
-From `backend/` (activate `.venv` if it exists):
+Run the checks for each part of the repo the change touches. A change can touch both.
+
+**Backend** (anything under `backend/`), from `backend/` (activate `.venv` if it exists):
 
 ```bash
 ruff check .
@@ -77,8 +80,27 @@ For a PR, compare against its base branch instead of `origin/main` if it differs
 same `diff-cover` check, so a failure here will fail the PR.
 
 If the change touches `models.py` or `migrations/`, also run `flask db heads` (must be exactly
-one) and, **only if Postgres is running**, `flask db check`. If a check can't run (no venv, no
-DB), say so in the report — never report it as passing.
+one) and, **only if Postgres is running**, `flask db check`.
+
+**Frontend** (anything under `frontend/`), from `frontend/` after `npm ci`, as its definition
+of done in `frontend/CLAUDE.md` lists:
+
+```bash
+npm run lint
+npm run format:check
+npm run typecheck
+npm run test:coverage
+pipx run diff-cover coverage/cobertura-coverage.xml --compare-branch=origin/main --fail-under=100
+npm run build
+```
+
+Add `npm run test:e2e` if a user journey changed. Add `npm run test:integration` against a
+running backend if a frontend API function changed, **or if a backend change alters a
+response, error body or validation rule the frontend uses** (`backend/CONVENTIONS.md` §14,
+"The frontend's contract tests").
+
+If a check can't run (no venv, no Node, no DB, no running backend), say so in the report —
+never report it as passing.
 
 Don't repeat what these tools report as hand-review findings; list their failures once in the
 report.
@@ -88,8 +110,8 @@ lines left uncovered. It can't see branches, so also match the `a->b` entries in
 `Missing` column (a branch not taken) against the lines this change added or modified. For
 each miss in changed code:
 
-- There's a `# pragma: no cover - <reason>` and the reason holds up → list it under
-  **Coverage gaps** in the report. (A docstring note alone doesn't exclude a line, so
+- There's a `# pragma: no cover - <reason>` (frontend: `/* v8 ignore next -- <reason> */`) and
+  the reason holds up → list it under **Coverage gaps** in the report. (A docstring note alone doesn't exclude a line, so
   `diff-cover` and CI still count it as a miss.)
 - There's no reason, or the reason doesn't hold (it could be unit-tested) → **must** finding.
 
@@ -120,8 +142,12 @@ Build a traceability table: one row per AC.
 ## 5. Walk the checklist
 
 Read `docs/code-review-checklist.md` and go through sections 1–11 against the change. Use
-`backend/CONVENTIONS.md` (the § numbers) for the detail behind each item. Section 1's AC items
-are already covered by step 4. Skip items that don't apply to this change — don't pad the
+`backend/CONVENTIONS.md` (the § numbers) for the detail behind each item. For files under
+`frontend/`, also check them against `frontend/CLAUDE.md`, whose rules the checklist doesn't
+spell out: the backend is the source of truth (no client-side filtering, sorting or counting;
+filters in the URL; the backend's error messages shown, not rewritten), reuse of
+`components/ui` before a new component, no `any`, and in tests "mock the network, never the
+code". Section 1's AC items are already covered by step 4. Skip items that don't apply to this change — don't pad the
 report with them.
 
 Give **section 4 (readability)** a deliberate pass of its own, function by function. That
