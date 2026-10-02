@@ -27,6 +27,9 @@ CallRoute = Callable[..., Any]
 ReplaceServices = Callable[[ModuleType, dict[str, Any]], dict[str, MagicMock]]
 TokenFor = Callable[..., str]
 
+#: Not 1, so a route that passes the wrong id to its service is caught.
+EQUIPMENT_TYPE_ID = 7
+
 # (endpoint, HTTP method, path, view kwargs, service function it calls, success status)
 WRITE_ROUTES = [
     (
@@ -40,8 +43,8 @@ WRITE_ROUTES = [
     (
         "equipment.update_equipment_type",
         "PATCH",
-        "/api/equipment/types/1",
-        {"equipment_type_id": 1},
+        f"/api/equipment/types/{EQUIPMENT_TYPE_ID}",
+        {"equipment_type_id": EQUIPMENT_TYPE_ID},
         "update_equipment_type",
         200,
     ),
@@ -52,9 +55,23 @@ WRITE_PARAMS = ("endpoint", "method", "path", "view_kwargs", "service", "status"
 # (endpoint, path, view kwargs)
 READ_ROUTES = [
     ("equipment.list_equipment_types", "/api/equipment/types", {}),
-    ("equipment.get_equipment_type", "/api/equipment/types/1", {"equipment_type_id": 1}),
+    (
+        "equipment.get_equipment_type",
+        f"/api/equipment/types/{EQUIPMENT_TYPE_ID}",
+        {"equipment_type_id": EQUIPMENT_TYPE_ID},
+    ),
 ]
 READ_ROUTE_IDS = [route[0] for route in READ_ROUTES]
+
+#: What a route returns for the equipment type ``mock_services`` hands it.
+PROJECTOR_JSON = {
+    "id": None,
+    "name": "Projector",
+    "description": None,
+    "total_quantity": 10,
+    "venue_id": None,
+    "store_name": "Central AV store",
+}
 
 NON_TECHNICAL_SUPPORT_ROLES = sorted(
     ALL_ROLES - {Role.TECHNICAL_SUPPORT_STAFF}, key=lambda role: role.value
@@ -77,6 +94,12 @@ def mock_services(
             "get_equipment_type": make_equipment_type(),
         },
     )
+
+
+def _assert_no_service_called(mock_services: dict[str, MagicMock]) -> None:
+    """A refused request must be stopped before it reaches any equipment service."""
+    for mock in mock_services.values():
+        mock.assert_not_called()
 
 
 # --------------------------------------------------------------------------
@@ -145,10 +168,12 @@ def test_write_by_technical_support_reaches_the_service(
 ) -> None:
     token = token_for(role=Role.TECHNICAL_SUPPORT_STAFF)
 
-    _, response_status = call_route(endpoint, method, path, view_kwargs, token)
+    response, response_status = call_route(endpoint, method, path, view_kwargs, token)
 
     assert response_status == status
-    mock_services[service].assert_called_once()
+    assert response.get_json() == PROJECTOR_JSON
+    # The service gets the URL's id, if there is one, then the body (always {} here).
+    mock_services[service].assert_called_once_with(*view_kwargs.values(), {})
 
 
 # --------------------------------------------------------------------------
@@ -172,6 +197,48 @@ def test_read_is_allowed_for_every_internal_role(
     assert status == 200
 
 
+def test_list_returns_every_type_the_service_found(
+    call_route: CallRoute, token_for: TokenFor, mock_services: dict[str, MagicMock]
+) -> None:
+    token = token_for(role=Role.VENUE_STAFF)
+
+    response, _ = call_route(
+        "equipment.list_equipment_types", "GET", "/api/equipment/types", {}, token
+    )
+
+    assert response.get_json() == [PROJECTOR_JSON]
+    mock_services["list_equipment_types"].assert_called_once_with()
+
+
+def test_get_returns_the_type_the_service_found(
+    call_route: CallRoute, token_for: TokenFor, mock_services: dict[str, MagicMock]
+) -> None:
+    token = token_for(role=Role.VENUE_STAFF)
+    path = f"/api/equipment/types/{EQUIPMENT_TYPE_ID}"
+
+    response, _ = call_route(
+        "equipment.get_equipment_type", "GET", path, {"equipment_type_id": EQUIPMENT_TYPE_ID}, token
+    )
+
+    assert response.get_json() == PROJECTOR_JSON
+    mock_services["get_equipment_type"].assert_called_once_with(EQUIPMENT_TYPE_ID)
+
+
+@pytest.mark.parametrize(("endpoint", "path", "view_kwargs"), READ_ROUTES, ids=READ_ROUTE_IDS)
+def test_read_without_token_is_401(
+    call_route: CallRoute,
+    mock_services: dict[str, MagicMock],
+    endpoint: str,
+    path: str,
+    view_kwargs: dict[str, Any],
+) -> None:
+    with pytest.raises(AuthenticationError) as exc_info:
+        call_route(endpoint, "GET", path, view_kwargs, token=None)
+
+    assert exc_info.value.status_code == 401
+    _assert_no_service_called(mock_services)
+
+
 @pytest.mark.parametrize("role", SORTED_EXTERNAL_ROLES, ids=lambda role: role.value)
 @pytest.mark.parametrize(("endpoint", "path", "view_kwargs"), READ_ROUTES, ids=READ_ROUTE_IDS)
 def test_read_by_an_external_role_is_403(
@@ -183,11 +250,11 @@ def test_read_by_an_external_role_is_403(
     path: str,
     view_kwargs: dict[str, Any],
 ) -> None:
-    with pytest.raises(AuthorizationError):
+    with pytest.raises(AuthorizationError) as exc_info:
         call_route(endpoint, "GET", path, view_kwargs, token_for(role=role))
 
-    for mock in mock_services.values():
-        mock.assert_not_called()
+    assert exc_info.value.status_code == 403
+    _assert_no_service_called(mock_services)
 
 
 @pytest.mark.parametrize("endpoint", READ_ROUTE_IDS)

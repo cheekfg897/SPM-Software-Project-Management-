@@ -201,11 +201,36 @@ def test_zero_total_quantity_is_accepted(
     assert reload_equipment_type(created.id).total_quantity == 0
 
 
-@pytest.mark.parametrize("quantity", ["5", 5.5, True], ids=["string", "fraction", "boolean"])
+@pytest.mark.parametrize(
+    "quantity", ["5", 5.5, True, None], ids=["string", "fraction", "boolean", "null"]
+)
 def test_total_quantity_must_be_a_whole_number(db_session: Session, quantity: Any) -> None:
     error = _create_rejected(db_session, {**VALID_PAYLOAD, "total_quantity": quantity})
 
     assert list(error.details) == ["total_quantity"]
+
+
+@pytest.mark.parametrize("field", ["name", "description", "store_name"])
+def test_text_fields_must_be_text(db_session: Session, field: str) -> None:
+    error = _create_rejected(db_session, {**VALID_PAYLOAD, field: 123})
+
+    assert error.details == {field: ["Not a valid string."]}
+
+
+def test_name_cannot_be_null(db_session: Session) -> None:
+    error = _create_rejected(db_session, {**VALID_PAYLOAD, "name": None})
+
+    assert error.details == {"name": ["Field may not be null."]}
+
+
+@pytest.mark.parametrize("payload", [None, [], "Projector"], ids=["no-body", "list", "string"])
+def test_create_needs_a_json_object(db_session: Session, payload: Any) -> None:
+    with pytest.raises(ValidationError) as exc_info:
+        services.create_equipment_type(payload, session=db_session)
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.message == "Request body must be a JSON object."
+    assert _stored(db_session) == []
 
 
 @pytest.mark.parametrize(
@@ -227,12 +252,34 @@ def test_exactly_one_location_is_required(
     assert error.details == {"venue_id": [message]}
 
 
+@pytest.mark.parametrize("blank_store", ["", "   "], ids=["empty", "whitespace"])
+def test_an_empty_store_name_beside_a_venue_is_rejected_not_ignored(
+    db_session: Session, venue: Venue, blank_store: str
+) -> None:
+    """A blank store name is a mistake, not a way of saying "no store"."""
+    payload = {"name": "Projector", "total_quantity": 10, "venue_id": venue.id}
+
+    error = _create_rejected(db_session, {**payload, "store_name": blank_store})
+
+    assert error.details == {"store_name": ["Must not be blank."]}
+
+
 def test_unknown_venue_is_rejected(db_session: Session) -> None:
     payload = {"name": "Projector", "total_quantity": 10, "venue_id": UNKNOWN_ID}
 
     error = _create_rejected(db_session, payload)
 
     assert error.details == {"venue_id": ["Venue not found."]}
+
+
+@pytest.mark.parametrize("venue_id", ["1", 1.5, True], ids=["string", "fraction", "boolean"])
+def test_venue_id_must_be_a_whole_number(db_session: Session, venue_id: Any) -> None:
+    """``true`` must not slip through as venue 1."""
+    payload = {"name": "Projector", "total_quantity": 10, "venue_id": venue_id}
+
+    error = _create_rejected(db_session, payload)
+
+    assert error.details == {"venue_id": ["Not a valid integer."]}
 
 
 @pytest.mark.parametrize("venue_id", [0, -1])
@@ -337,8 +384,24 @@ def test_update_changes_only_the_fields_sent(
 
 @pytest.mark.parametrize(
     "payload",
-    [{"total_quantity": -1}, {"name": ""}, {"name": None}, {"total_quantity": None}],
-    ids=["negative-quantity", "blank-name", "null-name", "null-quantity"],
+    [
+        {"total_quantity": -1},
+        {"total_quantity": 1.5},
+        {"total_quantity": None},
+        {"name": ""},
+        {"name": None},
+        {"store_name": ""},
+        {"store_name": "   "},
+    ],
+    ids=[
+        "negative-quantity",
+        "fractional-quantity",
+        "null-quantity",
+        "blank-name",
+        "null-name",
+        "empty-store",
+        "whitespace-store",
+    ],
 )
 def test_update_rejects_invalid_values_and_saves_nothing(
     db_session: Session, equipment_type: EquipmentType, payload: dict[str, Any]
@@ -346,6 +409,41 @@ def test_update_rejects_invalid_values_and_saves_nothing(
     error = _update_rejected(db_session, equipment_type, payload)
 
     assert list(error.details) == list(payload)
+
+
+@pytest.mark.parametrize("payload", [None, []], ids=["no-body", "list"])
+def test_update_needs_a_json_object(
+    db_session: Session, equipment_type: EquipmentType, payload: Any
+) -> None:
+    error = _update_rejected(db_session, equipment_type, payload)
+
+    assert error.message == "Request body must be a JSON object."
+
+
+def test_update_with_nothing_to_change_keeps_the_record(
+    db_session: Session,
+    equipment_type: EquipmentType,
+    reload_equipment_type: ReloadEquipmentType,
+) -> None:
+    before = EquipmentTypeSchema().dump(equipment_type)
+
+    services.update_equipment_type(equipment_type.id, {}, session=db_session)
+
+    assert EquipmentTypeSchema().dump(reload_equipment_type(equipment_type.id)) == before
+
+
+def test_saving_a_type_under_its_own_name_is_not_a_conflict(
+    db_session: Session,
+    equipment_type: EquipmentType,
+    reload_equipment_type: ReloadEquipmentType,
+) -> None:
+    """An edit form sends every field back, the unchanged name included."""
+    services.update_equipment_type(
+        equipment_type.id, {"name": "Projector", "total_quantity": 3}, session=db_session
+    )
+
+    stored = reload_equipment_type(equipment_type.id)
+    assert (stored.name, stored.total_quantity) == ("Projector", 3)
 
 
 def test_update_moves_equipment_from_a_store_to_a_venue(
@@ -382,10 +480,11 @@ def test_update_moves_equipment_from_a_venue_to_a_store(
     ("payload", "message"),
     [
         ({"store_name": None}, NO_LOCATION_MESSAGE),
+        ({"venue_id": None}, NO_LOCATION_MESSAGE),
         ({"venue_id": None, "store_name": None}, NO_LOCATION_MESSAGE),
         ({"venue_id": 1, "store_name": "Basement store"}, BOTH_LOCATIONS_MESSAGE),
     ],
-    ids=["clear-store", "clear-both", "set-both"],
+    ids=["clear-store", "clear-venue", "clear-both", "set-both"],
 )
 def test_update_keeps_exactly_one_location(
     db_session: Session, equipment_type: EquipmentType, payload: dict[str, Any], message: str
