@@ -75,6 +75,10 @@ flask db heads                # must print exactly one head
   `app/__init__.py::_register_modules`.
 - **Errors:** services raise `AppError` subclasses from `app.common.errors`; routes never build
   error responses. Every error body is `{"error", "message", "details?"}`.
+- **The frontend's contract:** a change to a response, error body or validation rule the
+  frontend uses, or an endpoint a frontend `it.todo` is waiting for, updates the integration
+  tests in `frontend/src/integration/` and the mock in `frontend/src/mocks/handlers/` in the
+  same PR (`backend/CONVENTIONS.md` §14).
 - **Auth:** protect routes with `@requires_auth` / `@requires_role(Role.X)` from
   `app.common.decorators`. Never spell role strings by hand — use `Role` and the role groups in
   `app.modules.auth.permissions`.

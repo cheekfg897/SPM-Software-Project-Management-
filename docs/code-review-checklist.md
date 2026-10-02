@@ -179,6 +179,11 @@ finding, not a nit.
 - [ ] Shared setup uses existing fixtures/factories, or adds a new one to `conftest.py`.
 - [ ] Any new `# pragma: no cover` has a reason and really can't be unit-tested; every gap
       is listed with its reason in the PR description.
+- [ ] **The frontend's contract:** if the change alters a response, error body or validation
+      rule the frontend uses, or ships an endpoint a frontend `it.todo` is waiting for, the
+      integration tests in `frontend/src/integration/` and the mock handlers in
+      `frontend/src/mocks/handlers/` are updated in the same PR, or listed under **Tickets to
+      open**.
 
 ## 11. Naming, docs and style (§3, §5)
 
