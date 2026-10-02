@@ -47,10 +47,11 @@ new ticket. Leave them here, not only as a `# TODO` in the code.
 
 ## Testing
 
-<!-- Lint, format and tests at every commit; diff-cover against the base; migration checks; any `# pragma: no cover` with its reason. -->
+<!-- Lint, format and tests at every commit; diff-cover against the base; migration checks; any `# pragma: no cover` with its reason; the frontend's contract tests (CONVENTIONS §14). -->
 
 - [ ] Lint, format and tests pass at every commit.
 - [ ] `diff-cover` against the base is 100%.
+- [ ] Frontend integration tests and mocks match every response this PR changes (§14).
 
 ## Stack
 

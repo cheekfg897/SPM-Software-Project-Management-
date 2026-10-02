@@ -460,6 +460,25 @@ silently red:
   pragma if you change one of those lines.)
 - List every such gap, with its reason, in the PR description or the self-review report.
 
+### The frontend's contract tests
+
+The frontend reads the JSON these routes send. Its integration tests
+(`frontend/src/integration/*.int.test.ts`) check that the two still agree, and CI runs them on
+every pull request against that pull request's backend, so a change that breaks a response they
+already check fails CI. CI can't see two things, so they're on the author of the backend change:
+
+- **An endpoint or rule the frontend is waiting for.** A contract test that is still a
+  placeholder (`it.todo('… (lands with SCRUM-66)')`) can't fail. The pull request that ships
+  that endpoint or rule turns its placeholders into real tests.
+- **The mock backend.** The frontend's component tests run against the handlers in
+  `frontend/src/mocks/handlers/`, which copy the backend's responses, error bodies and
+  validation rules. When a pull request changes one of those, it updates the matching handler
+  too. Otherwise the frontend's tests keep passing against the old behaviour.
+
+`frontend/CLAUDE.md` explains how to run them (`npm run test:integration` against a running
+backend). If the frontend side doesn't fit in this pull request, list it under **Tickets to
+open** rather than leaving it unsaid.
+
 ### Style
 
 - **Unit tests only** for now: no real DB, no Flask test client. Services get the `mock_session`
