@@ -1,4 +1,4 @@
-import { ROLE } from '@/config/roles'
+import { INTERNAL_ROLES, ROLE } from '@/config/roles'
 import { fetchCurrentUser, logIn, register } from '@/features/auth/api'
 import { ApiError } from '@/lib/api'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
@@ -6,6 +6,8 @@ import { sendRequestsAs } from '@/test/sendRequestsAs'
 import { uniqueEmail, VALID_PASSWORD } from './backend'
 
 const INVALID_CREDENTIALS_MESSAGE = 'Invalid email or password.'
+/** What the backend says when sign-up names a staff role (SCRUM-88), as the mock says it too. */
+const EXTERNAL_ROLE_ONLY_MESSAGE = 'Role must be one of: attendee, event_organiser.'
 
 function newAttendee() {
   return {
@@ -96,5 +98,13 @@ describe('SCRUM-65 and SCRUM-6 against the backend', () => {
   it.todo('signs up an Event Organiser with an existing organisation_id (lands with SCRUM-66)')
   it.todo('refuses an Event Organiser without an organisation_id, on that field (SCRUM-66)')
   it.todo('refuses an unknown organisation_id, on that field (SCRUM-66)')
-  it.todo('refuses a staff role at sign-up, on the role field (lands with SCRUM-88)')
+})
+
+describe('SCRUM-88 against the backend', () => {
+  it.each(INTERNAL_ROLES)('refuses %s at sign-up, on the role field', async (role) => {
+    const error = await refusal(register({ ...newAttendee(), role }))
+
+    expect(error).toMatchObject({ status: 400, code: 'validation_error' })
+    expect(error.fieldErrors).toEqual({ role: [EXTERNAL_ROLE_ONLY_MESSAGE] })
+  })
 })
