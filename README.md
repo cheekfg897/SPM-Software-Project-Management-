@@ -146,7 +146,7 @@ curl http://localhost:5000/api/auth/internal-only -H "Authorization: Bearer <tok
 | `POST /api/venues`             | `venue_staff` — add a venue                                     |
 | `GET  /api/venues`             | any authenticated user — list active venues, by name            |
 | `GET  /api/venues/<id>`        | any authenticated user — one venue, active or not               |
-| `PATCH /api/venues/<id>`       | `venue_staff` — change only the fields sent; lists confirmed bookings that newly overlap if setup/turnaround changed |
+| `PATCH /api/venues/<id>`       | `venue_staff` — change only the fields sent; if setup/turnaround changed, lists confirmed bookings that now overlap each other or run into a block |
 | `POST /api/venues/<id>/deactivate` | `venue_staff` — hide from listing and search            |
 | `POST /api/venues/<id>/reactivate` | `venue_staff` — show again                              |
 | `GET  /api/venues/<id>/calendar?range_start=…&range_end=…` | internal roles — bookings and blocked periods in the range |
