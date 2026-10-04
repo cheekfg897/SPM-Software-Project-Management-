@@ -325,7 +325,8 @@ def test_search_leaves_out_the_customers_example_until_its_turnaround_is_over(
 
 
 # --------------------------------------------------------------------------
-# AC4 — a buffer change reports confirmed bookings that now overlap
+# AC4 — a buffer change reports confirmed bookings that now overlap another booking
+# or a block, and changes neither
 # --------------------------------------------------------------------------
 
 
@@ -337,7 +338,7 @@ def test_a_longer_turnaround_reports_confirmed_bookings_that_now_overlap(
     first, second = make_booking(venue, _at(9), _at(10)), make_booking(venue, _at(10, 30), _at(11))
     save(first, second)
 
-    _, warnings = services.update_venue(venue.id, {"turnaround_minutes": 45})
+    _, warnings, _ = services.update_venue(venue.id, {"turnaround_minutes": 45})
 
     assert warnings == [
         services.OverlapWarning(
@@ -347,6 +348,38 @@ def test_a_longer_turnaround_reports_confirmed_bookings_that_now_overlap(
     assert (first.status, second.status) == (BookingStatus.CONFIRMED, BookingStatus.CONFIRMED)
 
 
+def test_a_longer_turnaround_reports_a_confirmed_booking_that_now_runs_into_a_block(
+    db_session: Session,
+    make_venue: MakeVenue,
+    make_booking: MakeBooking,
+    make_block: MakeBlock,
+    save: Save,
+) -> None:
+    """09:00-10:00 with 45 minutes' turnaround holds the venue until 10:45.
+
+    That cuts into a block starting at 10:30, but only touches one starting at 10:45.
+    """
+    venue = make_venue(setup_minutes=0, turnaround_minutes=0)
+    save(venue)
+    booking = make_booking(venue, _at(9), _at(10))
+    reached = make_block(venue, _at(10, 30), _at(10, 45))
+    clear = make_block(venue, _at(10, 45), _at(12))
+    save(booking, reached, clear)
+
+    _, _, block_warnings = services.update_venue(venue.id, {"turnaround_minutes": 45})
+
+    assert block_warnings == [
+        services.BlockOverlapWarning(
+            booking_id=booking.id,
+            block_id=reached.id,
+            overlap_start=_at(10, 30),
+            overlap_end=_at(10, 45),
+        )
+    ]
+    assert booking.status == BookingStatus.CONFIRMED
+    assert db_session.get(VenueBlock, reached.id) is not None
+
+
 def test_bookings_still_far_enough_apart_after_a_change_are_not_reported(
     db_session: Session, make_venue: MakeVenue, make_booking: MakeBooking, save: Save
 ) -> None:
@@ -354,7 +387,7 @@ def test_bookings_still_far_enough_apart_after_a_change_are_not_reported(
     save(venue)
     save(make_booking(venue, _at(9), _at(10)), make_booking(venue, _at(12), _at(13)))
 
-    _, warnings = services.update_venue(venue.id, {"turnaround_minutes": 45})
+    _, warnings, _ = services.update_venue(venue.id, {"turnaround_minutes": 45})
 
     assert warnings == []
 
@@ -374,7 +407,7 @@ def test_only_confirmed_bookings_are_checked_for_new_overlaps(
         make_booking(venue, _at(10, 30), _at(11), status=status),
     )
 
-    _, warnings = services.update_venue(venue.id, {"turnaround_minutes": 45})
+    _, warnings, _ = services.update_venue(venue.id, {"turnaround_minutes": 45})
 
     assert warnings == []
 
@@ -386,16 +419,22 @@ def test_nothing_is_reported_unless_a_buffer_actually_changes(
     db_session: Session,
     make_venue: MakeVenue,
     make_booking: MakeBooking,
+    make_block: MakeBlock,
     save: Save,
     change: dict[str, int],
 ) -> None:
+    """The second booking's turnaround already reaches the block at 11:30."""
     venue = make_venue(setup_minutes=0, turnaround_minutes=45)
     save(venue)
-    save(make_booking(venue, _at(9), _at(10)), make_booking(venue, _at(10, 30), _at(11)))
+    save(
+        make_booking(venue, _at(9), _at(10)),
+        make_booking(venue, _at(10, 30), _at(11)),
+        make_block(venue, _at(11, 30), _at(12)),
+    )
 
-    _, warnings = services.update_venue(venue.id, change)
+    _, booking_warnings, block_warnings = services.update_venue(venue.id, change)
 
-    assert warnings == []
+    assert (booking_warnings, block_warnings) == ([], [])
 
 
 def test_the_update_route_returns_the_venue_and_its_overlap_warnings(
@@ -403,13 +442,15 @@ def test_the_update_route_returns_the_venue_and_its_overlap_warnings(
     db_session: Session,
     make_venue: MakeVenue,
     make_booking: MakeBooking,
+    make_block: MakeBlock,
     save: Save,
     token_for: Callable[..., str],
 ) -> None:
     venue = make_venue(setup_minutes=0, turnaround_minutes=0)
     save(venue)
     first, second = make_booking(venue, _at(9), _at(10)), make_booking(venue, _at(10, 30), _at(11))
-    save(first, second)
+    block = make_block(venue, _at(11), _at(12))
+    save(first, second, block)
     headers = {"Authorization": f"Bearer {token_for(role=Role.VENUE_STAFF)}"}
 
     with app.test_request_context(
@@ -425,5 +466,13 @@ def test_the_update_route_returns_the_venue_and_its_overlap_warnings(
             "booking_ids": [first.id, second.id],
             "overlap_start": "2026-10-01T18:30:00+08:00",
             "overlap_end": "2026-10-01T18:45:00+08:00",
+        }
+    ]
+    assert body["block_overlap_warnings"] == [
+        {
+            "booking_id": second.id,
+            "block_id": block.id,
+            "overlap_start": "2026-10-01T19:00:00+08:00",
+            "overlap_end": "2026-10-01T19:45:00+08:00",
         }
     ]
