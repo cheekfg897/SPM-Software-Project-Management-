@@ -1,9 +1,9 @@
 """Service tests for SCRUM-24 "see the events my role is involved in".
 
 AC2: an Event Coordinator sees the submitted requests no coordinator has yet, as a
-list separate from their own assigned one (``test_list_assigned_requests.py``). AC4:
+list separate from their own assigned one (``test_list_assigned_requests.py``). AC5:
 Technical Support see every event that has an equipment request, whatever its status
-or date. AC7: a coordinator can open a request assigned to them, or a submitted one
+or date. AC9: a coordinator can open a request assigned to them, or a submitted one
 awaiting a coordinator, in full; any other request is not found to them.
 """
 
@@ -78,7 +78,7 @@ def test_unassigned_requests_in_any_other_status_are_not_listed(
 
 
 # --------------------------------------------------------------------------
-# AC4 — the events that have an equipment request
+# AC5 — the events that have an equipment request
 # --------------------------------------------------------------------------
 
 
@@ -121,7 +121,7 @@ def test_an_event_that_has_taken_place_is_still_listed(event_needing: EventNeedi
 
 
 # --------------------------------------------------------------------------
-# AC7 — a coordinator opens a request assigned to them, or one awaiting one
+# AC9 — a coordinator opens a request assigned to them, or one awaiting one
 # --------------------------------------------------------------------------
 
 

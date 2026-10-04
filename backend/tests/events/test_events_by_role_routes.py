@@ -1,10 +1,10 @@
 """Route tests for SCRUM-24 "see the events my role is involved in".
 
 AC2: Event Coordinators can open the list of submitted requests no coordinator has
-yet, separate from their own assigned list. AC4: Technical Support can open the list
-of events that have an equipment request. AC6: every role's event list shows each
-event's name, date, time and status. AC7: the event record widens to Event
-Coordinators, the same sections as the organiser's. AC8: a list with no matching
+yet, separate from their own assigned list. AC5: Technical Support can open the list
+of events that have an equipment request. AC8: every role's event list shows each
+event's name, date, time and status. AC9: the event record widens to Event
+Coordinators, the same sections as the organiser's. AC10: a list with no matching
 events says so, instead of an empty list looking the same as "nothing loaded yet"
 (copying ``search_venues``'s precedent, SCRUM-35 AC4).
 
@@ -103,7 +103,7 @@ def open_list(
 
 
 # --------------------------------------------------------------------------
-# AC6 — every list shows each event's name, date, time and status
+# AC8 — every list shows each event's name, date, time and status
 # --------------------------------------------------------------------------
 
 
@@ -139,7 +139,7 @@ def test_a_list_with_events_carries_no_message(
 
 
 # --------------------------------------------------------------------------
-# AC8 — an empty list says there are none, rather than looking blank
+# AC10 — an empty list says there are none, rather than looking blank
 # --------------------------------------------------------------------------
 
 
@@ -235,7 +235,7 @@ def test_the_unassigned_list_shows_each_whole_request_without_internal_ids(
 
 
 # --------------------------------------------------------------------------
-# AC4 — Technical Support can open the list of events with an equipment request
+# AC5 — Technical Support can open the list of events with an equipment request
 # --------------------------------------------------------------------------
 
 
@@ -250,7 +250,7 @@ def test_the_equipment_list_shows_only_each_events_summary(
 
 
 # --------------------------------------------------------------------------
-# AC7 — the event record opens to organisers and coordinators
+# AC9 — the event record opens to organisers and coordinators
 # --------------------------------------------------------------------------
 
 RECORD_ENDPOINT = "events.get_my_request"
