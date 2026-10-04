@@ -44,6 +44,15 @@ def _search(start: datetime, end: datetime) -> list[str]:
     return [match.venue.name for match in services.search_venues(payload)]
 
 
+@pytest.fixture()
+def customers_example(make_venue: MakeVenue, make_booking: MakeBooking, save: Save) -> Venue:
+    """The customer's example (Week 7 change #1): 30/45 and an event at 10:00-12:00."""
+    venue = make_venue(setup_minutes=30, turnaround_minutes=45)
+    save(venue)
+    save(make_booking(venue, _at(10), _at(12)))
+    return venue
+
+
 # --------------------------------------------------------------------------
 # AC1 — a venue records its setup and turnaround time
 # --------------------------------------------------------------------------
@@ -286,6 +295,33 @@ def test_search_does_not_pad_a_block(
     save(make_block(venue, _at(8), _at(10)))
 
     assert _search(_at(10), _at(12)) == [venue.name]
+
+
+# --------------------------------------------------------------------------
+# AC3 — the customer's example: with 30 minutes' setup and 45 minutes' turnaround,
+# an event at 10:00-12:00 holds the venue 09:30-12:45
+# --------------------------------------------------------------------------
+
+
+def test_the_calendar_shows_the_customers_example_as_09_30_to_12_45(
+    customers_example: Venue,
+) -> None:
+    [entry] = services.get_venue_calendar(
+        customers_example.id, _at(8), _at(16), viewer_role=Role.VENUE_STAFF
+    )
+
+    assert (entry.start_time, entry.end_time) == (_at(9, 30), _at(12, 45))
+
+
+@pytest.mark.parametrize(
+    ("request_start", "request_end", "found"),
+    [(_at(12, 30), _at(14), []), (_at(14), _at(15), ["Main Hall"])],
+    ids=["12:30-14:00", "14:00-15:00"],
+)
+def test_search_leaves_out_the_customers_example_until_its_turnaround_is_over(
+    customers_example: Venue, request_start: datetime, request_end: datetime, found: list[str]
+) -> None:
+    assert _search(request_start, request_end) == found
 
 
 # --------------------------------------------------------------------------
