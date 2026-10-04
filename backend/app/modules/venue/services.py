@@ -170,19 +170,54 @@ def _confirmed_overlaps(venue: Venue, bookings: list[Booking]) -> list[OverlapWa
     return warnings
 
 
+@dataclass(frozen=True)
+class BlockOverlapWarning:
+    """A confirmed booking whose padded period overlaps a block (SCRUM-67 AC4)."""
+
+    booking_id: int
+    block_id: int
+    overlap_start: datetime
+    overlap_end: datetime
+
+
+def _block_overlaps(
+    venue: Venue, bookings: list[Booking], session: Session
+) -> list[BlockOverlapWarning]:
+    """Each of ``bookings`` whose padded period overlaps one of the venue's blocks.
+
+    The block itself isn't padded (ADR-0011), the same rule a new block's conflict
+    check uses (ADR-0016).
+    """
+    blocks = _blocks_in_start_order(venue, session)
+    warnings: list[BlockOverlapWarning] = []
+    for booking in bookings:
+        held = _occupied(venue, booking.start_time, booking.end_time)
+        for block in blocks:
+            shared = _shared_period(held, (block.start_time, block.end_time))
+            if shared is not None:
+                overlap_start, overlap_end = shared
+                warnings.append(
+                    BlockOverlapWarning(booking.id, block.id, overlap_start, overlap_end)
+                )
+    return warnings
+
+
 def update_venue(
     venue_id: int, payload: Mapping[str, Any] | None, *, session: Session | None = None
-) -> tuple[Venue, list[OverlapWarning]]:
+) -> tuple[Venue, list[OverlapWarning], list[BlockOverlapWarning]]:
     """Update a venue's editable fields (SCRUM-25 AC1/AC2, SCRUM-67 AC1/AC4).
 
     Only the fields present in ``payload`` are changed. ``opening_hours``, if
     present, replaces the whole weekly schedule (ADR-0008).
 
-    If the setup or turnaround time changes, confirmed bookings are left as they are
-    but re-checked against the new padding, and any pair that now overlaps is returned.
+    If the setup or turnaround time changes, confirmed bookings and blocks are left as
+    they are but re-checked against the new padding (ADR-0033). Every pair of confirmed
+    bookings that now overlaps is returned, and so is every confirmed booking that now
+    runs into a block.
 
     Returns:
-        The updated venue, and the overlap warnings (empty unless a buffer changed).
+        The updated venue, the bookings that overlap each other and the bookings that
+        overlap a block; both lists are empty unless a buffer changed.
 
     Raises:
         NotFoundError: 404 — no such venue.
@@ -205,8 +240,9 @@ def update_venue(
 
     sess.commit()
     if _buffers(venue) == buffers_before:
-        return venue, []
-    return venue, _confirmed_overlaps(venue, _confirmed_bookings(venue, sess))
+        return venue, [], []
+    bookings = _confirmed_bookings(venue, sess)
+    return venue, _confirmed_overlaps(venue, bookings), _block_overlaps(venue, bookings, sess)
 
 
 def deactivate_venue(venue_id: int, *, session: Session | None = None) -> Venue:

@@ -21,6 +21,7 @@ from app.common.validation import load_or_raise
 from app.modules.auth.permissions import INTERNAL_ROLES, Role
 from app.modules.venue import services
 from app.modules.venue.schemas import (
+    BlockOverlapWarningSchema,
     CalendarEntrySchema,
     CalendarQuerySchema,
     ConflictingBookingSchema,
@@ -37,6 +38,7 @@ _venue_schema = VenueSchema()
 _calendar_entry_schema = CalendarEntrySchema()
 _venue_match_schema = VenueMatchSchema()
 _overlap_warning_schema = OverlapWarningSchema()
+_block_overlap_warning_schema = BlockOverlapWarningSchema()
 _venue_block_schema = VenueBlockSchema()
 _conflicting_booking_schema = ConflictingBookingSchema()
 _suitability_result_schema = SuitabilityResultSchema()
@@ -80,11 +82,16 @@ def update_venue(venue_id: int) -> tuple[Response, int]:
     """Update a venue's editable fields. Venue Staff only (SCRUM-25 AC4, SCRUM-67 AC5).
 
     If the setup or turnaround time changed, the response lists confirmed bookings that
-    now overlap (SCRUM-67 AC4).
+    now overlap each other or run into a block (SCRUM-67 AC4, ADR-0033).
     """
-    venue, overlap_warnings = services.update_venue(venue_id, request.get_json(silent=True))
+    venue, overlap_warnings, block_overlap_warnings = services.update_venue(
+        venue_id, request.get_json(silent=True)
+    )
     body = _venue_schema.dump(venue)
     body["overlap_warnings"] = _overlap_warning_schema.dump(overlap_warnings, many=True)
+    body["block_overlap_warnings"] = _block_overlap_warning_schema.dump(
+        block_overlap_warnings, many=True
+    )
     return jsonify(body), 200
 
 

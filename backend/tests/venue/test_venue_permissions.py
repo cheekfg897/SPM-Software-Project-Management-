@@ -59,7 +59,7 @@ def mock_services(
         services,
         {
             "create_venue": make_venue(),
-            "update_venue": (make_venue(), []),  # the venue, and no overlap warnings
+            "update_venue": (make_venue(), [], []),  # the venue, and no overlap warnings
             "deactivate_venue": make_venue(),
             "reactivate_venue": make_venue(),
             "list_venues": [make_venue()],

@@ -272,6 +272,15 @@ class OverlapWarningSchema(Schema):
     overlap_end = BusinessDateTime(dump_only=True)
 
 
+class BlockOverlapWarningSchema(Schema):
+    """A confirmed booking whose padded period now overlaps a block (SCRUM-67 AC4)."""
+
+    booking_id = fields.Integer(dump_only=True)
+    block_id = fields.Integer(dump_only=True)
+    overlap_start = BusinessDateTime(dump_only=True)
+    overlap_end = BusinessDateTime(dump_only=True)
+
+
 class _RequirementsSchema(Schema):
     """Base for payloads that say what an event asks of a venue (SCRUM-35, SCRUM-36).
 
