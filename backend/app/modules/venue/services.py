@@ -120,21 +120,52 @@ class OverlapWarning:
     overlap_end: datetime
 
 
-def _confirmed_overlaps(venue: Venue, session: Session) -> list[OverlapWarning]:
-    """Every pair of the venue's confirmed bookings whose padded periods overlap."""
-    bookings = session.scalars(
+def _shared_period(
+    first: tuple[datetime, datetime], second: tuple[datetime, datetime]
+) -> tuple[datetime, datetime] | None:
+    """The time two periods have in common, or ``None`` if they don't overlap.
+
+    Periods that only touch (one ends at 11:00, the next starts at 11:00) share nothing.
+    """
+    first_start, first_end = first
+    second_start, second_end = second
+    shared_start = max(first_start, second_start)
+    shared_end = min(first_end, second_end)
+    if shared_start < shared_end:
+        return shared_start, shared_end
+    return None
+
+
+def _confirmed_bookings(venue: Venue, session: Session) -> list[Booking]:
+    """The venue's confirmed bookings, in start order."""
+    stmt = (
         select(Booking)
         .where(Booking.venue_id == venue.id, Booking.status == BookingStatus.CONFIRMED)
         .order_by(Booking.start_time, Booking.id)
-    ).all()
+    )
+    return list(session.scalars(stmt))
+
+
+def _blocks_in_start_order(venue: Venue, session: Session) -> list[VenueBlock]:
+    """The venue's blocks, earliest first."""
+    stmt = (
+        select(VenueBlock)
+        .where(VenueBlock.venue_id == venue.id)
+        .order_by(VenueBlock.start_time, VenueBlock.id)
+    )
+    return list(session.scalars(stmt))
+
+
+def _confirmed_overlaps(venue: Venue, bookings: list[Booking]) -> list[OverlapWarning]:
+    """Every pair of ``bookings`` whose padded periods overlap."""
     warnings: list[OverlapWarning] = []
     for index, first in enumerate(bookings):
-        first_start, first_end = _occupied(venue, first.start_time, first.end_time)
+        first_held = _occupied(venue, first.start_time, first.end_time)
         for second in bookings[index + 1 :]:
-            second_start, second_end = _occupied(venue, second.start_time, second.end_time)
-            overlap_start = max(first_start, second_start)
-            overlap_end = min(first_end, second_end)
-            if overlap_start < overlap_end:
+            second_held = _occupied(venue, second.start_time, second.end_time)
+            shared = _shared_period(first_held, second_held)
+            if shared is not None:
+                overlap_start, overlap_end = shared
                 warnings.append(OverlapWarning((first.id, second.id), overlap_start, overlap_end))
     return warnings
 
@@ -175,7 +206,7 @@ def update_venue(
     sess.commit()
     if _buffers(venue) == buffers_before:
         return venue, []
-    return venue, _confirmed_overlaps(venue, sess)
+    return venue, _confirmed_overlaps(venue, _confirmed_bookings(venue, sess))
 
 
 def deactivate_venue(venue_id: int, *, session: Session | None = None) -> Venue:
@@ -521,12 +552,7 @@ def list_venue_blocks(venue_id: int, *, session: Session | None = None) -> list[
     """
     sess = resolve_session(session)
     venue = get_venue(venue_id, session=sess)
-    stmt = (
-        select(VenueBlock)
-        .where(VenueBlock.venue_id == venue.id)
-        .order_by(VenueBlock.start_time, VenueBlock.id)
-    )
-    return list(sess.scalars(stmt))
+    return _blocks_in_start_order(venue, sess)
 
 
 def remove_venue_block(venue_id: int, block_id: int, *, session: Session | None = None) -> None:
