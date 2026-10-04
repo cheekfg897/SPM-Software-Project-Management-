@@ -1,15 +1,15 @@
 """Route tests for SCRUM-24 "see the events my role is involved in".
 
-AC2: Event Coordinators can open the list of submitted requests no coordinator has
-yet, separate from their own assigned list. AC5: Technical Support can open the list
-of events that have an equipment request. AC8: every role's event list shows each
-event's name, date, time and status. AC9: the event record widens to Event
-Coordinators, the same sections as the organiser's. AC10: a list with no matching
-events says so, instead of an empty list looking the same as "nothing loaded yet"
-(copying ``search_venues``'s precedent, SCRUM-35 AC4).
+AC2: Event Coordinators have no list of the requests no coordinator has; that queue
+is the Event Coordinator Lead's (Week 7, ADR-0034). AC5: Technical Support can open
+the list of events that have an equipment request. AC8: every role's event list
+shows each event's name, date, time and status. AC9: the event record widens to
+Event Coordinators, the same sections as the organiser's. AC10: a list with no
+matching events says so, instead of an empty list looking the same as "nothing
+loaded yet" (copying ``search_venues``'s precedent, SCRUM-35 AC4).
 
-Covers the organiser's own list, the coordinator's assigned and unassigned lists,
-Technical Support's equipment list, and the event record opened to coordinators.
+Covers the organiser's own list, the coordinator's assigned list, Technical
+Support's equipment list, and the event record opened to coordinators.
 """
 
 from __future__ import annotations
@@ -60,13 +60,6 @@ ASSIGNED_LIST = EventList(
     Role.EVENT_COORDINATOR,
     "No event requests are assigned to you yet.",
 )
-UNASSIGNED_LIST = EventList(
-    "events.list_unassigned_requests",
-    "/api/events/requests/unassigned",
-    "list_unassigned_event_requests",
-    Role.EVENT_COORDINATOR,
-    "No submitted event requests are waiting for a coordinator.",
-)
 EQUIPMENT_LIST = EventList(
     "events.list_requests_with_equipment",
     "/api/events/requests/with-equipment",
@@ -74,8 +67,8 @@ EQUIPMENT_LIST = EventList(
     Role.TECHNICAL_SUPPORT_STAFF,
     "No events have an equipment request yet.",
 )
-ROLE_LISTS = [ORGANISATION_LIST, ASSIGNED_LIST, UNASSIGNED_LIST, EQUIPMENT_LIST]
-NEW_LISTS = [UNASSIGNED_LIST, EQUIPMENT_LIST]
+ROLE_LISTS = [ORGANISATION_LIST, ASSIGNED_LIST, EQUIPMENT_LIST]
+NEW_LISTS = [EQUIPMENT_LIST]
 
 OpenList = Callable[[EventList, list[EventRequest]], tuple[dict[str, Any], int, MagicMock]]
 
@@ -210,28 +203,10 @@ def test_opening_a_new_list_without_a_token_is_401(
 
 @pytest.mark.parametrize("event_list", NEW_LISTS, ids=lambda event_list: event_list.endpoint)
 def test_a_new_list_path_is_not_taken_for_a_reference(app: Flask, event_list: EventList) -> None:
-    """A new list's path, e.g. ``unassigned``, must not be read as a reference."""
+    """A new list's path, e.g. ``with-equipment``, must not be read as a reference."""
     adapter = app.url_map.bind("localhost")
 
     assert adapter.match(event_list.path) == (event_list.endpoint, {})
-
-
-# --------------------------------------------------------------------------
-# AC2 — the unassigned list shows each whole request
-# --------------------------------------------------------------------------
-
-
-def test_the_unassigned_list_shows_each_whole_request_without_internal_ids(
-    open_list: OpenList, shown_event: EventRequest
-) -> None:
-    body, status, mock = open_list(UNASSIGNED_LIST, [shown_event])
-
-    assert status == 200
-    [row] = body["event_requests"]
-    assert row["expected_attendance"] == 250
-    assert "coordinator_id" not in row
-    assert "organiser_id" not in row
-    mock.assert_called_once_with()
 
 
 # --------------------------------------------------------------------------
@@ -324,3 +299,18 @@ def test_a_coordinator_opening_a_record_sees_the_request_its_equipment_and_its_c
         "email": "coordinator3@example.com",
     }
     assert "coordinator_id" not in body
+
+
+# --------------------------------------------------------------------------
+# AC2 — coordinators have no list of the requests no coordinator has
+# --------------------------------------------------------------------------
+
+
+def test_coordinators_have_no_list_of_unassigned_requests(app: Flask) -> None:
+    """The unassigned queue is the Lead's (SCRUM-95); no coordinator route lists it."""
+    adapter = app.url_map.bind("localhost")
+
+    assert adapter.match("/api/events/requests/unassigned") == (
+        RECORD_ENDPOINT,
+        {"reference": "unassigned"},
+    )

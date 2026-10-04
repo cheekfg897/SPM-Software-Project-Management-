@@ -35,7 +35,6 @@ from app.modules.events.services import (
     list_event_requests_for_coordinator,
     list_event_requests_for_organiser,
     list_event_requests_with_equipment,
-    list_unassigned_event_requests,
     reassign_coordinator,
     remove_equipment_line,
     save_draft_event_request,
@@ -62,7 +61,6 @@ _event_list_row_schema = EventRequestSchema(only=EVENT_LIST_FIELDS)
 #: What each role's event list says when it is empty (SCRUM-24 AC10, ADR-0026).
 NO_ORGANISATION_REQUESTS_MESSAGE = "Your organisation has no event requests yet."
 NO_ASSIGNED_REQUESTS_MESSAGE = "No event requests are assigned to you yet."
-NO_UNASSIGNED_REQUESTS_MESSAGE = "No submitted event requests are waiting for a coordinator."
 NO_EQUIPMENT_REQUESTS_MESSAGE = "No events have an equipment request yet."
 
 
@@ -164,15 +162,6 @@ def list_equipment_awaiting_action() -> tuple[Response, int]:
     return jsonify(body), 200
 
 
-@bp.get("/requests/unassigned")
-@requires_role(Role.EVENT_COORDINATOR)
-def list_unassigned_requests() -> tuple[Response, int]:
-    """The submitted requests no coordinator has yet, newest first (SCRUM-24 AC2)."""
-    event_requests = list_unassigned_event_requests()
-    listed = _event_request_schema.dump(event_requests, many=True)
-    return jsonify(_event_list_body(listed, NO_UNASSIGNED_REQUESTS_MESSAGE)), 200
-
-
 @bp.get("/requests/with-equipment")
 @requires_role(Role.TECHNICAL_SUPPORT_STAFF)
 def list_requests_with_equipment() -> tuple[Response, int]:
@@ -195,8 +184,8 @@ def get_my_request(reference: str) -> tuple[Response, int]:
 
     Any organiser of the request's client organisation may open it; another
     organisation's request is ``404`` like an unknown reference (SCRUM-7 AC2, AC3,
-    ADR-0012). An Event Coordinator opens the same sections for a request assigned to
-    them, or a submitted one still awaiting a coordinator (SCRUM-24 AC9, ADR-0026).
+    ADR-0012). An Event Coordinator opens the same sections, but only for a request
+    assigned to them (SCRUM-24 AC2, AC9; ADR-0026, ADR-0034).
     The current status is SCRUM-22's; the assigned coordinator's name and email are
     SCRUM-30 AC3's, ``null`` until one is assigned (ADR-0018); the equipment lines are
     SCRUM-37 AC4's. Technical Support's view of the equipment is ``/equipment``.
