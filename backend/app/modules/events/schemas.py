@@ -357,7 +357,7 @@ EQUIPMENT_EVENT_FIELDS = (
 )
 
 #: What an event list shows at the least: the event's name, date and times as the
-#: equipment list shows them, and its status (SCRUM-24 AC6, ADR-0026).
+#: equipment list shows them, and its status (SCRUM-24 AC8, ADR-0026).
 EVENT_LIST_FIELDS = (*EQUIPMENT_EVENT_FIELDS, "status")
 
 

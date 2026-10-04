@@ -59,7 +59,7 @@ _field_change_schema = FieldChangeSchema()
 _event_history_entry_schema = EventHistoryEntrySchema()
 _event_list_row_schema = EventRequestSchema(only=EVENT_LIST_FIELDS)
 
-#: What each role's event list says when it is empty (SCRUM-24 AC8, ADR-0026).
+#: What each role's event list says when it is empty (SCRUM-24 AC10, ADR-0026).
 NO_ORGANISATION_REQUESTS_MESSAGE = "Your organisation has no event requests yet."
 NO_ASSIGNED_REQUESTS_MESSAGE = "No event requests are assigned to you yet."
 NO_UNASSIGNED_REQUESTS_MESSAGE = "No submitted event requests are waiting for a coordinator."
@@ -67,7 +67,7 @@ NO_EQUIPMENT_REQUESTS_MESSAGE = "No events have an equipment request yet."
 
 
 def _event_list_body(listed: list[dict[str, Any]], empty_message: str) -> dict[str, Any]:
-    """A role's event list; an empty one also says there are none (SCRUM-24 AC8).
+    """A role's event list; an empty one also says there are none (SCRUM-24 AC10).
 
     Copies ``search_venues``'s precedent (SCRUM-35 AC4): ``message`` is added only
     when the list is empty, so a client shows it whenever it is present.
@@ -90,7 +90,7 @@ def submit_request() -> tuple[Response, int]:
     return jsonify(_event_request_schema.dump(event_request)), 201
 
 
-# TODO: SCRUM-42 adds Venue Staff's list (AC3) and SCRUM-52 the Attendee's (AC5),
+# TODO: SCRUM-42 adds Venue Staff's list (AC4) and SCRUM-52 the Attendee's (AC7),
 # in the same shape (ADR-0026).
 @bp.get("/requests")
 @requires_role(Role.EVENT_ORGANISER)
@@ -176,7 +176,7 @@ def list_unassigned_requests() -> tuple[Response, int]:
 @bp.get("/requests/with-equipment")
 @requires_role(Role.TECHNICAL_SUPPORT_STAFF)
 def list_requests_with_equipment() -> tuple[Response, int]:
-    """Every event that has an equipment request, newest first (SCRUM-24 AC4).
+    """Every event that has an equipment request, newest first (SCRUM-24 AC5).
 
     Each row carries only ``EVENT_LIST_FIELDS``: the same name, date and times
     Technical Support's own event view (``/equipment``) shows, plus status.
@@ -196,7 +196,7 @@ def get_my_request(reference: str) -> tuple[Response, int]:
     Any organiser of the request's client organisation may open it; another
     organisation's request is ``404`` like an unknown reference (SCRUM-7 AC2, AC3,
     ADR-0012). An Event Coordinator opens the same sections for a request assigned to
-    them, or a submitted one still awaiting a coordinator (SCRUM-24 AC7, ADR-0026).
+    them, or a submitted one still awaiting a coordinator (SCRUM-24 AC9, ADR-0026).
     The current status is SCRUM-22's; the assigned coordinator's name and email are
     SCRUM-30 AC3's, ``null`` until one is assigned (ADR-0018); the equipment lines are
     SCRUM-37 AC4's. Technical Support's view of the equipment is ``/equipment``.

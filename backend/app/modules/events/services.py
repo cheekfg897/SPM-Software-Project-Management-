@@ -1594,7 +1594,7 @@ def list_unassigned_event_requests(*, session: Session | None = None) -> list[Ev
 
 
 def list_event_requests_with_equipment(*, session: Session | None = None) -> list[EventRequest]:
-    """Every event with at least one equipment line, newest first (SCRUM-24 AC4).
+    """Every event with at least one equipment line, newest first (SCRUM-24 AC5).
 
     Whatever the event's status or date and whatever state its lines are in: this is
     everything Technical Support are involved in. SCRUM-38's list is the part still
@@ -1614,7 +1614,7 @@ def _visible_to_coordinator(coordinator_id: int | str) -> ColumnElement[bool]:
 def get_event_record_for_coordinator(
     coordinator_id: int | str, reference: str, *, session: Session | None = None
 ) -> tuple[EventRequest, CoordinatorContact | None]:
-    """A request the coordinator may open, and its coordinator (SCRUM-24 AC7).
+    """A request the coordinator may open, and its coordinator (SCRUM-24 AC9).
 
     A coordinator may open a request assigned to them, or a submitted one no
     coordinator has yet (ADR-0026), with the same sections as the organiser's
