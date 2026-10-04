@@ -38,10 +38,9 @@ To change a decision, don't rewrite history. Add a new ADR that **supersedes** t
 | [0023](0023-staff-accounts-created-by-command.md) | Staff accounts are created by a `flask create-staff-user` command, not self-registration | Accepted | SCRUM-88 |
 | [0024](0024-draft-event-requests.md) | A draft is an event request in status draft: saved with only a name, seen only by its author, submitted in place under the full submission rules | Accepted | SCRUM-20 |
 | [0025](0025-event-edits-significant-changes-and-history.md) | An assigned coordinator edits set fields; a significant change asks Technical Support to recheck equipment; history is shown with names resolved, not ids | Accepted | SCRUM-33 |
-| [0026](0026-role-event-lists.md) | Each role's events are a list of its own; an empty list carries a message; coordinators open their own and unassigned requests | Accepted | SCRUM-24 |
+| [0026](0026-role-event-lists.md) | Each role's events are a list of its own; an empty list carries a message; coordinators open their own and unassigned requests | Accepted; coordinators' access to unassigned requests superseded by [0034](0034-coordinators-see-only-their-own-events.md) | SCRUM-24 |
 | [0032](0032-event-catalogue-contract.md) | The event catalogue API, proposed by the frontend ahead of SCRUM-52 | Proposed | SCRUM-52 |
-
-
+| [0034](0034-coordinators-see-only-their-own-events.md) | Event Coordinators see and open only the events assigned to them; the unassigned queue waits for the Lead | Accepted | SCRUM-24 |
 
 ## Template
 
