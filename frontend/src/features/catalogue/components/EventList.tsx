@@ -11,7 +11,13 @@ export function EventList({ events }: { events: CatalogueEvent[] }) {
       {groupByDay(events).map((group, index) => {
         const firstStart = group.events[0].starts_at
         return (
-          <li key={`${index}-${group.day}`} className="grid gap-4 md:grid-cols-[10rem_1fr]">
+          // minmax(0, …) lets the column shrink to the screen; a plain grid or 1fr column
+          // grows to fit text that won't wrap, such as a long venue name, and the page
+          // then scrolls sideways on a phone.
+          <li
+            key={`${index}-${group.day}`}
+            className="grid grid-cols-1 gap-4 md:grid-cols-[10rem_minmax(0,1fr)]"
+          >
             <h2 className="flex items-baseline gap-2 md:sticky md:top-24 md:flex-col md:gap-0 md:self-start">
               <span className="text-ink-muted text-sm">{formatWeekday(firstStart)}</span>{' '}
               <span className="font-display text-ink text-lg font-semibold">
