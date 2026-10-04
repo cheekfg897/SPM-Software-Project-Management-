@@ -12,7 +12,6 @@ Public surface for other modules (import from here, not from sub-files):
 * :func:`app.modules.events.services.submit_draft_event_request`
 * :func:`app.modules.events.services.update_event_request`
 * :func:`app.modules.events.services.list_event_history`
-* :func:`app.modules.events.services.list_unassigned_event_requests`
 * :func:`app.modules.events.services.list_event_requests_with_equipment`
 * :func:`app.modules.events.services.get_event_record_for_coordinator`
 """

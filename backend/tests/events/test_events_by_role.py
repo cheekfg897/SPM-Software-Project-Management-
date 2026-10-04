@@ -1,10 +1,10 @@
 """Service tests for SCRUM-24 "see the events my role is involved in".
 
-AC2: an Event Coordinator sees the submitted requests no coordinator has yet, as a
-list separate from their own assigned one (``test_list_assigned_requests.py``). AC5:
-Technical Support see every event that has an equipment request, whatever its status
-or date. AC9: a coordinator can open a request assigned to them, or a submitted one
-awaiting a coordinator, in full; any other request is not found to them.
+AC2: an Event Coordinator sees only the events assigned to them; a request no
+coordinator has doesn't appear in their list (Week 7, ADR-0034). AC5: Technical
+Support see every event that has an equipment request, whatever its status or date.
+AC9: a coordinator can open a request assigned to them in full; any other request,
+assigned to someone else or to no one, is not found to them.
 """
 
 from __future__ import annotations
@@ -21,8 +21,8 @@ from app.modules.events.models import EventEquipmentLine, EventRequest, EventReq
 from app.modules.events.services import (
     CoordinatorContact,
     get_event_record_for_coordinator,
+    list_event_requests_for_coordinator,
     list_event_requests_with_equipment,
-    list_unassigned_event_requests,
 )
 
 pytestmark = pytest.mark.scrum_24
@@ -31,12 +31,6 @@ MakeEventRequest = Callable[..., EventRequest]
 MakeEquipmentLine = Callable[..., EventEquipmentLine]
 EventNeeding = Callable[..., EventRequest]
 Save = Callable[..., None]
-
-#: Every status but ``submitted``, so a request in it is never mistaken for one
-#: still awaiting a coordinator (SCRUM-24 AC2).
-STATUSES_OTHER_THAN_SUBMITTED = [
-    status for status in EventRequestStatus if status is not EventRequestStatus.SUBMITTED
-]
 
 
 def _references(event_requests: list[EventRequest]) -> list[str]:
@@ -51,30 +45,19 @@ def _assert_not_found(exc_info: pytest.ExceptionInfo[NotFoundError]) -> None:
 
 
 # --------------------------------------------------------------------------
-# AC2 — the submitted requests no coordinator has yet
+# AC2 — a coordinator's list holds only the events assigned to them
 # --------------------------------------------------------------------------
 
 
-def test_submitted_requests_with_no_coordinator_are_listed_newest_first(
+def test_a_coordinators_list_leaves_out_a_request_no_coordinator_has(
     save: Save, make_event_request: MakeEventRequest
 ) -> None:
     save(
-        make_event_request(reference="EVR-AAAAAAAA", coordinator_id=None),
-        make_event_request(reference="EVR-BBBBBBBB", coordinator_id=3),
-        make_event_request(reference="EVR-CCCCCCCC", coordinator_id=None),
+        make_event_request(reference="EVR-AAAAAAAA", coordinator_id=3),
+        make_event_request(reference="EVR-BBBBBBBB", coordinator_id=None),
     )
 
-    # Saved in one commit, so created_at ties and the later id breaks the tie.
-    assert _references(list_unassigned_event_requests()) == ["EVR-CCCCCCCC", "EVR-AAAAAAAA"]
-
-
-@pytest.mark.parametrize("status", STATUSES_OTHER_THAN_SUBMITTED, ids=lambda status: status.value)
-def test_unassigned_requests_in_any_other_status_are_not_listed(
-    save: Save, make_event_request: MakeEventRequest, status: EventRequestStatus
-) -> None:
-    save(make_event_request(status=status, coordinator_id=None))
-
-    assert list_unassigned_event_requests() == []
+    assert _references(list_event_requests_for_coordinator(3)) == ["EVR-AAAAAAAA"]
 
 
 # --------------------------------------------------------------------------
@@ -121,7 +104,7 @@ def test_an_event_that_has_taken_place_is_still_listed(event_needing: EventNeedi
 
 
 # --------------------------------------------------------------------------
-# AC9 — a coordinator opens a request assigned to them, or one awaiting one
+# AC9 — a coordinator opens only a request assigned to them
 # --------------------------------------------------------------------------
 
 
@@ -136,17 +119,6 @@ def test_a_coordinator_opens_a_request_assigned_to_them(
     assert coordinator == coordinator_three
 
 
-def test_any_coordinator_opens_a_submitted_request_no_one_has(
-    save: Save, make_event_request: MakeEventRequest
-) -> None:
-    save(make_event_request())
-
-    event_request, coordinator = get_event_record_for_coordinator("9", "EVR-AAAAAAAA")
-
-    assert event_request.reference == "EVR-AAAAAAAA"
-    assert coordinator is None
-
-
 def test_a_coordinator_cannot_open_another_coordinators_request(
     saved_event_request: EventRequest,
 ) -> None:
@@ -156,10 +128,11 @@ def test_a_coordinator_cannot_open_another_coordinators_request(
     _assert_not_found(exc_info)
 
 
-@pytest.mark.parametrize("status", STATUSES_OTHER_THAN_SUBMITTED, ids=lambda status: status.value)
-def test_a_coordinator_cannot_open_an_unassigned_request_that_is_not_submitted(
+@pytest.mark.parametrize("status", list(EventRequestStatus), ids=lambda status: status.value)
+def test_a_coordinator_cannot_open_a_request_no_coordinator_has(
     save: Save, make_event_request: MakeEventRequest, status: EventRequestStatus
 ) -> None:
+    """Submitted included: the unassigned queue is the Lead's (SCRUM-95), not theirs."""
     save(make_event_request(status=status, coordinator_id=None))
 
     with pytest.raises(NotFoundError) as exc_info:
