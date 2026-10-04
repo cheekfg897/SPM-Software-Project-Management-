@@ -23,7 +23,7 @@ To change a decision, don't rewrite history. Add a new ADR that **supersedes** t
 | [0008](0008-venue-opening-hours.md) | Venue opening hours are weekly periods, Google-Places style; overnight allowed | Accepted | SCRUM-25 |
 | [0009](0009-booking-times-in-utc.md) | Booking and block times are stored in UTC and shown in business time | Accepted | SCRUM-26 |
 | [0010](0010-search-prefill-deferred.md) | Opening venue search pre-filled from an event is deferred | Accepted | SCRUM-35 |
-| [0011](0011-venue-setup-and-turnaround.md) | Setup and turnaround are set per venue, default to 30 minutes, and pad both events | Accepted | SCRUM-67 |
+| [0011](0011-venue-setup-and-turnaround.md) | Setup and turnaround are set per venue, default to 30 minutes, and pad both events | Accepted; what a buffer change reports extended by [0033](0033-buffer-change-reports-bookings-in-blocks.md) | SCRUM-67 |
 | [0012](0012-event-status-model.md) | Seven event statuses; `under_review` covers "Under Review / Planning"; visibility beyond the organiser waits on later stories | Accepted; the organiser's scope superseded by [0020](0020-organisers-see-their-organisations-events.md); the detail view's viewers extended by [0026](0026-role-event-lists.md); "no `approved` value yet" superseded by [0028](0028-review-and-decide.md) | SCRUM-22 |
 | [0013](0013-client-organisations-recorded-by-internal-users.md) | Client organisations are recorded by internal users; organisers are linked at registration | Accepted | SCRUM-66 |
 | [0014](0014-equipment-type-location-and-quantity.md) | An equipment type is one uniquely named record, held at one venue or one named store | Accepted | SCRUM-27 |
@@ -45,6 +45,7 @@ To change a decision, don't rewrite history. Add a new ADR that **supersedes** t
 | [0030](0030-organiser-told-about-assignment.md) | The organiser who submitted a request is told whenever a coordinator is assigned to it, on submission and on reassignment, with its own `request_assigned` kind | Accepted | SCRUM-39 |
 | [0031](0031-end-to-end-journey-through-the-test-client.md) | The request-to-approval journey is one end-to-end test, driven through Flask's test client on the in-memory database; the test client stays in `tests/e2e` | Accepted | SCRUM-41 |
 | [0032](0032-event-catalogue-contract.md) | The event catalogue API, proposed by the frontend ahead of SCRUM-52 | Proposed | SCRUM-52 |
+| [0033](0033-buffer-change-reports-bookings-in-blocks.md) | A buffer change also reports confirmed bookings that now run into a block | Accepted | SCRUM-67 |
 | [0034](0034-coordinators-see-only-their-own-events.md) | Event Coordinators see and open only the events assigned to them; the unassigned queue waits for the Lead | Accepted | SCRUM-24 |
 
 ## Template
