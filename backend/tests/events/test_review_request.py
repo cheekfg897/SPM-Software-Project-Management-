@@ -36,6 +36,7 @@ from app.modules.events.services import (
     RequestNotReviewableError,
     start_event_request_review,
 )
+from tests.events.cases import NON_DRAFT_STATUSES
 
 pytestmark = pytest.mark.scrum_31
 
@@ -49,15 +50,11 @@ REFERENCE = "EVR-AAAAAAAA"
 #: The Event Coordinator ``saved_event_request`` is assigned to.
 COORDINATOR_ID = 3
 OTHER_COORDINATOR_ID = 9
-#: Every status a coordinator can see that isn't submitted. A draft is out of scope
+#: Every status a coordinator can see that isn't submitted, taken from the enum so a
+#: status added later is refused until a test says otherwise. A draft is out of scope
 #: here: it is hidden from coordinators altogether (SCRUM-20, ADR-0024).
 NOT_REVIEWABLE = [
-    EventRequestStatus.UNDER_REVIEW,
-    EventRequestStatus.APPROVED,
-    EventRequestStatus.CONFIRMED,
-    EventRequestStatus.COMPLETED,
-    EventRequestStatus.CANCELLED,
-    EventRequestStatus.REJECTED,
+    status for status in NON_DRAFT_STATUSES if status is not EventRequestStatus.SUBMITTED
 ]
 
 
