@@ -35,7 +35,7 @@ ADR-0012 left `approved` out of the status list and handed the choice to this st
    Planning goes on until the event is confirmed. For equipment, this replaces ADR-0019 decision 3. The set is renamed `EQUIPMENT_EDITABLE_STATUSES = {submitted, under_review, approved}`, and a refusal is now `409 equipment_not_editable` instead of `request_not_awaiting_review`: "awaiting review" no longer describes the set. The error code string is the one change a client can see.
 3. **Some things stay as they were:**
    * Technical Support's "equipment not needed" statuses: an approved event stays on `/awaiting-equipment` (31-7).
-   * The unassigned list: it still shows `submitted` only (31-8).
+   * The unassigned queue: coordinators no longer have one ([ADR-0034](0034-coordinators-see-only-their-own-events.md), written after this). An approved request always has a coordinator, so it never waits in the Lead's queue (SCRUM-95) (31-8).
    * The role lists and the record's scope (31-9).
 
 **Reviewing**

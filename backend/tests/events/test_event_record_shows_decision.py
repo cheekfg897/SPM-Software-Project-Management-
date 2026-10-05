@@ -4,7 +4,7 @@ AC9: the organiser sees the current decision, its reason and the coordinator who
 it. AC8: every decision stays in the history and the latest one is current. The
 decision is read from the latest ``decision_recorded`` history entry, with the
 coordinator's name looked up when the record is read (ADR-0028). The coordinator's
-view of the record shows the same section (SCRUM-24 AC7, ADR-0026).
+view of the record shows the same section (SCRUM-24 AC9, ADR-0026).
 
 The service tests run against ``db_session`` with ``saved_users``; the history entries
 are written directly with ``record_event_history`` so their times can be pinned out of
