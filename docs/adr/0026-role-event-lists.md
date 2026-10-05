@@ -1,6 +1,6 @@
 # ADR-0026: Each role's events are a list of its own; an empty list carries a message; coordinators open their own and unassigned requests
 
-- **Status:** Accepted
+- **Status:** Accepted; coordinators' list of unassigned requests and their access to them superseded by [ADR-0034](0034-coordinators-see-only-their-own-events.md)
 - **Date:** 2026-09-26
 - **Story:** SCRUM-24 See the events my role is involved in
 - **Extends:** ADR-0012, ADR-0018, ADR-0020
