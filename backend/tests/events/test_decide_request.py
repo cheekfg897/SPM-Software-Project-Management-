@@ -35,7 +35,7 @@ from app.modules.events.services import (
     decide_event_request,
     list_event_history,
 )
-from tests.events.cases import APPROVAL_REASON, REJECTION_REASON
+from tests.events.cases import APPROVAL_REASON, NON_DRAFT_STATUSES, REJECTION_REASON
 
 pytestmark = pytest.mark.scrum_31
 
@@ -53,13 +53,12 @@ OTHER_COORDINATOR_ID = 9
 ORGANISER_ID = 7
 #: The two statuses a first decision may be made from (ADR-0028).
 AWAITING_DECISION = [EventRequestStatus.SUBMITTED, EventRequestStatus.UNDER_REVIEW]
-#: Statuses past review. A draft is out of scope here: it is hidden from coordinators
-#: altogether (SCRUM-20, ADR-0024).
-PAST_REVIEW = [
-    EventRequestStatus.CONFIRMED,
-    EventRequestStatus.COMPLETED,
-    EventRequestStatus.CANCELLED,
-]
+#: The two statuses a decided request is in, and may be decided again from (ADR-0028).
+DECIDED = [EventRequestStatus.APPROVED, EventRequestStatus.REJECTED]
+#: Every other status a coordinator can see, taken from the enum so a status added
+#: later is refused until a test says otherwise. A draft is out of scope here: it is
+#: hidden from coordinators altogether (SCRUM-20, ADR-0024).
+PAST_REVIEW = [status for status in NON_DRAFT_STATUSES if status not in AWAITING_DECISION + DECIDED]
 OUTCOME_MESSAGE = "Outcome must be approved or rejected."
 
 
