@@ -6,7 +6,9 @@
 - **Extends:** [ADR-0015](0015-in-app-notifications.md) (in-app notifications), [ADR-0018](0018-least-loaded-coordinator-and-event-history.md) (who is told on submission), [ADR-0021](0021-coordinator-reassignment.md) (who is told on reassignment)
 
 ## Context
-SCRUM-39 has four ACs. The Event Organiser is notified when an Event Coordinator is assigned to their request (AC1). They are notified when a clarification is requested, and the coordinator when it is answered (AC2), and when the request is approved or rejected, with the reason (AC3). The newly assigned coordinator is notified on assignment and on reassignment (AC4).
+SCRUM-39 has six ACs. The Event Organiser is notified when an Event Coordinator is assigned to their request (AC1). They are notified when a clarification is requested, and the coordinator when it is answered (AC2), and when the request is approved or rejected, with the reason (AC3). The newly assigned coordinator is notified on assignment and on reassignment (AC4).
+
+Week 7 customer change #5 (the Event Coordinator Lead) added two more, after this record was first written. The Lead is notified when a newly submitted request enters the unassigned queue (AC5), and the previously assigned coordinator when an event is reassigned away from them (AC6). The story's change note says assignment and reassignment are now the Lead's to perform.
 
 AC4 is already met. The coordinator's `coordinator_assigned` notice is raised on a fresh submission (SCRUM-30, ADR-0018), on a submitted draft (SCRUM-20, ADR-0024) and on a reassignment (SCRUM-87, ADR-0021). ADR-0018 and ADR-0021 both left the organiser's side to this story.
 
@@ -41,7 +43,12 @@ That leaves these questions open:
 - **AC2** (the organiser told a clarification is requested, the coordinator that it is answered): SCRUM-32 adds the notices, their kinds and its migration ([ADR-0029](0029-clarification-requests.md)); its `tests/events/test_clarification_notifications.py` carries the `scrum_39` marker as this story's evidence.
 - **AC3** (approved or rejected, with the reason): SCRUM-31's AC10 raises these notices when the coordinator decides.
 
+## Blocked
+SCRUM-39's Week 7 ACs wait on the Event Coordinator Lead:
+- **AC5** (the Lead told when a new request enters the unassigned queue): blocked by SCRUM-95. There is no Lead role to notify, and no unassigned queue for anyone to see ([ADR-0034](0034-coordinators-see-only-their-own-events.md)). Requests are still assigned automatically on submission (ADR-0018), so one is only unassigned when no Event Coordinator exists, which is logged as `event_request_unassigned`.
+- **AC6** (the previous coordinator told when an event is reassigned away from them): blocked by SCRUM-95/96. Today only a request's own coordinator may reassign it (ADR-0021), so they would be told of their own action. The notice is useful once the Lead reassigns, and its kind and wording are best decided with that story.
+
 ## Revisit when
 - The customer wants the organiser's colleagues told too, or the organiser told when a request is saved unassigned.
-- SCRUM-32 lands: mark its clarification-notification tests `scrum_39`, and re-chain 0019's `down_revision` behind its migration.
-- SCRUM-31 lands: its kinds join `notification_kind`, and 0019's `PREVIOUS_NOTIFICATION_KIND_VALUES` must match whatever migration comes before it.
+- SCRUM-95 lands: tell the Lead of each request that enters the unassigned queue (AC5).
+- SCRUM-95/96 let the Lead reassign: tell the previous coordinator too (AC6), and drop the "previous coordinator isn't notified" note in `reassign_coordinator`.
