@@ -2,9 +2,10 @@
 
 AC4: the clarification exchange is visible on the event record. Every question the
 coordinator asked is shown in the order asked, each with the organiser's answer, or
-with none while it is outstanding. The names are looked up when the record is read,
-so a removed user shows as ``None`` (as SCRUM-31's decision does, ADR-0028). Both the
-organiser's and the coordinator's view of the record show it (ADR-0026).
+with none while it is outstanding; no other history entry is taken for an answer.
+The names are looked up when the record is read, so a removed user shows as ``None``
+(as SCRUM-31's decision does, ADR-0028). Both the organiser's and the coordinator's
+view of the record show it (ADR-0026).
 
 The service tests run against ``db_session`` with ``saved_users``; the history entries
 are written directly with ``record_event_history`` so their times can be pinned out of
@@ -175,6 +176,39 @@ def test_an_answer_with_no_question_before_it_is_ignored(
     record = open_record()
 
     assert record.clarifications == ()
+
+
+def test_other_history_entries_are_not_taken_for_answers(
+    open_record: OpenRecord, record_entry: RecordEntry
+) -> None:
+    """A request can be reassigned while its question is outstanding (ADR-0029)."""
+    record_entry(
+        EventHistoryKind.CLARIFICATION_REQUESTED,
+        FIRST_ASKED_AT,
+        actor_id=COORDINATOR_ID,
+        details={"message": FIRST_QUESTION},
+    )
+    record_entry(
+        EventHistoryKind.COORDINATOR_REASSIGNED,
+        FIRST_ANSWERED_AT,
+        actor_id=COORDINATOR_ID,
+        details={
+            "previous_coordinator_id": COORDINATOR_ID,
+            "previous_coordinator_name": COORDINATOR_NAME,
+            "coordinator_id": 9,
+            "coordinator_name": "Coordinator Nine",
+        },
+    )
+
+    record = open_record()
+
+    assert record.clarifications == (
+        ClarificationAsShown(
+            message=FIRST_QUESTION,
+            requested_by=COORDINATOR_NAME,
+            requested_at=FIRST_ASKED_AT,
+        ),
+    )
 
 
 # --------------------------------------------------------------------------
