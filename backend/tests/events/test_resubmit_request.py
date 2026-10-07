@@ -86,6 +86,11 @@ def _field_changed(
     return (EventHistoryKind.FIELD_CHANGED, ORGANISER_ID, details)
 
 
+def _assert_not_found(exc_info: pytest.ExceptionInfo[NotFoundError]) -> None:
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.message == EVENT_REQUEST_NOT_FOUND_MESSAGE
+
+
 # --------------------------------------------------------------------------
 # AC2 — the organiser answers, and the request goes back to under review
 # --------------------------------------------------------------------------
@@ -286,8 +291,7 @@ def test_another_organisations_request_is_not_found(
     with pytest.raises(NotFoundError) as exc_info:
         resubmit(OTHER_ORGANISATIONS_ORGANISER_ID, ANSWER)
 
-    assert exc_info.value.status_code == 404
-    assert exc_info.value.message == EVENT_REQUEST_NOT_FOUND_MESSAGE
+    _assert_not_found(exc_info)
     assert_status_unchanged(EventRequestStatus.AWAITING_CLARIFICATION)
 
 
@@ -313,8 +317,7 @@ def test_an_unknown_reference_is_404(
     with pytest.raises(NotFoundError) as exc_info:
         resubmit_event_request(ORGANISER_ID, "EVR-ZZZZZZZZ", ANSWER, today=today)
 
-    assert exc_info.value.status_code == 404
-    assert exc_info.value.message == EVENT_REQUEST_NOT_FOUND_MESSAGE
+    _assert_not_found(exc_info)
     assert_status_unchanged(EventRequestStatus.AWAITING_CLARIFICATION)
 
 
