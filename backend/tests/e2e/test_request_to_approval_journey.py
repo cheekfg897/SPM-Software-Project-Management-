@@ -10,7 +10,7 @@ The user stories and acceptance criteria it exercises (SCRUM-41 AC3):
 
 - SCRUM-19 "submit an event request": AC5.
 - SCRUM-20 "save and resume a draft event request": AC1, AC3, AC4.
-- SCRUM-24 "see the events my role is involved in": AC7.
+- SCRUM-24 "see the events my role is involved in": AC9.
 - SCRUM-30 "assign a coordinator to a submitted event": AC1, AC3, AC4, AC5.
 - SCRUM-31 "review and decide a submitted request": AC1, AC2, AC3, AC4, AC8, AC9, AC10.
 - SCRUM-32 "ask the organiser for clarification": AC1, AC2, AC3, AC4.
@@ -140,7 +140,7 @@ def test_a_request_travels_from_draft_to_approval(organiser: Actor, coordinator:
     assert [(row["reference"], row["status"]) for row in listed] == [(reference, "submitted")]
 
     # --- 3. Assignment: the only coordinator gets it, and both sides are told ---
-    # (SCRUM-30 AC1, AC3-AC5; SCRUM-24 AC7; SCRUM-31 AC2; SCRUM-39 AC1, AC4)
+    # (SCRUM-30 AC1, AC3-AC5; SCRUM-24 AC9; SCRUM-31 AC2; SCRUM-39 AC1, AC4)
     assert _record(organiser, reference)["coordinator"] == COORDINATOR_ACCOUNT
     assert _record(coordinator, reference)["expected_attendance"] == 250
     assigned = _body(coordinator.get(f"{REQUESTS_PATH}/assigned"), 200)["event_requests"]
