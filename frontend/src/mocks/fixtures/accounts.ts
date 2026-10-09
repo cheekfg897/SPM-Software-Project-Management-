@@ -12,8 +12,8 @@ export interface MockAccount {
   organisation_id: number | null
 }
 
-/** Accounts every mock run starts with. Tests and e2e journeys log in as these. */
-export const MOCK_ACCOUNTS = {
+/** The accounts written out in full; MOCK_ACCOUNTS adds ones built from them. */
+const BASE_ACCOUNTS = {
   attendee: {
     id: 1,
     email: 'alice@example.com',
@@ -36,6 +36,22 @@ export const MOCK_ACCOUNTS = {
     password: 'Password123',
     full_name: 'Chloe Lim',
     role: ROLE.EVENT_COORDINATOR,
+    organisation_id: null,
+  },
+} as const satisfies Record<string, MockAccount>
+
+/** Accounts every mock run starts with. Tests and e2e journeys log in as these. */
+export const MOCK_ACCOUNTS = {
+  ...BASE_ACCOUNTS,
+  /**
+   * An organiser from before every organiser needed an organisation (ADR-0020). Otherwise
+   * like the organiser, password included.
+   */
+  unlinkedOrganiser: {
+    ...BASE_ACCOUNTS.organiser,
+    id: 4,
+    email: 'umar@example.com',
+    full_name: 'Umar Hassan',
     organisation_id: null,
   },
 } as const satisfies Record<string, MockAccount>
@@ -64,5 +80,8 @@ export function mockSessionFor(account: MockAccount) {
   }
 }
 
-/** Client organisations that exist in the mock (ADR-0013). */
-export const MOCK_ORGANISATION_IDS: readonly number[] = [1, 2]
+/**
+ * Client organisations that exist in the mock (ADR-0013). Organisation 1 is the mock
+ * organiser's, 2 has another organisation's request, and 3 has no event requests yet.
+ */
+export const MOCK_ORGANISATION_IDS: readonly number[] = [1, 2, 3]
