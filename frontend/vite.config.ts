@@ -22,6 +22,10 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.test.{ts,tsx}'],
+    // Run as a viewer behind UTC, whatever machine runs the tests. Midnight UTC is still the
+    // day before there, so a date shown in the viewer's own zone instead of as written fails
+    // here; in Singapore or on CI's UTC it would pass unnoticed.
+    env: { TZ: 'America/Los_Angeles' },
     // Integration tests need a running backend; they have their own config and command.
     exclude: ['src/integration/**', 'node_modules/**'],
     coverage: {
