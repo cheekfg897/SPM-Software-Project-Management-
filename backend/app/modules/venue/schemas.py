@@ -9,7 +9,7 @@ the project's 400 ``ValidationError`` with per-field details. Output schemas are
 from __future__ import annotations
 
 from datetime import date, time
-from typing import Any, ClassVar
+from typing import Any
 
 from marshmallow import (
     Schema,
@@ -23,7 +23,7 @@ from marshmallow import (
 
 from app.common.clock import as_utc, local_today, to_business_time
 from app.common.fields import BusinessDateTime
-from app.common.validation import not_blank
+from app.common.validation import TimeRangeSchema, not_blank
 from app.modules.venue.models import (
     BLOCK_REASON_MAX_LENGTH,
     LIST_ITEM_MAX_LENGTH,
@@ -218,32 +218,7 @@ class VenueSchema(Schema):
         ]
 
 
-class _TimeRangeSchema(Schema):
-    """Base for payloads with a start and an end time (ADR-0009).
-
-    Both ends are converted to UTC before they're compared (a time with no offset is
-    read as business time), so mixing the two forms can't fail, and the loaded values
-    are always timezone-aware UTC. Subclasses declare the two fields and name them.
-    """
-
-    start_field: ClassVar[str] = "start_time"
-    end_field: ClassVar[str] = "end_time"
-
-    @validates_schema
-    def _ends_after_it_starts(self, data: dict[str, Any], **_: Any) -> None:
-        if as_utc(data[self.end_field]) <= as_utc(data[self.start_field]):
-            raise MarshmallowValidationError(
-                f"{self.end_field} must be after {self.start_field}.", field_name=self.end_field
-            )
-
-    @post_load
-    def _to_utc(self, data: dict[str, Any], **_: Any) -> dict[str, Any]:
-        for key in (self.start_field, self.end_field):
-            data[key] = as_utc(data[key])
-        return data
-
-
-class CalendarQuerySchema(_TimeRangeSchema):
+class CalendarQuerySchema(TimeRangeSchema):
     """Query parameters for ``GET /api/venues/<id>/calendar`` (SCRUM-26)."""
 
     start_field = "range_start"
@@ -293,7 +268,7 @@ class _RequirementsSchema(Schema):
         return data
 
 
-class VenueSearchSchema(_RequirementsSchema, _TimeRangeSchema):
+class VenueSearchSchema(_RequirementsSchema, TimeRangeSchema):
     """Payload for ``POST /api/venues/search`` (SCRUM-35)."""
 
     start_time = fields.DateTime(required=True)
@@ -330,7 +305,7 @@ class VenueMatchSchema(Schema):
         }
 
 
-class BlockVenueSchema(_TimeRangeSchema):
+class BlockVenueSchema(TimeRangeSchema):
     """Payload for ``POST /api/venues/<id>/blocks`` (SCRUM-34, ADR-0016).
 
     A block may start in the past, so a fault found part-way through can be recorded
