@@ -100,6 +100,8 @@ jobs:
       JWT_SECRET_KEY: ci-jwt-secret
       DATABASE_URL: postgresql+psycopg2://connectsphere:ci-password@localhost:5432/connectsphere_ci
       BACKEND_URL: http://127.0.0.1:5000
+      # The staff account the integration tests sign in as (see "Create a staff account").
+      INTEGRATION_STAFF_EMAIL: integration-coordinator@connectsphere.test
 
     steps:
       - name: Check out
@@ -125,6 +127,19 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           flask db upgrade
+
+      # Only staff may record the client organisations that organisers sign up to, and staff
+      # accounts only come from this command (ADR-0023), so the tests get one here. Its
+      # password is made up for this run, hidden from the log and never written to the repo.
+      - name: Create a staff account for the tests
+        working-directory: backend
+        run: |
+          password="$(openssl rand -hex 16)"
+          echo "::add-mask::$password"
+          printf '%s\n%s\n' "$password" "$password" | flask create-staff-user \
+            --email "$INTEGRATION_STAFF_EMAIL" --full-name "Integration Coordinator" \
+            --role event_coordinator
+          echo "INTEGRATION_STAFF_PASSWORD=$password" >> "$GITHUB_ENV"
 
       # Left running in the background for the next step; the runner stops it at the end.
       - name: Start the backend
