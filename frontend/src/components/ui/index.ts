@@ -1,6 +1,7 @@
 export { Button, ButtonLink } from './Button'
 export type { ButtonVariant } from './Button'
 export { ErrorAlert } from './ErrorAlert'
+export { EventArt } from './EventArt'
 export { Pagination } from './Pagination'
 export { SegmentedControl } from './SegmentedControl'
 export type { SegmentedOption } from './SegmentedControl'
