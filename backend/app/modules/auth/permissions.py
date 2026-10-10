@@ -13,7 +13,7 @@ import enum
 
 
 class Role(str, enum.Enum):
-    """The five user roles of the system.
+    """The six user roles of the system.
 
     Inherits from ``str`` so members compare equal to their string value and
     serialise cleanly into JSON / JWT claims.
@@ -24,6 +24,7 @@ class Role(str, enum.Enum):
     EVENT_COORDINATOR = "event_coordinator"  # internal — coordinates event planning
     VENUE_STAFF = "venue_staff"  # internal — manages venues and bookings
     TECHNICAL_SUPPORT_STAFF = "technical_support_staff"  # internal — equipment / tech support
+    EVENT_COORDINATOR_LEAD = "event_coordinator_lead"  # internal — assigns requests to coordinators
 
     @classmethod
     def values(cls) -> list[str]:
@@ -45,7 +46,12 @@ class Role(str, enum.Enum):
 
 #: Roles that belong to ConnectSphere staff.
 INTERNAL_ROLES: frozenset[Role] = frozenset(
-    {Role.EVENT_COORDINATOR, Role.VENUE_STAFF, Role.TECHNICAL_SUPPORT_STAFF}
+    {
+        Role.EVENT_COORDINATOR,
+        Role.EVENT_COORDINATOR_LEAD,
+        Role.VENUE_STAFF,
+        Role.TECHNICAL_SUPPORT_STAFF,
+    }
 )
 
 #: Roles that belong to external users (clients and the public).

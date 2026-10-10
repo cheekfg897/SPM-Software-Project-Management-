@@ -272,13 +272,14 @@ def test_role_groups_partition_all_roles() -> None:
     assert INTERNAL_ROLES | EXTERNAL_ROLES == ALL_ROLES
     assert not (INTERNAL_ROLES & EXTERNAL_ROLES)
     assert frozenset(Role) == ALL_ROLES
-    assert len(Role) == 5
+    assert len(Role) == 6
 
 
 @pytest.mark.parametrize(
     ("role", "internal"),
     [
         (Role.EVENT_COORDINATOR, True),
+        (Role.EVENT_COORDINATOR_LEAD, True),
         (Role.VENUE_STAFF, True),
         (Role.TECHNICAL_SUPPORT_STAFF, True),
         (Role.EVENT_ORGANISER, False),
