@@ -105,6 +105,10 @@ class EventHistoryKind(str, enum.Enum):
     #: holds ``response``, and ``actor_id`` is the organiser (SCRUM-32 AC2, AC4,
     #: ADR-0029).
     CLARIFICATION_ANSWERED = "clarification_answered"
+    #: The assigned coordinator raised a venue booking request; ``details`` holds
+    #: ``venue_booking_request_id``, ``venue_id``, ``starts_at`` and ``ends_at`` (ISO
+    #: strings), and ``actor_id`` is the coordinator (SCRUM-42, ADR-0035).
+    VENUE_BOOKING_REQUESTED = "venue_booking_requested"
 
 
 class DecisionOutcome(str, enum.Enum):

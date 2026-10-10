@@ -121,6 +121,15 @@ class RequirementKind(str, enum.Enum):
     LAYOUT = "layout"
 
 
+class BookingRequestStatus(str, enum.Enum):
+    """Where a venue booking request stands (SCRUM-42).
+
+    Only ``PENDING`` exists so far; SCRUM-43 adds approving and rejecting.
+    """
+
+    PENDING = "pending"
+
+
 class Venue(db.Model):  # type: ignore[name-defined]
     """A ConnectSphere venue (SCRUM-25)."""
 
@@ -275,3 +284,53 @@ class VenueBlock(db.Model):  # type: ignore[name-defined]
     start_time: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)
     end_time: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)
     reason: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+
+class VenueBookingRequest(db.Model):  # type: ignore[name-defined]
+    """An organiser-side request for Venue Staff to hold a venue for an approved event.
+
+    ``event_id`` and ``requested_by`` are database-level foreign keys only: the venue
+    module never imports the events or auth models. Times are stored in UTC (ADR-0009).
+    """
+
+    __tablename__ = "venue_booking_requests"
+    __table_args__ = (
+        CheckConstraint("ends_at > starts_at", name="ck_venue_booking_requests_ends_after_start"),
+        CheckConstraint("expected_occupancy >= 1", name="ck_venue_booking_requests_occupancy_min"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    event_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("event_requests.id"), index=True, nullable=False
+    )
+    venue_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("venues.id"), index=True, nullable=False
+    )
+    starts_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)
+    ends_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)
+    purpose: Mapped[str] = mapped_column(Text, nullable=False)
+    expected_occupancy: Mapped[int] = mapped_column(Integer, nullable=False)
+    #: A layout value, or ``None`` when the event has no layout to carry over.
+    required_layout: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    #: Why the request goes ahead although the venue is unsuitable for it (AC7).
+    justification: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[BookingRequestStatus] = mapped_column(
+        Enum(
+            BookingRequestStatus,
+            name="booking_request_status",
+            # Store the enum *values* (snake_case), not the member names.
+            values_callable=lambda enum_cls: [m.value for m in enum_cls],
+        ),
+        nullable=False,
+        default=BookingRequestStatus.PENDING,
+    )
+    requested_by: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
