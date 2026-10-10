@@ -10,14 +10,14 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from flask import current_app
 from sqlalchemy import ColumnElement, and_, or_, select
 from sqlalchemy.orm import Session
 
 from app.common.database import resolve_session
-from app.common.errors import NotFoundError
+from app.common.errors import NotFoundError, ValidationError
 from app.common.validation import load_or_raise
 from app.modules.auth.permissions import Role
 from app.modules.venue.models import (
@@ -27,16 +27,24 @@ from app.modules.venue.models import (
     RequirementKind,
     Venue,
     VenueBlock,
+    VenueBookingRequest,
     VenueOpeningPeriod,
     join_list_field,
 )
 from app.modules.venue.opening_hours import Period
 from app.modules.venue.schemas import (
     BlockVenueSchema,
+    BookingRequestAsShown,
     EditVenueSchema,
+    RaiseBookingRequestSchema,
     VenueSearchSchema,
     VenueSuitabilitySchema,
 )
+
+if TYPE_CHECKING:
+    # Type only: events.services reaches this module through equipment, so
+    # raise_booking_request imports the module when it runs.
+    from app.modules.events.services import EventForBooking
 
 _LIST_FIELDS = ("facilities", "accessibility_features", "supported_layouts")
 
@@ -658,3 +666,100 @@ def check_venue_suitability(
         reasons.append(UnmetRequirement(RequirementKind.CAPACITY, message))
     reasons.extend(_unmet_requirements(venue, data))
     return SuitabilityResult(reasons)
+
+
+# --------------------------------------------------------------------------
+# SCRUM-42 — raise a venue booking request for an approved event
+# --------------------------------------------------------------------------
+
+JUSTIFICATION_REQUIRED_MESSAGE = "A justification is required because the venue is not suitable."
+
+
+def _commit_request(session: Session) -> None:
+    session.commit()
+
+
+def _venue_is_suitable(
+    venue_id: int, occupancy: int, layout: str | None, session: Session | None
+) -> bool:
+    """Whether the venue suits this request's own occupancy and layout (AC7).
+
+    Raises:
+        ValidationError: 400 — no such venue, reported on ``venue_id``.
+    """
+    requirements = {"expected_attendance": occupancy, "required_layout": layout}
+    try:
+        return check_venue_suitability(venue_id, requirements, session=session).suitable
+    except NotFoundError:
+        raise ValidationError(
+            "Invalid request.", details={"venue_id": ["Venue not found."]}
+        ) from None
+
+
+def raise_booking_request(
+    event_id: int,
+    payload: Mapping[str, Any] | None,
+    *,
+    requested_by: int,
+    session: Session | None = None,
+) -> VenueBookingRequest:
+    """Raise a Pending booking request for an approved event (SCRUM-42 AC1, AC3, AC5).
+
+    Occupancy defaults to the event's expected attendance; the event has no layout, so
+    the layout defaults to none. A venue unsuitable for the request's own occupancy
+    and layout needs a justification (AC7). The request and the event's history entry
+    are saved in one commit.
+
+    Raises:
+        ValidationError: 400 — invalid payload, unknown venue or no justification.
+        NotFoundError: 404 — no such event, or ``requested_by`` doesn't coordinate it.
+        ConflictError: 409 — the event isn't approved.
+    """
+    from app.modules.events import services as event_services  # circular at import time
+
+    data = load_or_raise(RaiseBookingRequestSchema(), payload)
+    event = event_services.get_approved_event_for_coordinator(
+        event_id, requested_by, session=session
+    )
+    data.setdefault("expected_occupancy", event.expected_attendance)
+    data.setdefault("required_layout", None)
+
+    suitable = _venue_is_suitable(
+        data["venue_id"], data["expected_occupancy"], data["required_layout"], session
+    )
+    if not suitable and "justification" not in data:
+        raise ValidationError(
+            "Invalid request.", details={"justification": [JUSTIFICATION_REQUIRED_MESSAGE]}
+        )
+
+    sess = resolve_session(session)
+    request = VenueBookingRequest(event_id=event_id, requested_by=requested_by, **data)
+    sess.add(request)
+    sess.flush()
+    event_services.record_venue_booking_requested(
+        event_id,
+        actor_id=requested_by,
+        details={
+            "venue_booking_request_id": request.id,
+            "venue_id": request.venue_id,
+            "starts_at": request.starts_at.isoformat(),
+            "ends_at": request.ends_at.isoformat(),
+        },
+        session=session,
+    )
+    _commit_request(sess)
+    return request
+
+
+def show_booking_request(
+    request: VenueBookingRequest, event: EventForBooking
+) -> BookingRequestAsShown:
+    """The request with its event's timing and accessibility needs beside it (AC4)."""
+    return BookingRequestAsShown(
+        request=request,
+        proposed_date=event.proposed_date,
+        end_date=event.end_date,
+        start_time=event.start_time,
+        end_time=event.end_time,
+        accessibility_needs=event.accessibility_needs,
+    )
