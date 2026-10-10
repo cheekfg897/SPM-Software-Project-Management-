@@ -54,6 +54,9 @@ class NotificationKind(str, enum.Enum):
     #: Tells the event's coordinator that equipment was reserved for it (SCRUM-46 AC5,
     #: ADR-0037).
     EQUIPMENT_RESERVED = "equipment_reserved"
+    #: Tells the Event Coordinator Lead that a submitted request has entered the
+    #: unassigned queue (SCRUM-95 AC4, ADR-0036).
+    REQUEST_QUEUED_FOR_LEAD = "request_queued_for_lead"
 
 
 class Notification(db.Model):  # type: ignore[name-defined]

@@ -35,7 +35,13 @@ ENDPOINT = "events.list_history"
 PATH = f"/api/events/requests/{REFERENCE}/history"
 VIEW_KWARGS = {"reference": REFERENCE}
 ALLOWED_ROLE_VALUES = frozenset(
-    {"event_coordinator", "venue_staff", "technical_support_staff", "event_organiser"}
+    {
+        "event_coordinator",
+        "event_coordinator_lead",
+        "venue_staff",
+        "technical_support_staff",
+        "event_organiser",
+    }
 )
 
 
