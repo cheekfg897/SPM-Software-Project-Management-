@@ -57,7 +57,7 @@ def make_block() -> Callable[..., VenueBlock]:
 
 
 @pytest.fixture()
-def saved_event(db_session: Session) -> Callable[..., EventRequest]:
+def saved_event(save: Callable[..., None]) -> Callable[..., EventRequest]:
     """Factory for a saved event: approved, coordinated by user 3, 250 attending.
 
     The event has no layout of its own, only free-text venue requirements.
@@ -80,8 +80,7 @@ def saved_event(db_session: Session) -> Callable[..., EventRequest]:
             accessibility_needs="Step-free entrance",
             registration_required=False,
         )
-        db_session.add(event)
-        db_session.commit()
+        save(event)
         return event
 
     return _save
