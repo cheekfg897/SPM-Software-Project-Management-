@@ -31,6 +31,7 @@ MESSAGE_BY_KIND: dict[NotificationKind, str] = {
     NotificationKind.REQUEST_ASSIGNED: (
         "An Event Coordinator has been assigned to your event request."
     ),
+    NotificationKind.VENUE_BOOKING_REQUESTED: "A venue booking was requested for your venue.",
 }
 
 #: Where a notification links to: the event's page, found by its reference
