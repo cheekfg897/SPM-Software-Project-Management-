@@ -1,6 +1,4 @@
-import type { ReactNode } from 'react'
-
-import { Button, ErrorAlert, Pagination } from '@/components/ui'
+import { Button, EmptyState, ErrorAlert, Pagination } from '@/components/ui'
 import { ApiError } from '@/lib/api'
 
 import { useCatalogue, useCatalogueParams } from '../hooks'
@@ -25,15 +23,6 @@ function CatalogueSkeleton() {
           className="border-line/50 bg-surface/60 h-36 animate-pulse rounded-2xl border md:ml-[10rem]"
         />
       ))}
-    </div>
-  )
-}
-
-function EmptyResults({ message, children }: { message: string; children?: ReactNode }) {
-  return (
-    <div className="border-line rounded-2xl border border-dashed px-6 py-16 text-center">
-      <p className="text-ink-muted">{message}</p>
-      {children}
     </div>
   )
 }
@@ -65,13 +54,13 @@ export function CatalogueResults() {
   const { data } = catalogue
   if (data.items.length === 0) {
     return hasFilters(params) ? (
-      <EmptyResults message="No events match your filters.">
+      <EmptyState message="No events match your filters.">
         <Button variant="secondary" className="mt-6" onClick={clearFilters}>
           Clear filters
         </Button>
-      </EmptyResults>
+      </EmptyState>
     ) : (
-      <EmptyResults message="No events are open for registration yet." />
+      <EmptyState message="No events are open for registration yet." />
     )
   }
 

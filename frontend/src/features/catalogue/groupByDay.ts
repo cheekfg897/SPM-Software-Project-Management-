@@ -1,4 +1,4 @@
-import { businessDate } from './formatDate'
+import { businessDate } from '@/lib/formatDate'
 
 export interface DayGroup<T> {
   /** The business date, e.g. "2026-10-05". */
