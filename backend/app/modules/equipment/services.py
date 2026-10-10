@@ -8,16 +8,17 @@ function takes an optional ``session``, defaulting to ``db.session``.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import ColumnElement, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.common.database import resolve_session
 from app.common.errors import ConflictError, NotFoundError, ValidationError
 from app.common.validation import load_or_raise
-from app.modules.equipment.models import EquipmentType
+from app.modules.equipment.models import EquipmentReservation, EquipmentType
 from app.modules.equipment.schemas import EditEquipmentTypeSchema
 from app.modules.venue.services import get_venue
 
@@ -35,6 +36,18 @@ def _check_venue(venue_id: int | None, session: Session) -> None:
         raise ValidationError(
             "Invalid request.", details={"venue_id": ["Venue not found."]}
         ) from exc
+
+
+def _overlapping(starts_at: datetime, ends_at: datetime) -> ColumnElement[bool]:
+    """Match reservations overlapping ``starts_at`` to ``ends_at`` (SCRUM-45 AC4, AC5).
+
+    The one definition of overlap, used by every availability query. Both comparisons
+    are strict, so a reservation ending exactly when another starts does not overlap
+    it. Unlike a venue (ADR-0011), equipment has no setup or turnaround buffer: a
+    projector can go from one event straight to the next, so only the events' own
+    periods count.
+    """
+    return (EquipmentReservation.starts_at < ends_at) & (EquipmentReservation.ends_at > starts_at)
 
 
 def _commit_or_conflict(session: Session) -> None:
