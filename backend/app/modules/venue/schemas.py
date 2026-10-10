@@ -8,6 +8,7 @@ the project's 400 ``ValidationError`` with per-field details. Output schemas are
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date, time
 from typing import Any
 
@@ -29,10 +30,12 @@ from app.modules.venue.models import (
     LIST_ITEM_MAX_LENGTH,
     LIST_MAX_ITEMS,
     LIST_SEPARATOR,
+    BookingRequestStatus,
     CalendarEntryKind,
     LayoutType,
     RequirementKind,
     Venue,
+    VenueBookingRequest,
     Weekday,
 )
 from app.modules.venue.opening_hours import Period, find_overlap, period_error
@@ -405,3 +408,63 @@ class SuitabilityResultSchema(Schema):
 
     suitable = fields.Boolean(dump_only=True)
     reasons = fields.List(fields.Nested(UnmetRequirementSchema), dump_only=True)
+
+
+class RaiseBookingRequestSchema(TimeRangeSchema):
+    """Payload for raising a venue booking request for an approved event (SCRUM-42).
+
+    Occupancy and layout may be left out; the service then takes them from the event
+    (AC3). The justification is only needed when the venue is unsuitable (AC7), which
+    the service checks.
+    """
+
+    start_field = "starts_at"
+    end_field = "ends_at"
+
+    venue_id = fields.Integer(required=True)
+    starts_at = fields.DateTime(required=True)
+    ends_at = fields.DateTime(required=True)
+    purpose = fields.String(required=True, validate=not_blank)
+    expected_occupancy = fields.Integer(
+        validate=validate.Range(min=1, error="expected_occupancy must be a positive number.")
+    )
+    required_layout = fields.String(validate=validate.OneOf(LayoutType.values()))
+    justification = fields.String()
+
+
+@dataclass(frozen=True)
+class BookingRequestAsShown:
+    """A booking request with the event details Venue Staff need beside it (AC4).
+
+    The event's timing is kept as the event stores it, in local business time. The
+    event details are read through the events service, never its models.
+    """
+
+    request: VenueBookingRequest
+    proposed_date: date
+    end_date: date | None
+    start_time: time
+    end_time: time
+    accessibility_needs: str | None
+
+
+class VenueBookingRequestSchema(Schema):
+    """A booking request as Venue Staff see it, in business time (AC4, ADR-0009)."""
+
+    id = fields.Integer(attribute="request.id", dump_only=True)
+    event_id = fields.Integer(attribute="request.event_id", dump_only=True)
+    venue_id = fields.Integer(attribute="request.venue_id", dump_only=True)
+    starts_at = BusinessDateTime(attribute="request.starts_at", dump_only=True)
+    ends_at = BusinessDateTime(attribute="request.ends_at", dump_only=True)
+    purpose = fields.String(attribute="request.purpose", dump_only=True)
+    expected_occupancy = fields.Integer(attribute="request.expected_occupancy", dump_only=True)
+    required_layout = fields.String(attribute="request.required_layout", dump_only=True)
+    justification = fields.String(attribute="request.justification", dump_only=True)
+    status = fields.Enum(
+        BookingRequestStatus, by_value=True, attribute="request.status", dump_only=True
+    )
+    event_proposed_date = fields.Date(attribute="proposed_date", dump_only=True)
+    event_end_date = fields.Date(attribute="end_date", dump_only=True)
+    event_start_time = fields.Time(attribute="start_time", dump_only=True)
+    event_end_time = fields.Time(attribute="end_time", dump_only=True)
+    accessibility_needs = fields.String(dump_only=True)
