@@ -11,14 +11,14 @@ from collections.abc import Mapping
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import ColumnElement, select
+from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.common.database import resolve_session
 from app.common.errors import ConflictError, NotFoundError, ValidationError
 from app.common.validation import load_or_raise
-from app.modules.equipment.models import EquipmentReservation, EquipmentType
+from app.modules.equipment.models import EquipmentOutOfService, EquipmentReservation, EquipmentType
 from app.modules.equipment.schemas import EditEquipmentTypeSchema
 from app.modules.venue.services import get_venue
 
@@ -50,6 +50,26 @@ def _overlapping(starts_at: datetime, ends_at: datetime) -> ColumnElement[bool]:
     return (EquipmentReservation.starts_at < ends_at) & (EquipmentReservation.ends_at > starts_at)
 
 
+def _reserved_quantity(
+    equipment_type_id: int, starts_at: datetime, ends_at: datetime, session: Session
+) -> int:
+    """Units of the type reserved for any event overlapping the period."""
+    statement = select(func.coalesce(func.sum(EquipmentReservation.quantity), 0)).where(
+        EquipmentReservation.equipment_type_id == equipment_type_id,
+        _overlapping(starts_at, ends_at),
+    )
+    return session.scalar(statement)
+
+
+def _out_of_service_quantity(equipment_type_id: int, session: Session) -> int:
+    """Units of the type recorded as damaged or under maintenance and not yet back."""
+    statement = select(func.coalesce(func.sum(EquipmentOutOfService.quantity), 0)).where(
+        EquipmentOutOfService.equipment_type_id == equipment_type_id,
+        EquipmentOutOfService.resolved_at.is_(None),
+    )
+    return session.scalar(statement)
+
+
 def _commit_or_conflict(session: Session) -> None:
     """Commit; a duplicate name becomes a 409 (ADR-0014)."""
     # The schema has already enforced every other constraint and the venue has been
@@ -71,6 +91,36 @@ def get_equipment_type(equipment_type_id: int, *, session: Session | None = None
     if equipment_type is None:
         raise NotFoundError("Equipment type not found.")
     return equipment_type
+
+
+def available_quantity(
+    equipment_type_id: int,
+    starts_at: datetime,
+    ends_at: datetime,
+    *,
+    session: Session | None = None,
+) -> int:
+    """Units of an equipment type free for the period ``starts_at`` to ``ends_at``.
+
+    The units held, less those reserved for overlapping events (SCRUM-45 AC1, AC4,
+    AC5) and those out of service (AC2), never below zero: units can break after they
+    were reserved, leaving more committed than held. An out-of-service row is not tied
+    to a period in this model (ADR-0037), so every unresolved row reduces every period.
+
+    Args:
+        equipment_type_id: The equipment type to count.
+        starts_at: Start of the period, timezone-aware UTC.
+        ends_at: End of the period, timezone-aware UTC.
+        session: Database session; defaults to ``db.session``.
+
+    Raises:
+        NotFoundError: 404 — no such equipment type.
+    """
+    sess = resolve_session(session)
+    equipment_type = get_equipment_type(equipment_type_id, session=sess)
+    reserved = _reserved_quantity(equipment_type_id, starts_at, ends_at, sess)
+    out_of_service = _out_of_service_quantity(equipment_type_id, sess)
+    return max(equipment_type.total_quantity - reserved - out_of_service, 0)
 
 
 def list_equipment_types(*, session: Session | None = None) -> list[EquipmentType]:
