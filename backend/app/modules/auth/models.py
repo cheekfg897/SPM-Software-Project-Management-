@@ -17,7 +17,7 @@ from app.modules.auth.permissions import Role
 
 
 class User(db.Model):  # type: ignore[name-defined]
-    """A registered user of any of the five roles.
+    """A registered user of any of the six roles.
 
     ``password_hash`` is the only credential stored. It is written via
     :meth:`set_password` (Werkzeug scrypt) and never serialised.

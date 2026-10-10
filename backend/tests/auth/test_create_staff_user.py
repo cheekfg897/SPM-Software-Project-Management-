@@ -55,7 +55,10 @@ def test_external_role_is_refused(
     err = exc_info.value
     assert err.status_code == 400
     assert err.details == {
-        "role": ["Role must be one of: event_coordinator, technical_support_staff, venue_staff."]
+        "role": [
+            "Role must be one of: event_coordinator, event_coordinator_lead, "
+            "technical_support_staff, venue_staff."
+        ]
     }
     mock_session.add.assert_not_called()
 
