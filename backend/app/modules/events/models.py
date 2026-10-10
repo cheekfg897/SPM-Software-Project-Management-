@@ -109,6 +109,10 @@ class EventHistoryKind(str, enum.Enum):
     #: ``venue_booking_request_id``, ``venue_id``, ``starts_at`` and ``ends_at`` (ISO
     #: strings), and ``actor_id`` is the coordinator (SCRUM-42, ADR-0035).
     VENUE_BOOKING_REQUESTED = "venue_booking_requested"
+    #: Technical Support reserved units of an equipment type for the event; ``details``
+    #: holds ``equipment_type_id``, ``equipment_type_name``, ``quantity`` and
+    #: ``reservation_id``, and ``actor_id`` is who reserved them (SCRUM-46, ADR-0037).
+    EQUIPMENT_RESERVED = "equipment_reserved"
 
 
 class DecisionOutcome(str, enum.Enum):
