@@ -2,6 +2,7 @@ import { http, HttpResponse } from 'msw'
 import type { RequestHandler } from 'msw'
 
 import { ROLE } from '@/config/roles'
+import { EVENT_REQUEST_STATUS } from '@/features/eventRequests/constants'
 
 import { errorResponse, INVALID_TOKEN_MESSAGE, NOT_PERMITTED_MESSAGE } from '../responses'
 
@@ -22,7 +23,7 @@ const NO_REQUESTS_MESSAGE = 'Your organisation has no event requests yet.'
 function visibleTo(organiserId: number, organisationId: number) {
   return (stored: MockEventRequest) =>
     stored.organisationId === organisationId &&
-    (stored.request.status !== 'draft' || stored.organiserId === organiserId)
+    (stored.request.status !== EVENT_REQUEST_STATUS.DRAFT || stored.organiserId === organiserId)
 }
 
 /** Newest request first, as the backend lists them. */
