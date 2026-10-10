@@ -203,6 +203,9 @@ Rules:
 - **Integration tests make their own data** (`uniqueEmail()`), never depend on another test's
   data, and only test endpoints that exist on the backend. An endpoint that is only a contract
   so far (e.g. the catalogue before SCRUM-52) gets `it.todo` there, and mocks elsewhere.
+  Data only staff may create (client organisations, which organisers sign up to) is made by
+  signing in as the staff account in `INTEGRATION_STAFF_EMAIL` / `INTEGRATION_STAFF_PASSWORD`.
+  CI makes one for each run; locally, make one with `flask create-staff-user` (README).
 - **e2e tests cover journeys, not every edge case.** Edge cases belong in component tests.
 - **Coverage:** `npm run test:coverage` enforces a 90% floor on lines, branches, functions and
   statements. Code you add or change should be fully covered. A line that can't be reached in
