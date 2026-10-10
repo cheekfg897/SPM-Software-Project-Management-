@@ -99,3 +99,13 @@ class EquipmentTypeSchema(Schema):
     total_quantity = fields.Integer(dump_only=True)
     venue_id = fields.Integer(dump_only=True, allow_none=True)
     store_name = fields.String(dump_only=True, allow_none=True)
+
+
+class EquipmentAvailabilitySchema(Schema):
+    """One equipment type's availability for an event, with its shortfall (SCRUM-45)."""
+
+    equipment_type_id = fields.Integer(dump_only=True)
+    equipment_type_name = fields.String(dump_only=True)
+    available = fields.Integer(dump_only=True)
+    requested = fields.Integer(dump_only=True)
+    shortfall = fields.Integer(dump_only=True)
