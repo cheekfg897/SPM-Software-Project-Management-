@@ -1,5 +1,5 @@
 import type { CatalogueEvent } from '../api'
-import { formatTimeRange } from '../formatDate'
+import { formatTimeRange } from '@/lib/formatDate'
 
 import { RegisterAction } from './RegisterAction'
 
