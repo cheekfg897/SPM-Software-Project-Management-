@@ -23,7 +23,6 @@ from app.modules.auth.permissions import ALL_ROLES, Role
 from app.modules.equipment.models import EquipmentType
 from app.modules.events import routes
 from app.modules.events.models import (
-    EquipmentLineStatus,
     EventEquipmentLine,
     EventHistoryEntry,
     EventHistoryKind,
@@ -144,45 +143,6 @@ def valid_event_request_payload() -> dict[str, Any]:
         "equipment_requirements": "2 projectors, PA system, 4 wireless mics",
         "registration_required": True,
     }
-
-
-@pytest.fixture()
-def make_event_request() -> Callable[..., EventRequest]:
-    """Factory for in-memory ``EventRequest`` objects.
-
-    Add one to ``db_session`` to persist it. By default it is organiser 7's, filed
-    under client organisation 3 as ``saved_users`` links them (SCRUM-66 AC4).
-    Everything but the parameters is fixed; tests about the other fields go through
-    ``submit_event_request`` with ``valid_event_request_payload``. The event ends on
-    the day it starts.
-    """
-
-    def _make(
-        *,
-        reference: str = "EVR-AAAAAAAA",
-        status: EventRequestStatus = EventRequestStatus.SUBMITTED,
-        organiser_id: int = 7,
-        organisation_id: int | None = 3,
-        coordinator_id: int | None = None,
-        proposed_date: date = date(2026, 10, 15),
-        start_time: time = time(9, 0),
-    ) -> EventRequest:
-        return EventRequest(
-            reference=reference,
-            status=status,
-            organiser_id=organiser_id,
-            organisation_id=organisation_id,
-            coordinator_id=coordinator_id,
-            name="Partner Summit",
-            proposed_date=proposed_date,
-            end_date=proposed_date,
-            start_time=start_time,
-            end_time=time(17, 0),
-            expected_attendance=250,
-            registration_required=False,
-        )
-
-    return _make
 
 
 @pytest.fixture()
@@ -374,19 +334,6 @@ def detailed_notifications_of() -> Callable[[int], list[tuple[Any, ...]]]:
 
 
 @pytest.fixture()
-def saved_event_request(
-    make_event_request: Callable[..., EventRequest], save: Callable[..., None]
-) -> EventRequest:
-    """Event request ``EVR-AAAAAAAA`` by organiser 7, ``submitted`` and saved.
-
-    It is assigned to Event Coordinator 3, who may change its equipment (ADR-0019).
-    """
-    event_request = make_event_request(coordinator_id=3)
-    save(event_request)
-    return event_request
-
-
-@pytest.fixture()
 def save_draft(db_session: Session) -> Callable[[int, dict[str, Any]], EventRequest]:
     """Save a draft through the service, always under ``DRAFT_REFERENCE`` (SCRUM-20).
 
@@ -432,38 +379,6 @@ def set_status(
 def valid_equipment_line_payload(equipment_type: EquipmentType) -> dict[str, Any]:
     """An equipment line body that satisfies every rule: two of the saved type."""
     return {"equipment_type_id": equipment_type.id, "quantity": 2, "notes": "Needs HDMI"}
-
-
-@pytest.fixture()
-def microphone(
-    make_equipment_type: Callable[..., EquipmentType], save: Callable[..., None]
-) -> EquipmentType:
-    """A second saved equipment type, for events that need more than one."""
-    saved = make_equipment_type(name="Microphone", total_quantity=20)
-    save(saved)
-    return saved
-
-
-@pytest.fixture()
-def make_equipment_line() -> Callable[..., EventEquipmentLine]:
-    """Factory for ``EventEquipmentLine`` objects; add one to ``db_session`` to save."""
-
-    def _make(
-        event_request: EventRequest,
-        equipment_type: EquipmentType,
-        *,
-        quantity: int = 2,
-        notes: str | None = "Needs HDMI",
-    ) -> EventEquipmentLine:
-        return EventEquipmentLine(
-            event_request_id=event_request.id,
-            equipment_type_id=equipment_type.id,
-            quantity=quantity,
-            notes=notes,
-            status=EquipmentLineStatus.REQUESTED,
-        )
-
-    return _make
 
 
 @pytest.fixture()

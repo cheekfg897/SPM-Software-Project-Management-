@@ -38,7 +38,7 @@ from app.modules.auth.services import (
     get_user_full_names,
     list_user_ids_with_role,
 )
-from app.modules.equipment.services import get_equipment_type
+from app.modules.equipment import services as equipment_services
 from app.modules.events.models import (
     REFERENCE_UNIQUE_CONSTRAINT,
     DecisionOutcome,
@@ -1137,7 +1137,7 @@ def _event_request_with_editable_equipment(
 def _check_equipment_type(equipment_type_id: int, session: Session) -> None:
     """Reject an equipment type that isn't in the catalogue, as a 400 on its field."""
     try:
-        get_equipment_type(equipment_type_id, session=session)
+        equipment_services.get_equipment_type(equipment_type_id, session=session)
     except NotFoundError as exc:
         raise ValidationError(
             "Invalid request.", details={"equipment_type_id": [exc.message]}
@@ -1943,6 +1943,30 @@ def get_event_record_for_coordinator(
 # --------------------------------------------------------------------------
 
 NOT_CONFIRMED_MESSAGE = "Only a confirmed event can be marked completed."
+PERIOD_INCOMPLETE_MESSAGE = "The event has no complete date and times yet."
+
+
+class EventPeriodIncompleteError(AppError):
+    """The event lacks a date or a time, so it has no period (409)."""
+
+    status_code = 409
+    error_code = "event_period_incomplete"
+
+
+@dataclass(frozen=True)
+class EventEquipmentNeed:
+    """When an event runs and how much of each equipment type it asks for (SCRUM-45).
+
+    What the equipment module needs from an event, without handing it the models.
+    """
+
+    #: The event's start and end, timezone-aware UTC.
+    starts_at: datetime
+    ends_at: datetime
+    #: Requested quantity by equipment type id; a type with no line is absent.
+    requested: Mapping[int, int]
+
+
 NOT_YET_ENDED_MESSAGE = "The event has not ended yet."
 
 
@@ -1953,19 +1977,36 @@ class RequestNotCompletableError(AppError):
     error_code = "request_not_completable"
 
 
+def _business_instant(day: date | None, at: time | None) -> datetime:
+    """A date and wall-clock time in business time (ADR-0002) as a UTC-aware instant.
+
+    Raises:
+        EventPeriodIncompleteError: 409 — the date or the time is missing.
+    """
+    if day is None or at is None:
+        raise EventPeriodIncompleteError(PERIOD_INCOMPLETE_MESSAGE)
+    return as_utc(datetime.combine(day, at))
+
+
+def _event_period(event_request: EventRequest) -> tuple[datetime, datetime]:
+    """The event's start and end as UTC-aware instants (SCRUM-45 AC4).
+
+    Raises:
+        EventPeriodIncompleteError: 409 — a date or time is missing; the period is
+            never guessed, for instance as the whole day.
+    """
+    starts_at = _business_instant(event_request.proposed_date, event_request.start_time)
+    ends_at = _business_instant(event_request.end_date, event_request.end_time)
+    return starts_at, ends_at
+
+
 def _has_ended(event_request: EventRequest, now: datetime) -> bool:
     """Whether ``now`` is at or after the event's end (SCRUM-68 AC2, ADR-0027).
 
-    The end is ``end_date`` + ``end_time``, a wall-clock time in business time
-    (ADR-0002), so :func:`as_utc` reads it in the business timezone before it is
-    compared with the aware ``now``.
+    The end is ``end_date`` + ``end_time``, a wall-clock time in business time.
     """
     # A draft may leave both empty, but a draft never reaches this check (ADR-0024).
-    end_date = event_request.end_date
-    end_time = event_request.end_time
-    ends = datetime.combine(end_date, end_time)  # type: ignore[arg-type]
-    ends_at = as_utc(ends)
-    return now >= ends_at
+    return now >= _business_instant(event_request.end_date, event_request.end_time)
 
 
 def complete_event_request(
@@ -2017,6 +2058,29 @@ def complete_event_request(
     )
     sess.commit()
     return event_request
+
+
+def get_event_equipment_need(
+    reference: str, *, session: Session | None = None
+) -> EventEquipmentNeed:
+    """An event's period and the equipment it asks for, for the equipment module.
+
+    For internal staff, so a draft is hidden as everywhere else (ADR-0024).
+
+    Args:
+        reference: The ``EVR-…`` reference; case and surrounding spaces are ignored.
+        session: Database session; defaults to ``db.session``.
+
+    Raises:
+        NotFoundError: 404 — no such request, or it is still a draft.
+        EventPeriodIncompleteError: 409 — the event has no complete date and times.
+    """
+    event_request = _event_request_for_staff(reference, resolve_session(session))
+    starts_at, ends_at = _event_period(event_request)
+    requested = {}
+    for line in event_request.equipment_lines:
+        requested[line.equipment_type_id] = line.quantity
+    return EventEquipmentNeed(starts_at=starts_at, ends_at=ends_at, requested=requested)
 
 
 # --------------------------------------------------------------------------

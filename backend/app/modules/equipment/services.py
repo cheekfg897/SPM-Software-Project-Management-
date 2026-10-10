@@ -8,6 +8,7 @@ function takes an optional ``session``, defaulting to ``db.session``.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
@@ -20,7 +21,25 @@ from app.common.errors import ConflictError, NotFoundError, ValidationError
 from app.common.validation import load_or_raise
 from app.modules.equipment.models import EquipmentOutOfService, EquipmentReservation, EquipmentType
 from app.modules.equipment.schemas import EditEquipmentTypeSchema
+
+# The module, not its names: events.services imports this module too (to check a
+# catalogue entry), and module-attribute access is what lets the two import each other.
+from app.modules.events import services as events_services
 from app.modules.venue.services import get_venue
+
+
+@dataclass(frozen=True)
+class EquipmentAvailability:
+    """One equipment type's availability for an event, with any shortfall (AC3)."""
+
+    equipment_type_id: int
+    equipment_type_name: str
+    #: Units free for the event's own period.
+    available: int
+    #: Units the event's lines ask for; 0 when it has no line for the type.
+    requested: int
+    #: Units short of the request; 0 when the request is met.
+    shortfall: int
 
 
 def _check_venue(venue_id: int | None, session: Session) -> None:
@@ -130,6 +149,44 @@ def list_equipment_types(*, session: Session | None = None) -> list[EquipmentTyp
     """
     stmt = select(EquipmentType).order_by(EquipmentType.name)
     return list(resolve_session(session).scalars(stmt))
+
+
+def equipment_availability_for_event(
+    reference: str, *, session: Session | None = None
+) -> list[EquipmentAvailability]:
+    """What is free for an event's own period, against what it asks for (SCRUM-45).
+
+    One row for every equipment type in the catalogue, by name, so an event that asks
+    for nothing still sees what is free. The shortfall is how many units the request
+    is short of (AC3), 0 when it is met. The period is the event's own start and end,
+    not the whole day (AC4).
+
+    Args:
+        reference: The event's ``EVR-…`` reference.
+        session: Database session; defaults to ``db.session``.
+
+    Raises:
+        NotFoundError: 404 — no such event, or it is still a draft.
+        EventPeriodIncompleteError: 409 — the event has no complete date and times.
+    """
+    sess = resolve_session(session)
+    need = events_services.get_event_equipment_need(reference, session=sess)
+    rows = []
+    for equipment_type in list_equipment_types(session=sess):
+        available = available_quantity(
+            equipment_type.id, need.starts_at, need.ends_at, session=sess
+        )
+        requested = need.requested.get(equipment_type.id, 0)
+        rows.append(
+            EquipmentAvailability(
+                equipment_type_id=equipment_type.id,
+                equipment_type_name=equipment_type.name,
+                available=available,
+                requested=requested,
+                shortfall=max(requested - available, 0),
+            )
+        )
+    return rows
 
 
 def create_equipment_type(
