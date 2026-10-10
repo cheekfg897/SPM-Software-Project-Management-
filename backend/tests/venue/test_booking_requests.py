@@ -291,12 +291,14 @@ def test_an_unsuitable_venue_is_accepted_with_a_justification(
 
 
 def test_suitability_uses_the_requests_occupancy_not_the_events(
-    db_session: Session, make_venue: Callable[..., Venue], saved_event: SavedEvent
+    db_session: Session,
+    make_venue: Callable[..., Venue],
+    save: Callable[..., None],
+    saved_event: SavedEvent,
 ) -> None:
     """The event's 80 would not fit this venue's 60; the request's own 50 does."""
     small_venue = make_venue(capacity=60)
-    db_session.add(small_venue)
-    db_session.commit()
+    save(small_venue)
 
     request = _raise(small_venue, saved_event(), db_session, expected_occupancy=50)
 
@@ -323,6 +325,7 @@ def test_an_event_that_is_not_approved_is_refused_naming_its_status(
     assert caught.value.message == (
         "Only an approved event can have a venue booking request; this one is submitted."
     )
+    assert _saved_requests(db_session) == []
 
 
 @pytest.mark.parametrize("coordinator_id", [9, None], ids=["other-coordinator", "unassigned"])
@@ -363,7 +366,7 @@ def test_raising_a_request_records_it_in_the_events_history(
     event = saved_event()
 
     request = _raise(venue, event, db_session)
-    db_session.expire_all()
+    db_session.rollback()  # throws away anything that was not committed
 
     [entry] = _history(db_session)
     assert entry.event_request_id == event.id

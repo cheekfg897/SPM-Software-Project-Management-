@@ -614,6 +614,7 @@ JUSTIFICATION_REQUIRED_MESSAGE = "A justification is required because the venue 
 
 
 def _commit_request(session: Session) -> None:
+    """Commit the request and its history entry; the one place a request is saved."""
     session.commit()
 
 
@@ -670,10 +671,10 @@ def raise_booking_request(
             "Invalid request.", details={"justification": [JUSTIFICATION_REQUIRED_MESSAGE]}
         )
 
-    sess = resolve_session(session)
+    active_session = resolve_session(session)
     request = VenueBookingRequest(event_id=event_id, requested_by=requested_by, **data)
-    sess.add(request)
-    sess.flush()
+    active_session.add(request)
+    active_session.flush()
     event_services.record_venue_booking_requested(
         event_id,
         actor_id=requested_by,
@@ -685,7 +686,7 @@ def raise_booking_request(
         },
         session=session,
     )
-    _commit_request(sess)
+    _commit_request(active_session)
     return request
 
 
