@@ -33,6 +33,14 @@ const TIME_FORMAT = new Intl.DateTimeFormat(LOCALE, {
   minute: '2-digit',
 })
 
+const DATE_TIME_FORMAT = new Intl.DateTimeFormat(LOCALE, {
+  timeZone: BUSINESS_TIME_ZONE,
+  day: 'numeric',
+  month: 'short',
+  hour: 'numeric',
+  minute: '2-digit',
+})
+
 /** The business date a moment falls on, e.g. "2026-10-05". */
 export function businessDate(isoDateTime: string): string {
   return DATE_KEY_FORMAT.format(new Date(isoDateTime))
@@ -56,4 +64,9 @@ export function formatTimeRange(startsAt: string, endsAt: string): string {
     return `${start} – ${end}`
   }
   return `${start} – ${SHORT_WEEKDAY_FORMAT.format(new Date(endsAt))} ${end}`
+}
+
+/** e.g. "5 Oct, 9:00 am" */
+export function formatDateTime(isoDateTime: string): string {
+  return DATE_TIME_FORMAT.format(new Date(isoDateTime))
 }
