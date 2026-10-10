@@ -1,6 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { NavLink, useNavigate } from 'react-router'
 
+import { NotificationBell } from '@/components/NotificationBell'
 import { Button, ButtonLink } from '@/components/ui'
 import { ROUTES } from '@/config/routes'
 import { selectSessionUser, signedOut, useAppDispatch, useAppSelector } from '@/store'
@@ -36,6 +37,7 @@ function SessionActions() {
 
   return (
     <>
+      <NotificationBell />
       <span className="text-ink-muted hidden max-w-40 truncate text-sm sm:inline">
         {user.full_name}
       </span>

@@ -1,13 +1,11 @@
 import { screen, within } from '@testing-library/react'
 
 import { ROUTES } from '@/config/routes'
-import { ROLE } from '@/config/roles'
+import { MOCK_ACCOUNTS, mockSessionFor } from '@/mocks/fixtures/accounts'
 import { renderApp } from '@/test/render'
 
-const ATTENDEE = {
-  accessToken: 'abc',
-  user: { id: 3, full_name: 'Alice Tan', role: ROLE.ATTENDEE },
-}
+// A token the mock backend accepts: the header now asks it for the unread count.
+const ATTENDEE = mockSessionFor(MOCK_ACCOUNTS.attendee)
 
 describe('app routes', () => {
   it.each(Object.values(ROUTES))('%s renders a page with a heading', async (path) => {
