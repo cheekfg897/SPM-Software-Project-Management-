@@ -1,3 +1,5 @@
+import { DISPLAY_LOCALE } from '@/config/time'
+
 import type { EventRequest } from './api'
 
 /**
@@ -6,14 +8,13 @@ import type { EventRequest } from './api'
  * as UTC moments and formatting them in UTC keeps 12 Nov at 9:00 am, wherever the viewer is.
  */
 
-const LOCALE = 'en-SG'
-const DAY_FORMAT = new Intl.DateTimeFormat(LOCALE, {
+const DAY_FORMAT = new Intl.DateTimeFormat(DISPLAY_LOCALE, {
   timeZone: 'UTC',
   weekday: 'short',
   day: 'numeric',
   month: 'short',
 })
-const TIME_FORMAT = new Intl.DateTimeFormat(LOCALE, {
+const TIME_FORMAT = new Intl.DateTimeFormat(DISPLAY_LOCALE, {
   timeZone: 'UTC',
   hour: 'numeric',
   minute: '2-digit',
