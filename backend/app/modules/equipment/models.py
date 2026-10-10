@@ -6,12 +6,15 @@ functions in :mod:`app.modules.equipment.services`.
 
 from __future__ import annotations
 
+import enum
 from datetime import datetime
 
 from sqlalchemy import (
     CheckConstraint,
     DateTime,
+    Enum,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -20,6 +23,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.common.database import UTCDateTime
 from app.extensions import db
 
 #: Longest equipment type name.
@@ -70,3 +74,85 @@ class EquipmentType(db.Model):  # type: ignore[name-defined]
         onupdate=func.now(),
         nullable=False,
     )
+
+
+class OutOfServiceReason(str, enum.Enum):
+    """Why units of an equipment type cannot be used (SCRUM-45 AC2, ADR-0037)."""
+
+    DAMAGED = "damaged"
+    UNDER_MAINTENANCE = "under_maintenance"
+
+
+class EquipmentReservation(db.Model):  # type: ignore[name-defined]
+    """Units of one equipment type held for one event's exact period (SCRUM-46).
+
+    Several rows may exist for the same event and type; they add up. The period is
+    copied from the event when the units are reserved, so availability is calculated
+    for those exact times and never the whole day (SCRUM-45 AC4). ``event_id`` and
+    ``reserved_by`` are plain foreign keys to tables other modules own, with no ORM
+    relationship across the module boundary.
+    """
+
+    __tablename__ = "equipment_reservations"
+    __table_args__ = (
+        CheckConstraint("quantity >= 1", name="ck_equipment_reservations_quantity_min"),
+        # Availability looks up the reservations of one type that overlap a period.
+        Index("ix_equipment_reservations_type_period", "equipment_type_id", "starts_at", "ends_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    event_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("event_requests.id"), index=True, nullable=False
+    )
+    equipment_type_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("equipment_types.id"), nullable=False
+    )
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    starts_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)
+    ends_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)
+    reserved_by: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+
+class EquipmentOutOfService(db.Model):  # type: ignore[name-defined]
+    """Units of one equipment type recorded as damaged or under maintenance (ADR-0037).
+
+    **Read-only for SCRUM-45/46.** Availability subtracts the units of every row whose
+    ``resolved_at`` is ``NULL`` (SCRUM-45 AC2), but nothing in this workstream writes
+    here: no route, schema or screen. SCRUM-47 owns writing these rows, with the
+    user-and-timestamp audit (AC4), flagging the reservations that depend on affected
+    items (AC3) and the safety-check consequence (AC5).
+    """
+
+    __tablename__ = "equipment_out_of_service"
+    __table_args__ = (
+        CheckConstraint("quantity >= 1", name="ck_equipment_out_of_service_quantity_min"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    equipment_type_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("equipment_types.id"), index=True, nullable=False
+    )
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    reason: Mapped[OutOfServiceReason] = mapped_column(
+        Enum(
+            OutOfServiceReason,
+            name="out_of_service_reason",
+            # Store the enum *values* (snake_case), not the member names.
+            values_callable=lambda enum_cls: [m.value for m in enum_cls],
+        ),
+        nullable=False,
+    )
+    recorded_by: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+    recorded_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)
+    #: ``NULL`` while the units are still out of service; set when they are back.
+    resolved_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
