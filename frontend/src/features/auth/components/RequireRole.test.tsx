@@ -52,3 +52,11 @@ describe('SCRUM-6 pages only a role may open', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('User not found.')
   })
 })
+
+describe('SCRUM-28 pages any signed-in user may open', () => {
+  it('lets every role into the notifications page', async () => {
+    renderApp(ROUTES.NOTIFICATIONS, { session: mockSessionFor(MOCK_ACCOUNTS.coordinator) })
+
+    expect(await screen.findByRole('heading', { name: 'Notifications' })).toBeInTheDocument()
+  })
+})

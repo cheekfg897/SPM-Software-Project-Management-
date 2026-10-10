@@ -12,6 +12,7 @@ import { StaffHomePage } from '@/features/auth/pages/StaffHomePage'
 import { StaffLoginPage } from '@/features/auth/pages/StaffLoginPage'
 import { CataloguePage } from '@/features/catalogue/pages/CataloguePage'
 import { LandingPage } from '@/features/landing/pages/LandingPage'
+import { NotificationsPage } from '@/features/notifications/pages/NotificationsPage'
 
 import { NotFoundPage } from './NotFoundPage'
 
@@ -40,6 +41,14 @@ export const appRoutes: RouteObject[] = [
         element: (
           <RequireRole allowedRoles={INTERNAL_ROLES} loginRoute={ROUTES.STAFF_LOGIN}>
             <StaffHomePage />
+          </RequireRole>
+        ),
+      },
+      {
+        path: ROUTES.NOTIFICATIONS,
+        element: (
+          <RequireRole loginRoute={ROUTES.LOGIN}>
+            <NotificationsPage />
           </RequireRole>
         ),
       },
