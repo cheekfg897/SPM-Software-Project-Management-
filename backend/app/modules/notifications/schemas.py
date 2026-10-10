@@ -34,6 +34,7 @@ MESSAGE_BY_KIND: dict[NotificationKind, str] = {
     NotificationKind.VENUE_BOOKING_REQUESTED: (
         "A venue booking request is waiting for your decision."
     ),
+    NotificationKind.EQUIPMENT_RESERVED: "Equipment was reserved for an event.",
 }
 
 #: Where a notification links to: the event's page, found by its reference

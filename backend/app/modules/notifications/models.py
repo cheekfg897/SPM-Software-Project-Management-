@@ -51,6 +51,9 @@ class NotificationKind(str, enum.Enum):
     #: Tells Venue Staff a venue booking request was raised for their venue (SCRUM-42
     #: AC9, ADR-0035).
     VENUE_BOOKING_REQUESTED = "venue_booking_requested"
+    #: Tells the event's coordinator that equipment was reserved for it (SCRUM-46 AC5,
+    #: ADR-0037).
+    EQUIPMENT_RESERVED = "equipment_reserved"
 
 
 class Notification(db.Model):  # type: ignore[name-defined]
