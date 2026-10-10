@@ -420,7 +420,7 @@ class RaiseBookingRequestSchema(TimeRangeSchema):
         validate=validate.Range(min=1, error="expected_occupancy must be a positive number.")
     )
     required_layout = fields.String(validate=validate.OneOf(LayoutType.values()))
-    justification = fields.String()
+    justification = fields.String(validate=not_blank)
 
 
 @dataclass(frozen=True)

@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import datetime
+from datetime import date, datetime, time
 
 import pytest
 from sqlalchemy.orm import Session
 
+from app.modules.events.models import EventRequest, EventRequestStatus
 from app.modules.venue.models import Booking, BookingStatus, Venue, VenueBlock
 
 
@@ -53,3 +54,34 @@ def make_block() -> Callable[..., VenueBlock]:
         return VenueBlock(venue_id=venue.id, start_time=start, end_time=end, reason=reason)
 
     return _make
+
+
+@pytest.fixture()
+def saved_event(db_session: Session) -> Callable[..., EventRequest]:
+    """Factory for a saved event: approved, coordinated by user 3, 250 attending.
+
+    The event has no layout of its own, only free-text venue requirements.
+    """
+    counter = {"n": 0}
+
+    def _save(status: EventRequestStatus = EventRequestStatus.APPROVED) -> EventRequest:
+        counter["n"] += 1
+        event = EventRequest(
+            reference=f"EVR-{counter['n']:08d}",
+            status=status,
+            organiser_id=7,
+            coordinator_id=3,
+            name="Partner Summit",
+            proposed_date=date(2026, 11, 1),
+            end_date=date(2026, 11, 2),
+            start_time=time(9, 0),
+            end_time=time(17, 30),
+            expected_attendance=80,
+            accessibility_needs="Step-free entrance",
+            registration_required=False,
+        )
+        db_session.add(event)
+        db_session.commit()
+        return event
+
+    return _save
