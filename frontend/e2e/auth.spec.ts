@@ -1,13 +1,8 @@
 import { expect, test } from '@playwright/test'
-import type { Page } from '@playwright/test'
 
 import { MOCK_ACCOUNTS } from '../src/mocks/fixtures/accounts'
 
-async function logIn(page: Page, account: { email: string; password: string }) {
-  await page.getByLabel('Email').fill(account.email)
-  await page.getByLabel('Password').fill(account.password)
-  await page.getByRole('button', { name: 'Log in' }).click()
-}
+import { logIn } from './logIn'
 
 test('SCRUM-65: a new attendee signs up, lands on the events, and logs out', async ({ page }) => {
   await page.goto('/signup')
