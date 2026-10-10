@@ -48,6 +48,9 @@ class NotificationKind(str, enum.Enum):
     #: Tells the organiser who submitted a request that an Event Coordinator has been
     #: assigned to it, on submission or reassignment (SCRUM-39 AC1, ADR-0030).
     REQUEST_ASSIGNED = "request_assigned"
+    #: Tells Venue Staff a venue booking request was raised for their venue (SCRUM-42
+    #: AC9, ADR-0035).
+    VENUE_BOOKING_REQUESTED = "venue_booking_requested"
 
 
 class Notification(db.Model):  # type: ignore[name-defined]
