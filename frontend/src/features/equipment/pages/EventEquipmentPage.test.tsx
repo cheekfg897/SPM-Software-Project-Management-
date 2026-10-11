@@ -167,4 +167,16 @@ describe('SCRUM-45 equipment page: who may open it', () => {
 
     expect(router.state.location.pathname).toBe(ROUTES.EVENTS)
   })
+
+  it('sends Venue Staff to the staff home: equipment is for Technical Support and coordinators', () => {
+    const { router } = renderApp(OPEN_PAGE, { session: mockSessionFor(MOCK_ACCOUNTS.venueStaff) })
+
+    expect(router.state.location.pathname).toBe(ROUTES.STAFF_HOME)
+  })
+
+  it("shows a coordinator the backend's message for an event not assigned to them", async () => {
+    renderApp(eventEquipmentPath(MOCK_CLOSED_EVENT_REFERENCE), { session: COORDINATOR })
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Event request not found.')
+  })
 })
