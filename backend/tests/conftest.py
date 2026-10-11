@@ -32,6 +32,7 @@ from app.modules.events.models import (
     EventRequest,
     EventRequestStatus,
 )
+from app.modules.notifications.services import list_notifications_for_recipient
 from app.modules.venue.models import Venue, VenueOpeningPeriod, Weekday
 
 
@@ -432,3 +433,27 @@ def microphone(
     saved = make_equipment_type(name="Microphone", total_quantity=20)
     save(saved)
     return saved
+
+
+@pytest.fixture()
+def notifications_of() -> Callable[[int], list[tuple[Any, ...]]]:
+    """A user's notifications, newest first, as rows of what each one records.
+
+    Each row is (event request id, reference, name, kind, read at).
+    """
+
+    def _notifications_of(user_id: int) -> list[tuple[Any, ...]]:
+        rows = []
+        for notification in list_notifications_for_recipient(user_id):
+            rows.append(
+                (
+                    notification.event_request_id,
+                    notification.event_reference,
+                    notification.event_name,
+                    notification.kind,
+                    notification.read_at,
+                )
+            )
+        return rows
+
+    return _notifications_of
