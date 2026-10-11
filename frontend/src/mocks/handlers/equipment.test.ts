@@ -56,6 +56,31 @@ describe('SCRUM-45 equipment mock: availability', () => {
     await expect(availability()).rejects.toMatchObject({ status: 403 })
   })
 
+  it('refuses Venue Staff: only Technical Support and coordinators read equipment', async () => {
+    signInAs(MOCK_ACCOUNTS.venueStaff)
+
+    await expect(availability()).rejects.toMatchObject({ status: 403 })
+    await expect(apiRequest(`${OPEN}/reservations`)).rejects.toMatchObject({ status: 403 })
+  })
+
+  it('answers a coordinator 404 for an event not assigned to them, as if it did not exist', async () => {
+    signInAs(MOCK_ACCOUNTS.coordinator)
+
+    await expect(availability(MOCK_CLOSED_EVENT_REFERENCE)).rejects.toMatchObject({
+      status: 404,
+      message: 'Event request not found.',
+    })
+    await expect(
+      apiRequest(`${EQUIPMENT}/${MOCK_CLOSED_EVENT_REFERENCE}/reservations`),
+    ).rejects.toMatchObject({ status: 404 })
+  })
+
+  it('lets Technical Support read an event nobody is assigned to', async () => {
+    signInAs(MOCK_ACCOUNTS.technicalSupport)
+
+    await expect(availability(MOCK_CLOSED_EVENT_REFERENCE)).resolves.toHaveLength(2)
+  })
+
   it('refuses a visitor with a 401', async () => {
     sendRequestsAs(null)
 

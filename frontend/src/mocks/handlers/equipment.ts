@@ -1,10 +1,11 @@
 import { http, HttpResponse } from 'msw'
 import type { RequestHandler } from 'msw'
 
-import { INTERNAL_ROLES, ROLE } from '@/config/roles'
+import { EQUIPMENT_READER_ROLES, ROLE } from '@/config/roles'
 import type { Role } from '@/config/roles'
 import { isRecord } from '@/lib/isRecord'
 
+import type { MockAccount } from '../fixtures/accounts'
 import { errorResponse, INVALID_TOKEN_MESSAGE, validationError } from '../responses'
 
 import { accountForRequest } from './auth'
@@ -83,6 +84,18 @@ function eventNotFound() {
   return errorResponse(404, 'not_found', 'Event request not found.')
 }
 
+/**
+ * Whether the reader may see the event's equipment: Technical Support any event's, a coordinator
+ * only one assigned to them. Anything else is the same 404 as an unknown event (ADR-0019).
+ */
+function mayRead(reader: MockAccount, reference: string): boolean {
+  const event = MOCK_EVENT_REFERENCES[reference]
+  if (event === undefined) {
+    return false
+  }
+  return reader.role === ROLE.TECHNICAL_SUPPORT_STAFF || event.coordinator_id === reader.id
+}
+
 /** Problems with the reservation body, by field, in the backend's wording (EquipmentUnitsSchema). */
 function bodyErrors(body: unknown): Record<string, string[]> {
   const sent = isRecord(body) ? body : {}
@@ -105,22 +118,22 @@ function bodyErrors(body: unknown): Record<string, string[]> {
 
 export const equipmentHandlers: RequestHandler[] = [
   http.get(`${EVENT_PATH}/availability`, ({ request, params }) => {
-    const caller = callerOrRefusal(request, INTERNAL_ROLES)
+    const caller = callerOrRefusal(request, EQUIPMENT_READER_ROLES)
     if (caller instanceof Response) {
       return caller
     }
-    if (MOCK_EVENT_REFERENCES[String(params.reference)] === undefined) {
+    if (!mayRead(caller, String(params.reference))) {
       return eventNotFound()
     }
     return HttpResponse.json(availabilityRows())
   }),
 
   http.get(`${EVENT_PATH}/reservations`, ({ request, params }) => {
-    const caller = callerOrRefusal(request, INTERNAL_ROLES)
+    const caller = callerOrRefusal(request, EQUIPMENT_READER_ROLES)
     if (caller instanceof Response) {
       return caller
     }
-    if (MOCK_EVENT_REFERENCES[String(params.reference)] === undefined) {
+    if (!mayRead(caller, String(params.reference))) {
       return eventNotFound()
     }
     return HttpResponse.json(reservations)

@@ -19,6 +19,15 @@ export const INTERNAL_ROLES: readonly Role[] = [
   ROLE.TECHNICAL_SUPPORT_STAFF,
 ]
 
+/**
+ * Staff who read an event's equipment: Technical Support for any event, a coordinator only for
+ * an event assigned to them (the backend decides which events; ADR-0019, ADR-0037).
+ */
+export const EQUIPMENT_READER_ROLES: readonly Role[] = [
+  ROLE.EVENT_COORDINATOR,
+  ROLE.TECHNICAL_SUPPORT_STAFF,
+]
+
 const ALL_ROLES: readonly string[] = Object.values(ROLE)
 
 export function isRole(value: unknown): value is Role {
