@@ -56,9 +56,9 @@ src/
   app/            App shell: providers, route table (routes.tsx), query client, NotFoundPage
   config/         constants used across features: ROUTES, ROLE and the role groups, BUSINESS_TIME_ZONE
   lib/api/        the ONLY place that calls fetch: apiRequest, ApiError, error helpers
-  lib/            small shared helpers (isRecord)
+  lib/            small shared helpers (isRecord, formatDate: Singapore dates and times)
   store/          Redux: the session slice, its persistence, typed hooks
-  components/ui/  reusable primitives: Button, ButtonLink, TextField, ErrorAlert, Spinner
+  components/ui/  reusable primitives: Button, ButtonLink, TextField, ErrorAlert, Spinner, Badge, EmptyState
   components/layout/  SiteLayout, SiteHeader, SiteFooter, PageContainer, Logo
   features/<name>/
     api.ts        this feature's endpoint paths, response types, request functions, query keys
