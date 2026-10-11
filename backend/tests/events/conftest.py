@@ -204,8 +204,9 @@ def lead_assigns(db_session: Session) -> Callable[[EventRequest, int], None]:
 
     Submission leaves a request unassigned (SCRUM-95 AC1), so a test whose own subject
     needs an assigned coordinator takes this step explicitly. It sets the column and
-    nothing else; the audit entry and the notices belong to the Lead's own service,
-    which SCRUM-95 tests where it lives.
+    nothing else: the audit entry and the notices belong to the Lead's own assign
+    service, which does not exist yet and will be tested with itself when it does.
+    Point this at that service once it is there.
     """
 
     def _assign(event_request: EventRequest, coordinator_id: int) -> None:
@@ -329,6 +330,11 @@ def assignment_notices_of(
     Event Coordinator Lead's assignment that does. Other kinds still reach the same
     people on the same path, so a test about assignment asks only about these two
     rather than for an empty list.
+
+    For "neither was raised" only. It keeps the kind and drops the rest of the row,
+    so it cannot say a notice named the right event or was raised exactly once: a
+    test asserting that a notice *was* raised wants whole rows from
+    ``notifications_of``, as ``test_reassign_coordinator_notifications.py`` does.
     """
 
     def _assignment_notices_of(user_id: int) -> list[NotificationKind]:

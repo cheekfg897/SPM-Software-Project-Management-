@@ -19,6 +19,7 @@ from datetime import date, datetime, timezone
 from typing import Any
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.common.errors import NotFoundError, ValidationError
@@ -31,7 +32,7 @@ from app.modules.events.services import (
     list_event_requests_for_organiser,
     submit_draft_event_request,
 )
-from app.modules.notifications.services import NotificationKind
+from app.modules.notifications.models import Notification
 from tests.events.cases import COMPLETE_DRAFT_PAYLOAD, DRAFT_REFERENCE
 
 pytestmark = pytest.mark.scrum_20
@@ -141,18 +142,17 @@ def test_a_submitted_draft_waits_unassigned_with_no_history_or_notice(
     save_draft: SaveDraft,
     coordinator_of: Callable[[int], int | None],
     history_of: Callable[[int], list[tuple[EventHistoryKind, int | None, dict[str, Any] | None]]],
-    assignment_notices_of: Callable[[int], list[NotificationKind]],
     db_session: Session,
     today: date,
 ) -> None:
-    """Also SCRUM-39 AC4's guard: with nobody assigned, no coordinator is told."""
+    """Also SCRUM-39 AC4's guard: with nobody assigned, nobody at all is told."""
     draft = save_draft(ORGANISER_ID, COMPLETE_DRAFT_PAYLOAD)
 
     _submit(DRAFT_REFERENCE, db_session, today)
 
     assert coordinator_of(draft.id) is None
     assert history_of(draft.id) == []
-    assert assignment_notices_of(3) == []
+    assert db_session.scalars(select(Notification)).all() == []
 
 
 def test_colleagues_see_the_request_once_it_is_submitted(
