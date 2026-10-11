@@ -11,6 +11,7 @@ export const ROUTES = {
   /** A route pattern: `:reference` is the event's `EVR-…` reference. */
   VENUE_REQUESTS: '/events/:reference/venue-requests',
   EVENT_EQUIPMENT: '/events/:reference/equipment',
+  LEAD_QUEUE: '/staff/queue',
 } as const
 
 export type RoutePath = (typeof ROUTES)[keyof typeof ROUTES]
