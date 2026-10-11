@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-10-11
 - **Story:** SCRUM-45 Check whether enough equipment is free; SCRUM-46 Reserve equipment
-- **Extends:** [ADR-0014](0014-equipment-type-location-and-quantity.md): what is subtracted from `total_quantity`; [ADR-0015](0015-in-app-notifications.md) and [ADR-0018](0018-least-loaded-coordinator-and-event-history.md): a new notification kind and a new history kind; [ADR-0019](0019-event-equipment-lines.md) and [ADR-0022](0022-equipment-awaiting-action.md): what reserving does to an equipment line (nothing, for now); [ADR-0025](0025-event-edits-significant-changes-and-history.md): history entries hidden from the organiser
+- **Extends:** [ADR-0014](0014-equipment-type-location-and-quantity.md): what is subtracted from `total_quantity`; [ADR-0015](0015-in-app-notifications.md) and [ADR-0018](0018-least-loaded-coordinator-and-event-history.md): a new notification kind and a new history kind; [ADR-0019](0019-event-equipment-lines.md) and [ADR-0022](0022-equipment-awaiting-action.md): what reserving does to an equipment line (nothing, for now), and who may read an event's equipment (as its lines, ADR-0019 and [ADR-0034](0034-coordinators-see-only-their-own-events.md)); [ADR-0025](0025-event-edits-significant-changes-and-history.md): history entries hidden from the organiser
 
 ## Context
 SCRUM-45's ACs: ten projectors held and four reserved for an overlapping event leave six available (AC1); damaged or under-maintenance units are excluded (AC2); a shortfall is reported when more is requested than is available (AC3); availability is calculated for the event's exact start and end, not the whole day (AC4); two events that don't overlap both see the same equipment (AC5).
@@ -91,6 +91,7 @@ Its downgrade:
 - [ ] **The audit of the change (its AC4).** `recorded_by` and `recorded_at` say who first recorded a row and when, but nothing records who resolved it, or any change after that. The audit trail or history of status changes is SCRUM-47's to design. It may add columns such as `resolved_by`.
 - [ ] **Flagging the reservations that depend on newly affected items (its AC3).** Reservations are per type, by quantity (`EquipmentReservation.quantity`), not per item. So SCRUM-47 must decide how an out-of-service unit maps to the reservations it affects. One example: flag the overlapping reservations of that type whose total now exceeds `total_quantity − out-of-service`. **This is an open design question left to SCRUM-47.** Nothing here flags or releases a reservation when units break: availability just floors at 0.
 - [ ] **The safety-check consequence (its AC5).**
+- [ ] **Take the reserve guard's lock.** Whatever writes or resolves an `equipment_out_of_service` row must first lock the type's row with `_locked_equipment_type` (in `app/modules/equipment/services.py`, section 3), in the same transaction. Otherwise a reservation counting what is free can miss units that break at the same moment, and the two together commit more than is held. With the lock, the write waits for a reservation in progress (or the reservation for the write), so each counts the other.
 - [ ] **Period and items.** Decide whether out-of-service rows become bound to a period (for example, maintenance from–to, so they reduce only overlapping periods) or tracked per item. Either one changes `_out_of_service_quantity`, the table (a migration) and the "every period" rule above.
 
 **SCRUM-47 must not:**
@@ -113,6 +114,7 @@ A second reservation of the same type waits for the lock until the first commits
 **Limits, stated plainly:**
 - SQLite ignores `FOR UPDATE`. The unit tests prove ordering, not blocking. `test_what_is_free_is_counted_after_the_equipment_type_is_locked` hooks `do_orm_execute`: when a statement compiled with the **Postgres** dialect selects from `equipment_types` `FOR UPDATE`, it inserts a competing reservation, and the test checks the competitor's units are counted. It goes red if the lock is removed or the count moves before it. `test_the_locked_read_replaces_what_the_session_already_holds` covers `populate_existing`.
 - **That Postgres really blocks the second transaction is unverified here.** No database credentials were available. `flask db upgrade`, `flask db check` and the downgrade → upgrade replay of 0021 were not run either. CI runs them. `flask db heads` shows the single head `0021_add_equipment_reservations`.
+- **Only reserving takes the lock today.** Nothing writes `equipment_out_of_service` yet (SCRUM-47 must take the lock when it does, section 2). SCRUM-27's `PATCH /api/equipment/types/<id>` can lower `total_quantity` without it, so a cut made while a reservation is being counted isn't seen by that reservation. That is a follow-up (Tickets to open).
 - The guard relies on READ COMMITTED, Postgres's default, where each query sees what was committed before it started. Under a stricter isolation level the count after the lock could use a snapshot taken before it, so the guard would need rethinking.
 
 ### 4. The audit trail (beyond the Jira ACs)
@@ -132,14 +134,14 @@ After the reservation's commit, `reserve_equipment` calls `events.services.notif
 - **Nobody assigned.** The reservation stands, nobody is notified, and `event_request_unassigned reference=…` is logged.
 
 ### 6. Other decisions
-- **The event is named by its `EVR-` reference** in routes and services, with case and surrounding spaces ignored (ADR-0004), as everywhere else. The equipment module gets everything it needs from `events.services.get_event_equipment_need`, which returns an `EventEquipmentNeed` (`event_id`, `starts_at`, `ends_at`, `requested`, `accepts_reservations`), so it never imports event models. Each module imports the other's `services` *module* (`events_services` / `equipment_services`), not its names. That is what lets them import each other.
+- **The event is named by its `EVR-` reference** in routes and services, with case and surrounding spaces ignored (ADR-0004), as everywhere else. The equipment module gets everything it needs from the events module, as an `EventEquipmentNeed` (`event_id`, `starts_at`, `ends_at`, `requested`, `accepts_reservations`), so it never imports event models. `get_event_equipment_need(reference)` finds any event but a draft, for reserving. `get_event_equipment_need_for_viewer(viewer_id, reference, viewer_role=...)` finds it only for a viewer who may read its equipment (below), for the two reads; it shares that check with `list_equipment_lines`. Each module imports the other's `services` *module* (`events_services` / `equipment_services`), not its names. That is what lets them import each other.
 - **Reservations are additive rows.** Each call adds one `equipment_reservations` row, holding the event's period copied at reserving time. Several rows for one event and type add up. A type the event didn't request can be reserved too.
 - **Which events take reservations:**
   * An event that is `completed`, `cancelled` or `rejected` (`EQUIPMENT_NOT_NEEDED_STATUSES`, the set ADR-0022 uses) is a `409 equipment_not_reservable`, with the message "Equipment can't be reserved for an event that is completed, cancelled or rejected." (`RESERVATIONS_CLOSED_MESSAGE`).
   * A draft or an unknown reference is `404` (ADR-0024).
   * An incomplete period is `409` (section 1).
   * Any other status may take reservations, including `submitted`. So may a `confirmed` event whose end has passed but that isn't yet marked completed.
-- **Validation.** `EquipmentUnitsSchema` takes `equipment_type_id` and `quantity`, both whole numbers of at least 1, and nothing else. `EditEquipmentLineSchema` (ADR-0019) now extends it rather than repeating the two fields. The checks run in this order:
+- **Validation.** `EquipmentUnitsSchema` takes `equipment_type_id` and `quantity`, both whole numbers of at least 1, and nothing else. The two fields are `PositiveId` and `PositiveQuantity` from `app/common/fields.py`, which `EditEquipmentLineSchema` (ADR-0019) uses too, with the same messages. The events schemas therefore never import the equipment module's: modules meet only through their services. The checks run in this order:
   1. The body: `400`.
   2. The event: `404`, or `409` for an incomplete period.
   3. Whether it takes reservations: `409`.
@@ -157,17 +159,18 @@ After the reservation's commit, `reserve_equipment` calls `events.services.notif
 
 | Route | Roles | Reply |
 |---|---|---|
-| `GET /api/equipment/events/<reference>/availability` | `INTERNAL_ROLES` | `200`, list of `{equipment_type_id, equipment_type_name, available, requested, shortfall}` |
+| `GET /api/equipment/events/<reference>/availability` | `technical_support_staff` (any event but a draft), `event_coordinator` (an event assigned to them) | `200`, list of `{equipment_type_id, equipment_type_name, available, requested, shortfall}` |
 | `POST /api/equipment/events/<reference>/reservations` | `technical_support_staff` | `201`, the reservation |
-| `GET /api/equipment/events/<reference>/reservations` | `INTERNAL_ROLES` | `200`, oldest first (`created_at`, then `id`), each `{id, equipment_type_id, equipment_type_name, quantity, starts_at, ends_at, reserved_by, created_at}`, times in business time with an offset (ADR-0009) |
+| `GET /api/equipment/events/<reference>/reservations` | `technical_support_staff` (any event but a draft), `event_coordinator` (an event assigned to them) | `200`, oldest first (`created_at`, then `id`), each `{id, equipment_type_id, equipment_type_name, quantity, starts_at, ends_at, reserved_by, created_at}`, times in business time with an offset (ADR-0009) |
 
-Neither read is scoped to the assigned coordinator, unlike the event record (ADR-0034). It matches the event history route, which any internal role can read.
+**Both reads are scoped like the event's equipment lines** (`GET /api/events/requests/<reference>/equipment`, ADR-0019). Technical Support Staff read any event's equipment: arranging it is their job. An Event Coordinator reads only an event assigned to them; another coordinator's event, or one nobody is assigned, is the same `404` "Event request not found." as an unknown reference (ADR-0012), as the coordinator's event record is (ADR-0034). Venue Staff get `403`: equipment is Technical Support's and the coordinator's business, not theirs. The event history route lets any internal role read any event, but following it here would show every coordinator the equipment of events that aren't theirs.
 
 **Frontend:**
-- `/events/:reference/equipment` (`ROUTES.EVENT_EQUIPMENT`, `eventEquipmentPath`) shows the availability table and the reservations. It is guarded by `RequireRole(INTERNAL_ROLES)`.
+- `/events/:reference/equipment` (`ROUTES.EVENT_EQUIPMENT`, `eventEquipmentPath`) shows the availability table and the reservations. It is guarded by `RequireRole(EQUIPMENT_READER_ROLES)` (Technical Support and coordinators, in `config/roles.ts`); the backend decides which events a coordinator may open.
 - Only `EQUIPMENT_RESERVER_ROLES` (Technical Support) get a reserve form per row.
 - The tables use a new shared `DataTable` in `components/ui`.
-- The mock backend (`mocks/handlers/equipment.ts`) mirrors the routes, refusals and messages, with a `technicalSupport` mock account.
+- The mock backend (`mocks/handlers/equipment.ts`) mirrors the routes, refusals and messages, including the read scoping: its open event is assigned to the mock coordinator, its closed one to nobody, and a `venueStaff` account is refused. It adds `technicalSupport` and `venueStaff` mock accounts.
+- After a reservation, refused or not, the page reads the event's availability and reservations again, so a refusal like "Only N available" leaves the table showing the backend's current numbers.
 - Nothing links to the page yet: there is no event record page in the frontend.
 
 ### 7. Deferred, with their owners
@@ -181,13 +184,17 @@ Neither read is scoped to the assigned coordinator, unlike the event record (ADR
 - An event can hold reservations for types it never requested, and its record shows them.
 - Reservations of cancelled events keep their units until a release story exists. Reservations of events whose times change keep the old period.
 - SCRUM-31's decision lock (`_has_arrangements`, ADR-0028) counts equipment lines, not reservations. A reservation made without a line doesn't lock the decision.
-- Merging the sibling branches that also add migrations will need `down_revision` fixed so there is one head.
+- **Merging with the sibling migrations.** Migrations 0020 (SCRUM-42) and 0022 (SCRUM-95), on their own branches, also revise `0019_add_review_kinds` and add `notification_kind` values; 0020 also adds `event_history_entry_kind` values. Whichever of the three lands later must:
+  1. set its `down_revision` to the head it lands on, so there is one head (`flask db heads`);
+  2. add the values the earlier ones added to `PREVIOUS_HISTORY_KIND_VALUES` / `PREVIOUS_NOTIFICATION_KIND_VALUES` in its `_rebuild_enum` downgrade, or downgrading it drops a sibling's enum value along with its own;
+  3. for 0021, point `HISTORY_MIGRATION_BELOW` / `NOTIFICATION_MIGRATION_BELOW` in `backend/tests/events/test_equipment_reservations_migration.py` at the migration now below it, which checks step 2.
 
 ## Tickets to open
 - Release an event's reservations when it is cancelled or rejected (and decide what completion does).
 - Move a reservation's period when the event's date or times are edited, or flag it.
 - Clear or partly resolve an `EventEquipmentLine` once it is reserved, so SCRUM-38's list drops it (ADR-0019, ADR-0022).
 - Decide per-item versus per-type reservations together with SCRUM-47's out-of-service flagging.
+- Make SCRUM-27's `PATCH /api/equipment/types/<id>` take `_locked_equipment_type` when it changes `total_quantity`, so lowering it serialises with reserving (section 3).
 - Frontend integration (contract) tests for the three equipment routes in `frontend/src/integration/`. They need a seeded Technical Support account and a submitted event.
 - Link the equipment page from the event record page once one exists (SCRUM-24/30 UI).
 - Tidy-ups:
