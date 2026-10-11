@@ -3,13 +3,13 @@
 Submitting a draft runs it back through SCRUM-19's own rules (ADR-0001 to ADR-0003,
 ADR-0024): a detail the draft never got, or one that fails a rule, is reported
 exactly as ``POST /requests`` reports it, and nothing is saved unless every rule
-passes. A submitted draft keeps its reference (ADR-0004), is assigned to the
-least-loaded Event Coordinator with its assignment recorded and notified, exactly as
-a fresh submission is (SCRUM-30 AC1, AC2, ADR-0018), and becomes visible to the
+passes. A submitted draft keeps its reference (ADR-0004), is left for the Event
+Coordinator Lead to assign exactly as a fresh submission is (SCRUM-95 AC1, ADR-0036,
+superseding SCRUM-30's least-loaded assignment), and becomes visible to the
 organiser's colleagues once it is no longer a draft (SCRUM-7, ADR-0024).
 
 Runs against ``db_session`` with ``saved_users``: organiser 7 in client organisation
-3, Event Coordinators 3 and 9 (both unloaded, so 3 is least-loaded on a tie).
+3, and Event Coordinators 3 and 9, either of whom SCRUM-30 would have assigned.
 """
 
 from __future__ import annotations
@@ -31,7 +31,8 @@ from app.modules.events.services import (
     list_event_requests_for_organiser,
     submit_draft_event_request,
 )
-from tests.events.cases import DRAFT_REFERENCE
+from app.modules.notifications.services import NotificationKind
+from tests.events.cases import COMPLETE_DRAFT_PAYLOAD, DRAFT_REFERENCE
 
 pytestmark = pytest.mark.scrum_20
 
@@ -40,15 +41,6 @@ COLLEAGUE_ID = 8
 
 SaveDraft = Callable[[int, dict[str, Any]], EventRequest]
 ReloadEventRequest = Callable[[int], EventRequest]
-
-#: A draft with every field a submission needs.
-COMPLETE_DRAFT_PAYLOAD = {
-    "name": "Partner Summit",
-    "proposed_date": "2026-10-15",
-    "start_time": "09:00",
-    "end_time": "17:00",
-    "expected_attendance": 250,
-}
 
 #: A detail submission requires that the draft was never given.
 INCOMPLETE_DETAIL_FIELDS = ["proposed_date", "start_time", "end_time", "expected_attendance"]
@@ -143,25 +135,24 @@ def test_a_submitted_drafts_end_date_defaults_to_its_proposed_date(
 
 
 @pytest.mark.scrum_39
-def test_a_submitted_draft_goes_to_the_least_loaded_coordinator_with_history_and_a_notification(
+@pytest.mark.scrum_95
+def test_a_submitted_draft_waits_unassigned_with_no_history_or_notice(
     saved_users: list[User],
     save_draft: SaveDraft,
     coordinator_of: Callable[[int], int | None],
     history_of: Callable[[int], list[tuple[EventHistoryKind, int | None, dict[str, Any] | None]]],
-    notifications_of: Callable[[int], list[tuple[Any, ...]]],
+    assignment_notices_of: Callable[[int], list[NotificationKind]],
     db_session: Session,
     today: date,
 ) -> None:
-    """Also SCRUM-39 AC4's guard: the coordinator of a submitted draft is told."""
+    """Also SCRUM-39 AC4's guard: with nobody assigned, no coordinator is told."""
     draft = save_draft(ORGANISER_ID, COMPLETE_DRAFT_PAYLOAD)
 
     _submit(DRAFT_REFERENCE, db_session, today)
 
-    assert coordinator_of(draft.id) == 3
-    assert history_of(draft.id) == [
-        (EventHistoryKind.COORDINATOR_ASSIGNED, None, {"coordinator_id": 3})
-    ]
-    assert len(notifications_of(3)) == 1
+    assert coordinator_of(draft.id) is None
+    assert history_of(draft.id) == []
+    assert assignment_notices_of(3) == []
 
 
 def test_colleagues_see_the_request_once_it_is_submitted(

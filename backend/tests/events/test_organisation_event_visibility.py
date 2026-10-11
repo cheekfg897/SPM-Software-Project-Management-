@@ -205,9 +205,12 @@ def test_organisers_of_the_same_organisation_see_the_same_list(
 
 
 def test_a_colleague_can_open_a_request_they_did_not_submit(
-    other_organisers: list[User], submit_valid_request: Callable[..., EventRequest]
+    other_organisers: list[User],
+    submit_valid_request: Callable[..., EventRequest],
+    lead_assigns: Callable[[EventRequest, int], None],
 ) -> None:
-    submitted = submit_valid_request()  # by organiser 7, assigned to coordinator 3
+    submitted = submit_valid_request()  # by organiser 7
+    lead_assigns(submitted, 3)  # the Lead gives it to coordinator 3 (SCRUM-95 AC3)
 
     record = get_event_record_for_organiser(COLLEAGUE_ID, "EVR-AAAAAAAA")
 

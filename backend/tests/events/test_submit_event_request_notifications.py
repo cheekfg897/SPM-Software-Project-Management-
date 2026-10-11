@@ -1,21 +1,22 @@
-"""Unit tests for who is notified when an event request is submitted.
+"""Unit tests for who is notified when an event request is submitted: nobody.
 
-SCRUM-28 "Receive notifications about my events" AC3 raises a new request to Event
-Coordinators; SCRUM-30 "Assign a coordinator to a submitted event" AC4 tells the
-coordinator it is assigned to. Since SCRUM-30, the assigned coordinator is the only
-one it is raised to: they get one ``coordinator_assigned`` notification (ADR-0018,
-replacing ADR-0015's notice to every coordinator). Since SCRUM-39 the organiser is
-also told, with ``request_assigned`` (``test_organiser_assignment_notifications.py``),
-and nobody else is notified.
-Nothing produces ``event_request_submitted`` any more. The same notice is how
-SCRUM-39 "Be notified about review and approval decisions" AC4 tells the new
-coordinator on assignment, so these tests are also its regression guards.
+SCRUM-28 "Receive notifications about my events" AC3 raised a new request to the
+Event Coordinators, and SCRUM-30 "Assign a coordinator to a submitted event" AC4
+narrowed that to the one it was assigned to, with ``coordinator_assigned``
+(ADR-0018); SCRUM-39 added the organiser's ``request_assigned`` (ADR-0030).
+SCRUM-95 supersedes both on this path: submitting assigns nobody (AC1, ADR-0036), so
+neither notice is raised and the request waits in the Event Coordinator Lead's queue.
+These tests are the regression guard that submission stays silent about assignment.
+Nothing produces ``event_request_submitted`` any more either.
 
-Runs against ``db_session`` with the ``saved_users`` fixture, so the coordinators are
-found by a real query; coordinator 3 is the one assigned. With no coordinator at all,
-nobody is notified (``test_assign_coordinator.py``). A failed notification write
-doesn't fail the saved request or the other notice (ADR-0015); that test uses
-``mock_session``.
+Where those two notices are raised now is tested where it happens: the Lead's
+assignment (SCRUM-95) and a reassignment, in
+``test_reassign_coordinator_notifications.py``, which also owns ADR-0015's
+lost-notice cases. Submission has no notification write left to lose, so the only
+commit it makes is the request's own; that test uses ``mock_session``.
+
+Runs against ``db_session`` with the ``saved_users`` fixture, so the Event
+Coordinators really are there to be found and still nobody is told.
 """
 
 from __future__ import annotations
@@ -34,37 +35,44 @@ from app.modules.events.models import EventRequest
 from app.modules.events.services import submit_event_request
 from app.modules.notifications.schemas import MESSAGE_BY_KIND
 from app.modules.notifications.services import NotificationKind
-from tests.events.cases import LOST_NOTIFICATION_CASES
 
-pytestmark = [pytest.mark.scrum_28, pytest.mark.scrum_30, pytest.mark.scrum_39]
+pytestmark = [
+    pytest.mark.scrum_28,
+    pytest.mark.scrum_30,
+    pytest.mark.scrum_39,
+    pytest.mark.scrum_95,
+]
 
 SubmitValidRequest = Callable[..., EventRequest]
 NotificationsOf = Callable[[int], list[tuple[Any, ...]]]
-
-#: What the assignment notification records, in the order ``notifications_of``
-#: lists it: event request id, reference, name, kind, read at.
-ASSIGNED_NOTIFICATION = (
-    1,
-    "EVR-AAAAAAAA",
-    "ConnectSphere Partner Summit",
-    NotificationKind.COORDINATOR_ASSIGNED,
-    None,
-)
+AssignmentNoticesOf = Callable[[int], list[NotificationKind]]
 
 
 # --------------------------------------------------------------------------
-# SCRUM-28 AC3, SCRUM-30 AC4 — of the staff, only the assigned coordinator is told, once
+# SCRUM-95 AC1 — no coordinator is assigned, so no assignment notice is raised
 # --------------------------------------------------------------------------
 
 
-def test_the_assigned_coordinator_gets_one_assignment_notification(
+def test_neither_coordinator_is_told_a_request_is_theirs(
     saved_users: list[User],
     submit_valid_request: SubmitValidRequest,
-    notifications_of: NotificationsOf,
+    assignment_notices_of: AssignmentNoticesOf,
+) -> None:
+    """Coordinator 3 would have had it under ADR-0018, and 9 on their next turn."""
+    submit_valid_request()
+
+    assert assignment_notices_of(3) == []
+    assert assignment_notices_of(9) == []
+
+
+def test_the_organiser_is_not_told_a_coordinator_was_assigned(
+    saved_users: list[User],
+    submit_valid_request: SubmitValidRequest,
+    assignment_notices_of: AssignmentNoticesOf,
 ) -> None:
     submit_valid_request()
 
-    assert notifications_of(3) == [ASSIGNED_NOTIFICATION]
+    assert assignment_notices_of(7) == []
 
 
 @pytest.mark.parametrize(
@@ -98,6 +106,7 @@ def test_a_rejected_request_notifies_nobody(
 
 
 def test_the_assignment_notification_says_what_happened() -> None:
+    """The message the Lead's assignment and a reassignment both send."""
     assert (
         MESSAGE_BY_KIND[NotificationKind.COORDINATOR_ASSIGNED]
         == "You have been assigned to coordinate this event."
@@ -105,24 +114,23 @@ def test_the_assignment_notification_says_what_happened() -> None:
 
 
 # --------------------------------------------------------------------------
-# ADR-0015 — a failed notification write doesn't fail the saved request
+# ADR-0015 — submission has no notification write left to lose
 # --------------------------------------------------------------------------
 
 
 @pytest.mark.usefixtures("organiser_is_found")
-@pytest.mark.parametrize(("commits", "lost_kind"), LOST_NOTIFICATION_CASES)
-def test_a_failed_notification_write_still_returns_the_saved_request(
+def test_submitting_commits_once_and_sends_nothing(
     mock_session: MagicMock,
     valid_event_request_payload: dict[str, Any],
     today: date,
     caplog: pytest.LogCaptureFixture,
-    commits: list[Exception | None],
-    lost_kind: str,
 ) -> None:
-    """The request is committed first; failing its reply would invite a resubmission."""
-    mock_session.scalars.return_value = [3]  # one Event Coordinator, who is assigned
-    mock_session.commit.side_effect = commits
+    """One commit, the request's own: the two notices it used to send are gone.
 
+    ADR-0015's lost-notice cases belong to the paths that still raise those notices;
+    ``LOST_NOTIFICATION_CASES`` drives them in
+    ``test_reassign_coordinator_notifications.py``.
+    """
     with caplog.at_level(logging.WARNING, logger="connectsphere.events"):
         event_request = submit_event_request(
             7,
@@ -133,8 +141,8 @@ def test_a_failed_notification_write_still_returns_the_saved_request(
         )
 
     assert event_request.reference == "EVR-AAAAAAAA"
-    assert mock_session.commit.call_count == 3
-    mock_session.rollback.assert_called_once()
+    assert mock_session.commit.call_count == 1
+    mock_session.rollback.assert_not_called()
     assert [record.getMessage() for record in caplog.records] == [
-        f"event_request_notification_failed reference=EVR-AAAAAAAA kind={lost_kind}"
+        "event_request_unassigned reference=EVR-AAAAAAAA"
     ]

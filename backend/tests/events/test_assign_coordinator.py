@@ -1,22 +1,25 @@
 """Unit tests for SCRUM-30 "Assign a coordinator to a submitted event": the assignment.
 
-AC1: a submitted request is assigned to exactly one Event Coordinator. ADR-0018 sets
-the rule: the coordinator with the fewest open (``submitted`` or ``under_review``)
-requests, lowest user id on a tie; with no Event Coordinator at all, the request is
-saved unassigned and a warning is logged. AC2: a request has one ``coordinator_id``,
-and the assignment is written once to the event history in the same commit, so a
-retried reference collision leaves exactly one.
+AC1 assigned a submitted request to the Event Coordinator with the fewest open
+requests, lowest user id on a tie (ADR-0018). SCRUM-95 supersedes that: a submitted
+request is assigned to nobody and waits for the Event Coordinator Lead to give it to
+a coordinator (SCRUM-95 AC1, ADR-0036), so the least-loaded rule and the statuses it
+counted are gone from the code. What stays here is the regression guard that nothing
+chooses a coordinator on submission, whatever the coordinators are holding.
+
+AC2 — a request has one ``coordinator_id`` and its assignment is written once to the
+event history — is still the rule, but submission is no longer where it happens: the
+Lead's assignment is, and SCRUM-95 tests it there. On submission the history stays
+empty, including when a reference collision is retried.
 
 Runs against ``db_session`` with ``saved_users`` (Event Coordinators 3 and 9, Venue
-Staff 4, Event Organiser 7), so the role filter, the grouped count and the tie-break
-are real SQL.
+Staff 4, Event Organiser 7), so a coordinator really is there to be chosen.
 """
 
 from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from datetime import datetime, timezone
 from typing import Any
 
 import pytest
@@ -24,7 +27,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.modules.auth.models import User
-from app.modules.auth.permissions import Role
 from app.modules.events.models import (
     EventHistoryEntry,
     EventHistoryKind,
@@ -41,20 +43,6 @@ SubmitValidRequest = Callable[..., EventRequest]
 HistoryOf = Callable[[int], list[tuple[EventHistoryKind, int | None, dict[str, Any] | None]]]
 HoldRequest = Callable[..., None]
 CoordinatorOf = Callable[[int], int | None]
-
-#: Who each status sends the next request to, when coordinator 3 already holds one
-#: request in that status and coordinator 9 holds none (ADR-0018).
-NEXT_ASSIGNEE_BY_STATUS = [
-    (EventRequestStatus.DRAFT, 3),
-    (EventRequestStatus.SUBMITTED, 9),
-    (EventRequestStatus.UNDER_REVIEW, 9),
-    (EventRequestStatus.AWAITING_CLARIFICATION, 9),
-    (EventRequestStatus.APPROVED, 9),
-    (EventRequestStatus.CONFIRMED, 3),
-    (EventRequestStatus.COMPLETED, 3),
-    (EventRequestStatus.CANCELLED, 3),
-    (EventRequestStatus.REJECTED, 3),
-]
 
 
 @pytest.fixture()
@@ -78,80 +66,25 @@ def hold_request(save: Callable[..., None], make_event_request: MakeEventRequest
 
 
 # --------------------------------------------------------------------------
-# AC1 — a submitted request goes to one Event Coordinator: the least loaded
+# AC1, superseded by SCRUM-95 — a submitted request goes to nobody
 # --------------------------------------------------------------------------
 
 
-def test_a_submitted_request_is_assigned_to_an_event_coordinator(
-    saved_users: list[User],
-    submit_valid_request: SubmitValidRequest,
-    coordinator_of: CoordinatorOf,
-) -> None:
-    submitted = submit_valid_request()
-
-    assert coordinator_of(submitted.id) == 3
-    assert submitted.status is EventRequestStatus.SUBMITTED
-
-
-@pytest.mark.parametrize(
-    ("open_for_3", "open_for_9", "expected"),
-    [(0, 0, 3), (1, 0, 9), (1, 1, 3), (2, 1, 9), (0, 1, 3)],
-    ids=["tie-lowest-id", "three-is-busier", "busy-tie", "three-is-busier-still", "nine-is-busier"],
-)
-def test_the_coordinator_with_the_fewest_open_requests_is_assigned(
-    saved_users: list[User],
-    hold_request: HoldRequest,
-    submit_valid_request: SubmitValidRequest,
-    coordinator_of: CoordinatorOf,
-    open_for_3: int,
-    open_for_9: int,
-    expected: int,
-) -> None:
-    # In "busy-tie", Venue Staff 4 and Organiser 7 hold no requests and would win if
-    # candidates weren't limited to Event Coordinators.
-    for _ in range(open_for_3):
-        hold_request(3)
-    for _ in range(open_for_9):
-        hold_request(9)
-
-    submitted = submit_valid_request()
-
-    assert coordinator_of(submitted.id) == expected
-
-
-@pytest.mark.parametrize(
-    ("status", "expected"),
-    NEXT_ASSIGNEE_BY_STATUS,
-    ids=[status.value for status, _ in NEXT_ASSIGNEE_BY_STATUS],
-)
-def test_only_open_statuses_count_towards_a_coordinators_load(
-    saved_users: list[User],
-    hold_request: HoldRequest,
-    submit_valid_request: SubmitValidRequest,
-    coordinator_of: CoordinatorOf,
-    status: EventRequestStatus,
-    expected: int,
-) -> None:
-    hold_request(3, status)
-
-    submitted = submit_valid_request()
-
-    assert coordinator_of(submitted.id) == expected
-
-
 @pytest.mark.scrum_39
-def test_with_no_event_coordinator_the_request_is_saved_unassigned_and_logged(
-    save: Callable[..., None],
-    make_user: Callable[..., User],
+@pytest.mark.scrum_95
+def test_a_submitted_request_is_saved_unassigned_and_logged(
+    saved_users: list[User],
     submit_valid_request: SubmitValidRequest,
     history_of: HistoryOf,
     coordinator_of: CoordinatorOf,
     db_session: Session,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Also SCRUM-39's guard: with nobody assigned, not even the organiser is told."""
-    save(make_user(role=Role.EVENT_ORGANISER, user_id=7, organisation_id=3))
+    """Also SCRUM-39's guard: with nobody assigned, not even the organiser is told.
 
+    Event Coordinators 3 and 9 are both there and both free, so until SCRUM-95 this
+    request would have gone to coordinator 3.
+    """
     with caplog.at_level(logging.WARNING, logger="connectsphere.events"):
         submitted = submit_valid_request()
 
@@ -164,49 +97,65 @@ def test_with_no_event_coordinator_the_request_is_saved_unassigned_and_logged(
     ]
 
 
-# --------------------------------------------------------------------------
-# AC2 — one assignment, recorded once in the event history
-# --------------------------------------------------------------------------
-
-
-def test_assignment_is_recorded_once_in_the_event_history(
+@pytest.mark.scrum_95
+@pytest.mark.parametrize(
+    ("open_for_3", "open_for_9"),
+    [(0, 0), (1, 0), (1, 1), (2, 1), (0, 1)],
+    ids=["both-free", "three-is-busier", "busy-tie", "three-is-busier-still", "nine-is-busier"],
+)
+def test_a_coordinators_load_does_not_decide_who_gets_it(
     saved_users: list[User],
+    hold_request: HoldRequest,
     submit_valid_request: SubmitValidRequest,
-    history_of: HistoryOf,
-    db_session: Session,
+    coordinator_of: CoordinatorOf,
+    open_for_3: int,
+    open_for_9: int,
 ) -> None:
-    before = datetime.now(timezone.utc)
+    """The load table ADR-0018 chose by: no arrangement of it assigns anyone now."""
+    for _ in range(open_for_3):
+        hold_request(3)
+    for _ in range(open_for_9):
+        hold_request(9)
 
     submitted = submit_valid_request()
 
-    after = datetime.now(timezone.utc)
-    assert history_of(submitted.id) == [
-        (EventHistoryKind.COORDINATOR_ASSIGNED, None, {"coordinator_id": 3})
-    ]
-    entry = db_session.scalars(select(EventHistoryEntry)).one()
-    assert before <= entry.occurred_at <= after
+    assert coordinator_of(submitted.id) is None
 
 
-def test_a_reference_collision_leaves_one_assignment_for_the_saved_request(
+# --------------------------------------------------------------------------
+# AC2 — the assignment is recorded once, and submission is not where it happens
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.scrum_95
+def test_submitting_records_nothing_in_the_event_history(
+    saved_users: list[User], submit_valid_request: SubmitValidRequest, db_session: Session
+) -> None:
+    """The Lead's assignment writes the first entry a request gets (SCRUM-95 AC3)."""
+    submit_valid_request()
+
+    assert db_session.scalars(select(EventHistoryEntry)).all() == []
+
+
+@pytest.mark.scrum_95
+def test_a_retried_reference_collision_leaves_one_unassigned_request(
     saved_users: list[User],
     save: Callable[..., None],
     make_event_request: MakeEventRequest,
     submit_valid_request: SubmitValidRequest,
-    history_of: HistoryOf,
     coordinator_of: CoordinatorOf,
     db_session: Session,
 ) -> None:
+    """The rolled-back first attempt leaves behind neither a request nor an entry."""
     save(make_event_request(reference="EVR-AAAAAAAA"))
 
     submitted = submit_valid_request("EVR-AAAAAAAA", "EVR-BBBBBBBB")
 
     assert submitted.reference == "EVR-BBBBBBBB"
-    assert coordinator_of(submitted.id) == 3
-    assert history_of(submitted.id) == [
-        (EventHistoryKind.COORDINATOR_ASSIGNED, None, {"coordinator_id": 3})
-    ]
-    # The rolled-back first attempt left no entry behind.
-    assert len(db_session.scalars(select(EventHistoryEntry)).all()) == 1
+    assert coordinator_of(submitted.id) is None
+    saved = db_session.scalars(select(EventRequest.reference)).all()
+    assert sorted(saved) == ["EVR-AAAAAAAA", "EVR-BBBBBBBB"]
+    assert db_session.scalars(select(EventHistoryEntry)).all() == []
 
 
 def test_coordinator_id_is_not_shown_to_clients(make_event_request: MakeEventRequest) -> None:

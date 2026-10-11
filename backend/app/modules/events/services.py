@@ -22,7 +22,7 @@ from datetime import date, datetime, time, timezone
 from typing import Any
 
 from marshmallow import Schema
-from sqlalchemy import Row, and_, func, or_, select
+from sqlalchemy import Row, and_, or_, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import ColumnElement
@@ -74,19 +74,6 @@ MAX_REFERENCE_ATTEMPTS = 3
 #: One answer for a reference that doesn't exist and one the caller may not see, so a
 #: reference can't be probed (ADR-0012).
 EVENT_REQUEST_NOT_FOUND_MESSAGE = "Event request not found."
-
-#: Statuses in which an assigned coordinator is still working a request, so they count
-#: towards the coordinator's load (ADR-0018). An approved request is still being
-#: planned until it is confirmed (SCRUM-31, ADR-0028), and one awaiting clarification
-#: comes back to its coordinator once the organiser answers (SCRUM-32, ADR-0029).
-OPEN_STATUSES: frozenset[EventRequestStatus] = frozenset(
-    {
-        EventRequestStatus.SUBMITTED,
-        EventRequestStatus.UNDER_REVIEW,
-        EventRequestStatus.AWAITING_CLARIFICATION,
-        EventRequestStatus.APPROVED,
-    }
-)
 
 
 class ReferenceGenerationError(AppError):
@@ -264,64 +251,18 @@ def _organisation_of_organiser(organiser_id: int | str, session: Session) -> int
     return organiser.organisation_id
 
 
-def _open_request_counts(coordinator_ids: list[int], session: Session) -> dict[int, int]:
-    """How many open requests each coordinator holds; 0 for those holding none."""
-    stmt = (
-        select(EventRequest.coordinator_id, func.count())
-        .where(
-            EventRequest.coordinator_id.in_(coordinator_ids),
-            EventRequest.status.in_(OPEN_STATUSES),
-        )
-        .group_by(EventRequest.coordinator_id)
-    )
-    counts = dict.fromkeys(coordinator_ids, 0)
-    for coordinator_id, count in session.execute(stmt):
-        counts[coordinator_id] = count
-    return counts
+def _mark_submitted(event_request: EventRequest) -> None:
+    """Move ``event_request`` to ``submitted`` with no coordinator, uncommitted.
 
-
-def _least_loaded_coordinator(session: Session) -> int | None:
-    """The Event Coordinator with the fewest open requests (SCRUM-30 AC1, ADR-0018).
-
-    The lowest user id wins a tie. ``None`` when there is no Event Coordinator at all.
-    """
-    coordinator_ids = list_user_ids_with_role(Role.EVENT_COORDINATOR, session=session)
-    if not coordinator_ids:
-        return None
-    counts = _open_request_counts(coordinator_ids, session)
-
-    def load_then_id(coordinator_id: int) -> tuple[int, int]:
-        return counts[coordinator_id], coordinator_id
-
-    return min(coordinator_ids, key=load_then_id)
-
-
-def _mark_submitted(
-    event_request: EventRequest, coordinator_id: int | None, session: Session
-) -> None:
-    """Move ``event_request`` to ``submitted`` and assign its coordinator, uncommitted.
-
-    Sets both together, and records the assignment to the event history in the same
-    transaction when there is a coordinator to assign (SCRUM-30 AC1, AC2, ADR-0018).
-    Shared by submitting a new request and submitting a draft (SCRUM-20), so both
-    reach ``submitted`` the same way. Does not commit: the caller decides when.
-
-    Args:
-        event_request: The request being submitted.
-        coordinator_id: The coordinator to assign, or ``None`` to save unassigned.
-        session: Database session the history entry is added to.
+    Nobody is assigned on submission: the request waits in the Event Coordinator
+    Lead's queue until the Lead gives it to a coordinator, which is where its
+    ``coordinator_assigned`` history entry is written (SCRUM-95 AC1, AC3, ADR-0036,
+    superseding SCRUM-30's assignment on submission). Shared by submitting a new
+    request and submitting a draft (SCRUM-20), so both reach ``submitted`` the same
+    way. Does not commit: the caller decides when.
     """
     event_request.status = EventRequestStatus.SUBMITTED
-    event_request.coordinator_id = coordinator_id
-    if coordinator_id is not None:
-        # Same commit as the request: a rolled-back attempt leaves no entry (AC2).
-        record_event_history(
-            event_request,
-            EventHistoryKind.COORDINATOR_ASSIGNED,
-            actor_id=None,
-            details={"coordinator_id": coordinator_id},
-            session=session,
-        )
+    event_request.coordinator_id = None
 
 
 def _raise_notifications(
@@ -373,21 +314,6 @@ def _notify_about_assignment(
     _raise_notifications(
         [event_request.organiser_id], event_request, NotificationKind.REQUEST_ASSIGNED, session
     )
-
-
-def _notify_about_submission(event_request: EventRequest, session: Session) -> None:
-    """Tell the assigned coordinator and the organiser about a new assignment.
-
-    SCRUM-28 AC3 raises a new request to the coordinators; only the assigned one is
-    told (ADR-0018, replacing ADR-0015's notice to every coordinator), and the
-    organiser hears a coordinator has been assigned (SCRUM-39 AC1, ADR-0030). With no
-    coordinator to assign the request stays unassigned and nobody is told; that is
-    logged so someone can pick it up.
-    """
-    if event_request.coordinator_id is None:
-        _warn_unassigned(event_request)
-        return
-    _notify_about_assignment(event_request, event_request.coordinator_id, session)
 
 
 def _save_under_new_reference(
@@ -448,14 +374,12 @@ def submit_event_request(
 
     Validates the payload (AC1-AC4), then saves it with status ``submitted``
     and a fresh reference (AC5), filed under the organiser's client
-    organisation (SCRUM-66 AC4). It is assigned to the Event Coordinator with
-    the fewest open requests, and the assignment is written to its event history
-    (:data:`EventHistoryKind.COORDINATOR_ASSIGNED`) in the same commit (SCRUM-30
-    AC1, AC2, ADR-0018); with no Event Coordinator it is saved unassigned. If the
-    reference is already taken, the save is rolled back and retried with a new
-    one, up to :data:`MAX_REFERENCE_ATTEMPTS` times. Once saved, the assigned
-    coordinator is told it is theirs (SCRUM-28 AC3, SCRUM-30 AC4), and the organiser
-    that a coordinator has been assigned (SCRUM-39 AC1, ADR-0030).
+    organisation (SCRUM-66 AC4). Nobody is assigned to it: it waits unassigned
+    for the Event Coordinator Lead to give it to a coordinator, which supersedes
+    SCRUM-30's least-loaded assignment and SCRUM-28 AC3's notice to the
+    coordinators (SCRUM-95 AC1, ADR-0036). If the reference is already taken,
+    the save is rolled back and retried with a new one, up to
+    :data:`MAX_REFERENCE_ATTEMPTS` times.
 
     Args:
         organiser_id: The caller's user id, taken from their token.
@@ -479,11 +403,9 @@ def submit_event_request(
     data = load_or_raise(SubmitEventRequestSchema(today=today), payload)
     sess = resolve_session(session)
     organisation_id = _organisation_of_organiser(organiser_id, sess)
-    # Chosen before the retry loop: a retry changes nobody's load.
-    coordinator_id = _least_loaded_coordinator(sess)
 
     def submitted_under(reference: str) -> EventRequest:
-        """Build a request under ``reference``, then submit and assign it."""
+        """Build a request under ``reference``, then submit it unassigned."""
         event_request = EventRequest(
             organiser_id=int(organiser_id),
             organisation_id=organisation_id,
@@ -491,12 +413,11 @@ def submit_event_request(
             **data,
         )
         sess.add(event_request)
-        _mark_submitted(event_request, coordinator_id, sess)
+        _mark_submitted(event_request)
         return event_request
 
     event_request = _save_under_new_reference(submitted_under, sess, reference_factory)
-    # Outside the retry: a failed notification commit is not a reference collision.
-    _notify_about_submission(event_request, sess)
+    _warn_unassigned(event_request)
     return event_request
 
 
@@ -946,9 +867,8 @@ def submit_draft_event_request(
     never got, or one that fails a rule (a past date, an end before the start), is
     reported the same way ``POST /requests`` reports it, and nothing changes unless
     every rule passes. Its reference does not change (ADR-0004); like a fresh
-    submission, it is assigned to the least-loaded Event Coordinator, the assignment
-    is recorded to its event history, and that coordinator and the organiser are
-    notified (SCRUM-30 AC1, AC2, AC4, ADR-0018; SCRUM-39 AC1, ADR-0030).
+    submission, it is saved with nobody assigned to it and waits for the Event
+    Coordinator Lead to give it to a coordinator (SCRUM-95 AC1, ADR-0036).
 
     Args:
         organiser_id: The caller's user id, taken from their token.
@@ -973,9 +893,9 @@ def submit_draft_event_request(
     data = load_or_raise(schema, _draft_as_payload(draft, schema))
     for key, value in data.items():
         setattr(draft, key, value)
-    _mark_submitted(draft, _least_loaded_coordinator(sess), sess)
+    _mark_submitted(draft)
     sess.commit()
-    _notify_about_submission(draft, sess)
+    _warn_unassigned(draft)
     return draft
 
 
