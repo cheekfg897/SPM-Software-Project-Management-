@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test'
 
+import { eventEquipmentPath } from '../src/config/routes'
 import { MOCK_ACCOUNTS, mockSessionFor } from '../src/mocks/fixtures/accounts'
+import { MOCK_OPEN_EVENT_REFERENCE } from '../src/mocks/handlers/equipmentFixtures'
 
 /** SCRUM-45/46: a Technical Support member checks and reserves equipment for an event. */
 
@@ -14,7 +16,7 @@ test('Technical Support sees the shortfall, over-reserves, then reserves what is
     SESSION_STORAGE_KEY,
     JSON.stringify(TECHNICAL_SUPPORT_SESSION),
   ] as const)
-  await page.goto('/events/EVR-MOCK0001/equipment')
+  await page.goto(eventEquipmentPath(MOCK_OPEN_EVENT_REFERENCE))
 
   const availability = page.getByRole('table', { name: 'Equipment availability' })
   const projector = availability.getByRole('row').filter({ hasText: 'Projector' })
