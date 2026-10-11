@@ -1,9 +1,7 @@
 import { screen, within } from '@testing-library/react'
 
-import { ROUTES } from '@/config/routes'
-import { MOCK_ACCOUNTS, mockSessionFor } from '@/mocks/fixtures/accounts'
 import { eventEquipmentPath, ROUTES } from '@/config/routes'
-import { ROLE } from '@/config/roles'
+import { MOCK_ACCOUNTS, mockSessionFor } from '@/mocks/fixtures/accounts'
 import { renderApp } from '@/test/render'
 
 // A token the mock backend accepts: the header now asks it for the unread count.

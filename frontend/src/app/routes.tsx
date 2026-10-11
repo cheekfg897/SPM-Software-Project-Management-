@@ -63,6 +63,10 @@ export const appRoutes: RouteObject[] = [
         element: (
           <RequireRole allowedRoles={COORDINATOR_ROLES} loginRoute={ROUTES.STAFF_LOGIN}>
             <VenueRequestsPage />
+          </RequireRole>
+        ),
+      },
+      {
         path: ROUTES.EVENT_EQUIPMENT,
         element: (
           <RequireRole allowedRoles={EQUIPMENT_READER_ROLES} loginRoute={ROUTES.STAFF_LOGIN}>
