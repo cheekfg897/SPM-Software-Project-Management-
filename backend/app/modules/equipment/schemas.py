@@ -132,13 +132,15 @@ class EquipmentReservationSchema(Schema):
     """One reservation as the API shows it, times in business time (SCRUM-46 AC4).
 
     The event is left out: a reservation is always read under the event's reference.
+    ``reserved_by`` is the reserver's full name, never their id, as on the event
+    record; it is ``null`` once their account no longer exists.
     """
 
     id = fields.Integer(dump_only=True)
     equipment_type_id = fields.Integer(dump_only=True)
-    equipment_type_name = fields.String(attribute="equipment_type.name", dump_only=True)
+    equipment_type_name = fields.String(dump_only=True)
     quantity = fields.Integer(dump_only=True)
     starts_at = BusinessDateTime(dump_only=True)
     ends_at = BusinessDateTime(dump_only=True)
-    reserved_by = fields.Integer(dump_only=True)
+    reserved_by = fields.String(dump_only=True, allow_none=True)
     created_at = BusinessDateTime(dump_only=True)
