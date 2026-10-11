@@ -21,7 +21,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.common.database import UTCDateTime
 from app.extensions import db
@@ -121,6 +121,9 @@ class EquipmentReservation(db.Model):  # type: ignore[name-defined]
         onupdate=func.now(),
         nullable=False,
     )
+
+    #: Same module, so an ORM relationship is allowed: it gives the API the type's name.
+    equipment_type: Mapped[EquipmentType] = relationship()
 
 
 class EquipmentOutOfService(db.Model):  # type: ignore[name-defined]
