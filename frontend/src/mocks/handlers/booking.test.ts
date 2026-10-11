@@ -14,12 +14,12 @@ const APPROVED_EVENT = MOCK_BOOKING_EVENTS.approved
 const ROOMY_VENUE = MOCK_BOOKING_VENUES.roomy
 const TINY_VENUE = MOCK_BOOKING_VENUES.tiny
 
-function bookingUrl(eventId: number): string {
-  return `/api/venues/events/${eventId}/booking-requests`
+function bookingUrl(reference: string): string {
+  return `/api/venues/events/${reference}/booking-requests`
 }
 
-function raise(eventId: number, body: Record<string, unknown>) {
-  return apiRequest<Record<string, unknown>>(bookingUrl(eventId), { method: 'POST', body })
+function raise(reference: string, body: Record<string, unknown>) {
+  return apiRequest<Record<string, unknown>>(bookingUrl(reference), { method: 'POST', body })
 }
 
 function validPayload(overrides: Record<string, unknown> = {}) {
@@ -49,7 +49,7 @@ beforeEach(() => {
 
 describe('SCRUM-42 booking mock: raising a request', () => {
   it('saves a Pending request carrying the event details, defaulting occupancy from the event', async () => {
-    const created = await raise(APPROVED_EVENT.id, validPayload())
+    const created = await raise(APPROVED_EVENT.reference, validPayload())
 
     expect(created).toMatchObject({
       event_id: APPROVED_EVENT.id,
@@ -69,7 +69,7 @@ describe('SCRUM-42 booking mock: raising a request', () => {
 
   it('keeps the occupancy, layout and justification it was given', async () => {
     const created = await raise(
-      APPROVED_EVENT.id,
+      APPROVED_EVENT.reference,
       validPayload({
         expected_occupancy: 10,
         required_layout: 'boardroom',
@@ -85,20 +85,25 @@ describe('SCRUM-42 booking mock: raising a request', () => {
   })
 
   it('lists the requests raised, with the details of the event', async () => {
-    await raise(APPROVED_EVENT.id, validPayload())
-    await raise(APPROVED_EVENT.id, validPayload({ venue_id: TINY_VENUE.id, justification: 'x' }))
+    await raise(APPROVED_EVENT.reference, validPayload())
+    await raise(
+      APPROVED_EVENT.reference,
+      validPayload({ venue_id: TINY_VENUE.id, justification: 'x' }),
+    )
 
-    const listed = await apiRequest<{ venue_id: number }[]>(bookingUrl(APPROVED_EVENT.id))
+    const listed = await apiRequest<{ venue_id: number }[]>(bookingUrl(APPROVED_EVENT.reference))
 
     expect(listed.map((request) => request.venue_id)).toEqual([ROOMY_VENUE.id, TINY_VENUE.id])
   })
 
   it('lists nothing for an event with no requests', async () => {
-    expect(await apiRequest(bookingUrl(APPROVED_EVENT.id))).toEqual([])
+    expect(await apiRequest(bookingUrl(APPROVED_EVENT.reference))).toEqual([])
   })
 
   it('asks for a justification when the venue is too small for the occupancy', async () => {
-    const error = await errorOf(raise(APPROVED_EVENT.id, validPayload({ venue_id: TINY_VENUE.id })))
+    const error = await errorOf(
+      raise(APPROVED_EVENT.reference, validPayload({ venue_id: TINY_VENUE.id })),
+    )
 
     expect(error.status).toBe(400)
     expect(error.fieldErrors.justification).toEqual([
@@ -108,7 +113,7 @@ describe('SCRUM-42 booking mock: raising a request', () => {
 
   it('judges suitability by the occupancy of the request, not the event', async () => {
     const created = await raise(
-      APPROVED_EVENT.id,
+      APPROVED_EVENT.reference,
       validPayload({ venue_id: TINY_VENUE.id, expected_occupancy: 5 }),
     )
 
@@ -116,7 +121,7 @@ describe('SCRUM-42 booking mock: raising a request', () => {
   })
 
   it('names every missing required field', async () => {
-    const error = await errorOf(raise(APPROVED_EVENT.id, {}))
+    const error = await errorOf(raise(APPROVED_EVENT.reference, {}))
 
     expect(error.status).toBe(400)
     expect(Object.keys(error.fieldErrors).sort()).toEqual([
@@ -128,25 +133,25 @@ describe('SCRUM-42 booking mock: raising a request', () => {
   })
 
   it('rejects a venue that does not exist', async () => {
-    const error = await errorOf(raise(APPROVED_EVENT.id, validPayload({ venue_id: 999 })))
+    const error = await errorOf(raise(APPROVED_EVENT.reference, validPayload({ venue_id: 999 })))
 
     expect(error.fieldErrors.venue_id).toEqual(['Venue not found.'])
   })
 
   it('refuses a second Pending request for the same venue and period', async () => {
-    await raise(APPROVED_EVENT.id, validPayload())
+    await raise(APPROVED_EVENT.reference, validPayload())
 
-    const error = await errorOf(raise(APPROVED_EVENT.id, validPayload()))
+    const error = await errorOf(raise(APPROVED_EVENT.reference, validPayload()))
 
     expect(error.status).toBe(409)
     expect(error.message).toBe('A pending request for this event, venue and period already exists.')
   })
 
   it('allows another venue at the same time', async () => {
-    await raise(APPROVED_EVENT.id, validPayload())
+    await raise(APPROVED_EVENT.reference, validPayload())
 
     const second = await raise(
-      APPROVED_EVENT.id,
+      APPROVED_EVENT.reference,
       validPayload({ venue_id: TINY_VENUE.id, expected_occupancy: 5 }),
     )
 
@@ -154,7 +159,7 @@ describe('SCRUM-42 booking mock: raising a request', () => {
   })
 
   it('refuses an event that is not approved, naming its status', async () => {
-    const error = await errorOf(raise(MOCK_BOOKING_EVENTS.confirmed.id, validPayload()))
+    const error = await errorOf(raise(MOCK_BOOKING_EVENTS.confirmed.reference, validPayload()))
 
     expect(error.status).toBe(409)
     expect(error.message).toBe(
@@ -163,24 +168,26 @@ describe('SCRUM-42 booking mock: raising a request', () => {
   })
 
   it('answers 404 for an event that is not yours, or does not exist', async () => {
-    const notYours = await errorOf(raise(MOCK_BOOKING_EVENTS.someoneElses.id, validPayload()))
-    const missing = await errorOf(raise(999, validPayload()))
+    const notYours = await errorOf(
+      raise(MOCK_BOOKING_EVENTS.someoneElses.reference, validPayload()),
+    )
+    const missing = await errorOf(raise('EVR-NOSUCH00', validPayload()))
 
     expect([notYours.status, missing.status]).toEqual([404, 404])
   })
 
   it('shows requests on a confirmed event, but 404s on a list of someone elses', async () => {
-    expect(await apiRequest(bookingUrl(MOCK_BOOKING_EVENTS.confirmed.id))).toEqual([])
-    const error = await errorOf(apiRequest(bookingUrl(MOCK_BOOKING_EVENTS.someoneElses.id)))
+    expect(await apiRequest(bookingUrl(MOCK_BOOKING_EVENTS.confirmed.reference))).toEqual([])
+    const error = await errorOf(apiRequest(bookingUrl(MOCK_BOOKING_EVENTS.someoneElses.reference)))
 
     expect(error.status).toBe(404)
   })
 
   it('answers 401 without a token and 403 to anyone but a coordinator', async () => {
     sendRequestsAs(null)
-    const signedOut = await errorOf(raise(APPROVED_EVENT.id, validPayload()))
+    const signedOut = await errorOf(raise(APPROVED_EVENT.reference, validPayload()))
     sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.attendee))
-    const attendee = await errorOf(raise(APPROVED_EVENT.id, validPayload()))
+    const attendee = await errorOf(raise(APPROVED_EVENT.reference, validPayload()))
 
     expect([signedOut.status, attendee.status]).toEqual([401, 403])
   })

@@ -8,8 +8,8 @@ import { BookingRequestForm } from '../components/BookingRequestForm'
 import { BookingRequestList } from '../components/BookingRequestList'
 import { useBookingRequests } from '../hooks'
 
-function EventVenueRequests({ id }: { id: number }) {
-  const requests = useBookingRequests(id)
+function EventVenueRequests({ reference }: { reference: string }) {
+  const requests = useBookingRequests(reference)
 
   return (
     <PageContainer
@@ -33,17 +33,21 @@ function EventVenueRequests({ id }: { id: number }) {
         <h2 id="raise-heading" className="text-xl font-semibold">
           Request a venue
         </h2>
-        <BookingRequestForm eventId={id} />
+        <BookingRequestForm reference={reference} />
       </section>
     </PageContainer>
   )
 }
 
+/** An event reference's shape (ADR-0004); the backend ignores its case and surrounding spaces. */
+const EVENT_REFERENCE_PATTERN = /^EVR-[A-Z0-9]{8}$/i
+
 /** An event's venue requests, and the form to raise another (SCRUM-42). Coordinators only. */
 export function VenueRequestsPage() {
-  const id = Number(useParams().eventId)
-  if (!Number.isInteger(id) || id <= 0) {
+  /* v8 ignore next -- the route always supplies :reference; `?? ''` only satisfies the types */
+  const reference = useParams().reference ?? ''
+  if (!EVENT_REFERENCE_PATTERN.test(reference)) {
     return <NotFoundPage />
   }
-  return <EventVenueRequests id={id} />
+  return <EventVenueRequests reference={reference} />
 }

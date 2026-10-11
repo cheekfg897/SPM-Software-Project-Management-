@@ -33,8 +33,8 @@ function requestFrom(form: FormData): RaiseBookingRequest {
 }
 
 /** Raise a venue request for the event. The list beside it is read again once it succeeds. */
-export function BookingRequestForm({ eventId }: { eventId: number }) {
-  const raise = useRaiseBookingRequest(eventId)
+export function BookingRequestForm({ reference }: { reference: string }) {
+  const raise = useRaiseBookingRequest(reference)
   const fieldErrors = fieldErrorsOf(raise.error)
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
