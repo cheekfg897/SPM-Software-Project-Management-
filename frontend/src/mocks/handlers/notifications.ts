@@ -15,10 +15,19 @@ import { accountForRequest } from './auth'
 
 const NOTIFICATIONS_PATH = '/api/notifications'
 
-const MESSAGES = {
-  coordinatorAssigned: 'You have been assigned to coordinate this event.',
-  equipmentRequested: 'Equipment was requested for an event.',
-  requestSubmitted: 'A new event request was submitted.',
+const KINDS = {
+  coordinatorAssigned: {
+    kind: 'coordinator_assigned',
+    message: 'You have been assigned to coordinate this event.',
+  },
+  equipmentRequested: {
+    kind: 'equipment_requested',
+    message: 'Equipment was requested for an event.',
+  },
+  requestSubmitted: {
+    kind: 'event_request_submitted',
+    message: 'A new event request was submitted.',
+  },
 } as const
 
 /** A notification and whose it is. The recipient is not part of what the backend sends. */
@@ -30,7 +39,7 @@ interface StoredNotification {
 interface SeedOptions {
   id: number
   recipientId: number
-  kind: keyof typeof MESSAGES
+  kind: keyof typeof KINDS
   eventName: string
   createdAt: string
   readAt?: string
@@ -42,8 +51,8 @@ function seed(options: SeedOptions): StoredNotification {
   const reference = `EVR-MOCK${String(options.id).padStart(4, '0')}`
   const notification: Notification = {
     id: options.id,
-    kind: options.kind.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`),
-    message: MESSAGES[options.kind],
+    kind: KINDS[options.kind].kind,
+    message: KINDS[options.kind].message,
     event_reference: reference,
     event_name: options.eventName,
     link: `/events/${reference}`,
@@ -54,12 +63,15 @@ function seed(options: SeedOptions): StoredNotification {
   return { recipientId: options.recipientId, notification }
 }
 
-/** Three each: two unread and one read, the read one without a detail. */
+/**
+ * Three each: two unread and one read, the read one without a detail. They are stored
+ * oldest first, as a table fills, so the list handler has to sort to put the newest first.
+ */
 function seedNotifications(): StoredNotification[] {
   const attendee = MOCK_ACCOUNTS.attendee.id
   const organiser = MOCK_ACCOUNTS.organiser.id
   const coordinator = MOCK_ACCOUNTS.coordinator.id
-  return [
+  const newestFirst = [
     seed({
       id: 1,
       recipientId: attendee,
@@ -133,6 +145,7 @@ function seedNotifications(): StoredNotification[] {
       readAt: '2026-10-01T10:00:00+08:00',
     }),
   ]
+  return newestFirst.reverse()
 }
 
 let stored = seedNotifications()
