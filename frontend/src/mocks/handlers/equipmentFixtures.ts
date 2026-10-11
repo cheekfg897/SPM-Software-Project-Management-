@@ -1,3 +1,5 @@
+import { MOCK_ACCOUNTS } from '../fixtures/accounts'
+
 /**
  * Data for the equipment mock (backend/app/modules/equipment). Every mock event shares one
  * period, so a reservation for one lowers what is free for all of them.
@@ -26,8 +28,18 @@ export const MOCK_EQUIPMENT_TYPES: readonly MockEquipmentType[] = [
   { id: 2, name: 'Microphone', free: 12, requested: 4 },
 ]
 
-/** Events that exist. A closed event is completed, cancelled or rejected: nothing can be reserved. */
-export const MOCK_EVENT_REFERENCES: Record<string, { accepts_reservations: boolean }> = {
-  [MOCK_OPEN_EVENT_REFERENCE]: { accepts_reservations: true },
-  [MOCK_CLOSED_EVENT_REFERENCE]: { accepts_reservations: false },
+interface MockEvent {
+  /** A closed event is completed, cancelled or rejected: nothing can be reserved for it. */
+  accepts_reservations: boolean
+  /** The assigned coordinator's account id; only they, of the coordinators, read its equipment. */
+  coordinator_id: number | null
+}
+
+/** Events that exist. The open one is the mock coordinator's; nobody is assigned the closed one. */
+export const MOCK_EVENT_REFERENCES: Record<string, MockEvent> = {
+  [MOCK_OPEN_EVENT_REFERENCE]: {
+    accepts_reservations: true,
+    coordinator_id: MOCK_ACCOUNTS.coordinator.id,
+  },
+  [MOCK_CLOSED_EVENT_REFERENCE]: { accepts_reservations: false, coordinator_id: null },
 }

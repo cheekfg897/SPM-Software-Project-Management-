@@ -46,6 +46,14 @@ export const MOCK_ACCOUNTS = {
     role: ROLE.TECHNICAL_SUPPORT_STAFF,
     organisation_id: null,
   },
+  venueStaff: {
+    id: 5,
+    email: 'vera@connectsphere.test',
+    password: 'Password123',
+    full_name: 'Vera Goh',
+    role: ROLE.VENUE_STAFF,
+    organisation_id: null,
+  },
 } as const satisfies Record<string, MockAccount>
 
 const MOCK_TOKEN_PREFIX = 'mock-token-'

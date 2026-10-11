@@ -1,7 +1,7 @@
 import type { RouteObject } from 'react-router'
 
 import { SiteLayout } from '@/components/layout'
-import { INTERNAL_ROLES, ROLE } from '@/config/roles'
+import { EQUIPMENT_READER_ROLES, INTERNAL_ROLES, ROLE } from '@/config/roles'
 import type { Role } from '@/config/roles'
 import { ROUTES } from '@/config/routes'
 import { RequireRole } from '@/features/auth/components/RequireRole'
@@ -62,7 +62,7 @@ export const appRoutes: RouteObject[] = [
             <VenueRequestsPage />
         path: ROUTES.EVENT_EQUIPMENT,
         element: (
-          <RequireRole allowedRoles={INTERNAL_ROLES} loginRoute={ROUTES.STAFF_LOGIN}>
+          <RequireRole allowedRoles={EQUIPMENT_READER_ROLES} loginRoute={ROUTES.STAFF_LOGIN}>
             <EventEquipmentPage />
           </RequireRole>
         ),
