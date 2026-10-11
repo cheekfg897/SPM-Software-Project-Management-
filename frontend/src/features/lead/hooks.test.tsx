@@ -97,4 +97,35 @@ describe('SCRUM-95 the Lead queue hooks', () => {
       coordinator_email: ['No Event Coordinator has this email address.'],
     })
   })
+
+  it('answers an unknown reference with 404 even when the email is also wrong', async () => {
+    sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.lead))
+    const { result } = renderQueueAndAssign()
+
+    result.current.assign.mutate({
+      reference: 'EVR-NOSUCH00',
+      coordinator_email: 'nobody@example.com',
+    })
+
+    await waitFor(() => expect(result.current.assign.isError).toBe(true))
+    expect((result.current.assign.error as ApiError).status).toBe(404) // -- the error is an ApiError, asserted in the 403 test
+    expect(fieldErrorsOf(result.current.assign.error)).toEqual({})
+  })
+
+  it('answers a request that already left the queue with 409 even when the email is wrong', async () => {
+    sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.lead))
+    const { result } = renderQueueAndAssign()
+    await waitFor(() => expect(result.current.queue.isSuccess).toBe(true))
+    const reference = result.current.queue.data?.event_requests[0]?.reference ?? ''
+    result.current.assign.mutate({
+      reference,
+      coordinator_email: MOCK_ACCOUNTS.coordinator.email,
+    })
+    await waitFor(() => expect(result.current.assign.isSuccess).toBe(true))
+
+    result.current.assign.mutate({ reference, coordinator_email: 'nobody@example.com' })
+
+    await waitFor(() => expect(result.current.assign.isError).toBe(true))
+    expect((result.current.assign.error as ApiError).status).toBe(409) // -- the error is an ApiError, asserted in the 403 test
+  })
 })
