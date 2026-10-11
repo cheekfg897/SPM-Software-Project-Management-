@@ -1,6 +1,7 @@
 import type { RequestHandler } from 'msw'
 
 import { authHandlers, resetMockAccounts } from './auth'
+import { bookingHandlers, resetMockBooking } from './booking'
 import { catalogueHandlers, resetMockCatalogue } from './catalogue'
 import { eventRequestHandlers } from './eventRequests'
 import { notificationHandlers, resetMockNotifications } from './notifications'
@@ -15,6 +16,7 @@ export const handlers: RequestHandler[] = [
   ...catalogueHandlers,
   ...eventRequestHandlers,
   ...notificationHandlers,
+  ...bookingHandlers,
 ]
 
 /** Put the mock backend's data back as it started, so no test sees another's sign-ups or registrations. */
@@ -22,4 +24,5 @@ export function resetMockBackend(): void {
   resetMockAccounts()
   resetMockCatalogue()
   resetMockNotifications()
+  resetMockBooking()
 }

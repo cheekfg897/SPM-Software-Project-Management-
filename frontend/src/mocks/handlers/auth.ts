@@ -12,7 +12,7 @@ import {
 } from '../fixtures/accounts'
 import type { MockAccount } from '../fixtures/accounts'
 
-import { errorResponse, INVALID_TOKEN_MESSAGE, validationError } from '../responses'
+import { errorResponse, notAuthenticated, validationError } from '../responses'
 
 export { MOCK_ACCOUNTS, mockSessionFor } from '../fixtures/accounts'
 
@@ -101,7 +101,7 @@ function registrationProblems(body: Record<string, unknown>): Record<string, str
   return details
 }
 
-async function readBody(request: Request): Promise<Record<string, unknown>> {
+export async function readBody(request: Request): Promise<Record<string, unknown>> {
   const body: unknown = await request.json().catch(() => null)
   return isRecord(body) ? body : {}
 }
@@ -163,7 +163,7 @@ export const authHandlers: RequestHandler[] = [
   http.get('/api/auth/me', ({ request }) => {
     const account = accountForRequest(request)
     if (account === undefined) {
-      return errorResponse(401, 'authentication_error', INVALID_TOKEN_MESSAGE)
+      return notAuthenticated()
     }
     return HttpResponse.json(publicUser(account))
   }),
