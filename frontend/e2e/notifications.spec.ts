@@ -6,8 +6,11 @@ import { signInAs } from './signInAs'
 
 /** The smallest tap target a finger can hit reliably, in pixels. */
 const MIN_TAP_TARGET = 44
+/** The narrowest screen we support, where the header is tightest. */
+const SMALL_PHONE = { width: 320, height: 640 }
 
 test('SCRUM-28: an attendee opens their notifications and marks one read', async ({ page }) => {
+  await page.setViewportSize(SMALL_PHONE)
   await signInAs(page, MOCK_ACCOUNTS.attendee)
   await page.goto('/events')
 
@@ -18,6 +21,10 @@ test('SCRUM-28: an attendee opens their notifications and marks one read', async
   const bellBox = await bellWithTwo.boundingBox()
   expect(bellBox?.height).toBeGreaterThanOrEqual(MIN_TAP_TARGET)
   expect(bellBox?.width).toBeGreaterThanOrEqual(MIN_TAP_TARGET)
+
+  const logOutBox = await header.getByRole('button', { name: 'Log out' }).boundingBox()
+  expect(bellBox?.x).toBeDefined()
+  expect((bellBox?.x ?? 0) + (bellBox?.width ?? 0)).toBeLessThanOrEqual(logOutBox?.x ?? 0)
 
   await bellWithTwo.click()
   await expect(page).toHaveURL('/notifications')
