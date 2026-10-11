@@ -139,7 +139,8 @@ export const leadHandlers: RequestHandler[] = [
     queue = queue.filter((candidate) => candidate !== queued)
     // Reduced on purpose: the real route also sends the rest of the EventRequestSchema dump
     // (status, dates, and so on), which this omits. The web app reads only the three fields
-    // given here, and src/integration/lead.int.test.ts is what pins the real response shape.
+    // given here. src/integration/lead.int.test.ts is where the real response shape is to be
+    // pinned; for now it holds only todos, so nothing yet checks this against the backend.
     return HttpResponse.json({
       reference: queued.reference,
       name: queued.name,
