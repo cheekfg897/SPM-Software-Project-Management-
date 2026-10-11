@@ -146,6 +146,14 @@ def upgrade() -> None:
     op.create_index(
         op.f("ix_venue_booking_requests_venue_id"), "venue_booking_requests", ["venue_id"]
     )
+    # AC6: one Pending request per event, venue and period. Dropped with the table.
+    op.create_index(
+        "uq_venue_booking_requests_pending",
+        "venue_booking_requests",
+        ["event_id", "venue_id", "starts_at", "ends_at"],
+        unique=True,
+        postgresql_where=sa.text("status = 'pending'"),
+    )
     # Postgres won't let a transaction use an enum value it added itself, so the
     # additions run outside the migration's transaction: Alembic's documented approach.
     with op.get_context().autocommit_block():

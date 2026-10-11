@@ -14,10 +14,11 @@ from typing import TYPE_CHECKING, Any
 
 from flask import current_app
 from sqlalchemy import ColumnElement, and_, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.common.database import resolve_session
-from app.common.errors import NotFoundError, ValidationError
+from app.common.errors import ConflictError, NotFoundError, ValidationError
 from app.common.validation import load_or_raise
 from app.modules.auth.permissions import Role
 from app.modules.venue.models import (
@@ -675,9 +676,49 @@ def check_venue_suitability(
 JUSTIFICATION_REQUIRED_MESSAGE = "A justification is required because the venue is not suitable."
 
 
-def _commit_request(session: Session) -> None:
-    """Commit the request and its history entry; the one place a request is saved."""
-    session.commit()
+PENDING_INDEX_NAME = "uq_venue_booking_requests_pending"
+DUPLICATE_REQUEST_MESSAGE = "A pending request for this event, venue and period already exists."
+
+
+def _is_pending_duplicate(error: IntegrityError) -> bool:
+    """Whether the database refused the row because of the pending index (AC6)."""
+    message = str(error.orig)
+    # Postgres names the index; SQLite (the unit suite) names only the columns.
+    return PENDING_INDEX_NAME in message or "UNIQUE constraint failed" in message
+
+
+def _save_request(request: VenueBookingRequest, session: Session | None) -> None:
+    """Save the request and its history entry in one commit; the one place it is saved.
+
+    The database refuses a duplicate Pending request when the row is flushed, so the
+    flush and the commit both sit inside the ``try``.
+
+    Raises:
+        ConflictError: 409 — a Pending request for this event, venue and period exists.
+    """
+    from app.modules.events import services as event_services  # circular at import time
+
+    active_session = resolve_session(session)
+    try:
+        active_session.add(request)
+        active_session.flush()
+        event_services.record_venue_booking_requested(
+            request.event_id,
+            actor_id=request.requested_by,
+            details={
+                "venue_booking_request_id": request.id,
+                "venue_id": request.venue_id,
+                "starts_at": request.starts_at.isoformat(),
+                "ends_at": request.ends_at.isoformat(),
+            },
+            session=session,
+        )
+        active_session.commit()
+    except IntegrityError as exc:
+        active_session.rollback()
+        if _is_pending_duplicate(exc):
+            raise ConflictError(DUPLICATE_REQUEST_MESSAGE) from exc
+        raise
 
 
 def _venue_is_suitable(
@@ -733,22 +774,8 @@ def raise_booking_request(
             "Invalid request.", details={"justification": [JUSTIFICATION_REQUIRED_MESSAGE]}
         )
 
-    active_session = resolve_session(session)
     request = VenueBookingRequest(event_id=event_id, requested_by=requested_by, **data)
-    active_session.add(request)
-    active_session.flush()
-    event_services.record_venue_booking_requested(
-        event_id,
-        actor_id=requested_by,
-        details={
-            "venue_booking_request_id": request.id,
-            "venue_id": request.venue_id,
-            "starts_at": request.starts_at.isoformat(),
-            "ends_at": request.ends_at.isoformat(),
-        },
-        session=session,
-    )
-    _commit_request(active_session)
+    _save_request(request, session)
     return request
 
 

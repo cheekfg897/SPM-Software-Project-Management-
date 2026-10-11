@@ -12,8 +12,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import UTC, date, datetime, time
 from typing import Any
+from unittest.mock import patch
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.common.errors import ConflictError, NotFoundError, ValidationError
@@ -402,6 +404,69 @@ def test_a_request_for_an_event_that_is_not_approved_records_nothing(
         _raise(venue, saved_event(EventRequestStatus.SUBMITTED), db_session)
 
     assert _history(db_session) == []
+
+
+# --------------------------------------------------------------------------
+# AC6, AC2 — no second Pending request for the same event, venue and period
+# --------------------------------------------------------------------------
+
+DUPLICATE_MESSAGE = "A pending request for this event, venue and period already exists."
+
+
+def test_a_second_pending_request_for_the_same_event_venue_and_period_is_refused(
+    db_session: Session, venue: Venue, saved_event: SavedEvent
+) -> None:
+    event = saved_event()
+    first = _raise(venue, event, db_session)
+
+    with pytest.raises(ConflictError) as raised:
+        _raise(venue, event, db_session)
+
+    assert raised.value.message == DUPLICATE_MESSAGE
+    # The refused attempt was rolled back, so only the first is kept.
+    assert _saved_requests(db_session) == [first]
+    assert len(_history(db_session)) == 1
+
+
+def test_the_same_event_and_venue_at_a_different_period_is_saved(
+    db_session: Session, venue: Venue, saved_event: SavedEvent
+) -> None:
+    event = saved_event()
+    _raise(venue, event, db_session)
+
+    _raise(venue, event, db_session, ends_at="2026-11-01T13:00:00+08:00")
+
+    assert len(_saved_requests(db_session)) == 2
+
+
+def test_the_same_event_at_a_different_venue_and_overlapping_time_is_saved(
+    db_session: Session,
+    venue: Venue,
+    make_venue: Callable[..., Venue],
+    save: Callable[..., None],
+    saved_event: SavedEvent,
+) -> None:
+    other_venue = make_venue(name="Annex")
+    save(other_venue)
+    event = saved_event()
+    _raise(venue, event, db_session)
+
+    _raise(other_venue, event, db_session)
+
+    assert len(_saved_requests(db_session)) == 2
+
+
+def test_an_integrity_error_that_is_not_the_duplicate_is_not_turned_into_a_conflict(
+    db_session: Session, venue: Venue, saved_event: SavedEvent
+) -> None:
+    event = saved_event()
+    other_violation = IntegrityError("INSERT", {}, Exception("CHECK constraint failed: other"))
+
+    with patch.object(db_session, "commit", side_effect=other_violation):
+        with pytest.raises(IntegrityError):
+            _raise(venue, event, db_session)
+
+    assert _saved_requests(db_session) == []
 
 
 # --------------------------------------------------------------------------
