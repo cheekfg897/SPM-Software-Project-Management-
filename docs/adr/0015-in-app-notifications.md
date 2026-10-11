@@ -1,6 +1,6 @@
 # ADR-0015: Notifications are in-app rows, one per recipient, that snapshot their event
 
-- **Status:** Accepted; who is told about a new request is superseded by ADR-0018; a notification's `detail` added by [ADR-0028](0028-review-and-decide.md)
+- **Status:** Accepted; who is told about a new request is superseded by ADR-0018; a notification's `detail` added by [ADR-0028](0028-review-and-decide.md); who is told about a new request superseded again by [ADR-0036](0036-event-coordinator-lead.md)
 - **Date:** 2026-09-25
 - **Story:** SCRUM-28 Receive notifications about my events (open "Ask customer" subtask SCRUM-29: in-app only, or email too?)
 
