@@ -33,7 +33,7 @@ interface QueuedRequest {
 
 const INITIAL_QUEUE: readonly QueuedRequest[] = [
   {
-    reference: 'ER-0001',
+    reference: 'EVR-MOCK0001',
     name: 'Annual Partner Summit',
     proposed_date: '2026-11-12',
     start_time: '09:00:00',
@@ -42,7 +42,7 @@ const INITIAL_QUEUE: readonly QueuedRequest[] = [
     submitted_at: '2026-10-01T09:30:00+08:00',
   },
   {
-    reference: 'ER-0002',
+    reference: 'EVR-MOCK0002',
     name: 'Product Launch Evening',
     proposed_date: '2026-11-20',
     start_time: '18:00:00',
@@ -124,20 +124,22 @@ export const leadHandlers: RequestHandler[] = [
     if (refusal !== null) {
       return refusal
     }
-    const coordinator = coordinatorWithEmail(await readEmail(request))
-    if (coordinator === undefined) {
-      return validationError({ coordinator_email: [NOT_A_COORDINATOR_MESSAGE] })
-    }
+    // The backend's order: reference 404, not-waiting 409, then the email 400 last, so a
+    // refused assignment never reveals which addresses belong to coordinators.
     const queued = queue.find((candidate) => candidate.reference === params.reference)
     if (queued === undefined) {
       return wasEverQueued(String(params.reference))
         ? errorResponse(409, 'conflict', NOT_IN_QUEUE_MESSAGE)
         : errorResponse(404, 'not_found', NOT_FOUND_MESSAGE)
     }
+    const coordinator = coordinatorWithEmail(await readEmail(request))
+    if (coordinator === undefined) {
+      return validationError({ coordinator_email: [NOT_A_COORDINATOR_MESSAGE] })
+    }
     queue = queue.filter((candidate) => candidate !== queued)
-    // Reduced on purpose: the real route also sends the rest of the EventRequestSchema dump, but
-    // the web app reads only these three. The integration tests against the real backend catch
-    // any divergence in the fields it relies on.
+    // Reduced on purpose: the real route also sends the rest of the EventRequestSchema dump
+    // (status, dates, and so on), which this omits. The web app reads only the three fields
+    // given here, and src/integration/lead.int.test.ts is what pins the real response shape.
     return HttpResponse.json({
       reference: queued.reference,
       name: queued.name,
