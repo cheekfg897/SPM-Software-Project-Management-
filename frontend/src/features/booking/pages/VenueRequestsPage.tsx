@@ -42,7 +42,7 @@ function EventVenueRequests({ id }: { id: number }) {
 /** An event's venue requests, and the form to raise another (SCRUM-42). Coordinators only. */
 export function VenueRequestsPage() {
   const id = Number(useParams().eventId)
-  if (!Number.isInteger(id)) {
+  if (!Number.isInteger(id) || id <= 0) {
     return <NotFoundPage />
   }
   return <EventVenueRequests id={id} />

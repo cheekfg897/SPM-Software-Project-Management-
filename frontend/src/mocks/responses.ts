@@ -1,6 +1,7 @@
 import { HttpResponse } from 'msw'
 
 import type { FieldErrors } from '@/lib/api'
+import { isRecord } from '@/lib/isRecord'
 
 /** The backend's message for a missing, invalid or expired token (app/common/errors.py). */
 const INVALID_TOKEN_MESSAGE = 'Missing, invalid or expired token.'
@@ -30,4 +31,10 @@ export function notAllowed() {
     'authorization_error',
     'You do not have permission to perform this action.',
   )
+}
+
+/** A request's JSON body as an object; anything else (no body, bad JSON) reads as empty. */
+export async function readBody(request: Request): Promise<Record<string, unknown>> {
+  const body: unknown = await request.json().catch(() => null)
+  return isRecord(body) ? body : {}
 }

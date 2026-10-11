@@ -2,7 +2,6 @@ import { http, HttpResponse } from 'msw'
 import type { RequestHandler } from 'msw'
 
 import { EXTERNAL_ROLES, ROLE } from '@/config/roles'
-import { isRecord } from '@/lib/isRecord'
 
 import {
   accountIdFromMockToken,
@@ -12,7 +11,7 @@ import {
 } from '../fixtures/accounts'
 import type { MockAccount } from '../fixtures/accounts'
 
-import { errorResponse, notAuthenticated, validationError } from '../responses'
+import { errorResponse, notAuthenticated, readBody, validationError } from '../responses'
 
 export { MOCK_ACCOUNTS, mockSessionFor } from '../fixtures/accounts'
 
@@ -99,11 +98,6 @@ function registrationProblems(body: Record<string, unknown>): Record<string, str
     details.organisation_id = [organisationMessage]
   }
   return details
-}
-
-export async function readBody(request: Request): Promise<Record<string, unknown>> {
-  const body: unknown = await request.json().catch(() => null)
-  return isRecord(body) ? body : {}
 }
 
 function findByEmail(email: unknown): MockAccount | undefined {

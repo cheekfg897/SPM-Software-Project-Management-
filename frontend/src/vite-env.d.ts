@@ -5,6 +5,9 @@ interface ImportMetaEnv {
   readonly VITE_API_MOCKING?: string
   /** The backend origin when it is not the page's own, e.g. http://localhost:5000 in integration tests. */
   readonly VITE_API_ORIGIN?: string
+  /** A seeded Event Coordinator's sign-in for the integration tests that need one. */
+  readonly VITE_COORDINATOR_EMAIL?: string
+  readonly VITE_COORDINATOR_PASSWORD?: string
 }
 
 interface ImportMeta {
