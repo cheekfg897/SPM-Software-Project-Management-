@@ -33,7 +33,7 @@ export function QueuedRequestCard({ request }: QueuedRequestCardProps) {
         <Detail term="Expected attendance">{request.expected_attendance}</Detail>
         <Detail term="Submitted">{formatSubmittedAt(request.submitted_at)}</Detail>
       </dl>
-      <AssignCoordinatorForm reference={request.reference} />
+      <AssignCoordinatorForm reference={request.reference} name={request.name} />
     </article>
   )
 }
