@@ -19,7 +19,7 @@ from marshmallow import (
     validates_schema,
 )
 
-from app.common.fields import BusinessDateTime, WholeNumber
+from app.common.fields import BusinessDateTime, PositiveId, PositiveQuantity, WholeNumber
 from app.common.validation import not_blank
 from app.modules.equipment.models import NAME_MAX_LENGTH, STORE_NAME_MAX_LENGTH
 
@@ -115,17 +115,10 @@ class EquipmentUnitsSchema(Schema):
     """An equipment type and how many of its units, to reserve them (SCRUM-46 AC1).
 
     The event comes from the URL and the period from the event, so neither is sent.
-    An event's equipment line asks for the same two things, so its schema extends this
-    one rather than repeating the fields.
     """
 
-    equipment_type_id = WholeNumber(
-        required=True,
-        validate=validate.Range(min=1, error="equipment_type_id must be a positive number."),
-    )
-    quantity = WholeNumber(
-        required=True, validate=validate.Range(min=1, error="Quantity must be at least 1.")
-    )
+    equipment_type_id = PositiveId("equipment_type_id", required=True)
+    quantity = PositiveQuantity(required=True)
 
 
 class EquipmentReservationSchema(Schema):
