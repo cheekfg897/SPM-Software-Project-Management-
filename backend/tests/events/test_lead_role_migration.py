@@ -25,7 +25,7 @@ AssertMigrationAndModelAgree = Callable[[tuple[str, ...], tuple[str, ...], set[s
 
 MIGRATION = "0022_add_event_coordinator_lead_role.py"
 #: The last migration to change ``notification_kind`` before this one.
-PREVIOUS_MIGRATION = "0019_add_review_notification_kinds.py"
+PREVIOUS_MIGRATION = "0021_add_equipment_reservations.py"
 
 
 def test_the_previous_notification_kinds_are_what_exists_after_the_migration_below(
@@ -89,7 +89,8 @@ def test_downgrade_rebuilds_both_types_without_the_new_values(
         "CREATE TYPE notification_kind AS ENUM ('event_request_submitted', "
         "'coordinator_assigned', 'equipment_requested', 'significant_change', "
         "'event_request_approved', 'event_request_rejected', 'clarification_requested', "
-        "'clarification_answered', 'request_assigned')",
+        "'clarification_answered', 'request_assigned', 'venue_booking_requested', "
+        "'equipment_reserved')",
         "ALTER TABLE notifications ALTER COLUMN kind "
         "TYPE notification_kind USING kind::text::notification_kind",
         "DROP TYPE notification_kind_old",
