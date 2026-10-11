@@ -1018,6 +1018,20 @@ def _check_assigned_to(coordinator_id: int | str, event_request: EventRequest) -
         raise NotFoundError(EVENT_REQUEST_NOT_FOUND_MESSAGE)
 
 
+def _event_request_assigned_to(
+    coordinator_id: int | str, reference: str, session: Session
+) -> EventRequest:
+    """The request, if ``coordinator_id`` is its assigned coordinator (ADR-0019).
+
+    Raises:
+        NotFoundError: 404 — no such request among the coordinator's own, or it is
+            still a draft (SCRUM-20, ADR-0024).
+    """
+    event_request = _event_request_for_staff(reference, session)
+    _check_assigned_to(coordinator_id, event_request)
+    return event_request
+
+
 @dataclass(frozen=True)
 class EventForBooking:
     """What a venue booking request needs to know about its event (SCRUM-42).
@@ -1026,6 +1040,7 @@ class EventForBooking:
     approved event always has its dates and times (SCRUM-22, SCRUM-31).
     """
 
+    id: int
     reference: str
     name: str
     status: EventRequestStatus
@@ -1038,18 +1053,19 @@ class EventForBooking:
 
 
 def get_event_for_coordinator(
-    event_id: int, coordinator_id: int | str, *, session: Session | None = None
+    reference: str, coordinator_id: int | str, *, session: Session | None = None
 ) -> EventForBooking:
     """The event ``coordinator_id`` is assigned to, at any status (SCRUM-42, ADR-0019).
+
+    The event is found by its ``EVR-…`` reference; case and surrounding spaces are
+    ignored (ADR-0004).
 
     Raises:
         NotFoundError: 404 — no such event, or it isn't assigned to this coordinator.
     """
-    event_request = resolve_session(session).get(EventRequest, event_id)
-    if event_request is None:
-        raise NotFoundError(EVENT_REQUEST_NOT_FOUND_MESSAGE)
-    _check_assigned_to(coordinator_id, event_request)
+    event_request = _event_request_assigned_to(coordinator_id, reference, resolve_session(session))
     return EventForBooking(
+        id=event_request.id,
         reference=event_request.reference,
         name=event_request.name,
         status=event_request.status,
@@ -1063,7 +1079,7 @@ def get_event_for_coordinator(
 
 
 def get_approved_event_for_coordinator(
-    event_id: int, coordinator_id: int | str, *, session: Session | None = None
+    reference: str, coordinator_id: int | str, *, session: Session | None = None
 ) -> EventForBooking:
     """The approved event ``coordinator_id`` is assigned to (SCRUM-42, ADR-0019).
 
@@ -1071,7 +1087,7 @@ def get_approved_event_for_coordinator(
         NotFoundError: 404 — no such event, or it isn't assigned to this coordinator.
         ConflictError: 409 — the event isn't approved; the message names its status.
     """
-    event = get_event_for_coordinator(event_id, coordinator_id, session=session)
+    event = get_event_for_coordinator(reference, coordinator_id, session=session)
     if event.status is not EventRequestStatus.APPROVED:
         raise ConflictError(
             "Only an approved event can have a venue booking request;"
@@ -1100,20 +1116,6 @@ def record_venue_booking_requested(
         details=details,
         session=session,
     )
-
-
-def _event_request_assigned_to(
-    coordinator_id: int | str, reference: str, session: Session
-) -> EventRequest:
-    """The request, if ``coordinator_id`` is its assigned coordinator (ADR-0019).
-
-    Raises:
-        NotFoundError: 404 — no such request among the coordinator's own, or it is
-            still a draft (SCRUM-20, ADR-0024).
-    """
-    event_request = _event_request_for_staff(reference, session)
-    _check_assigned_to(coordinator_id, event_request)
-    return event_request
 
 
 def _event_request_with_editable_equipment(
