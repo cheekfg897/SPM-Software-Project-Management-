@@ -493,3 +493,72 @@ def test_a_request_is_shown_with_the_event_it_was_raised_from(
         end_time=time(17, 30),
         accessibility_needs="Step-free entrance",
     )
+
+
+# --------------------------------------------------------------------------
+# Listing the requests raised for an event
+# --------------------------------------------------------------------------
+
+LATER_PERIOD = {
+    "starts_at": "2026-11-02T09:00:00+08:00",
+    "ends_at": "2026-11-02T12:00:00+08:00",
+}
+
+
+def _list(event: EventRequest, session: Session, coordinator_id: int = COORDINATOR_ID) -> Any:
+    return services.list_booking_requests_for_event(
+        event.id, coordinator_id=coordinator_id, session=session
+    )
+
+
+def test_only_this_events_requests_are_listed_in_period_order(
+    db_session: Session, venue: Venue, saved_event: SavedEvent
+) -> None:
+    event = saved_event()
+    other_event = saved_event()
+    later = _raise(venue, event, db_session, **LATER_PERIOD)
+    earlier = _raise(venue, event, db_session)
+    _raise(venue, other_event, db_session)
+
+    listed = _list(event, db_session)
+
+    assert [shown.request for shown in listed] == [earlier, later]
+
+
+def test_listed_requests_show_the_events_timing_and_accessibility_needs(
+    db_session: Session, venue: Venue, saved_event: SavedEvent
+) -> None:
+    event = saved_event()
+    request = _raise(venue, event, db_session)
+
+    assert _list(event, db_session) == [
+        BookingRequestAsShown(
+            request=request,
+            proposed_date=date(2026, 11, 1),
+            end_date=date(2026, 11, 2),
+            start_time=time(9, 0),
+            end_time=time(17, 30),
+            accessibility_needs="Step-free entrance",
+        )
+    ]
+
+
+def test_an_event_that_has_moved_on_from_approved_still_lists_its_requests(
+    db_session: Session, venue: Venue, saved_event: SavedEvent
+) -> None:
+    event = saved_event()
+    request = _raise(venue, event, db_session)
+    event.status = EventRequestStatus.CONFIRMED
+    db_session.commit()
+
+    assert [shown.request for shown in _list(event, db_session)] == [request]
+
+
+def test_another_coordinator_cannot_list_the_events_requests(
+    db_session: Session, venue: Venue, saved_event: SavedEvent
+) -> None:
+    event = saved_event()
+    _raise(venue, event, db_session)
+
+    with pytest.raises(NotFoundError):
+        _list(event, db_session, coordinator_id=9)

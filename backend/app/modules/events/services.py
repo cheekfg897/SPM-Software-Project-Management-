@@ -224,18 +224,42 @@ def record_event_history(
 
 @dataclass(frozen=True)
 class EventForBooking:
-    """What a venue booking request needs to know about its approved event (SCRUM-42).
+    """What a venue booking request needs to know about its event (SCRUM-42).
 
     The event's timing stays in local business time, as the event stores it. An
     approved event always has its dates and times (SCRUM-22, SCRUM-31).
     """
 
+    status: EventRequestStatus
     proposed_date: date
     end_date: date | None
     start_time: time
     end_time: time
     expected_attendance: int
     accessibility_needs: str | None
+
+
+def get_event_for_coordinator(
+    event_id: int, coordinator_id: int | str, *, session: Session | None = None
+) -> EventForBooking:
+    """The event ``coordinator_id`` is assigned to, at any status (SCRUM-42, ADR-0019).
+
+    Raises:
+        NotFoundError: 404 — no such event, or it isn't assigned to this coordinator.
+    """
+    event_request = resolve_session(session).get(EventRequest, event_id)
+    if event_request is None:
+        raise NotFoundError(EVENT_REQUEST_NOT_FOUND_MESSAGE)
+    _check_assigned_to(coordinator_id, event_request)
+    return EventForBooking(
+        status=event_request.status,
+        proposed_date=event_request.proposed_date,
+        end_date=event_request.end_date,
+        start_time=event_request.start_time,
+        end_time=event_request.end_time,
+        expected_attendance=event_request.expected_attendance,
+        accessibility_needs=event_request.accessibility_needs,
+    )
 
 
 def get_approved_event_for_coordinator(
@@ -247,23 +271,13 @@ def get_approved_event_for_coordinator(
         NotFoundError: 404 — no such event, or it isn't assigned to this coordinator.
         ConflictError: 409 — the event isn't approved; the message names its status.
     """
-    event_request = resolve_session(session).get(EventRequest, event_id)
-    if event_request is None:
-        raise NotFoundError(EVENT_REQUEST_NOT_FOUND_MESSAGE)
-    _check_assigned_to(coordinator_id, event_request)
-    if event_request.status is not EventRequestStatus.APPROVED:
+    event = get_event_for_coordinator(event_id, coordinator_id, session=session)
+    if event.status is not EventRequestStatus.APPROVED:
         raise ConflictError(
             "Only an approved event can have a venue booking request;"
-            f" this one is {event_request.status.value}."
+            f" this one is {event.status.value}."
         )
-    return EventForBooking(
-        proposed_date=event_request.proposed_date,
-        end_date=event_request.end_date,
-        start_time=event_request.start_time,
-        end_time=event_request.end_time,
-        expected_attendance=event_request.expected_attendance,
-        accessibility_needs=event_request.accessibility_needs,
-    )
+    return event
 
 
 def record_venue_booking_requested(
