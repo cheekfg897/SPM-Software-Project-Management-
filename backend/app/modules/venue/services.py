@@ -7,6 +7,7 @@ Every function takes an optional ``session``, defaulting to ``db.session``.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
@@ -14,13 +15,15 @@ from typing import TYPE_CHECKING, Any
 
 from flask import current_app
 from sqlalchemy import ColumnElement, and_, or_, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.common.database import resolve_session
 from app.common.errors import ConflictError, NotFoundError, ValidationError
 from app.common.validation import load_or_raise
 from app.modules.auth.permissions import Role
+from app.modules.auth.services import list_user_ids_with_role
+from app.modules.notifications.services import EventSummary, NotificationKind, notify_users
 from app.modules.venue.models import (
     Booking,
     BookingStatus,
@@ -46,6 +49,8 @@ if TYPE_CHECKING:
     # Type only: events.services reaches this module through equipment, so
     # raise_booking_request imports the module when it runs.
     from app.modules.events.services import EventForBooking
+
+logger = logging.getLogger("connectsphere.venue")
 
 _LIST_FIELDS = ("facilities", "accessibility_features", "supported_layouts")
 
@@ -676,6 +681,29 @@ def _venue_is_suitable(
         ) from None
 
 
+def _notify_venue_staff(
+    request: VenueBookingRequest, event: EventForBooking, session: Session | None
+) -> None:
+    """Tell every Venue Staff user the request needs a decision (AC9, ADR-0035).
+
+    Runs after the request's own commit, in a second commit (ADR-0015). If the
+    notifications can't be saved, only they are lost and a warning is logged: the
+    request is already saved, and failing the reply would invite a second request.
+    """
+    active_session = resolve_session(session)
+    summary = EventSummary(id=request.event_id, reference=event.reference, name=event.name)
+    try:
+        notify_users(
+            list_user_ids_with_role(Role.VENUE_STAFF, session=session),
+            summary,
+            NotificationKind.VENUE_BOOKING_REQUESTED,
+            session=session,
+        )
+    except SQLAlchemyError:
+        active_session.rollback()
+        logger.warning("venue_booking_notification_failed reference=%s", event.reference)
+
+
 def raise_booking_request(
     event_id: int,
     payload: Mapping[str, Any] | None,
@@ -688,7 +716,7 @@ def raise_booking_request(
     Occupancy defaults to the event's expected attendance; the event has no layout, so
     the layout defaults to none. A venue unsuitable for the request's own occupancy
     and layout needs a justification (AC7). The request and the event's history entry
-    are saved in one commit.
+    are saved in one commit; Venue Staff are then notified in a second (AC9).
 
     Raises:
         ValidationError: 400 — invalid payload, unknown venue or no justification.
@@ -714,6 +742,7 @@ def raise_booking_request(
 
     request = VenueBookingRequest(event_id=event_id, requested_by=requested_by, **data)
     _save_request(request, session)
+    _notify_venue_staff(request, event, session)
     return request
 
 
