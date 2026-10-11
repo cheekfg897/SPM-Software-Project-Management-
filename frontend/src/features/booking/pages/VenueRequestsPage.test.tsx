@@ -49,14 +49,18 @@ async function fillRequest(view: ReturnType<typeof renderApp>, venueId: number) 
 
 describe('SCRUM-42 venue requests page', () => {
   it.each(['abc', '101', 'EVR-SHORT', 'EVR-TOOLONG123', 'EVR-BAD!CHAR'])(
-    'shows the not-found page, and asks for nothing, when the event reference is %s',
+    'shows the not-found page, and asks the booking API for nothing, when the event reference is %s',
     (reference) => {
       const requests = recordRequests()
 
       renderApp(`/events/${reference}/venue-requests`, SESSION)
 
       expect(screen.getByRole('heading', { name: 'Page not found' })).toBeInTheDocument()
-      expect(requests).toHaveLength(0)
+      // The site header's notification bell reads its own unread count (SCRUM-28), so this
+      // asserts the booking API specifically rather than that the page is silent altogether.
+      expect(requests.filter((request) => request.url.includes('/booking-requests'))).toHaveLength(
+        0,
+      )
     },
   )
 
