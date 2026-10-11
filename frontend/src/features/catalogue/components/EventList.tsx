@@ -1,5 +1,6 @@
-import type { CatalogueEvent } from '../api'
 import { formatShortDate, formatWeekday } from '@/lib/formatDate'
+
+import type { CatalogueEvent } from '../api'
 import { groupByDay } from '../groupByDay'
 
 import { EventCard } from './EventCard'
