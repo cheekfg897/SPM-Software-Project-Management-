@@ -338,7 +338,7 @@ def assign_coordinator(reference: str) -> tuple[Response, int]:
     coordinator's name and email. The Lead is recorded as having done it.
     """
     event_request, coordinator = assign_coordinator_to_request(
-        reference, request.get_json(silent=True), assigned_by=int(g.current_user_id)
+        reference, request.get_json(silent=True), assigned_by=g.current_user_id
     )
     body = _event_request_schema.dump(event_request)
     body["coordinator"] = _coordinator_contact_schema.dump(coordinator)
