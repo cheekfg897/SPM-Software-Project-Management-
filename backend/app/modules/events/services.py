@@ -51,6 +51,7 @@ from app.modules.events.models import (
 )
 from app.modules.events.schemas import (
     AMENDABLE_FIELDS,
+    AssignCoordinatorSchema,
     DecideEventRequestSchema,
     EditEquipmentLineSchema,
     EditEventRequestSchema,
@@ -1861,6 +1862,25 @@ def list_event_requests_with_equipment(*, session: Session | None = None) -> lis
 # SCRUM-95 — the Event Coordinator Lead's queue of unassigned requests
 # --------------------------------------------------------------------------
 
+#: The one status in which a request is waiting for the Event Coordinator Lead: it has
+#: been submitted and nothing has happened to it since. The queue lists the requests
+#: with this status and no coordinator, and the Lead may assign exactly those, so the
+#: list and the assignment read the same definition and can't drift apart (SCRUM-95
+#: AC2, AC3, ADR-0036).
+WAITING_FOR_LEAD_STATUS = EventRequestStatus.SUBMITTED
+
+#: Refusing a first assignment: the request already has a coordinator, in the idiom of
+#: SCRUM-87's :data:`ALREADY_ASSIGNED_MESSAGE`, or it is no longer waiting at all.
+ALREADY_HAS_COORDINATOR_MESSAGE = "This event request already has a coordinator."
+NOT_ASSIGNABLE_MESSAGE = "Only a submitted event request can be assigned to a coordinator."
+
+
+class RequestNotAssignableError(AppError):
+    """The request isn't waiting for the Lead to assign it, in its state (409)."""
+
+    status_code = 409
+    error_code = "request_not_assignable"
+
 
 def list_unassigned_requests(*, session: Session | None = None) -> list[EventRequest]:
     """Submitted requests with no coordinator, oldest submission first (SCRUM-95 AC2).
@@ -1869,11 +1889,11 @@ def list_unassigned_requests(*, session: Session | None = None) -> list[EventReq
     goes by id, the mirror of :func:`_list_event_requests_newest_first`. Nothing waiting
     is an empty list, not an error.
 
-    Only ``SUBMITTED`` requests are listed, not everything past the draft stage: a
-    request that is under review or beyond has necessarily been given a coordinator, so
-    only a submitted one can still be waiting for the Lead. A request SCRUM-30 assigned
-    before the Lead existed keeps its coordinator, so ``coordinator_id IS NULL`` leaves
-    it out without any data migration (ADR-0036).
+    Only :data:`WAITING_FOR_LEAD_STATUS` requests are listed, not everything past the
+    draft stage: a draft hasn't been submitted, and a cancelled or rejected request is
+    no longer waiting for anybody, even though it can still have no coordinator. A
+    request SCRUM-30 assigned before the Lead existed keeps its coordinator, so
+    ``coordinator_id IS NULL`` leaves it out without any data migration (ADR-0036).
 
     The submission time is the request's ``created_at`` (ADR-0036). There is no separate
     submission instant, so a request that sat as a draft shows when the draft was
@@ -1888,12 +1908,104 @@ def list_unassigned_requests(*, session: Session | None = None) -> list[EventReq
     stmt = (
         select(EventRequest)
         .where(
-            EventRequest.status == EventRequestStatus.SUBMITTED,
+            EventRequest.status == WAITING_FOR_LEAD_STATUS,
             EventRequest.coordinator_id.is_(None),
         )
         .order_by(EventRequest.created_at.asc(), EventRequest.id.asc())
     )
     return list(resolve_session(session).scalars(stmt))
+
+
+def _request_waiting_for_the_lead(reference: str, session: Session) -> EventRequest:
+    """The request behind ``reference``, if the Lead still has it to give (ADR-0036).
+
+    Resolved the way every internal role resolves a reference, so a draft can't be found
+    at all rather than refused (SCRUM-20 AC4, ADR-0024). A request that already has a
+    coordinator is a conflict: giving it to someone else would be a reassignment, which
+    is its own story (ADR-0021 decision 6). The already-assigned check comes first
+    because it has its own answer; the status check then covers a cancelled or rejected
+    request, which has no coordinator and is no longer waiting.
+
+    Raises:
+        NotFoundError: 404 — no such request, or it is still a draft.
+        ConflictError: 409 — the request already has a coordinator.
+        RequestNotAssignableError: 409 — the request isn't waiting for the Lead.
+    """
+    event_request = _event_request_for_staff(reference, session)
+    if event_request.coordinator_id is not None:
+        raise ConflictError(ALREADY_HAS_COORDINATOR_MESSAGE)
+    if event_request.status is not WAITING_FOR_LEAD_STATUS:
+        raise RequestNotAssignableError(NOT_ASSIGNABLE_MESSAGE)
+    return event_request
+
+
+def assign_coordinator_to_request(
+    reference: str,
+    payload: Mapping[str, Any] | None,
+    *,
+    assigned_by: int,
+    session: Session | None = None,
+) -> tuple[EventRequest, CoordinatorContact]:
+    """Give a request waiting in the Lead's queue to one Event Coordinator (SCRUM-95).
+
+    AC3: the request gets exactly one ``coordinator_id``, and so leaves the queue, which
+    lists only the requests that have none. The coordinator is named by email, as a
+    reassignment names them, since user ids are never shown to other users (ADR-0021
+    decision 3). A ``coordinator_assigned`` history entry is saved in the same commit as
+    the change it records, with the Lead as its actor: SCRUM-30 wrote that entry with a
+    NULL actor because the system chose, and it is the Lead who chooses now (ADR-0018,
+    ADR-0036). Once saved, the coordinator gets the usual ``coordinator_assigned``
+    notification and the organiser a ``request_assigned`` one (AC5, SCRUM-39 AC1,
+    ADR-0030); a failure there is logged, not raised (ADR-0015). The event then appears
+    in the coordinator's list, which reads ``coordinator_id`` (AC5, ADR-0018).
+
+    This is a first assignment and never a move: a request that already has a
+    coordinator is refused. Changing one is a reassignment, which the coordinator does
+    themselves through SCRUM-87's ``/reassign``.
+
+    The checks run in this order, so the first failure decides the answer: payload
+    ``400``; reference ``404``; already assigned ``409``; not waiting ``409``; email
+    ``400``. The body comes first because it is the caller's own and says nothing about
+    any request. The request's own state comes next, and the email lookup last, so a
+    refused assignment never resolves an address and the route can't be used to find out
+    which emails belong to Event Coordinators.
+
+    Args:
+        reference: The ``EVR-…`` reference; case and surrounding spaces are ignored.
+        payload: Decoded JSON body: ``coordinator_email``, matched ignoring case.
+        assigned_by: The Lead's user id, taken from their token, recorded as the actor
+            of the history entry. Their role isn't checked here: the route's
+            ``@requires_role(Role.EVENT_COORDINATOR_LEAD)`` is what proves it, which is
+            also how no Event Coordinator can assign anything (AC6).
+        session: Database session; defaults to ``db.session``.
+
+    Returns:
+        The request, and the coordinator's name and email as the organiser now sees
+        them, so the route can answer with no user id in it (ADR-0021 decision 12).
+
+    Raises:
+        ValidationError: 400 — payload invalid, or no Event Coordinator has that email.
+        NotFoundError: 404 — no such request, or it is still a draft.
+        ConflictError: 409 — the request already has a coordinator.
+        RequestNotAssignableError: 409 — the request isn't waiting for the Lead.
+    """
+    data = load_or_raise(AssignCoordinatorSchema(), payload)
+    sess = resolve_session(session)
+    event_request = _request_waiting_for_the_lead(reference, sess)
+    coordinator_id = _event_coordinator_id_by_email(data["coordinator_email"], sess)
+    coordinator = _contact_of_coordinator(coordinator_id, sess)
+
+    event_request.coordinator_id = coordinator_id
+    record_event_history(
+        event_request,
+        EventHistoryKind.COORDINATOR_ASSIGNED,
+        actor_id=assigned_by,
+        details={"coordinator_id": coordinator_id},
+        session=sess,
+    )
+    sess.commit()
+    _notify_about_assignment(event_request, coordinator_id, sess)
+    return event_request, coordinator
 
 
 def get_event_record_for_coordinator(
