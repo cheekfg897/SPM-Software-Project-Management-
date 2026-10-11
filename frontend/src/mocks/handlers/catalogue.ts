@@ -6,7 +6,7 @@ import { WHEN } from '@/features/catalogue/constants'
 import type { FieldErrors } from '@/lib/api'
 
 import { MOCK_ACCOUNTS } from '../fixtures/accounts'
-import { errorResponse, INVALID_TOKEN_MESSAGE, validationError } from '../responses'
+import { errorResponse, notAllowed, notAuthenticated, validationError } from '../responses'
 
 import { accountForRequest } from './auth'
 
@@ -197,14 +197,10 @@ export const catalogueHandlers: RequestHandler[] = [
   http.post(`${CATALOGUE_PATH}/:eventId/registrations`, ({ request, params }) => {
     const user = accountForRequest(request)
     if (user === undefined) {
-      return errorResponse(401, 'authentication_error', INVALID_TOKEN_MESSAGE)
+      return notAuthenticated()
     }
     if (user.role !== ROLE.ATTENDEE) {
-      return errorResponse(
-        403,
-        'authorization_error',
-        'You do not have permission to perform this action.',
-      )
+      return notAllowed()
     }
 
     const event = MOCK_CATALOGUE_EVENTS.find((candidate) => String(candidate.id) === params.eventId)

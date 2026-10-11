@@ -3,7 +3,7 @@ import { HttpResponse } from 'msw'
 import type { FieldErrors } from '@/lib/api'
 
 /** The backend's message for a missing, invalid or expired token (app/common/errors.py). */
-export const INVALID_TOKEN_MESSAGE = 'Missing, invalid or expired token.'
+const INVALID_TOKEN_MESSAGE = 'Missing, invalid or expired token.'
 
 /** An error in the backend's shape: `{"error", "message", "details?"}`. */
 export function errorResponse(status: number, error: string, message: string) {
@@ -15,5 +15,19 @@ export function validationError(details: FieldErrors) {
   return HttpResponse.json(
     { error: 'validation_error', message: 'Invalid request.', details },
     { status: 400 },
+  )
+}
+
+/** The 401 for a request without a valid token. */
+export function notAuthenticated() {
+  return errorResponse(401, 'authentication_error', INVALID_TOKEN_MESSAGE)
+}
+
+/** The 403 for a signed-in user whose role may not do this. */
+export function notAllowed() {
+  return errorResponse(
+    403,
+    'authorization_error',
+    'You do not have permission to perform this action.',
   )
 }
