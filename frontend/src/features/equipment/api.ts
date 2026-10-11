@@ -1,9 +1,14 @@
 import { apiRequest } from '@/lib/api'
 
+/** One event's equipment, by its EVR- reference, escaped so it stays one path segment. */
+function eventPath(reference: string): string {
+  return `/api/equipment/events/${encodeURIComponent(reference)}`
+}
+
 /** The equipment API: backend/app/modules/equipment/routes.py. Events are named by EVR- reference. */
 const EQUIPMENT_PATHS = {
-  AVAILABILITY: (reference: string) => `/api/equipment/events/${reference}/availability`,
-  RESERVATIONS: (reference: string) => `/api/equipment/events/${reference}/reservations`,
+  AVAILABILITY: (reference: string) => `${eventPath(reference)}/availability`,
+  RESERVATIONS: (reference: string) => `${eventPath(reference)}/reservations`,
 } as const
 
 /** What is free of one equipment type for the event's own period, against what it asks for. */
