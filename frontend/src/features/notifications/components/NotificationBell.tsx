@@ -14,7 +14,7 @@ export function NotificationBell() {
     <Link
       to={ROUTES.NOTIFICATIONS}
       aria-label={name}
-      className="text-ink-muted hover:text-ink -m-3 inline-flex items-center gap-1.5 p-3 transition"
+      className="text-ink-muted hover:text-ink -mx-1.5 -my-3 inline-flex items-center gap-1.5 p-3 transition"
     >
       <svg
         aria-hidden="true"
