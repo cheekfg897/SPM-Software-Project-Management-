@@ -729,3 +729,25 @@ def show_booking_request(
         end_time=event.end_time,
         accessibility_needs=event.accessibility_needs,
     )
+
+
+def list_booking_requests_for_event(
+    event_id: int, *, coordinator_id: int, session: Session | None = None
+) -> list[BookingRequestAsShown]:
+    """The event's booking requests, earliest period first, with the event's details.
+
+    The event may be at any status: an approved event moves on once a venue is booked.
+
+    Raises:
+        NotFoundError: 404 — no such event, or ``coordinator_id`` doesn't coordinate it.
+    """
+    from app.modules.events import services as event_services  # circular at import time
+
+    event = event_services.get_event_for_coordinator(event_id, coordinator_id, session=session)
+    query = (
+        select(VenueBookingRequest)
+        .where(VenueBookingRequest.event_id == event_id)
+        .order_by(VenueBookingRequest.starts_at, VenueBookingRequest.id)
+    )
+    requests = resolve_session(session).scalars(query).all()
+    return [show_booking_request(request, event) for request in requests]
