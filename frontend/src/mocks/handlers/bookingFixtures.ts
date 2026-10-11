@@ -3,6 +3,7 @@ import { MOCK_ACCOUNTS } from '../fixtures/accounts'
 /** An event as the booking mock knows it: only what a booking request carries from the event. */
 export interface MockBookingEvent {
   id: number
+  reference: string
   coordinator_id: number
   status: 'approved' | 'confirmed'
   expected_attendance: number
@@ -20,6 +21,7 @@ export interface MockBookingVenue {
 
 const APPROVED_EVENT: MockBookingEvent = {
   id: 101,
+  reference: 'EVR-BOOK0101',
   coordinator_id: MOCK_ACCOUNTS.coordinator.id,
   status: 'approved',
   expected_attendance: 80,
@@ -33,8 +35,8 @@ const APPROVED_EVENT: MockBookingEvent = {
 /** Three events: one the coordinator can book for, one already confirmed, one assigned elsewhere. */
 export const MOCK_BOOKING_EVENTS = {
   approved: APPROVED_EVENT,
-  confirmed: { ...APPROVED_EVENT, id: 102, status: 'confirmed' },
-  someoneElses: { ...APPROVED_EVENT, id: 103, coordinator_id: 999 },
+  confirmed: { ...APPROVED_EVENT, id: 102, reference: 'EVR-BOOK0102', status: 'confirmed' },
+  someoneElses: { ...APPROVED_EVENT, id: 103, reference: 'EVR-BOOK0103', coordinator_id: 999 },
 } as const satisfies Record<string, MockBookingEvent>
 
 /** One venue that fits the approved event's 80 guests and one that does not. */

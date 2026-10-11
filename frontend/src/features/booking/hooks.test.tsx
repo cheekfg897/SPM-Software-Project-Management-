@@ -7,7 +7,7 @@ import { renderWithProviders } from '@/test/render'
 import type { RaiseBookingRequest } from './api'
 import { useBookingRequests, useRaiseBookingRequest } from './hooks'
 
-const EVENT_ID = MOCK_BOOKING_EVENTS.approved.id
+const EVENT_REFERENCE = MOCK_BOOKING_EVENTS.approved.reference
 
 const PAYLOAD: RaiseBookingRequest = {
   venue_id: MOCK_BOOKING_VENUES.roomy.id,
@@ -18,8 +18,8 @@ const PAYLOAD: RaiseBookingRequest = {
 
 /** Shows the event's requests and a button that raises one, so the hooks are used as a page would. */
 function BookingProbe({ payload }: { payload: RaiseBookingRequest }) {
-  const requests = useBookingRequests(EVENT_ID)
-  const raise = useRaiseBookingRequest(EVENT_ID)
+  const requests = useBookingRequests(EVENT_REFERENCE)
+  const raise = useRaiseBookingRequest(EVENT_REFERENCE)
   return (
     <div>
       <p>{requests.data ? `${requests.data.length} requests` : 'loading'}</p>
@@ -40,7 +40,7 @@ describe('SCRUM-42 booking hooks', () => {
     const view = renderWithProviders(<BookingProbe payload={PAYLOAD} />, SESSION)
 
     expect(await view.findByText('0 requests')).toBeInTheDocument()
-    expect(requests[0]?.url).toContain(`/api/venues/events/${EVENT_ID}/booking-requests`)
+    expect(requests[0]?.url).toContain(`/api/venues/events/${EVENT_REFERENCE}/booking-requests`)
   })
 
   it('posts the payload, then reads the requests again', async () => {

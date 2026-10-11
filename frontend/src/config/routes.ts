@@ -8,8 +8,8 @@ export const ROUTES = {
   STAFF_LOGIN: '/staff/login',
   ORGANISER_HOME: '/organiser',
   STAFF_HOME: '/staff',
-  /** A route pattern: `:eventId` is the event's numeric id. */
-  VENUE_REQUESTS: '/events/:eventId/venue-requests',
+  /** A route pattern: `:reference` is the event's `EVR-…` reference. */
+  VENUE_REQUESTS: '/events/:reference/venue-requests',
 } as const
 
 export type RoutePath = (typeof ROUTES)[keyof typeof ROUTES]
