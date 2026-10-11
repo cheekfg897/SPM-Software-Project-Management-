@@ -15,7 +15,6 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
-from sqlalchemy.orm import Session
 
 from app.common.errors import AuthenticationError, AuthorizationError, NotFoundError
 from app.modules.auth.models import User
@@ -24,19 +23,19 @@ from app.modules.events.models import EventRequest
 from app.modules.venue import services
 from app.modules.venue.models import BookingRequestStatus, VenueBookingRequest
 from app.modules.venue.schemas import BookingRequestAsShown
+from tests.venue.conftest import COORDINATOR_ID
 
 pytestmark = pytest.mark.scrum_42
 
 CallRoute = Callable[..., Any]
 ReplaceServices = Callable[[ModuleType, dict[str, Any]], dict[str, MagicMock]]
 
-COORDINATOR_ID = 3
 NON_COORDINATOR_ROLES = sorted(ALL_ROLES - {Role.EVENT_COORDINATOR}, key=lambda r: r.value)
 
 PATH = "/api/venues/events/5/booking-requests"
 # (endpoint, HTTP method, the service function it calls)
 ROUTES = [
-    ("venue.raise_booking_request", "POST", "raise_and_show_booking_request"),
+    ("venue.raise_booking_request", "POST", "raise_booking_request"),
     ("venue.list_booking_requests", "GET", "list_booking_requests_for_event"),
 ]
 ROUTE_IDS = [route[0] for route in ROUTES]
@@ -73,7 +72,7 @@ def mock_services(
 ) -> dict[str, MagicMock]:
     return replace_services(
         services,
-        {"raise_and_show_booking_request": shown, "list_booking_requests_for_event": [shown]},
+        {"raise_booking_request": shown, "list_booking_requests_for_event": [shown]},
     )
 
 
@@ -140,7 +139,7 @@ def test_raising_a_request_returns_201_with_the_request_and_the_events_details(
         "event_end_time": "17:30:00",
         "accessibility_needs": "Step-free entrance",
     }
-    mock_services["raise_and_show_booking_request"].assert_called_once_with(
+    mock_services["raise_booking_request"].assert_called_once_with(
         5, {}, requested_by=COORDINATOR_ID
     )
 
@@ -164,7 +163,6 @@ def test_a_coordinator_who_is_not_the_events_coordinator_gets_404_when_listing(
     token_for: Callable[..., str],
     make_user: Callable[..., User],
     saved_event: Callable[..., EventRequest],
-    db_session: Session,
 ) -> None:
     event = saved_event()  # assigned to coordinator 3
     other_coordinator = make_user(role=Role.EVENT_COORDINATOR, user_id=9)

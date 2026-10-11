@@ -289,7 +289,7 @@ class VenueBlock(db.Model):  # type: ignore[name-defined]
 
 
 class VenueBookingRequest(db.Model):  # type: ignore[name-defined]
-    """An organiser-side request for Venue Staff to hold a venue for an approved event.
+    """A coordinator's request for Venue Staff to hold a venue for an approved event.
 
     ``event_id`` and ``requested_by`` are database-level foreign keys only: the venue
     module never imports the events or auth models. Times are stored in UTC (ADR-0009).

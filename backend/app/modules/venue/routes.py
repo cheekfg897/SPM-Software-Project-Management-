@@ -212,7 +212,7 @@ def check_suitability(venue_id: int) -> tuple[Response, int]:
 @requires_role(Role.EVENT_COORDINATOR)
 def raise_booking_request(event_id: int) -> tuple[Response, int]:
     """Raise a Pending booking request for the coordinator's approved event."""
-    shown = services.raise_and_show_booking_request(
+    shown = services.raise_booking_request(
         event_id, request.get_json(silent=True), requested_by=int(g.current_user_id)
     )
     return jsonify(_booking_request_schema.dump(shown)), 201
