@@ -17,15 +17,27 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.common.database import resolve_session
-from app.common.errors import ConflictError, NotFoundError, ValidationError
+from app.common.errors import AppError, ConflictError, NotFoundError, ValidationError
 from app.common.validation import load_or_raise
 from app.modules.equipment.models import EquipmentOutOfService, EquipmentReservation, EquipmentType
-from app.modules.equipment.schemas import EditEquipmentTypeSchema
+from app.modules.equipment.schemas import EditEquipmentTypeSchema, ReserveEquipmentSchema
 
 # The module, not its names: events.services imports this module too (to check a
 # catalogue entry), and module-attribute access is what lets the two import each other.
 from app.modules.events import services as events_services
 from app.modules.venue.services import get_venue
+
+EQUIPMENT_TYPE_NOT_FOUND_MESSAGE = "Equipment type not found."
+NOT_RESERVABLE_MESSAGE = (
+    "Equipment can't be reserved for an event that is completed, cancelled or rejected."
+)
+
+
+class EquipmentNotReservableError(AppError):
+    """The event is over or will not happen, so nothing can be reserved for it (409)."""
+
+    status_code = 409
+    error_code = "equipment_not_reservable"
 
 
 @dataclass(frozen=True)
@@ -89,6 +101,26 @@ def _out_of_service_quantity(equipment_type_id: int, session: Session) -> int:
     return session.scalar(statement)
 
 
+def _locked_equipment_type(equipment_type_id: int, session: Session) -> EquipmentType:
+    """The equipment type, its row locked until the transaction ends (Review Focus 3).
+
+    ``SELECT … FOR UPDATE``: a second reservation of the same type waits here until
+    the first commits, then counts what is free with the first one's units taken, so
+    the two can never reserve more than was free between them. SQLite ignores the
+    lock; Postgres honours it.
+
+    Raises:
+        ValidationError: 400 on ``equipment_type_id`` — no such equipment type.
+    """
+    statement = select(EquipmentType).where(EquipmentType.id == equipment_type_id).with_for_update()
+    equipment_type = session.scalar(statement)
+    if equipment_type is None:
+        raise ValidationError(
+            "Invalid request.", details={"equipment_type_id": [EQUIPMENT_TYPE_NOT_FOUND_MESSAGE]}
+        )
+    return equipment_type
+
+
 def _commit_or_conflict(session: Session) -> None:
     """Commit; a duplicate name becomes a 409 (ADR-0014)."""
     # The schema has already enforced every other constraint and the venue has been
@@ -108,7 +140,7 @@ def get_equipment_type(equipment_type_id: int, *, session: Session | None = None
     """
     equipment_type = resolve_session(session).get(EquipmentType, equipment_type_id)
     if equipment_type is None:
-        raise NotFoundError("Equipment type not found.")
+        raise NotFoundError(EQUIPMENT_TYPE_NOT_FOUND_MESSAGE)
     return equipment_type
 
 
@@ -259,3 +291,73 @@ def update_equipment_type(
 
     _commit_or_conflict(sess)
     return equipment_type
+
+
+def reserve_equipment(
+    reference: str,
+    payload: Mapping[str, Any] | None,
+    *,
+    reserved_by: int,
+    session: Session | None = None,
+) -> EquipmentReservation:
+    """Reserve units of an equipment type for an event's own period (SCRUM-46).
+
+    Up to what is free for the period may be reserved (AC1); asking for more is
+    refused with how many are free (AC3). The reservation holds the event's exact
+    start and end, so overlapping events see that many fewer and others none fewer
+    (AC2). Each call adds a reservation; several for one event and type add up. The
+    reservation and its entry in the event's history are saved in one commit.
+
+    Args:
+        reference: The event's ``EVR-…`` reference.
+        payload: Decoded JSON body: ``equipment_type_id`` and ``quantity``.
+        reserved_by: The caller's user id, taken from their token.
+        session: Database session; defaults to ``db.session``.
+
+    Returns:
+        The saved :class:`EquipmentReservation`.
+
+    Raises:
+        ValidationError: 400 — invalid fields, an unknown equipment type, or more
+            units than are free, with how many are free.
+        NotFoundError: 404 — no such event, or it is still a draft.
+        EventPeriodIncompleteError: 409 — the event has no complete date and times.
+        EquipmentNotReservableError: 409 — the event is completed, cancelled or
+            rejected.
+    """
+    data = load_or_raise(ReserveEquipmentSchema(), payload)
+    sess = resolve_session(session)
+    need = events_services.get_event_equipment_need(reference, session=sess)
+    if not need.accepts_reservations:
+        raise EquipmentNotReservableError(NOT_RESERVABLE_MESSAGE)
+
+    # Lock, then count. Counting first would miss a reservation committed while this
+    # one waited for the lock (Review Focus 3).
+    equipment_type = _locked_equipment_type(data["equipment_type_id"], sess)
+    available = available_quantity(equipment_type.id, need.starts_at, need.ends_at, session=sess)
+    if data["quantity"] > available:
+        message = f"Only {available} available for this period."
+        raise ValidationError(message, details={"quantity": [message]})
+
+    reservation = EquipmentReservation(
+        event_id=need.event_id,
+        equipment_type_id=equipment_type.id,
+        quantity=data["quantity"],
+        starts_at=need.starts_at,
+        ends_at=need.ends_at,
+        reserved_by=reserved_by,
+    )
+    sess.add(reservation)
+    # Gives the reservation the id its history entry names.
+    sess.flush()
+    history_details = {
+        "equipment_type_id": equipment_type.id,
+        "equipment_type_name": equipment_type.name,
+        "quantity": reservation.quantity,
+        "reservation_id": reservation.id,
+    }
+    events_services.record_equipment_reserved(
+        need.event_id, history_details, actor_id=reserved_by, session=sess
+    )
+    sess.commit()
+    return reservation
