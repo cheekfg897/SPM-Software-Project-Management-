@@ -1,8 +1,10 @@
 import { screen, waitFor } from '@testing-library/react'
+import { http, HttpResponse } from 'msw'
 
 import { MOCK_ACCOUNTS, mockSessionFor } from '@/mocks/handlers/auth'
 import { MOCK_OPEN_EVENT_REFERENCE } from '@/mocks/handlers/equipmentFixtures'
 import { fieldErrorsOf } from '@/lib/api'
+import { server } from '@/mocks/server'
 import { recordRequests } from '@/test/recordRequests'
 import { renderWithProviders } from '@/test/render'
 
@@ -82,5 +84,28 @@ describe('SCRUM-46 reserving equipment', () => {
     ).toBeInTheDocument()
     expect(screen.getByText('Error: Invalid request.')).toBeInTheDocument()
     expect(screen.getByText('Projector available: 6')).toBeInTheDocument()
+  })
+
+  it('reads availability again after a refusal, so the table shows what the backend has now', async () => {
+    const { user } = renderWithProviders(<EquipmentProbe />, { session: SESSION })
+    await screen.findByText('Projector available: 6')
+    // Meanwhile someone else reserved five more, so the backend now has one free.
+    server.use(
+      http.get(`/api/equipment/events/${MOCK_OPEN_EVENT_REFERENCE}/availability`, () =>
+        HttpResponse.json([
+          {
+            equipment_type_id: PROJECTOR_ID,
+            equipment_type_name: 'Projector',
+            available: 1,
+            requested: 8,
+            shortfall: 7,
+          },
+        ]),
+      ),
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Reserve nine' }))
+
+    expect(await screen.findByText('Projector available: 1')).toBeInTheDocument()
   })
 })

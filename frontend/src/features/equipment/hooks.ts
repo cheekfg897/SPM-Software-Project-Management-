@@ -26,12 +26,13 @@ export function useEventReservations(reference: string) {
 
 /**
  * Reserve equipment for the event. Afterwards availability and the reservation list are read
- * again, so what is left comes from the backend rather than being worked out here.
+ * again, so what is left comes from the backend rather than being worked out here. That happens
+ * after a refusal too: "Only N available" means someone else may have reserved meanwhile.
  */
 export function useReserveEquipment(reference: string) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (body: ReserveEquipmentBody) => reserveEquipment(reference, body),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: equipmentKeys.event(reference) }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: equipmentKeys.event(reference) }),
   })
 }
