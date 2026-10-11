@@ -222,90 +222,6 @@ def record_event_history(
     return entry
 
 
-@dataclass(frozen=True)
-class EventForBooking:
-    """What a venue booking request needs to know about its event (SCRUM-42).
-
-    The event's timing stays in local business time, as the event stores it. An
-    approved event always has its dates and times (SCRUM-22, SCRUM-31).
-    """
-
-    reference: str
-    name: str
-    status: EventRequestStatus
-    proposed_date: date
-    end_date: date | None
-    start_time: time
-    end_time: time
-    expected_attendance: int
-    accessibility_needs: str | None
-
-
-def get_event_for_coordinator(
-    event_id: int, coordinator_id: int | str, *, session: Session | None = None
-) -> EventForBooking:
-    """The event ``coordinator_id`` is assigned to, at any status (SCRUM-42, ADR-0019).
-
-    Raises:
-        NotFoundError: 404 — no such event, or it isn't assigned to this coordinator.
-    """
-    event_request = resolve_session(session).get(EventRequest, event_id)
-    if event_request is None:
-        raise NotFoundError(EVENT_REQUEST_NOT_FOUND_MESSAGE)
-    _check_assigned_to(coordinator_id, event_request)
-    return EventForBooking(
-        reference=event_request.reference,
-        name=event_request.name,
-        status=event_request.status,
-        proposed_date=event_request.proposed_date,
-        end_date=event_request.end_date,
-        start_time=event_request.start_time,
-        end_time=event_request.end_time,
-        expected_attendance=event_request.expected_attendance,
-        accessibility_needs=event_request.accessibility_needs,
-    )
-
-
-def get_approved_event_for_coordinator(
-    event_id: int, coordinator_id: int | str, *, session: Session | None = None
-) -> EventForBooking:
-    """The approved event ``coordinator_id`` is assigned to (SCRUM-42, ADR-0019).
-
-    Raises:
-        NotFoundError: 404 — no such event, or it isn't assigned to this coordinator.
-        ConflictError: 409 — the event isn't approved; the message names its status.
-    """
-    event = get_event_for_coordinator(event_id, coordinator_id, session=session)
-    if event.status is not EventRequestStatus.APPROVED:
-        raise ConflictError(
-            "Only an approved event can have a venue booking request;"
-            f" this one is {event.status.value}."
-        )
-    return event
-
-
-def record_venue_booking_requested(
-    event_id: int,
-    *,
-    actor_id: int,
-    details: dict[str, Any],
-    session: Session | None = None,
-) -> EventHistoryEntry:
-    """Add the history entry for a venue booking request, without committing (SCRUM-42).
-
-    The entry rides in the caller's transaction, so it is saved with the request it
-    records or not at all (ADR-0018).
-    """
-    event_request = resolve_session(session).get(EventRequest, event_id)
-    return record_event_history(
-        event_request,
-        EventHistoryKind.VENUE_BOOKING_REQUESTED,
-        actor_id=actor_id,
-        details=details,
-        session=session,
-    )
-
-
 def _user_ids_named_in(entries: list[EventHistoryEntry]) -> set[int]:
     """Every user id showing ``entries`` needs a name for (ADR-0025, ADR-0028).
 
@@ -1100,6 +1016,90 @@ def _check_assigned_to(coordinator_id: int | str, event_request: EventRequest) -
     """
     if event_request.coordinator_id != int(coordinator_id):
         raise NotFoundError(EVENT_REQUEST_NOT_FOUND_MESSAGE)
+
+
+@dataclass(frozen=True)
+class EventForBooking:
+    """What a venue booking request needs to know about its event (SCRUM-42).
+
+    The event's timing stays in local business time, as the event stores it. An
+    approved event always has its dates and times (SCRUM-22, SCRUM-31).
+    """
+
+    reference: str
+    name: str
+    status: EventRequestStatus
+    proposed_date: date
+    end_date: date | None
+    start_time: time
+    end_time: time
+    expected_attendance: int
+    accessibility_needs: str | None
+
+
+def get_event_for_coordinator(
+    event_id: int, coordinator_id: int | str, *, session: Session | None = None
+) -> EventForBooking:
+    """The event ``coordinator_id`` is assigned to, at any status (SCRUM-42, ADR-0019).
+
+    Raises:
+        NotFoundError: 404 — no such event, or it isn't assigned to this coordinator.
+    """
+    event_request = resolve_session(session).get(EventRequest, event_id)
+    if event_request is None:
+        raise NotFoundError(EVENT_REQUEST_NOT_FOUND_MESSAGE)
+    _check_assigned_to(coordinator_id, event_request)
+    return EventForBooking(
+        reference=event_request.reference,
+        name=event_request.name,
+        status=event_request.status,
+        proposed_date=event_request.proposed_date,
+        end_date=event_request.end_date,
+        start_time=event_request.start_time,
+        end_time=event_request.end_time,
+        expected_attendance=event_request.expected_attendance,
+        accessibility_needs=event_request.accessibility_needs,
+    )
+
+
+def get_approved_event_for_coordinator(
+    event_id: int, coordinator_id: int | str, *, session: Session | None = None
+) -> EventForBooking:
+    """The approved event ``coordinator_id`` is assigned to (SCRUM-42, ADR-0019).
+
+    Raises:
+        NotFoundError: 404 — no such event, or it isn't assigned to this coordinator.
+        ConflictError: 409 — the event isn't approved; the message names its status.
+    """
+    event = get_event_for_coordinator(event_id, coordinator_id, session=session)
+    if event.status is not EventRequestStatus.APPROVED:
+        raise ConflictError(
+            "Only an approved event can have a venue booking request;"
+            f" this one is {event.status.value}."
+        )
+    return event
+
+
+def record_venue_booking_requested(
+    event_id: int,
+    *,
+    actor_id: int,
+    details: dict[str, Any],
+    session: Session | None = None,
+) -> EventHistoryEntry:
+    """Add the history entry for a venue booking request, without committing (SCRUM-42).
+
+    The entry rides in the caller's transaction, so it is saved with the request it
+    records or not at all (ADR-0018).
+    """
+    event_request = resolve_session(session).get(EventRequest, event_id)
+    return record_event_history(
+        event_request,
+        EventHistoryKind.VENUE_BOOKING_REQUESTED,
+        actor_id=actor_id,
+        details=details,
+        session=session,
+    )
 
 
 def _event_request_assigned_to(

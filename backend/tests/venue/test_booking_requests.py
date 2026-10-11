@@ -34,14 +34,52 @@ from app.modules.venue.schemas import (
     RaiseBookingRequestSchema,
     VenueBookingRequestSchema,
 )
+from tests.venue.conftest import COORDINATOR_ID, SavedEvent, booking_payload, raise_booking
 
 pytestmark = pytest.mark.scrum_42
 
-SavedEvent = Callable[..., EventRequest]
-
-COORDINATOR_ID = 3
 STARTS_AT = datetime(2026, 11, 1, 9, 0, tzinfo=UTC)
 ENDS_AT = datetime(2026, 11, 1, 12, 0, tzinfo=UTC)
+UNSUITABLE_MESSAGE = "A justification is required because the venue is not suitable."
+DUPLICATE_MESSAGE = "A pending request for this event, venue and period already exists."
+LATER_PERIOD = {
+    "starts_at": "2026-11-02T09:00:00+08:00",
+    "ends_at": "2026-11-02T12:00:00+08:00",
+}
+
+
+def _load(**overrides: Any) -> dict[str, Any]:
+    return load_or_raise(RaiseBookingRequestSchema(), booking_payload(**overrides))
+
+
+def _request() -> VenueBookingRequest:
+    return VenueBookingRequest(
+        id=9,
+        event_id=1,
+        venue_id=3,
+        starts_at=STARTS_AT,
+        ends_at=ENDS_AT,
+        purpose="Main hall",
+        expected_occupancy=150,
+        required_layout="theatre",
+        justification=None,
+        status=BookingRequestStatus.PENDING,
+        requested_by=7,
+    )
+
+
+def _saved_requests(session: Session) -> list[VenueBookingRequest]:
+    return session.query(VenueBookingRequest).all()
+
+
+def _history(session: Session) -> list[EventHistoryEntry]:
+    return session.query(EventHistoryEntry).all()
+
+
+def _list(event: EventRequest, session: Session, coordinator_id: int = COORDINATOR_ID) -> Any:
+    return services.list_booking_requests_for_event(
+        event.id, coordinator_id=coordinator_id, session=session
+    )
 
 
 def test_a_new_request_is_pending(db_session: Session) -> None:
@@ -86,20 +124,6 @@ def test_a_saved_request_keeps_its_details_and_has_no_justification_yet(
     assert (saved.purpose, saved.expected_occupancy, saved.requested_by) == ("Main hall", 150, 7)
     assert saved.required_layout is None
     assert saved.justification is None
-
-
-def _payload(**overrides: Any) -> dict[str, Any]:
-    payload = {
-        "venue_id": 3,
-        "starts_at": "2026-11-01T09:00:00+08:00",
-        "ends_at": "2026-11-01T12:00:00+08:00",
-        "purpose": "Main hall",
-    }
-    return {**payload, **overrides}
-
-
-def _load(**overrides: Any) -> dict[str, Any]:
-    return load_or_raise(RaiseBookingRequestSchema(), _payload(**overrides))
 
 
 def test_a_valid_payload_loads_with_utc_instants_and_optional_fields_left_out() -> None:
@@ -162,22 +186,6 @@ def test_a_layout_the_venues_do_not_offer_is_rejected() -> None:
     assert list(caught.value.details) == ["required_layout"]
 
 
-def _request() -> VenueBookingRequest:
-    return VenueBookingRequest(
-        id=9,
-        event_id=1,
-        venue_id=3,
-        starts_at=STARTS_AT,
-        ends_at=ENDS_AT,
-        purpose="Main hall",
-        expected_occupancy=150,
-        required_layout="theatre",
-        justification=None,
-        status=BookingRequestStatus.PENDING,
-        requested_by=7,
-    )
-
-
 def test_a_request_is_shown_with_the_events_timing_and_accessibility_needs() -> None:
     shown = BookingRequestAsShown(
         request=_request(),
@@ -211,30 +219,13 @@ def test_a_request_is_shown_with_the_events_timing_and_accessibility_needs() -> 
 # AC1, AC3, AC7 — raising a request from an approved event
 # --------------------------------------------------------------------------
 
-UNSUITABLE_MESSAGE = "A justification is required because the venue is not suitable."
-
-
-def _raise(venue: Venue, event: EventRequest, session: Session, **overrides: Any) -> Any:
-    payload = _payload(**{"venue_id": venue.id, **overrides})
-    return services.raise_booking_request(
-        event.id, payload, requested_by=COORDINATOR_ID, session=session
-    )
-
-
-def _saved_requests(session: Session) -> list[VenueBookingRequest]:
-    return session.query(VenueBookingRequest).all()
-
-
-def _history(session: Session) -> list[EventHistoryEntry]:
-    return session.query(EventHistoryEntry).all()
-
 
 def test_occupancy_and_layout_default_to_the_events(
     db_session: Session, venue: Venue, saved_event: SavedEvent
 ) -> None:
     event = saved_event()
 
-    request = _raise(venue, event, db_session)
+    request = raise_booking(venue, event, db_session)
 
     assert (request.expected_occupancy, request.required_layout) == (80, None)
     assert request.status is BookingRequestStatus.PENDING
@@ -255,7 +246,7 @@ def test_occupancy_and_layout_default_to_the_events(
 def test_occupancy_and_layout_sent_override_the_events(
     db_session: Session, venue: Venue, saved_event: SavedEvent
 ) -> None:
-    request = _raise(
+    request = raise_booking(
         venue, saved_event(), db_session, expected_occupancy=60, required_layout="theatre"
     )
 
@@ -267,7 +258,7 @@ def test_an_unsuitable_venue_needs_a_justification_on_that_field(
 ) -> None:
     """The event's 80 fit the venue's 100; the request's own 150 do not."""
     with pytest.raises(ValidationError) as caught:
-        _raise(venue, saved_event(), db_session, expected_occupancy=150)
+        raise_booking(venue, saved_event(), db_session, expected_occupancy=150)
 
     assert caught.value.details == {"justification": [UNSUITABLE_MESSAGE]}
 
@@ -276,7 +267,7 @@ def test_a_layout_the_venue_lacks_needs_a_justification(
     db_session: Session, venue: Venue, saved_event: SavedEvent
 ) -> None:
     with pytest.raises(ValidationError) as caught:
-        _raise(venue, saved_event(), db_session, required_layout="boardroom")
+        raise_booking(venue, saved_event(), db_session, required_layout="boardroom")
 
     assert caught.value.details == {"justification": [UNSUITABLE_MESSAGE]}
 
@@ -284,7 +275,7 @@ def test_a_layout_the_venue_lacks_needs_a_justification(
 def test_an_unsuitable_venue_is_accepted_with_a_justification(
     db_session: Session, venue: Venue, saved_event: SavedEvent
 ) -> None:
-    request = _raise(
+    request = raise_booking(
         venue, saved_event(), db_session, expected_occupancy=150, justification="Only hall free"
     )
 
@@ -302,7 +293,7 @@ def test_suitability_uses_the_requests_occupancy_not_the_events(
     small_venue = make_venue(capacity=60)
     save(small_venue)
 
-    request = _raise(small_venue, saved_event(), db_session, expected_occupancy=50)
+    request = raise_booking(small_venue, saved_event(), db_session, expected_occupancy=50)
 
     assert request.justification is None
 
@@ -311,7 +302,7 @@ def test_an_unknown_venue_is_a_validation_error_on_venue_id(
     db_session: Session, venue: Venue, saved_event: SavedEvent
 ) -> None:
     with pytest.raises(ValidationError) as caught:
-        _raise(venue, saved_event(), db_session, venue_id=999)
+        raise_booking(venue, saved_event(), db_session, venue_id=999)
 
     assert caught.value.details == {"venue_id": ["Venue not found."]}
 
@@ -322,7 +313,7 @@ def test_an_event_that_is_not_approved_is_refused_naming_its_status(
     event = saved_event(EventRequestStatus.SUBMITTED)
 
     with pytest.raises(ConflictError) as caught:
-        _raise(venue, event, db_session)
+        raise_booking(venue, event, db_session)
 
     assert caught.value.message == (
         "Only an approved event can have a venue booking request; this one is submitted."
@@ -344,7 +335,7 @@ def test_a_coordinator_who_is_not_assigned_to_the_event_gets_not_found(
     with pytest.raises(NotFoundError):
         services.raise_booking_request(
             event.id,
-            _payload(venue_id=venue.id),
+            booking_payload(venue_id=venue.id),
             requested_by=COORDINATOR_ID,
             session=db_session,
         )
@@ -353,7 +344,7 @@ def test_a_coordinator_who_is_not_assigned_to_the_event_gets_not_found(
 def test_an_unknown_event_gets_not_found(db_session: Session, venue: Venue) -> None:
     with pytest.raises(NotFoundError):
         services.raise_booking_request(
-            999, _payload(venue_id=venue.id), requested_by=COORDINATOR_ID, session=db_session
+            999, booking_payload(venue_id=venue.id), requested_by=COORDINATOR_ID, session=db_session
         )
 
 
@@ -367,7 +358,7 @@ def test_raising_a_request_records_it_in_the_events_history(
 ) -> None:
     event = saved_event()
 
-    request = _raise(venue, event, db_session)
+    request = raise_booking(venue, event, db_session)
     db_session.rollback()  # throws away anything that was not committed
 
     [entry] = _history(db_session)
@@ -391,7 +382,7 @@ def test_a_refused_request_records_nothing(
     db_session: Session, venue: Venue, saved_event: SavedEvent, overrides: dict[str, Any]
 ) -> None:
     with pytest.raises(ValidationError):
-        _raise(venue, saved_event(), db_session, **overrides)
+        raise_booking(venue, saved_event(), db_session, **overrides)
 
     assert _saved_requests(db_session) == []
     assert _history(db_session) == []
@@ -401,7 +392,7 @@ def test_a_request_for_an_event_that_is_not_approved_records_nothing(
     db_session: Session, venue: Venue, saved_event: SavedEvent
 ) -> None:
     with pytest.raises(ConflictError):
-        _raise(venue, saved_event(EventRequestStatus.SUBMITTED), db_session)
+        raise_booking(venue, saved_event(EventRequestStatus.SUBMITTED), db_session)
 
     assert _history(db_session) == []
 
@@ -410,17 +401,15 @@ def test_a_request_for_an_event_that_is_not_approved_records_nothing(
 # AC6, AC2 — no second Pending request for the same event, venue and period
 # --------------------------------------------------------------------------
 
-DUPLICATE_MESSAGE = "A pending request for this event, venue and period already exists."
-
 
 def test_a_second_pending_request_for_the_same_event_venue_and_period_is_refused(
     db_session: Session, venue: Venue, saved_event: SavedEvent
 ) -> None:
     event = saved_event()
-    first = _raise(venue, event, db_session)
+    first = raise_booking(venue, event, db_session)
 
     with pytest.raises(ConflictError) as raised:
-        _raise(venue, event, db_session)
+        raise_booking(venue, event, db_session)
 
     assert raised.value.message == DUPLICATE_MESSAGE
     # The refused attempt was rolled back, so only the first is kept.
@@ -432,9 +421,9 @@ def test_the_same_event_and_venue_at_a_different_period_is_saved(
     db_session: Session, venue: Venue, saved_event: SavedEvent
 ) -> None:
     event = saved_event()
-    _raise(venue, event, db_session)
+    raise_booking(venue, event, db_session)
 
-    _raise(venue, event, db_session, ends_at="2026-11-01T13:00:00+08:00")
+    raise_booking(venue, event, db_session, ends_at="2026-11-01T13:00:00+08:00")
 
     assert len(_saved_requests(db_session)) == 2
 
@@ -449,9 +438,9 @@ def test_the_same_event_at_a_different_venue_and_overlapping_time_is_saved(
     other_venue = make_venue(name="Annex")
     save(other_venue)
     event = saved_event()
-    _raise(venue, event, db_session)
+    raise_booking(venue, event, db_session)
 
-    _raise(other_venue, event, db_session)
+    raise_booking(other_venue, event, db_session)
 
     assert len(_saved_requests(db_session)) == 2
 
@@ -464,7 +453,7 @@ def test_an_integrity_error_that_is_not_the_duplicate_is_not_turned_into_a_confl
 
     with patch.object(db_session, "commit", side_effect=other_violation):
         with pytest.raises(IntegrityError):
-            _raise(venue, event, db_session)
+            raise_booking(venue, event, db_session)
 
     assert _saved_requests(db_session) == []
 
@@ -478,7 +467,7 @@ def test_a_request_is_shown_with_the_event_it_was_raised_from(
     db_session: Session, venue: Venue, saved_event: SavedEvent
 ) -> None:
     event = saved_event()
-    request = _raise(venue, event, db_session)
+    request = raise_booking(venue, event, db_session)
     event_details = event_services.get_approved_event_for_coordinator(
         event.id, COORDINATOR_ID, session=db_session
     )
@@ -500,8 +489,11 @@ def test_a_raised_request_comes_back_with_the_events_details(
 ) -> None:
     event = saved_event()
 
-    shown = services.raise_and_show_booking_request(
-        event.id, _payload(venue_id=venue.id), requested_by=COORDINATOR_ID, session=db_session
+    shown = services.raise_booking_request(
+        event.id,
+        booking_payload(venue_id=venue.id),
+        requested_by=COORDINATOR_ID,
+        session=db_session,
     )
 
     assert shown.request in _saved_requests(db_session)
@@ -513,26 +505,15 @@ def test_a_raised_request_comes_back_with_the_events_details(
 # Listing the requests raised for an event
 # --------------------------------------------------------------------------
 
-LATER_PERIOD = {
-    "starts_at": "2026-11-02T09:00:00+08:00",
-    "ends_at": "2026-11-02T12:00:00+08:00",
-}
-
-
-def _list(event: EventRequest, session: Session, coordinator_id: int = COORDINATOR_ID) -> Any:
-    return services.list_booking_requests_for_event(
-        event.id, coordinator_id=coordinator_id, session=session
-    )
-
 
 def test_only_this_events_requests_are_listed_in_period_order(
     db_session: Session, venue: Venue, saved_event: SavedEvent
 ) -> None:
     event = saved_event()
     other_event = saved_event()
-    later = _raise(venue, event, db_session, **LATER_PERIOD)
-    earlier = _raise(venue, event, db_session)
-    _raise(venue, other_event, db_session)
+    later = raise_booking(venue, event, db_session, **LATER_PERIOD)
+    earlier = raise_booking(venue, event, db_session)
+    raise_booking(venue, other_event, db_session)
 
     listed = _list(event, db_session)
 
@@ -543,7 +524,7 @@ def test_listed_requests_show_the_events_timing_and_accessibility_needs(
     db_session: Session, venue: Venue, saved_event: SavedEvent
 ) -> None:
     event = saved_event()
-    request = _raise(venue, event, db_session)
+    request = raise_booking(venue, event, db_session)
 
     assert _list(event, db_session) == [
         BookingRequestAsShown(
@@ -561,7 +542,7 @@ def test_an_event_that_has_moved_on_from_approved_still_lists_its_requests(
     db_session: Session, venue: Venue, saved_event: SavedEvent
 ) -> None:
     event = saved_event()
-    request = _raise(venue, event, db_session)
+    request = raise_booking(venue, event, db_session)
     event.status = EventRequestStatus.CONFIRMED
     db_session.commit()
 
@@ -572,7 +553,7 @@ def test_another_coordinator_cannot_list_the_events_requests(
     db_session: Session, venue: Venue, saved_event: SavedEvent
 ) -> None:
     event = saved_event()
-    _raise(venue, event, db_session)
+    raise_booking(venue, event, db_session)
 
     with pytest.raises(NotFoundError):
         _list(event, db_session, coordinator_id=9)
