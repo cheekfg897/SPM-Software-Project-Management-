@@ -161,9 +161,9 @@ curl http://localhost:5000/api/auth/internal-only -H "Authorization: Bearer <tok
 | `GET  /api/equipment/types`    | internal roles — every equipment type with its total quantity, by name |
 | `GET  /api/equipment/types/<id>` | internal roles — one equipment type                           |
 | `PATCH /api/equipment/types/<id>` | `technical_support_staff` — change only the fields sent; sending `venue_id` or `store_name` replaces the location |
-| `GET  /api/equipment/events/<reference>/availability` | internal roles — for every equipment type, how many are free for the event's own period, what it asks for and any shortfall |
+| `GET  /api/equipment/events/<reference>/availability` | `event_coordinator` (events assigned to you; any other is `404`), `technical_support_staff` (any event but a draft) — for every equipment type, how many are free for the event's own period, what it asks for and any shortfall |
 | `POST /api/equipment/events/<reference>/reservations` | `technical_support_staff` — reserve up to what is free (`201`); more is `400` naming how many are free |
-| `GET  /api/equipment/events/<reference>/reservations` | internal roles — the equipment reserved for the event, oldest first, with who reserved it by name |
+| `GET  /api/equipment/events/<reference>/reservations` | `event_coordinator` (events assigned to you; any other is `404`), `technical_support_staff` (any event but a draft) — the equipment reserved for the event, oldest first, with who reserved it by name |
 | `GET  /api/notifications`      | any authenticated user — your notifications, newest first      |
 | `GET  /api/notifications/unread-count` | any authenticated user — how many of yours are unread   |
 | `POST /api/notifications/<id>/read` | any authenticated user — mark one of yours read (`404` if it isn't yours) |

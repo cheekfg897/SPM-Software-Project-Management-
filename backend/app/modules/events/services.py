@@ -1186,6 +1186,23 @@ def _notify_technical_support(
     _raise_notifications(technical_support_ids, event_request, kind, session)
 
 
+def _event_request_for_equipment_viewer(
+    viewer_id: int | str, reference: str, viewer_role: Role, session: Session
+) -> EventRequest:
+    """The request, if the viewer may see its equipment (ADR-0019, ADR-0037).
+
+    Technical Support Staff may see any event's; a coordinator only an event assigned
+    to them.
+
+    Raises:
+        NotFoundError: 404 — no such request, a draft, or for a coordinator, not one
+            of their own.
+    """
+    if viewer_role is Role.TECHNICAL_SUPPORT_STAFF:
+        return _event_request_for_staff(reference, session)
+    return _event_request_assigned_to(viewer_id, reference, session)
+
+
 def add_equipment_line(
     coordinator_id: int | str,
     reference: str,
@@ -1253,11 +1270,9 @@ def list_equipment_lines(
         NotFoundError: 404 — no such event request, or for a coordinator, none among
             their own.
     """
-    sess = resolve_session(session)
-    if viewer_role is Role.TECHNICAL_SUPPORT_STAFF:
-        event_request = _event_request_for_staff(reference, sess)
-    else:
-        event_request = _event_request_assigned_to(viewer_id, reference, sess)
+    event_request = _event_request_for_equipment_viewer(
+        viewer_id, reference, viewer_role, resolve_session(session)
+    )
     return event_request, list(event_request.equipment_lines)
 
 
@@ -2005,22 +2020,12 @@ def _event_period(event_request: EventRequest) -> tuple[datetime, datetime]:
     return starts_at, ends_at
 
 
-def get_event_equipment_need(
-    reference: str, *, session: Session | None = None
-) -> EventEquipmentNeed:
-    """An event's period and the equipment it asks for, for the equipment module.
-
-    For internal staff, so a draft is hidden as everywhere else (ADR-0024).
-
-    Args:
-        reference: The ``EVR-…`` reference; case and surrounding spaces are ignored.
-        session: Database session; defaults to ``db.session``.
+def _equipment_need_of(event_request: EventRequest) -> EventEquipmentNeed:
+    """The request's period and the equipment it asks for.
 
     Raises:
-        NotFoundError: 404 — no such request, or it is still a draft.
         EventPeriodIncompleteError: 409 — the event has no complete date and times.
     """
-    event_request = _event_request_for_staff(reference, resolve_session(session))
     starts_at, ends_at = _event_period(event_request)
     requested = {}
     for line in event_request.equipment_lines:
@@ -2032,6 +2037,52 @@ def get_event_equipment_need(
         requested=requested,
         accepts_reservations=event_request.status not in EQUIPMENT_NOT_NEEDED_STATUSES,
     )
+
+
+def get_event_equipment_need(
+    reference: str, *, session: Session | None = None
+) -> EventEquipmentNeed:
+    """An event's period and the equipment it asks for, for the equipment module.
+
+    For Technical Support reserving, who may reserve for any event, so a draft is
+    hidden as everywhere else (ADR-0024) and nothing more.
+
+    Args:
+        reference: The ``EVR-…`` reference; case and surrounding spaces are ignored.
+        session: Database session; defaults to ``db.session``.
+
+    Raises:
+        NotFoundError: 404 — no such request, or it is still a draft.
+        EventPeriodIncompleteError: 409 — the event has no complete date and times.
+    """
+    event_request = _event_request_for_staff(reference, resolve_session(session))
+    return _equipment_need_of(event_request)
+
+
+def get_event_equipment_need_for_viewer(
+    viewer_id: int | str, reference: str, *, viewer_role: Role, session: Session | None = None
+) -> EventEquipmentNeed:
+    """An event's period and equipment, if the viewer may read its equipment.
+
+    For the equipment module's reads, scoped as the event's equipment lines are
+    (ADR-0019, ADR-0037): Technical Support Staff may read any event's, a coordinator
+    only an event assigned to them.
+
+    Args:
+        viewer_id: The caller's user id, taken from their token.
+        reference: The ``EVR-…`` reference; case and surrounding spaces are ignored.
+        viewer_role: The caller's role.
+        session: Database session; defaults to ``db.session``.
+
+    Raises:
+        NotFoundError: 404 — no such request, a draft, or for a coordinator, not one
+            of their own (the same answer, ADR-0012).
+        EventPeriodIncompleteError: 409 — the event has no complete date and times.
+    """
+    event_request = _event_request_for_equipment_viewer(
+        viewer_id, reference, viewer_role, resolve_session(session)
+    )
+    return _equipment_need_of(event_request)
 
 
 def record_equipment_reserved(

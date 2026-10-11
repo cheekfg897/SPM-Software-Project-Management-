@@ -1,8 +1,11 @@
 """Unit tests for the routes of SCRUM-45 and SCRUM-46, and who may call them.
 
-An event's availability and reservations are read by every internal role (SCRUM-45;
-SCRUM-46 AC4, the reservation is visible on the event record). Only Technical Support
-Staff reserve (SCRUM-46 AC1). The *registered* view functions are called inside a
+An event's availability and reservations are read by Technical Support Staff and Event
+Coordinators, as the event's equipment lines are (SCRUM-45; SCRUM-46 AC4, the
+reservation is visible on the event record; ADR-0019, ADR-0037). Venue Staff and
+external roles are refused. Which events a coordinator may read is the services' job
+(``test_equipment_read_scoping.py``). Only Technical Support Staff reserve (SCRUM-46
+AC1). The *registered* view functions are called inside a
 request context, so the real decorators run; the services are replaced with mocks, so a
 refused request is shown to stop before any service call.
 """
@@ -19,7 +22,7 @@ import pytest
 from flask import Flask
 
 from app.common.errors import AuthenticationError, AuthorizationError
-from app.modules.auth.permissions import ALL_ROLES, INTERNAL_ROLES, Role
+from app.modules.auth.permissions import ALL_ROLES, Role
 from app.modules.equipment import services
 
 pytestmark = pytest.mark.scrum_46
@@ -35,6 +38,9 @@ BASE_PATH = f"/api/equipment/events/{REFERENCE}"
 #: ``token_for`` mints the user id 999, which a token carries as text.
 CALLER_ID = "999"
 
+#: Who reads an event's equipment (ADR-0019, ADR-0037).
+EQUIPMENT_READERS = {Role.EVENT_COORDINATOR, Role.TECHNICAL_SUPPORT_STAFF}
+
 # (endpoint, method, path, service it calls, success status, roles allowed)
 ROUTES = [
     (
@@ -43,7 +49,7 @@ ROUTES = [
         f"{BASE_PATH}/availability",
         "equipment_availability_for_event",
         200,
-        INTERNAL_ROLES,
+        EQUIPMENT_READERS,
     ),
     (
         "equipment.reserve_equipment",
@@ -59,7 +65,7 @@ ROUTES = [
         f"{BASE_PATH}/reservations",
         "list_reservations_for_event",
         200,
-        INTERNAL_ROLES,
+        EQUIPMENT_READERS,
     ),
 ]
 ROUTE_PARAMS = ("endpoint", "method", "path", "service", "status", "allowed_roles")
@@ -224,7 +230,9 @@ def test_the_availability_route_returns_a_row_for_each_equipment_type(
     )
 
     assert response.get_json() == [AVAILABILITY_JSON]
-    mock_services["equipment_availability_for_event"].assert_called_once_with(REFERENCE)
+    mock_services["equipment_availability_for_event"].assert_called_once_with(
+        CALLER_ID, REFERENCE, viewer_role=Role.TECHNICAL_SUPPORT_STAFF
+    )
 
 
 def test_the_reserve_route_passes_the_body_and_the_caller_and_returns_the_reservation(
@@ -255,4 +263,6 @@ def test_the_list_route_returns_each_reservation_the_service_found(
     )
 
     assert response.get_json() == [RESERVATION_JSON]
-    mock_services["list_reservations_for_event"].assert_called_once_with(REFERENCE)
+    mock_services["list_reservations_for_event"].assert_called_once_with(
+        CALLER_ID, REFERENCE, viewer_role=Role.EVENT_COORDINATOR
+    )

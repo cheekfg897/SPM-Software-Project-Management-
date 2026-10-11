@@ -142,8 +142,17 @@ def _reserved_quantities(db_session: Session) -> list[int]:
 
 def _available_for(reference: str) -> int:
     """What is free of the only equipment type in the catalogue for the event."""
-    (row,) = services.equipment_availability_for_event(reference)
+    (row,) = services.equipment_availability_for_event(
+        TECHNICAL_SUPPORT_ID, reference, viewer_role=Role.TECHNICAL_SUPPORT_STAFF
+    )
     return row.available
+
+
+def _reservations_of(reference: str) -> list[services.ReservationAsShown]:
+    """The event's reservations as Technical Support, who may read any event's."""
+    return services.list_reservations_for_event(
+        TECHNICAL_SUPPORT_ID, reference, viewer_role=Role.TECHNICAL_SUPPORT_STAFF
+    )
 
 
 def _history_of(reference: str) -> list[tuple[EventHistoryKind, str | None, dict[str, Any]]]:
@@ -437,7 +446,7 @@ def _statements_run_listing_reservations(db_session: Session) -> int:
     bind = db_session.get_bind()
     event.listen(bind, "before_cursor_execute", _on_execute)
     try:
-        services.list_reservations_for_event(REFERENCE)
+        _reservations_of(REFERENCE)
     finally:
         event.remove(bind, "before_cursor_execute", _on_execute)
     return len(statements)
@@ -488,7 +497,7 @@ def test_an_events_reservations_are_listed_oldest_first_with_names(
     _reserve(REFERENCE, equipment_type, 2, reserved_by=TECHNICAL_SUPPORT_ID)
     _reserve(OVERLAPPING_REFERENCE, equipment_type, 1)
 
-    listed = services.list_reservations_for_event(REFERENCE)
+    listed = _reservations_of(REFERENCE)
 
     assert [(row.equipment_type_name, row.quantity, row.reserved_by) for row in listed] == [
         ("Projector", 3, TECHNICAL_SUPPORT_NAME),
@@ -498,7 +507,7 @@ def test_an_events_reservations_are_listed_oldest_first_with_names(
 
 
 def test_an_event_with_no_reservations_lists_none(saved_event_request: EventRequest) -> None:
-    assert services.list_reservations_for_event(REFERENCE) == []
+    assert _reservations_of(REFERENCE) == []
 
 
 def test_the_reference_is_matched_ignoring_case_and_spaces(
@@ -506,7 +515,7 @@ def test_the_reference_is_matched_ignoring_case_and_spaces(
 ) -> None:
     _reserve(REFERENCE, equipment_type, 3)
 
-    assert len(services.list_reservations_for_event(" evr-aaaaaaaa ")) == 1
+    assert len(_reservations_of(" evr-aaaaaaaa ")) == 1
 
 
 def test_listing_the_reservations_of_a_draft_or_unknown_event_is_not_found(
@@ -515,9 +524,9 @@ def test_listing_the_reservations_of_a_draft_or_unknown_event_is_not_found(
     save(make_event_request(status=EventRequestStatus.DRAFT))
 
     with pytest.raises(NotFoundError):
-        services.list_reservations_for_event(REFERENCE)
+        _reservations_of(REFERENCE)
     with pytest.raises(NotFoundError):
-        services.list_reservations_for_event("EVR-ZZZZZZZZ")
+        _reservations_of("EVR-ZZZZZZZZ")
 
 
 def test_listing_reservations_does_not_query_per_reservation(
