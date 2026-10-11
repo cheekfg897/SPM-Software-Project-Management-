@@ -54,6 +54,15 @@ export const MOCK_ACCOUNTS = {
     role: ROLE.VENUE_STAFF,
     organisation_id: null,
   },
+  // id 6: SCRUM-45 took 4 and 5 for Technical Support and Venue Staff.
+  lead: {
+    id: 6,
+    email: 'leon@connectsphere.test',
+    password: 'Password123',
+    full_name: 'Leon Goh',
+    role: ROLE.EVENT_COORDINATOR_LEAD,
+    organisation_id: null,
+  },
 } as const satisfies Record<string, MockAccount>
 
 const MOCK_TOKEN_PREFIX = 'mock-token-'
