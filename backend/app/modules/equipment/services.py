@@ -375,7 +375,8 @@ def reserve_equipment(
     refused with how many are free (AC3). The reservation holds the event's exact
     start and end, so overlapping events see that many fewer and others none fewer
     (AC2). Each call adds a reservation; several for one event and type add up. The
-    reservation and its entry in the event's history are saved in one commit.
+    reservation and its entry in the event's history are saved in one commit, then the
+    event's assigned coordinator is told (AC5).
 
     Args:
         reference: The event's ``EVR-…`` reference.
@@ -430,5 +431,7 @@ def reserve_equipment(
         need.event_id, history_details, actor_id=reserver_id, session=sess
     )
     sess.commit()
+    # After the commit (ADR-0015): losing the notice must not lose the reservation.
+    events_services.notify_coordinator_equipment_reserved(need.event_id, session=sess)
     (shown,) = _as_shown([reservation], sess)
     return shown
