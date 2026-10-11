@@ -72,7 +72,7 @@ def lead_services(
 def test_both_routes_allow_only_the_event_coordinator_lead(app: Flask) -> None:
     allowed = {app.view_functions[endpoint].allowed_roles for endpoint, *_ in ROUTES.values()}
 
-    assert allowed == {frozenset({"event_coordinator_lead"})}
+    assert allowed == {frozenset({Role.EVENT_COORDINATOR_LEAD.value})}
 
 
 @pytest.mark.parametrize("role", NON_LEAD_ROLES, ids=lambda role: role.value)
@@ -160,9 +160,9 @@ def test_the_lead_assigns_and_is_recorded_from_their_token(
     )
 
     assert status == 200
-    # The Lead is the caller, from their token, as an int; the body goes on as sent.
+    # The Lead is the caller, from their token; the claim and the body go on as sent.
     lead_services["assign_coordinator_to_request"].assert_called_once_with(
-        REFERENCE, {}, assigned_by=999
+        REFERENCE, {}, assigned_by="999"
     )
     body = response.get_json()
     assert (body["reference"], body["status"]) == (REFERENCE, "submitted")
