@@ -10,20 +10,13 @@ import { renderApp } from '@/test/render'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
 
 import { markNotificationRead } from '../api'
+import { findRow } from '../test/findRow'
 
 const session = mockSessionFor(MOCK_ACCOUNTS.attendee)
 
 // The attendee's seeded notifications, newest first (mocks/handlers/notifications.ts).
 const UNREAD_MESSAGE = 'A new event request was submitted.'
 const READ_MESSAGE = 'You have been assigned to coordinate this event.'
-
-async function findRow(message: string): Promise<HTMLElement> {
-  const row = (await screen.findByText(message)).closest('li')
-  if (row === null) {
-    throw new Error(`"${message}" is not in a list item`)
-  }
-  return row
-}
 
 describe('SCRUM-28 notifications page', () => {
   it('sends a visitor to log in, and asks for nothing', async () => {

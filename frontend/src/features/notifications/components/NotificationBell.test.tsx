@@ -4,10 +4,12 @@ import { http, HttpResponse } from 'msw'
 import { ROUTES } from '@/config/routes'
 import { MOCK_ACCOUNTS, mockSessionFor } from '@/mocks/fixtures/accounts'
 import { server } from '@/mocks/server'
-import { markNotificationRead } from '@/features/notifications/api'
 import { recordRequests } from '@/test/recordRequests'
 import { renderApp } from '@/test/render'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
+
+import { markNotificationRead } from '../api'
+import { findRow } from '../test/findRow'
 
 const session = mockSessionFor(MOCK_ACCOUNTS.attendee)
 
@@ -75,7 +77,7 @@ describe('SCRUM-28 notification bell', () => {
   it('counts down by one when an unread notification is marked read', async () => {
     const { user } = renderApp(ROUTES.NOTIFICATIONS, { session })
     await bellInHeader(BELL_WITH_TWO)
-    const row = (await screen.findByText('A new event request was submitted.')).closest('li')!
+    const row = await findRow('A new event request was submitted.')
 
     await user.click(within(row).getByRole('button', { name: 'Mark read' }))
 
@@ -85,7 +87,7 @@ describe('SCRUM-28 notification bell', () => {
   it('does not count down twice for one the backend already has as read', async () => {
     const { user } = renderApp(ROUTES.NOTIFICATIONS, { session })
     await bellInHeader(BELL_WITH_TWO)
-    const row = (await screen.findByText('A new event request was submitted.')).closest('li')!
+    const row = await findRow('A new event request was submitted.')
     sendRequestsAs(session.accessToken)
     await markNotificationRead(1)
 
