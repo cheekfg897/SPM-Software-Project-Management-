@@ -1,3 +1,4 @@
+import type { Notification } from '@/features/notifications/api'
 import { apiRequest } from '@/lib/api'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
 
@@ -7,27 +8,15 @@ import { resetMockNotifications } from './notifications'
 
 /** The notifications mock stands in for SCRUM-28's backend (routes.py in the notifications module). */
 
-interface Row {
-  id: number
-  kind: string
-  message: string
-  event_reference: string
-  event_name: string
-  link: string
-  created_at: string
-  read_at: string | null
-  detail: string | null
-}
-
 const PATH = '/api/notifications'
 
 function listAs(account: (typeof MOCK_ACCOUNTS)[keyof typeof MOCK_ACCOUNTS]) {
   sendRequestsAs(mockTokenFor(account))
-  return apiRequest<{ notifications: Row[] }>(PATH).then((body) => body.notifications)
+  return apiRequest<{ notifications: Notification[] }>(PATH).then((body) => body.notifications)
 }
 
 function markRead(id: number) {
-  return apiRequest<Row>(`${PATH}/${id}/read`, { method: 'POST' })
+  return apiRequest<Notification>(`${PATH}/${id}/read`, { method: 'POST' })
 }
 
 describe('SCRUM-28 notifications mock', () => {
