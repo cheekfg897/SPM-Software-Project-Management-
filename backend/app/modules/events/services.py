@@ -1787,6 +1787,9 @@ def update_event_request(
 
 #: A field_changed entry about one of these is for internal eyes only (ADR-0025).
 INTERNAL_ONLY_FIELDS: frozenset[str] = frozenset({"internal_planning_notes"})
+#: Entries of these kinds are for internal eyes only: which equipment Technical
+#: Support set aside is their working, not the organiser's (SCRUM-46, ADR-0037).
+INTERNAL_ONLY_KINDS: frozenset[EventHistoryKind] = frozenset({EventHistoryKind.EQUIPMENT_RESERVED})
 
 
 @dataclass(frozen=True)
@@ -1812,8 +1815,11 @@ def _history_entries(event_request: EventRequest, session: Session) -> list[Even
 def _shown_to_organiser(entry: EventHistoryEntry) -> bool:
     """Whether the organiser may see ``entry`` (ADR-0025).
 
-    Every kind but a ``field_changed`` entry about an internal-only field.
+    Every kind but an internal-only kind and a ``field_changed`` entry about an
+    internal-only field.
     """
+    if entry.kind in INTERNAL_ONLY_KINDS:
+        return False
     if entry.kind is not EventHistoryKind.FIELD_CHANGED:
         return True
     details = entry.details or {}
@@ -1850,7 +1856,8 @@ def list_event_history(
 
     Internal staff may see any event's history; an Event Organiser only their client
     organisation's, and never a ``field_changed`` entry about
-    ``internal_planning_notes`` (ADR-0025).
+    ``internal_planning_notes`` (ADR-0025) or an ``equipment_reserved`` entry
+    (SCRUM-46).
 
     Args:
         viewer_id: The caller's user id, taken from their token.
@@ -1953,6 +1960,13 @@ class EventPeriodIncompleteError(AppError):
     error_code = "event_period_incomplete"
 
 
+#: An event in one of these is over or will not happen, so no equipment can be
+#: reserved for it (SCRUM-46).
+RESERVATIONS_CLOSED_STATUSES: frozenset[EventRequestStatus] = frozenset(
+    {EventRequestStatus.COMPLETED, EventRequestStatus.CANCELLED, EventRequestStatus.REJECTED}
+)
+
+
 @dataclass(frozen=True)
 class EventEquipmentNeed:
     """When an event runs and how much of each equipment type it asks for (SCRUM-45).
@@ -1960,11 +1974,16 @@ class EventEquipmentNeed:
     What the equipment module needs from an event, without handing it the models.
     """
 
+    #: The event's id, which a reservation is linked to (SCRUM-46 AC4).
+    event_id: int
     #: The event's start and end, timezone-aware UTC.
     starts_at: datetime
     ends_at: datetime
     #: Requested quantity by equipment type id; a type with no line is absent.
     requested: Mapping[int, int]
+    #: Whether equipment may still be reserved for it: not once it is over or will
+    #: not happen (SCRUM-46).
+    accepts_reservations: bool
 
 
 NOT_YET_ENDED_MESSAGE = "The event has not ended yet."
@@ -2080,7 +2099,46 @@ def get_event_equipment_need(
     requested = {}
     for line in event_request.equipment_lines:
         requested[line.equipment_type_id] = line.quantity
-    return EventEquipmentNeed(starts_at=starts_at, ends_at=ends_at, requested=requested)
+    return EventEquipmentNeed(
+        event_id=event_request.id,
+        starts_at=starts_at,
+        ends_at=ends_at,
+        requested=requested,
+        accepts_reservations=event_request.status not in RESERVATIONS_CLOSED_STATUSES,
+    )
+
+
+def record_equipment_reserved(
+    event_id: int,
+    details: Mapping[str, Any],
+    *,
+    actor_id: int,
+    session: Session | None = None,
+) -> None:
+    """Record in the event's history that equipment was reserved for it, uncommitted.
+
+    The audit trail of a reservation (SCRUM-46, ADR-0037): the entry rides in the
+    reservation's transaction, so it is saved with the reservation or not at all.
+    Organisers never see it (:func:`_shown_to_organiser`).
+
+    Args:
+        event_id: The event's id, from :class:`EventEquipmentNeed`.
+        details: ``equipment_type_id``, ``equipment_type_name``, ``quantity`` and
+            ``reservation_id``.
+        actor_id: Who reserved the equipment.
+        session: Database session; defaults to ``db.session``.
+    """
+    sess = resolve_session(session)
+    # By primary key, so the request the reservation was checked against comes
+    # straight from the session rather than from a second query.
+    event_request = sess.get(EventRequest, event_id)
+    record_event_history(
+        event_request,
+        EventHistoryKind.EQUIPMENT_RESERVED,
+        actor_id=actor_id,
+        details=dict(details),
+        session=sess,
+    )
 
 
 # --------------------------------------------------------------------------
