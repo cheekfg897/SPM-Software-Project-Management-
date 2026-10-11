@@ -1,6 +1,6 @@
 # ADR-0030: The organiser who submitted a request is told whenever a coordinator is assigned to it
 
-- **Status:** Accepted
+- **Status:** Accepted; AC5 unblocked, and decision 8's test names superseded, by [ADR-0036](0036-event-coordinator-lead.md)
 - **Date:** 2026-09-26
 - **Story:** SCRUM-39 Be notified about review and approval decisions
 - **Extends:** [ADR-0015](0015-in-app-notifications.md) (in-app notifications), [ADR-0018](0018-least-loaded-coordinator-and-event-history.md) (who is told on submission), [ADR-0021](0021-coordinator-reassignment.md) (who is told on reassignment)
