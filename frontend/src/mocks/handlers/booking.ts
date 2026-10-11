@@ -22,7 +22,7 @@ import type { MockBookingEvent } from './bookingFixtures'
  * backend/app/modules/venue/routes.py does, error bodies included.
  */
 
-const BOOKING_PATH = '/api/venues/events/:eventId/booking-requests'
+const BOOKING_PATH = '/api/venues/events/:reference/booking-requests'
 const REQUIRED_FIELDS = ['venue_id', 'starts_at', 'ends_at', 'purpose'] as const
 /** The backend's EVENT_REQUEST_NOT_FOUND_MESSAGE (events/services.py), also sent for another coordinator's event. */
 const EVENT_NOT_FOUND_MESSAGE = 'Event request not found.'
@@ -92,9 +92,9 @@ function checkCoordinator(request: Request) {
   return { user, refusal: null }
 }
 
-function findOwnEvent(eventId: unknown, coordinatorId: number): MockBookingEvent | undefined {
+function findOwnEvent(reference: unknown, coordinatorId: number): MockBookingEvent | undefined {
   return events.find(
-    (event) => String(event.id) === eventId && event.coordinator_id === coordinatorId,
+    (event) => event.reference === reference && event.coordinator_id === coordinatorId,
   )
 }
 
@@ -104,7 +104,7 @@ export const bookingHandlers: RequestHandler[] = [
     if (refusal !== null || user === undefined) {
       return refusal
     }
-    const event = findOwnEvent(params.eventId, user.id)
+    const event = findOwnEvent(params.reference, user.id)
     if (event === undefined) {
       return errorResponse(404, 'not_found', EVENT_NOT_FOUND_MESSAGE)
     }
@@ -122,7 +122,7 @@ export const bookingHandlers: RequestHandler[] = [
       return validationError(missing)
     }
 
-    const event = findOwnEvent(params.eventId, user.id)
+    const event = findOwnEvent(params.reference, user.id)
     if (event === undefined) {
       return errorResponse(404, 'not_found', EVENT_NOT_FOUND_MESSAGE)
     }
