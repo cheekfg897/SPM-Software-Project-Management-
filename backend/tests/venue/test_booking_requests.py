@@ -78,7 +78,7 @@ def _history(session: Session) -> list[EventHistoryEntry]:
 
 def _list(event: EventRequest, session: Session, coordinator_id: int = COORDINATOR_ID) -> Any:
     return services.list_booking_requests_for_event(
-        event.id, coordinator_id=coordinator_id, session=session
+        event.reference, coordinator_id=coordinator_id, session=session
     )
 
 
@@ -334,7 +334,7 @@ def test_a_coordinator_who_is_not_assigned_to_the_event_gets_not_found(
 
     with pytest.raises(NotFoundError):
         services.raise_booking_request(
-            event.id,
+            event.reference,
             booking_payload(venue_id=venue.id),
             requested_by=COORDINATOR_ID,
             session=db_session,
@@ -344,8 +344,34 @@ def test_a_coordinator_who_is_not_assigned_to_the_event_gets_not_found(
 def test_an_unknown_event_gets_not_found(db_session: Session, venue: Venue) -> None:
     with pytest.raises(NotFoundError):
         services.raise_booking_request(
-            999, booking_payload(venue_id=venue.id), requested_by=COORDINATOR_ID, session=db_session
+            "EVR-NOSUCH00",
+            booking_payload(venue_id=venue.id),
+            requested_by=COORDINATOR_ID,
+            session=db_session,
         )
+
+
+def test_a_request_is_stored_against_the_events_internal_id(
+    db_session: Session, venue: Venue, saved_event: SavedEvent
+) -> None:
+    event = saved_event()
+
+    request = raise_booking(venue, event, db_session)
+
+    assert request.event_id == event.id
+
+
+def test_the_event_reference_is_matched_ignoring_case_and_spaces(
+    db_session: Session, venue: Venue, saved_event: SavedEvent
+) -> None:
+    event = saved_event()
+    typed = f"  {event.reference.lower()} "
+
+    shown = services.raise_booking_request(
+        typed, booking_payload(venue_id=venue.id), requested_by=COORDINATOR_ID, session=db_session
+    )
+
+    assert shown.request.event_id == event.id
 
 
 # --------------------------------------------------------------------------
@@ -469,7 +495,7 @@ def test_a_request_is_shown_with_the_event_it_was_raised_from(
     event = saved_event()
     request = raise_booking(venue, event, db_session)
     event_details = event_services.get_approved_event_for_coordinator(
-        event.id, COORDINATOR_ID, session=db_session
+        event.reference, COORDINATOR_ID, session=db_session
     )
 
     shown = services.show_booking_request(request, event_details)
@@ -490,7 +516,7 @@ def test_a_raised_request_comes_back_with_the_events_details(
     event = saved_event()
 
     shown = services.raise_booking_request(
-        event.id,
+        event.reference,
         booking_payload(venue_id=venue.id),
         requested_by=COORDINATOR_ID,
         session=db_session,

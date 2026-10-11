@@ -113,7 +113,7 @@ def test_a_refused_request_notifies_nobody(
 
     with pytest.raises(ValidationError):
         services.raise_booking_request(
-            saved_event().id, payload, requested_by=COORDINATOR_ID, session=db_session
+            saved_event().reference, payload, requested_by=COORDINATOR_ID, session=db_session
         )
 
     assert _notifications(db_session) == []
