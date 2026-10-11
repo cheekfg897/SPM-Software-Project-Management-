@@ -20,7 +20,7 @@ export const NOT_A_COORDINATOR_MESSAGE = 'No Event Coordinator has this email ad
 export const NOT_IN_QUEUE_MESSAGE = 'This event request already has a coordinator.'
 const NOT_FOUND_MESSAGE = 'Event request not found.'
 
-/** A queued request. The reference is the backend's key for it; the queue never shows it. */
+/** A queued request. The reference is the backend's key for it, and the queue shows it. */
 interface QueuedRequest {
   reference: string
   name: string
@@ -60,9 +60,10 @@ export function resetMockLeadQueue(): void {
 }
 resetMockLeadQueue()
 
-/** The queue as the backend shows it: six fields per request, no reference. */
+/** The queue as the backend shows it: the reference, then AC2's six fields. */
 function shownInQueue(request: QueuedRequest) {
   return {
+    reference: request.reference,
     name: request.name,
     proposed_date: request.proposed_date,
     start_time: request.start_time,
@@ -134,6 +135,9 @@ export const leadHandlers: RequestHandler[] = [
         : errorResponse(404, 'not_found', NOT_FOUND_MESSAGE)
     }
     queue = queue.filter((candidate) => candidate !== queued)
+    // Reduced on purpose: the real route also sends the rest of the EventRequestSchema dump, but
+    // the web app reads only these three. The integration tests against the real backend catch
+    // any divergence in the fields it relies on.
     return HttpResponse.json({
       reference: queued.reference,
       name: queued.name,

@@ -423,19 +423,21 @@ class EventRequestSchema(Schema):
 class UnassignedRequestSchema(EventRequestSchema):
     """One entry of the Event Coordinator Lead's unassigned queue (SCRUM-95 AC2).
 
-    Exactly the fields AC2 lists and no more: the event's name, date, times and
-    expected attendance as :class:`EventRequestSchema` dumps them, plus when it was
-    submitted. The request's ``created_at`` is shown as ``submitted_at`` in business
-    time (ADR-0009, ADR-0036). Subclassing keeps those field definitions in one place;
-    the other fields of the request, such as its reference and status, are not shown.
+    The ``reference`` identifies the row for the assign route (ADR-0004, ADR-0036),
+    followed by the fields AC2 lists: the event's name, date, times and expected
+    attendance as :class:`EventRequestSchema` dumps them, plus when it was submitted.
+    The request's ``created_at`` is shown as ``submitted_at`` in business time
+    (ADR-0009, ADR-0036). Subclassing keeps those field definitions in one place; the
+    request's other fields, such as its status, are not shown.
     """
 
     submitted_at = BusinessDateTime(attribute="created_at", dump_only=True)
 
     class Meta:
-        """Restrict the dump to AC2's list."""
+        """Restrict the dump to the reference and AC2's list."""
 
         fields = (
+            "reference",
             "name",
             "proposed_date",
             "start_time",
