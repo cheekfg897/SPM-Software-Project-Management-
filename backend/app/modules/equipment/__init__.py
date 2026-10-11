@@ -1,9 +1,11 @@
-"""Equipment module — the equipment catalogue.
+"""Equipment module — the equipment catalogue, its availability and reservations.
 
 Public surface for other modules (import from here, not from sub-files):
 
 * :func:`app.modules.equipment.services.get_equipment_type`
 * :func:`app.modules.equipment.services.list_equipment_types`
+* :func:`app.modules.equipment.services.equipment_availability_for_event`
+* :func:`app.modules.equipment.services.list_reservations_for_event`
 """
 
 from __future__ import annotations
