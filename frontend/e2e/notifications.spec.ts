@@ -1,17 +1,14 @@
 import { expect, test } from '@playwright/test'
 
-import { MOCK_ACCOUNTS, mockSessionFor } from '../src/mocks/fixtures/accounts'
+import { MOCK_ACCOUNTS } from '../src/mocks/fixtures/accounts'
 
-const SESSION_STORAGE_KEY = 'connectsphere.session'
-const ATTENDEE_SESSION = mockSessionFor(MOCK_ACCOUNTS.attendee)
+import { signInAs } from './signInAs'
+
 /** The smallest tap target a finger can hit reliably, in pixels. */
 const MIN_TAP_TARGET = 44
 
 test('SCRUM-28: an attendee opens their notifications and marks one read', async ({ page }) => {
-  await page.addInitScript(([key, session]) => localStorage.setItem(key, session), [
-    SESSION_STORAGE_KEY,
-    JSON.stringify(ATTENDEE_SESSION),
-  ] as const)
+  await signInAs(page, MOCK_ACCOUNTS.attendee)
   await page.goto('/events')
 
   // The counts come from the mock: two unread and one read (mocks/handlers/notifications.ts).
