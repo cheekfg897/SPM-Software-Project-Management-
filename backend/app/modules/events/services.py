@@ -1955,7 +1955,7 @@ def assign_coordinator_to_request(
     reference: str,
     payload: Mapping[str, Any] | None,
     *,
-    assigned_by: int,
+    assigned_by: int | str,
     session: Session | None = None,
 ) -> tuple[EventRequest, CoordinatorContact]:
     """Give a request waiting in the Lead's queue to one Event Coordinator (SCRUM-95).
@@ -2011,7 +2011,7 @@ def assign_coordinator_to_request(
     record_event_history(
         event_request,
         EventHistoryKind.COORDINATOR_ASSIGNED,
-        actor_id=assigned_by,
+        actor_id=int(assigned_by),
         details={"coordinator_id": coordinator_id},
         session=sess,
     )
