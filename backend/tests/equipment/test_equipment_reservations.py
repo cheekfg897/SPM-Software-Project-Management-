@@ -579,7 +579,10 @@ def test_the_locked_read_replaces_what_the_session_already_holds(
     # A copy loaded before the lock was taken may be stale: another request can have
     # committed since. The locked read must return the row as it is now.
     assert equipment_type.total_quantity == 10
-    db_session.execute(update(EquipmentType).values(total_quantity=3))
+    # synchronize_session=False keeps the session's copy at 10, as a real stale copy is.
+    stale_copy_stays = update(EquipmentType).values(total_quantity=3)
+    db_session.execute(stale_copy_stays, execution_options={"synchronize_session": False})
+    assert equipment_type.total_quantity == 10
 
     locked = services._locked_equipment_type(equipment_type.id, db_session)
 
