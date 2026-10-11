@@ -202,8 +202,8 @@ def test_an_empty_queue_is_an_empty_list(db_session: Session) -> None:
 
 
 #: Every non-draft status but ``submitted``: none of them is waiting for the Lead.
-#: ``cancelled`` and ``rejected`` are the ones reachable with no coordinator, so they
-#: are what the status check exists for (ADR-0036).
+#: ``cancelled`` and ``rejected`` are the ones the model lets a request hold with no
+#: coordinator, so they are what the status check exists for (ADR-0036).
 NOT_WAITING_STATUSES = [
     status for status in NON_DRAFT_STATUSES if status is not EventRequestStatus.SUBMITTED
 ]
@@ -218,8 +218,10 @@ def test_only_a_submitted_request_is_queued(
     """A draft isn't waiting for the Lead yet; a cancelled or rejected one no longer is.
 
     Cancelled and rejected are the cases the narrow ``status == submitted`` filter
-    exists for: both are reachable from ``submitted`` with no coordinator, so a filter
-    that only excluded drafts would queue them (ADR-0036).
+    exists for: ``coordinator_id`` is nullable and independent of ``status``, so both
+    are valid rows with no coordinator and a filter that only excluded drafts would
+    queue them. No path writes either status to an unassigned request today, so the
+    row saved here is the model's shape rather than one a user can reach (ADR-0036).
     """
     queued("EVR-OTHERSTAT", status=status)
 
