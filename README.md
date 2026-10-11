@@ -155,6 +155,8 @@ curl http://localhost:5000/api/auth/internal-only -H "Authorization: Bearer <tok
 | `GET  /api/venues/<id>/blocks` | `venue_staff` — the venue's blocks with ids and reasons, in start order |
 | `DELETE /api/venues/<id>/blocks/<block_id>` | `venue_staff` — remove a block; the venue is available again |
 | `POST /api/venues/<id>/suitability` | `event_coordinator`, `venue_staff` — whether the venue meets an event's requirements, with each reason it doesn't |
+| `POST /api/venues/events/<event_id>/booking-requests` | `event_coordinator` — raise a Pending venue booking request for your approved event; returns the request with the event's timing and accessibility needs |
+| `GET  /api/venues/events/<event_id>/booking-requests` | `event_coordinator` — the event's booking requests, earliest first, with the same event details; 404 if the event is not yours |
 | `POST /api/equipment/types`    | `technical_support_staff` — add an equipment type               |
 | `GET  /api/equipment/types`    | internal roles — every equipment type with its total quantity, by name |
 | `GET  /api/equipment/types/<id>` | internal roles — one equipment type                           |

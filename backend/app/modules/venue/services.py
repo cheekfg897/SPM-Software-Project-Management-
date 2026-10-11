@@ -731,6 +731,25 @@ def show_booking_request(
     )
 
 
+def raise_and_show_booking_request(
+    event_id: int,
+    payload: Mapping[str, Any] | None,
+    *,
+    requested_by: int,
+    session: Session | None = None,
+) -> BookingRequestAsShown:
+    """Raise a booking request and return it with its event's details (AC4).
+
+    Raises:
+        As :func:`raise_booking_request`.
+    """
+    from app.modules.events import services as event_services  # circular at import time
+
+    request = raise_booking_request(event_id, payload, requested_by=requested_by, session=session)
+    event = event_services.get_event_for_coordinator(event_id, requested_by, session=session)
+    return show_booking_request(request, event)
+
+
 def list_booking_requests_for_event(
     event_id: int, *, coordinator_id: int, session: Session | None = None
 ) -> list[BookingRequestAsShown]:

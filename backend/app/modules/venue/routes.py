@@ -27,6 +27,7 @@ from app.modules.venue.schemas import (
     OverlapWarningSchema,
     SuitabilityResultSchema,
     VenueBlockSchema,
+    VenueBookingRequestSchema,
     VenueMatchSchema,
     VenueSchema,
 )
@@ -40,6 +41,7 @@ _overlap_warning_schema = OverlapWarningSchema()
 _venue_block_schema = VenueBlockSchema()
 _conflicting_booking_schema = ConflictingBookingSchema()
 _suitability_result_schema = SuitabilityResultSchema()
+_booking_request_schema = VenueBookingRequestSchema()
 
 #: SCRUM-35 AC4: what an empty search says.
 NO_MATCHES_MESSAGE = "No venues match your search criteria."
@@ -192,3 +194,28 @@ def check_suitability(venue_id: int) -> tuple[Response, int]:
     """
     result = services.check_venue_suitability(venue_id, request.get_json(silent=True))
     return jsonify(_suitability_result_schema.dump(result)), 200
+
+
+# --------------------------------------------------------------------------
+# SCRUM-42 — Request a venue booking for an approved event
+# --------------------------------------------------------------------------
+
+
+@bp.post("/events/<int:event_id>/booking-requests")
+@requires_role(Role.EVENT_COORDINATOR)
+def raise_booking_request(event_id: int) -> tuple[Response, int]:
+    """Raise a Pending booking request for the coordinator's approved event."""
+    shown = services.raise_and_show_booking_request(
+        event_id, request.get_json(silent=True), requested_by=int(g.current_user_id)
+    )
+    return jsonify(_booking_request_schema.dump(shown)), 201
+
+
+@bp.get("/events/<int:event_id>/booking-requests")
+@requires_role(Role.EVENT_COORDINATOR)
+def list_booking_requests(event_id: int) -> tuple[Response, int]:
+    """The booking requests raised for the coordinator's event, with its details."""
+    shown = services.list_booking_requests_for_event(
+        event_id, coordinator_id=int(g.current_user_id)
+    )
+    return jsonify(_booking_request_schema.dump(shown, many=True)), 200
