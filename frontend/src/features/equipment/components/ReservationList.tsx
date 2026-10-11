@@ -1,6 +1,6 @@
 import { DataTable } from '@/components/ui'
 import type { DataTableColumn } from '@/components/ui'
-import { formatShortDate, formatTimeRange } from '@/features/catalogue/formatDate'
+import { formatShortDate, formatTimeRange } from '@/lib/formatDate'
 
 import type { EquipmentReservation } from '../api'
 

@@ -31,7 +31,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision = "0021_add_equipment_reservations"
-down_revision = "0019_add_review_kinds"
+down_revision = "0020_add_venue_booking_requests"
 branch_labels = None
 depends_on = None
 
@@ -48,6 +48,8 @@ PREVIOUS_HISTORY_KIND_VALUES = (
     "decision_recorded",
     "clarification_requested",
     "clarification_answered",
+    # 0020 (SCRUM-42) adds this below us in the stack.
+    "venue_booking_requested",
 )
 
 #: Added here (the audit trail of a reservation).
@@ -65,6 +67,8 @@ PREVIOUS_NOTIFICATION_KIND_VALUES = (
     "clarification_requested",
     "clarification_answered",
     "request_assigned",
+    # 0020 (SCRUM-42) adds this below us in the stack.
+    "venue_booking_requested",
 )
 
 #: Added here (SCRUM-46 AC5).

@@ -27,8 +27,8 @@ AssertInOrder = Callable[[str, list[str]], None]
 
 MIGRATION = "0021_add_equipment_reservations.py"
 #: The last migrations to change ``event_history_entry_kind`` and ``notification_kind``.
-HISTORY_MIGRATION_BELOW = "0018_add_clarification_status_and_kinds.py"
-NOTIFICATION_MIGRATION_BELOW = "0019_add_review_notification_kinds.py"
+HISTORY_MIGRATION_BELOW = "0020_add_venue_booking_requests.py"
+NOTIFICATION_MIGRATION_BELOW = "0020_add_venue_booking_requests.py"
 
 
 def test_the_previous_history_kinds_are_what_exists_after_the_migration_below(
