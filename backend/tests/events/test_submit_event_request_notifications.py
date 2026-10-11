@@ -138,7 +138,7 @@ def test_every_lead_is_told_once_that_a_request_is_waiting(
     assert notifications_of(12) == [waiting_notice]
 
 
-def test_a_lead_is_told_nothing_else_and_nobody_else_is_told_of_the_queue(
+def test_nobody_but_the_leads_is_told_of_the_queue(
     saved_users: list[User],
     saved_leads: list[User],
     submit_valid_request: SubmitValidRequest,
@@ -199,6 +199,7 @@ def test_submitting_commits_the_request_then_the_leads_notice(
     assert event_request.reference == "EVR-AAAAAAAA"
     assert mock_session.commit.call_count == 2
     mock_session.rollback.assert_not_called()
+    mock_session.add_all.assert_called_once()
     notices = mock_session.add_all.call_args.args[0]
     assert [(notice.recipient_id, notice.kind) for notice in notices] == [
         (LEAD_ID, NotificationKind.REQUEST_QUEUED_FOR_LEAD)

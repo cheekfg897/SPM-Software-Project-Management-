@@ -319,4 +319,6 @@ def test_coordinators_have_no_list_of_unassigned_requests(app: Flask) -> None:
     endpoint, view_args = adapter.match("/api/events/requests/unassigned")
 
     assert (endpoint, view_args) == ("events.list_unassigned", {})
-    assert app.view_functions[endpoint].allowed_roles == frozenset({"event_coordinator_lead"})
+    assert app.view_functions[endpoint].allowed_roles == frozenset(
+        {Role.EVENT_COORDINATOR_LEAD.value}
+    )
