@@ -21,7 +21,6 @@ from app.modules.equipment.models import (
     EquipmentOutOfService,
     EquipmentReservation,
     EquipmentType,
-    OutOfServiceReason,
 )
 from app.modules.equipment.schemas import EquipmentAvailabilitySchema
 from app.modules.events.models import EventEquipmentLine, EventRequest, EventRequestStatus
@@ -29,107 +28,103 @@ from app.modules.events.models import EventEquipmentLine, EventRequest, EventReq
 pytestmark = pytest.mark.scrum_45
 
 Save = Callable[..., None]
+MakeReservation = Callable[[EquipmentType, int, datetime, datetime], EquipmentReservation]
+MakeOutOfService = Callable[..., EquipmentOutOfService]
 
 
 def _at(hour: int, day: int = 3) -> datetime:
     return datetime(2026, 11, day, hour, 0, tzinfo=timezone.utc)
 
 
-def _reservation(
-    equipment_type: EquipmentType, quantity: int, starts_at: datetime, ends_at: datetime
-) -> EquipmentReservation:
-    return EquipmentReservation(
-        event_id=1,
-        equipment_type_id=equipment_type.id,
-        quantity=quantity,
-        starts_at=starts_at,
-        ends_at=ends_at,
-        reserved_by=3,
-    )
+@pytest.fixture()
+def overlapping_event_ids(
+    db_session: Session,
+    equipment_type: EquipmentType,
+    save: Save,
+    make_reservation: MakeReservation,
+) -> Callable[[datetime, datetime], list[int]]:
+    """Reserve 10:00-12:00 for event 1; list the events overlapping another period."""
+    save(make_reservation(equipment_type, 1, _at(10), _at(12)))
 
+    def _overlapping(starts_at: datetime, ends_at: datetime) -> list[int]:
+        statement = select(EquipmentReservation.event_id).where(
+            services._overlapping(starts_at, ends_at)
+        )
+        return list(db_session.scalars(statement))
 
-def _out_of_service(
-    equipment_type: EquipmentType, quantity: int, *, resolved_at: datetime | None = None
-) -> EquipmentOutOfService:
-    return EquipmentOutOfService(
-        equipment_type_id=equipment_type.id,
-        quantity=quantity,
-        reason=OutOfServiceReason.DAMAGED,
-        recorded_by=3,
-        recorded_at=_at(8, day=1),
-        resolved_at=resolved_at,
-    )
-
-
-def _overlapping_event_ids(
-    db_session: Session, equipment_type: EquipmentType, save: Save, *, other: tuple
-) -> list[int]:
-    """Reserve 10:00-12:00 for event 1, then list the events overlapping ``other``."""
-    save(_reservation(equipment_type, 1, _at(10), _at(12)))
-    starts_at, ends_at = other
-    statement = select(EquipmentReservation.event_id).where(
-        services._overlapping(starts_at, ends_at)
-    )
-    return list(db_session.scalars(statement))
+    return _overlapping
 
 
 @pytest.mark.parametrize(
-    ("other", "description"),
+    ("starts_at", "ends_at"),
     [
-        ((_at(11), _at(13)), "starts inside"),
-        ((_at(9), _at(11)), "ends inside"),
-        ((_at(10), _at(12)), "same period"),
-        ((_at(10), _at(11)), "contained"),
-        ((_at(9), _at(13)), "containing"),
+        pytest.param(_at(11), _at(13), id="starts inside"),
+        pytest.param(_at(9), _at(11), id="ends inside"),
+        pytest.param(_at(10), _at(12), id="same period"),
+        pytest.param(_at(10), _at(11), id="contained"),
+        pytest.param(_at(9), _at(13), id="containing"),
     ],
 )
 def test_overlapping_periods_conflict(
-    db_session: Session, equipment_type: EquipmentType, save: Save, other, description
+    overlapping_event_ids: Callable[[datetime, datetime], list[int]],
+    starts_at: datetime,
+    ends_at: datetime,
 ) -> None:
-    assert _overlapping_event_ids(db_session, equipment_type, save, other=other) == [1], description
+    assert overlapping_event_ids(starts_at, ends_at) == [1]
 
 
 @pytest.mark.parametrize(
-    ("other", "description"),
+    ("starts_at", "ends_at"),
     [
-        ((_at(12), _at(14)), "starts exactly when the reservation ends"),
-        ((_at(8), _at(10)), "ends exactly when the reservation starts"),
-        ((_at(13), _at(15)), "later the same day"),
-        ((_at(10, 4), _at(12, 4)), "same hours on another day"),
+        pytest.param(_at(12), _at(14), id="starts exactly when the reservation ends"),
+        pytest.param(_at(8), _at(10), id="ends exactly when the reservation starts"),
+        pytest.param(_at(13), _at(15), id="later the same day"),
+        pytest.param(_at(10, 4), _at(12, 4), id="same hours on another day"),
     ],
 )
 def test_periods_that_do_not_overlap_do_not_conflict(
-    db_session: Session, equipment_type: EquipmentType, save: Save, other, description
+    overlapping_event_ids: Callable[[datetime, datetime], list[int]],
+    starts_at: datetime,
+    ends_at: datetime,
 ) -> None:
     # No setup or turnaround buffer for equipment, so abutting periods are free (AC5).
-    assert _overlapping_event_ids(db_session, equipment_type, save, other=other) == [], description
+    assert overlapping_event_ids(starts_at, ends_at) == []
 
 
 def test_available_quantity_subtracts_reservations_for_an_overlapping_event(
-    db_session: Session, equipment_type: EquipmentType, save: Save
+    db_session: Session,
+    equipment_type: EquipmentType,
+    save: Save,
+    make_reservation: MakeReservation,
 ) -> None:
     # AC1: ten projectors held, four reserved for an overlapping event -> six available.
-    save(_reservation(equipment_type, 4, _at(10), _at(12)))
+    save(make_reservation(equipment_type, 4, _at(10), _at(12)))
 
     assert services.available_quantity(equipment_type.id, _at(11), _at(13)) == 6
 
 
 def test_available_quantity_adds_up_several_overlapping_reservations(
-    db_session: Session, equipment_type: EquipmentType, save: Save
+    db_session: Session,
+    equipment_type: EquipmentType,
+    save: Save,
+    make_reservation: MakeReservation,
 ) -> None:
     save(
-        _reservation(equipment_type, 4, _at(10), _at(12)),
-        _reservation(equipment_type, 3, _at(9), _at(11)),
+        make_reservation(equipment_type, 4, _at(10), _at(12)),
+        make_reservation(equipment_type, 3, _at(9), _at(11)),
     )
 
     assert services.available_quantity(equipment_type.id, _at(10), _at(11)) == 3
 
 
 def test_available_quantity_ignores_reservations_that_do_not_overlap(
-    db_session: Session, equipment_type: EquipmentType, save: Save
+    db_session: Session,
+    equipment_type: EquipmentType,
+    save: Save,
+    make_reservation: MakeReservation,
 ) -> None:
     # AC5: an event that starts as the other ends sees all ten.
-    save(_reservation(equipment_type, 4, _at(10), _at(12)))
+    save(make_reservation(equipment_type, 4, _at(10), _at(12)))
 
     assert services.available_quantity(equipment_type.id, _at(12), _at(14)) == 10
 
@@ -139,44 +134,65 @@ def test_available_quantity_ignores_reservations_of_other_equipment_types(
     equipment_type: EquipmentType,
     make_equipment_type: Callable[..., EquipmentType],
     save: Save,
+    make_reservation: MakeReservation,
 ) -> None:
     other_type = make_equipment_type(name="Microphone")
     save(other_type)
-    save(_reservation(other_type, 4, _at(10), _at(12)))
+    save(make_reservation(other_type, 4, _at(10), _at(12)))
 
     assert services.available_quantity(equipment_type.id, _at(10), _at(12)) == 10
 
 
 def test_available_quantity_subtracts_unresolved_out_of_service_units(
-    db_session: Session, equipment_type: EquipmentType, save: Save
+    db_session: Session,
+    equipment_type: EquipmentType,
+    save: Save,
+    make_out_of_service: MakeOutOfService,
 ) -> None:
     # AC2: two damaged units are two fewer, whatever the period asked about.
-    save(_out_of_service(equipment_type, 2))
+    save(make_out_of_service(equipment_type, 2))
 
     assert services.available_quantity(equipment_type.id, _at(10), _at(12)) == 8
 
 
 def test_available_quantity_ignores_resolved_out_of_service_units(
-    db_session: Session, equipment_type: EquipmentType, save: Save
+    db_session: Session,
+    equipment_type: EquipmentType,
+    save: Save,
+    make_out_of_service: MakeOutOfService,
 ) -> None:
-    save(_out_of_service(equipment_type, 2, resolved_at=_at(9, day=2)))
+    save(make_out_of_service(equipment_type, 2, resolved_at=_at(9, day=2)))
 
     assert services.available_quantity(equipment_type.id, _at(10), _at(12)) == 10
 
 
 def test_available_quantity_combines_reservations_and_out_of_service_units(
-    db_session: Session, equipment_type: EquipmentType, save: Save
+    db_session: Session,
+    equipment_type: EquipmentType,
+    save: Save,
+    make_reservation: MakeReservation,
+    make_out_of_service: MakeOutOfService,
 ) -> None:
-    save(_reservation(equipment_type, 4, _at(10), _at(12)), _out_of_service(equipment_type, 2))
+    save(
+        make_reservation(equipment_type, 4, _at(10), _at(12)),
+        make_out_of_service(equipment_type, 2),
+    )
 
     assert services.available_quantity(equipment_type.id, _at(10), _at(12)) == 4
 
 
 def test_available_quantity_never_goes_below_zero(
-    db_session: Session, equipment_type: EquipmentType, save: Save
+    db_session: Session,
+    equipment_type: EquipmentType,
+    save: Save,
+    make_reservation: MakeReservation,
+    make_out_of_service: MakeOutOfService,
 ) -> None:
     # Units can break after they were reserved, leaving more committed than held.
-    save(_reservation(equipment_type, 8, _at(10), _at(12)), _out_of_service(equipment_type, 5))
+    save(
+        make_reservation(equipment_type, 8, _at(10), _at(12)),
+        make_out_of_service(equipment_type, 5),
+    )
 
     assert services.available_quantity(equipment_type.id, _at(10), _at(12)) == 0
 
@@ -208,10 +224,11 @@ def test_a_request_for_ten_against_six_available_reports_a_shortfall_of_four(
     equipment_type: EquipmentType,
     make_equipment_line: Callable[..., EventEquipmentLine],
     save: Save,
+    make_reservation: MakeReservation,
 ) -> None:
     # Ten projectors held, four reserved for an overlapping event, ten requested.
     save(make_equipment_line(saved_event_request, equipment_type, quantity=10))
-    save(_reservation(equipment_type, 4, _on_event_day(0), _on_event_day(23)))
+    save(make_reservation(equipment_type, 4, _on_event_day(0), _on_event_day(23)))
 
     rows = services.equipment_availability_for_event(EVENT_REFERENCE, session=db_session)
 
@@ -224,9 +241,10 @@ def test_a_request_that_is_met_reports_no_shortfall(
     equipment_type: EquipmentType,
     make_equipment_line: Callable[..., EventEquipmentLine],
     save: Save,
+    make_reservation: MakeReservation,
 ) -> None:
     save(make_equipment_line(saved_event_request, equipment_type, quantity=6))
-    save(_reservation(equipment_type, 4, _on_event_day(0), _on_event_day(23)))
+    save(make_reservation(equipment_type, 4, _on_event_day(0), _on_event_day(23)))
 
     rows = services.equipment_availability_for_event(EVENT_REFERENCE, session=db_session)
 
@@ -264,9 +282,10 @@ def test_an_out_of_service_unit_shows_in_the_shortfall(
     equipment_type: EquipmentType,
     make_equipment_line: Callable[..., EventEquipmentLine],
     save: Save,
+    make_out_of_service: MakeOutOfService,
 ) -> None:
     save(make_equipment_line(saved_event_request, equipment_type, quantity=10))
-    save(_out_of_service(equipment_type, 2))
+    save(make_out_of_service(equipment_type, 2))
 
     rows = services.equipment_availability_for_event(EVENT_REFERENCE, session=db_session)
 
@@ -291,9 +310,10 @@ def test_availability_uses_the_events_own_hours_not_the_whole_day(
     other_start: datetime,
     other_end: datetime,
     available: int,
+    make_reservation: MakeReservation,
 ) -> None:
     # AC4, AC5: the same-day reservation only counts when its hours overlap the event's.
-    save(_reservation(equipment_type, 4, other_start, other_end))
+    save(make_reservation(equipment_type, 4, other_start, other_end))
 
     rows = services.equipment_availability_for_event(EVENT_REFERENCE, session=db_session)
 
