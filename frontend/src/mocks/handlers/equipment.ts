@@ -63,8 +63,8 @@ function availabilityRows() {
   })
 }
 
-/** The refusal for a missing token or a role that may not call this, or null if allowed. */
-function refusalFor(request: Request, allowedRoles: readonly Role[]) {
+/** The caller, or the refusal for a missing token or a role that may not call this. */
+function callerOrRefusal(request: Request, allowedRoles: readonly Role[]) {
   const user = accountForRequest(request)
   if (user === undefined) {
     return errorResponse(401, 'authentication_error', INVALID_TOKEN_MESSAGE)
@@ -76,14 +76,14 @@ function refusalFor(request: Request, allowedRoles: readonly Role[]) {
       'You do not have permission to perform this action.',
     )
   }
-  return null
+  return user
 }
 
 function eventNotFound() {
   return errorResponse(404, 'not_found', 'Event request not found.')
 }
 
-/** Problems with the reservation body, by field, in the backend's wording. */
+/** Problems with the reservation body, by field, in the backend's wording (EquipmentUnitsSchema). */
 function bodyErrors(body: unknown): Record<string, string[]> {
   const sent = isRecord(body) ? body : {}
   const errors: Record<string, string[]> = {}
@@ -94,17 +94,20 @@ function bodyErrors(body: unknown): Record<string, string[]> {
       errors[name] = ['Not a valid integer.']
     }
   }
+  if (errors.equipment_type_id === undefined && Number(sent.equipment_type_id) < 1) {
+    errors.equipment_type_id = ['equipment_type_id must be a positive number.']
+  }
   if (errors.quantity === undefined && Number(sent.quantity) < 1) {
-    errors.quantity = ['Must be greater than or equal to 1.']
+    errors.quantity = ['Quantity must be at least 1.']
   }
   return errors
 }
 
 export const equipmentHandlers: RequestHandler[] = [
   http.get(`${EVENT_PATH}/availability`, ({ request, params }) => {
-    const refusal = refusalFor(request, INTERNAL_ROLES)
-    if (refusal !== null) {
-      return refusal
+    const caller = callerOrRefusal(request, INTERNAL_ROLES)
+    if (caller instanceof Response) {
+      return caller
     }
     if (MOCK_EVENT_REFERENCES[String(params.reference)] === undefined) {
       return eventNotFound()
@@ -113,9 +116,9 @@ export const equipmentHandlers: RequestHandler[] = [
   }),
 
   http.get(`${EVENT_PATH}/reservations`, ({ request, params }) => {
-    const refusal = refusalFor(request, INTERNAL_ROLES)
-    if (refusal !== null) {
-      return refusal
+    const caller = callerOrRefusal(request, INTERNAL_ROLES)
+    if (caller instanceof Response) {
+      return caller
     }
     if (MOCK_EVENT_REFERENCES[String(params.reference)] === undefined) {
       return eventNotFound()
@@ -124,19 +127,19 @@ export const equipmentHandlers: RequestHandler[] = [
   }),
 
   http.post(`${EVENT_PATH}/reservations`, async ({ request, params }) => {
-    const refusal = refusalFor(request, [ROLE.TECHNICAL_SUPPORT_STAFF])
-    if (refusal !== null) {
-      return refusal
+    const caller = callerOrRefusal(request, [ROLE.TECHNICAL_SUPPORT_STAFF])
+    if (caller instanceof Response) {
+      return caller
     }
-    const event = MOCK_EVENT_REFERENCES[String(params.reference)]
-    if (event === undefined) {
-      return eventNotFound()
-    }
-
+    // The backend's order: the body, then the event, then whether it is open, then the type.
     const body: unknown = await request.json()
     const errors = bodyErrors(body)
     if (Object.keys(errors).length > 0) {
       return validationError(errors)
+    }
+    const event = MOCK_EVENT_REFERENCES[String(params.reference)]
+    if (event === undefined) {
+      return eventNotFound()
     }
     if (!event.accepts_reservations) {
       return errorResponse(
@@ -152,21 +155,20 @@ export const equipmentHandlers: RequestHandler[] = [
     }
     const type = MOCK_EQUIPMENT_TYPES.find((candidate) => candidate.id === typeId)
     if (type === undefined) {
-      return errorResponse(404, 'not_found', 'Equipment type not found.')
+      return validationError({ equipment_type_id: ['Equipment type not found.'] })
     }
     const available = availableQuantity(type.id, type.free)
     if (quantity > available) {
       return validationError({ quantity: [`Only ${available} available for this period.`] })
     }
 
-    const user = accountForRequest(request)
     const reservation: MockReservation = {
       id: reservations.length + 1,
       equipment_type_id: type.id,
       equipment_type_name: type.name,
       quantity,
       ...MOCK_EVENT_PERIOD,
-      reserved_by: user?.full_name ?? '',
+      reserved_by: caller.full_name,
       created_at: MOCK_EVENT_PERIOD.starts_at,
     }
     reservations.push(reservation)
