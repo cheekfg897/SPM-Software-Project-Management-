@@ -501,14 +501,28 @@ EQUIPMENT_EVENT_FIELDS = (
 EVENT_LIST_FIELDS = (*EQUIPMENT_EVENT_FIELDS, "status")
 
 
-class ReassignCoordinatorSchema(Schema):
-    """Payload for ``POST /api/events/requests/<reference>/reassign`` (SCRUM-87).
+class _CoordinatorEmailSchema(Schema):
+    """A body naming one Event Coordinator by the email they log in with (ADR-0021).
 
-    The new coordinator is named by email, since user ids are never shown to other
-    users (ADR-0021).
+    User ids are never shown to other users, so every route that hands an event to a
+    coordinator names them by email, matched ignoring case (ADR-0021 decision 3). The
+    email need not belong to an Event Coordinator for this schema to accept it: whether
+    it does is a lookup, which the service does (ADR-0021 decision 4).
     """
 
     coordinator_email = fields.Email(required=True)
+
+
+class ReassignCoordinatorSchema(_CoordinatorEmailSchema):
+    """Payload for ``POST /api/events/requests/<reference>/reassign`` (SCRUM-87)."""
+
+
+class AssignCoordinatorSchema(_CoordinatorEmailSchema):
+    """Payload for the Event Coordinator Lead's assignment (SCRUM-95 AC3, ADR-0036).
+
+    The same body as a reassignment: the Lead has no user ids to post either, and no
+    route lists the coordinators by id.
+    """
 
 
 class DecideEventRequestSchema(Schema):

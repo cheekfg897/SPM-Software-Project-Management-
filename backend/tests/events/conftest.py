@@ -33,6 +33,7 @@ from app.modules.events.services import (
     CoordinatorContact,
     EventEdit,
     EventRecord,
+    assign_coordinator_to_request,
     decide_event_request,
     get_event_record_for_coordinator,
     get_event_record_for_organiser,
@@ -49,7 +50,7 @@ from app.modules.notifications.services import (
     NotificationKind,
     list_notifications_for_recipient,
 )
-from tests.events.cases import DRAFT_REFERENCE
+from tests.events.cases import DRAFT_REFERENCE, LEAD_ID
 
 MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "migrations" / "versions"
 
@@ -203,15 +204,18 @@ def lead_assigns(db_session: Session) -> Callable[[EventRequest, int], None]:
     """Give a submitted request its coordinator, as the Event Coordinator Lead does.
 
     Submission leaves a request unassigned (SCRUM-95 AC1), so a test whose own subject
-    needs an assigned coordinator takes this step explicitly. It sets the column and
-    nothing else: the audit entry and the notices belong to the Lead's own assign
-    service, which does not exist yet and will be tested with itself when it does.
-    Point this at that service once it is there.
+    needs an assigned coordinator takes this step explicitly, through the Lead's own
+    service: the audit entry and the two notices come with it (AC3, AC5, ADR-0036).
+    The coordinator is named by the email ``saved_users`` gives them, since the payload
+    never carries a user id (ADR-0021). What the service answers is tested with itself,
+    in ``test_lead_assignment_queue.py``, so this discards it.
     """
 
     def _assign(event_request: EventRequest, coordinator_id: int) -> None:
-        event_request.coordinator_id = coordinator_id
-        db_session.commit()
+        payload = {"coordinator_email": f"coordinator{coordinator_id}@example.com"}
+        assign_coordinator_to_request(
+            event_request.reference, payload, assigned_by=LEAD_ID, session=db_session
+        )
 
     return _assign
 

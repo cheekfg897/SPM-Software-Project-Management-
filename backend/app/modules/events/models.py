@@ -72,8 +72,10 @@ class EventHistoryKind(str, enum.Enum):
     and decisions, SCRUM-32 clarification requests and answers.
     """
 
-    #: The system assigned a coordinator to a new request; ``details`` holds
-    #: ``coordinator_id`` and ``actor_id`` is NULL (SCRUM-30).
+    #: A coordinator was first assigned to a request; ``details`` holds
+    #: ``coordinator_id``. ``actor_id`` is the Event Coordinator Lead who assigned it
+    #: (SCRUM-95); entries SCRUM-30 wrote before the Lead existed have a NULL actor,
+    #: because the system chose then.
     COORDINATOR_ASSIGNED = "coordinator_assigned"
     #: A user moved the request to another coordinator; ``details`` holds
     #: ``previous_coordinator_id``, ``previous_coordinator_name``, ``coordinator_id``
