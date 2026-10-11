@@ -48,6 +48,7 @@ To change a decision, don't rewrite history. Add a new ADR that **supersedes** t
 | [0033](0033-buffer-change-reports-bookings-in-blocks.md) | A buffer change also reports confirmed bookings that now run into a block | Accepted | SCRUM-67 |
 | [0034](0034-coordinators-see-only-their-own-events.md) | Event Coordinators see and open only the events assigned to them; the unassigned queue waits for the Lead | Accepted | SCRUM-24 |
 | [0035](0035-venue-booking-requests.md) | An assigned coordinator raises a Pending venue booking request for an approved event; every Venue Staff user is told | Accepted | SCRUM-42 |
+| [0037](0037-equipment-availability-and-reservation.md) | Equipment availability is calculated per event period; Technical Support reserve up to it under a row lock; out-of-service units are a read-only seam for SCRUM-47 | Accepted | SCRUM-45, SCRUM-46 |
 
 ## Template
 
