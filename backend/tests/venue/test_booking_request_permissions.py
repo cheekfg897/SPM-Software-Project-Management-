@@ -32,7 +32,8 @@ ReplaceServices = Callable[[ModuleType, dict[str, Any]], dict[str, MagicMock]]
 
 NON_COORDINATOR_ROLES = sorted(ALL_ROLES - {Role.EVENT_COORDINATOR}, key=lambda r: r.value)
 
-PATH = "/api/venues/events/5/booking-requests"
+REFERENCE = "EVR-ABCD2345"
+PATH = f"/api/venues/events/{REFERENCE}/booking-requests"
 # (endpoint, HTTP method, the service function it calls)
 ROUTES = [
     ("venue.raise_booking_request", "POST", "raise_booking_request"),
@@ -77,7 +78,7 @@ def mock_services(
 
 
 def _call(call_route: CallRoute, endpoint: str, method: str, token: str | None) -> Any:
-    return call_route(endpoint, method, PATH, {"event_id": 5}, token)
+    return call_route(endpoint, method, PATH, {"reference": REFERENCE}, token)
 
 
 @pytest.mark.parametrize("role", NON_COORDINATOR_ROLES, ids=lambda r: r.value)
@@ -140,7 +141,7 @@ def test_raising_a_request_returns_201_with_the_request_and_the_events_details(
         "accessibility_needs": "Step-free entrance",
     }
     mock_services["raise_booking_request"].assert_called_once_with(
-        5, {}, requested_by=COORDINATOR_ID
+        REFERENCE, {}, requested_by=COORDINATOR_ID
     )
 
 
@@ -154,7 +155,7 @@ def test_listing_requests_returns_200_with_each_request_and_the_events_details(
     assert [entry["id"] for entry in body] == [11]
     assert body[0]["accessibility_needs"] == "Step-free entrance"
     mock_services["list_booking_requests_for_event"].assert_called_once_with(
-        5, coordinator_id=COORDINATOR_ID
+        REFERENCE, coordinator_id=COORDINATOR_ID
     )
 
 
@@ -171,7 +172,7 @@ def test_a_coordinator_who_is_not_the_events_coordinator_gets_404_when_listing(
         call_route(
             "venue.list_booking_requests",
             "GET",
-            f"/api/venues/events/{event.id}/booking-requests",
-            {"event_id": event.id},
+            f"/api/venues/events/{event.reference}/booking-requests",
+            {"reference": event.reference},
             token_for(other_coordinator),
         )

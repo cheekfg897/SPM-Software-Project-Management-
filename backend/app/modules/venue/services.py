@@ -757,7 +757,7 @@ def show_booking_request(
     )
 
 
-def _notify_venue_staff(event_id: int, event: EventForBooking, session: Session | None) -> None:
+def _notify_venue_staff(event: EventForBooking, session: Session | None) -> None:
     """Tell every Venue Staff user the request needs a decision (AC9, ADR-0035).
 
     Runs after the request's own commit, in a second commit (ADR-0015). If the
@@ -765,7 +765,7 @@ def _notify_venue_staff(event_id: int, event: EventForBooking, session: Session 
     request is already saved, and failing the reply would invite a second request.
     """
     active_session = resolve_session(session)
-    summary = EventSummary(id=event_id, reference=event.reference, name=event.name)
+    summary = EventSummary(id=event.id, reference=event.reference, name=event.name)
     try:
         notify_users(
             list_user_ids_with_role(Role.VENUE_STAFF, session=session),
@@ -779,7 +779,7 @@ def _notify_venue_staff(event_id: int, event: EventForBooking, session: Session 
 
 
 def raise_booking_request(
-    event_id: int,
+    reference: str,
     payload: Mapping[str, Any] | None,
     *,
     requested_by: int,
@@ -804,7 +804,7 @@ def raise_booking_request(
 
     data = load_or_raise(RaiseBookingRequestSchema(), payload)
     event = event_services.get_approved_event_for_coordinator(
-        event_id, requested_by, session=session
+        reference, requested_by, session=session
     )
     data.setdefault("expected_occupancy", event.expected_attendance)
     data.setdefault("required_layout", None)
@@ -817,14 +817,14 @@ def raise_booking_request(
             "Invalid request.", details={"justification": [JUSTIFICATION_REQUIRED_MESSAGE]}
         )
 
-    request = VenueBookingRequest(event_id=event_id, requested_by=requested_by, **data)
+    request = VenueBookingRequest(event_id=event.id, requested_by=requested_by, **data)
     _save_request(request, session)
-    _notify_venue_staff(event_id, event, session)
+    _notify_venue_staff(event, session)
     return show_booking_request(request, event)
 
 
 def list_booking_requests_for_event(
-    event_id: int, *, coordinator_id: int, session: Session | None = None
+    reference: str, *, coordinator_id: int, session: Session | None = None
 ) -> list[BookingRequestAsShown]:
     """The event's booking requests, earliest period first, with the event's details.
 
@@ -835,10 +835,10 @@ def list_booking_requests_for_event(
     """
     from app.modules.events import services as event_services  # circular at import time
 
-    event = event_services.get_event_for_coordinator(event_id, coordinator_id, session=session)
+    event = event_services.get_event_for_coordinator(reference, coordinator_id, session=session)
     query = (
         select(VenueBookingRequest)
-        .where(VenueBookingRequest.event_id == event_id)
+        .where(VenueBookingRequest.event_id == event.id)
         .order_by(VenueBookingRequest.starts_at, VenueBookingRequest.id)
     )
     requests = resolve_session(session).scalars(query).all()

@@ -34,7 +34,7 @@ def raise_booking(
     """Raise a booking request for ``event`` at ``venue`` as its coordinator."""
     payload = booking_payload(**{"venue_id": venue.id, **overrides})
     shown = services.raise_booking_request(
-        event.id, payload, requested_by=COORDINATOR_ID, session=session
+        event.reference, payload, requested_by=COORDINATOR_ID, session=session
     )
     return shown.request
 
