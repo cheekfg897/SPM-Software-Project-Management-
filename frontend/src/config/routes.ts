@@ -10,6 +10,7 @@ export const ROUTES = {
   STAFF_HOME: '/staff',
   /** A route pattern: `:reference` is the event's `EVR-…` reference. */
   VENUE_REQUESTS: '/events/:reference/venue-requests',
+  EVENT_EQUIPMENT: '/events/:reference/equipment',
 } as const
 
 export type RoutePath = (typeof ROUTES)[keyof typeof ROUTES]
@@ -24,4 +25,9 @@ export type LoginRoute = typeof ROUTES.LOGIN | typeof ROUTES.STAFF_LOGIN
 export function loginPathReturningTo(path: string, loginRoute: LoginRoute = ROUTES.LOGIN): string {
   const params = new URLSearchParams({ [NEXT_PARAM]: path })
   return `${loginRoute}?${params.toString()}`
+}
+
+/** The equipment page for one event, by its EVR- reference. */
+export function eventEquipmentPath(reference: string): string {
+  return ROUTES.EVENT_EQUIPMENT.replace(':reference', encodeURIComponent(reference))
 }
