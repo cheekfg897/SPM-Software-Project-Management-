@@ -77,8 +77,12 @@ describe('SCRUM-28 notifications hooks', () => {
     const second = renderHookAs(() => useNotifications(), coordinator)
     await waitFor(() => expect(second.result.current.isSuccess).toBe(true))
 
-    expect(notificationKeys.list(1)).not.toEqual(notificationKeys.list(3))
-    expect(notificationKeys.unreadCount(1)).not.toEqual(notificationKeys.unreadCount(3))
+    const attendeeId = attendee.user.id
+    const coordinatorId = coordinator.user.id
+    expect(notificationKeys.list(attendeeId)).not.toEqual(notificationKeys.list(coordinatorId))
+    expect(notificationKeys.unreadCount(attendeeId)).not.toEqual(
+      notificationKeys.unreadCount(coordinatorId),
+    )
     expect(first.result.current.data).not.toEqual(second.result.current.data)
   })
 
