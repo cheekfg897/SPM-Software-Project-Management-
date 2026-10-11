@@ -6,8 +6,8 @@ import { sendRequestsAs } from '@/test/sendRequestsAs'
 
 import { uniqueEmail, VALID_PASSWORD } from './backend'
 
-/** An event id no database has, so the lookup finds nothing. */
-const UNKNOWN_EVENT_ID = 2_000_000_000
+/** A well-formed reference no database has, so the lookup finds nothing. */
+const UNKNOWN_EVENT_REFERENCE = 'EVR-NOSUCH00'
 const NOT_FOUND_MESSAGE = 'Event request not found.'
 
 /**
@@ -50,7 +50,7 @@ afterEach(() => sendRequestsAs(null))
 
 describe('SCRUM-42 venue booking requests against the backend', () => {
   it('refuses listing without a token (401)', async () => {
-    const error = await refusal(fetchBookingRequests(UNKNOWN_EVENT_ID))
+    const error = await refusal(fetchBookingRequests(UNKNOWN_EVENT_REFERENCE))
 
     expect(error).toMatchObject({ status: 401, code: 'authentication_error' })
   })
@@ -58,7 +58,7 @@ describe('SCRUM-42 venue booking requests against the backend', () => {
   it('refuses a role other than the Event Coordinator (403)', async () => {
     await signInAsAttendee()
 
-    const error = await refusal(fetchBookingRequests(UNKNOWN_EVENT_ID))
+    const error = await refusal(fetchBookingRequests(UNKNOWN_EVENT_REFERENCE))
 
     expect(error).toMatchObject({ status: 403, code: 'authorization_error' })
   })
@@ -66,7 +66,7 @@ describe('SCRUM-42 venue booking requests against the backend', () => {
   it.skipIf(!hasCoordinator)('answers 404 for an event the coordinator has none of', async () => {
     await signInAsCoordinator()
 
-    const error = await refusal(fetchBookingRequests(UNKNOWN_EVENT_ID))
+    const error = await refusal(fetchBookingRequests(UNKNOWN_EVENT_REFERENCE))
 
     expect(error).toMatchObject({ status: 404, code: 'not_found', message: NOT_FOUND_MESSAGE })
   })
@@ -77,7 +77,7 @@ describe('SCRUM-42 venue booking requests against the backend', () => {
       await signInAsCoordinator()
 
       const error = await refusal(
-        raiseBookingRequest(UNKNOWN_EVENT_ID, {
+        raiseBookingRequest(UNKNOWN_EVENT_REFERENCE, {
           venue_id: 1,
           starts_at: '2026-11-10T09:00:00+08:00',
           ends_at: '2026-11-10T12:00:00+08:00',

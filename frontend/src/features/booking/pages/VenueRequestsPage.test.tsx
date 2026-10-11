@@ -10,9 +10,9 @@ import { renderApp } from '@/test/render'
 
 import type { BookingRequest } from '../api'
 
-const APPROVED_PATH = `/events/${MOCK_BOOKING_EVENTS.approved.id}/venue-requests`
+const APPROVED_PATH = `/events/${MOCK_BOOKING_EVENTS.approved.reference}/venue-requests`
 const SESSION = { session: mockSessionFor(MOCK_ACCOUNTS.coordinator) }
-const BOOKING_URL = '/api/venues/events/:eventId/booking-requests'
+const BOOKING_URL = '/api/venues/events/:reference/booking-requests'
 
 const EXISTING_REQUEST: BookingRequest = {
   id: 7,
@@ -48,12 +48,12 @@ async function fillRequest(view: ReturnType<typeof renderApp>, venueId: number) 
 }
 
 describe('SCRUM-42 venue requests page', () => {
-  it.each(['abc', '0', '-3', '1.5'])(
-    'shows the not-found page, and asks for nothing, when the event id is %s',
-    (eventId) => {
+  it.each(['abc', '101', 'EVR-SHORT', 'EVR-TOOLONG123', 'EVR-BAD!CHAR'])(
+    'shows the not-found page, and asks for nothing, when the event reference is %s',
+    (reference) => {
       const requests = recordRequests()
 
-      renderApp(`/events/${eventId}/venue-requests`, SESSION)
+      renderApp(`/events/${reference}/venue-requests`, SESSION)
 
       expect(screen.getByRole('heading', { name: 'Page not found' })).toBeInTheDocument()
       expect(requests).toHaveLength(0)
@@ -170,13 +170,16 @@ describe('SCRUM-42 venue requests page', () => {
   })
 
   it('shows the backend message when the event is not found', async () => {
-    renderApp(`/events/${MOCK_BOOKING_EVENTS.someoneElses.id}/venue-requests`, SESSION)
+    renderApp(`/events/${MOCK_BOOKING_EVENTS.someoneElses.reference}/venue-requests`, SESSION)
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Event request not found.')
   })
 
   it('shows the backend message when the event is not approved', async () => {
-    const view = renderApp(`/events/${MOCK_BOOKING_EVENTS.confirmed.id}/venue-requests`, SESSION)
+    const view = renderApp(
+      `/events/${MOCK_BOOKING_EVENTS.confirmed.reference}/venue-requests`,
+      SESSION,
+    )
     await fillRequest(view, MOCK_BOOKING_VENUES.roomy.id)
 
     await view.user.click(view.getByRole('button', { name: 'Request venue' }))

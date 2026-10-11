@@ -2,7 +2,7 @@ import { apiRequest } from '@/lib/api'
 
 /** The venue module's booking request endpoints (SCRUM-42), nested under the event. */
 const BOOKING_PATHS = {
-  EVENT_REQUESTS: (eventId: number) => `/api/venues/events/${eventId}/booking-requests`,
+  EVENT_REQUESTS: (reference: string) => `/api/venues/events/${reference}/booking-requests`,
 } as const
 
 /** What the backend accepts when a coordinator raises a request. */
@@ -41,18 +41,18 @@ export interface BookingRequest {
 
 export const bookingKeys = {
   all: ['booking'] as const,
-  forEvent: (eventId: number) => [...bookingKeys.all, 'event', eventId] as const,
+  forEvent: (reference: string) => [...bookingKeys.all, 'event', reference] as const,
 }
 
-export function fetchBookingRequests(eventId: number): Promise<BookingRequest[]> {
-  return apiRequest<BookingRequest[]>(BOOKING_PATHS.EVENT_REQUESTS(eventId))
+export function fetchBookingRequests(reference: string): Promise<BookingRequest[]> {
+  return apiRequest<BookingRequest[]>(BOOKING_PATHS.EVENT_REQUESTS(reference))
 }
 
 export function raiseBookingRequest(
-  eventId: number,
+  reference: string,
   payload: RaiseBookingRequest,
 ): Promise<BookingRequest> {
-  return apiRequest<BookingRequest>(BOOKING_PATHS.EVENT_REQUESTS(eventId), {
+  return apiRequest<BookingRequest>(BOOKING_PATHS.EVENT_REQUESTS(reference), {
     method: 'POST',
     body: payload,
   })
