@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render } from '@testing-library/react'
+import { render, renderHook } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactElement, ReactNode } from 'react'
 import { Provider } from 'react-redux'
@@ -32,14 +32,16 @@ function createTestStore(session: SignedInPayload | undefined) {
 
 function Providers({
   store,
+  queryClient,
   children,
 }: {
   store: ReturnType<typeof createAppStore>
+  queryClient: QueryClient
   children: ReactNode
 }) {
   return (
     <Provider store={store}>
-      <QueryClientProvider client={createTestQueryClient()}>{children}</QueryClientProvider>
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     </Provider>
   )
 }
@@ -48,7 +50,7 @@ function Providers({
 export function renderWithProviders(ui: ReactElement, { session }: RenderOptions = {}) {
   const store = createTestStore(session)
   const result = render(
-    <Providers store={store}>
+    <Providers store={store} queryClient={createTestQueryClient()}>
       <MemoryRouter>{ui}</MemoryRouter>
     </Providers>,
   )
@@ -60,9 +62,23 @@ export function renderApp(path: string, { session }: RenderOptions = {}) {
   const store = createTestStore(session)
   const router = createMemoryRouter(appRoutes, { initialEntries: [path] })
   const result = render(
-    <Providers store={store}>
+    <Providers store={store} queryClient={createTestQueryClient()}>
       <RouterProvider router={router} />
     </Providers>,
   )
   return { ...result, store, router, user: userEvent.setup() }
+}
+
+/** Run a hook with the store and query client around it. Both are returned to dispatch to or inspect. */
+export function renderHookWithProviders<T>(hook: () => T, { session }: RenderOptions = {}) {
+  const store = createTestStore(session)
+  const queryClient = createTestQueryClient()
+  function Wrapper({ children }: { children: ReactNode }) {
+    return (
+      <Providers store={store} queryClient={queryClient}>
+        {children}
+      </Providers>
+    )
+  }
+  return { ...renderHook(hook, { wrapper: Wrapper }), store, queryClient }
 }
