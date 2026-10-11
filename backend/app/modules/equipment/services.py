@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.common.database import resolve_session
 from app.common.errors import AppError, ConflictError, NotFoundError, ValidationError
 from app.common.validation import load_or_raise
+from app.modules.auth.permissions import Role
 from app.modules.auth.services import get_user_full_names
 from app.modules.equipment.models import EquipmentOutOfService, EquipmentReservation, EquipmentType
 from app.modules.equipment.schemas import EditEquipmentTypeSchema, EquipmentUnitsSchema
@@ -230,25 +231,31 @@ def list_equipment_types(*, session: Session | None = None) -> list[EquipmentTyp
 
 
 def equipment_availability_for_event(
-    reference: str, *, session: Session | None = None
+    viewer_id: int | str, reference: str, *, viewer_role: Role, session: Session | None = None
 ) -> list[EquipmentAvailability]:
     """What is free for an event's own period, against what it asks for (SCRUM-45).
 
     One row for every equipment type in the catalogue, by name, so an event that asks
     for nothing still sees what is free. The shortfall is how many units the request
     is short of (AC3), 0 when it is met. The period is the event's own start and end,
-    not the whole day (AC4).
+    not the whole day (AC4). Technical Support Staff may read any event's; a
+    coordinator only an event assigned to them (ADR-0019, ADR-0037).
 
     Args:
+        viewer_id: The caller's user id, taken from their token.
         reference: The event's ``EVR-…`` reference.
+        viewer_role: The caller's role.
         session: Database session; defaults to ``db.session``.
 
     Raises:
-        NotFoundError: 404 — no such event, or it is still a draft.
+        NotFoundError: 404 — no such event, a draft, or for a coordinator, not one of
+            their own.
         EventPeriodIncompleteError: 409 — the event has no complete date and times.
     """
     sess = resolve_session(session)
-    need = events_services.get_event_equipment_need(reference, session=sess)
+    need = events_services.get_event_equipment_need_for_viewer(
+        viewer_id, reference, viewer_role=viewer_role, session=sess
+    )
     rows = []
     for equipment_type in list_equipment_types(session=sess):
         available = available_quantity(
@@ -268,22 +275,30 @@ def equipment_availability_for_event(
 
 
 def list_reservations_for_event(
-    reference: str, *, session: Session | None = None
+    viewer_id: int | str, reference: str, *, viewer_role: Role, session: Session | None = None
 ) -> list[ReservationAsShown]:
     """The equipment reserved for an event, oldest first, for its record (SCRUM-46 AC4).
 
+    Technical Support Staff may read any event's; a coordinator only an event assigned
+    to them (ADR-0019, ADR-0037).
+
     Args:
+        viewer_id: The caller's user id, taken from their token.
         reference: The event's ``EVR-…`` reference.
+        viewer_role: The caller's role.
         session: Database session; defaults to ``db.session``.
 
     Raises:
-        NotFoundError: 404 — no such event, or it is still a draft.
+        NotFoundError: 404 — no such event, a draft, or for a coordinator, not one of
+            their own.
     """
     sess = resolve_session(session)
-    event_id = events_services.get_event_equipment_need(reference, session=sess).event_id
+    need = events_services.get_event_equipment_need_for_viewer(
+        viewer_id, reference, viewer_role=viewer_role, session=sess
+    )
     statement = (
         select(EquipmentReservation)
-        .where(EquipmentReservation.event_id == event_id)
+        .where(EquipmentReservation.event_id == need.event_id)
         .options(joinedload(EquipmentReservation.equipment_type))
         .order_by(EquipmentReservation.created_at, EquipmentReservation.id)
     )
