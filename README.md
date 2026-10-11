@@ -119,12 +119,12 @@ curl http://localhost:5000/api/auth/internal-only -H "Authorization: Bearer <tok
 | `POST /api/auth/register`      | public — `event_organiser` or `attendee` only; staff accounts come from `flask create-staff-user` ([ADR-0023](docs/adr/0023-staff-accounts-created-by-command.md)) |
 | `POST /api/auth/login`         | public                                                          |
 | `GET  /api/auth/me`            | any authenticated user                                          |
-| `GET  /api/auth/internal-only` | `event_coordinator`, `venue_staff`, `technical_support_staff`   |
+| `GET  /api/auth/internal-only` | `event_coordinator`, `event_coordinator_lead`, `venue_staff`, `technical_support_staff` |
 | `POST /api/events/requests`    | `event_organiser` — submit an event request                     |
 | `GET  /api/events/requests`    | `event_organiser` — list your client organisation's event requests and your own drafts, whoever submitted them, newest first; a colleague's drafts are hidden (`403` if your account has no organisation); an empty list comes with a `message` |
 | `POST /api/events/requests/drafts` | `event_organiser` — save a draft with only the event name required; every other field is optional and checked on its own |
 | `PATCH /api/events/requests/drafts/<reference>` | `event_organiser` — on one of your own drafts, change only the fields sent; a field sent as `null` clears it, `name` cannot be (`404` if it isn't yours or doesn't exist; `409` if it is no longer a draft) |
-| `POST /api/events/requests/drafts/<reference>/submit` | `event_organiser` — submit one of your own drafts under the full submission rules, keeping its reference; assigned and notified exactly as a fresh submission is (`400` if a detail is missing or fails a rule) |
+| `POST /api/events/requests/drafts/<reference>/submit` | `event_organiser` — submit one of your own drafts under the full submission rules, keeping its reference; it waits in the Lead's queue and tells the Leads exactly as a fresh submission does (`400` if a detail is missing or fails a rule) |
 | `GET  /api/events/requests/assigned` | `event_coordinator` — the event requests assigned to you, newest first; an empty list comes with a `message` |
 | `GET  /api/events/requests/unassigned` | `event_coordinator_lead` — the Lead's queue of submitted requests no coordinator has yet: each one's reference, name, date, times, expected attendance and submission time, longest-waiting first; an empty list comes with a `message`. Every other role, Event Coordinators included, gets `403` |
 | `GET  /api/events/requests/with-equipment` | `technical_support_staff` — every event that has an equipment request, whatever its status or date: name, date, times and status; an empty list comes with a `message` |
@@ -170,7 +170,7 @@ curl http://localhost:5000/api/auth/internal-only -H "Authorization: Bearer <tok
 | `GET  /api/notifications/unread-count` | any authenticated user — how many of yours are unread   |
 | `POST /api/notifications/<id>/read` | any authenticated user — mark one of yours read (`404` if it isn't yours) |
 
-Roles: `event_organiser`, `attendee`, `event_coordinator`, `venue_staff`, `technical_support_staff`.
+Roles: `event_organiser`, `attendee`, `event_coordinator`, `event_coordinator_lead`, `venue_staff`, `technical_support_staff`.
 
 Password policy: at least 8 characters, with at least one letter and one digit.
 
@@ -178,7 +178,7 @@ An `event_organiser` registers with the `organisation_id` of an existing client 
 
 A draft is an event request in status `draft`: it can be saved with only a name, reopened and changed field by field, and submitted in place once it is complete, keeping its reference. It is visible only to the organiser who saved it — never to a colleague, and never to Event Coordinators or Technical Support Staff — until it is submitted ([ADR-0024](docs/adr/0024-draft-event-requests.md)).
 
-A submitted event request is assigned to the Event Coordinator with the fewest open requests (`submitted`, `under_review`, `awaiting_clarification` or `approved`), lowest user id on a tie, and that coordinator is notified; with no Event Coordinator registered it stays unassigned and nobody is notified ([ADR-0018](docs/adr/0018-least-loaded-coordinator-and-event-history.md)). The organiser who submitted it is told a coordinator has been assigned, on submission and again on each reassignment; their colleagues aren't ([ADR-0030](docs/adr/0030-organiser-told-about-assignment.md)). Everything that happens to an event is written to an event history table that later stories append to.
+A submitted event request is assigned to nobody. It waits in the Event Coordinator Lead's unassigned queue, which only a Lead can see, and every Lead is notified that it is waiting. A Lead gives it to one Event Coordinator, named by email; that is written to the event's history with the Lead as the actor, and the request leaves the queue ([ADR-0036](docs/adr/0036-event-coordinator-lead.md), superseding the least-loaded rule of [ADR-0018](docs/adr/0018-least-loaded-coordinator-and-event-history.md)). The organiser who submitted it is told a coordinator has been assigned, on that assignment and again on each reassignment; their colleagues aren't ([ADR-0030](docs/adr/0030-organiser-told-about-assignment.md)). Everything that happens to an event is written to an event history table that later stories append to.
 
 All errors share one shape: `{"error": "<code>", "message": "<text>", "details": {...}}` (`details` only for validation errors).
 
@@ -238,6 +238,7 @@ pytest -m scrum_88   # staff accounts come from a command, not self-registration
 pytest -m scrum_33   # update event information and flag significant changes
 pytest -m scrum_68   # mark an event as completed after it has taken place
 pytest -m scrum_41   # end-to-end test: request to approval
+pytest -m scrum_95   # newly submitted requests go to the Event Coordinator Lead unassigned
 pytest -m e2e        # every journey driven through the HTTP layer
 ```
 
