@@ -317,6 +317,18 @@ def _notify_about_assignment(
     )
 
 
+def _notify_leads_of_queued_request(event_request: EventRequest, session: Session) -> None:
+    """Tell every Event Coordinator Lead that ``event_request`` is waiting for one.
+
+    Called once a submission is saved, for a new request and a submitted draft alike
+    (SCRUM-95 AC4, ADR-0036). Each Lead hears it once, as a single write. This notice
+    is also the only thing that says a request is unassigned: submission logs no
+    warning for it, as it is the normal way for every request to start.
+    """
+    lead_ids = list_user_ids_with_role(Role.EVENT_COORDINATOR_LEAD, session=session)
+    _raise_notifications(lead_ids, event_request, NotificationKind.REQUEST_QUEUED_FOR_LEAD, session)
+
+
 def _save_under_new_reference(
     new_request: Callable[[str], EventRequest],
     session: Session,
@@ -418,7 +430,7 @@ def submit_event_request(
         return event_request
 
     event_request = _save_under_new_reference(submitted_under, sess, reference_factory)
-    _warn_unassigned(event_request)
+    _notify_leads_of_queued_request(event_request, sess)
     return event_request
 
 
@@ -896,7 +908,7 @@ def submit_draft_event_request(
         setattr(draft, key, value)
     _mark_submitted(draft)
     sess.commit()
-    _warn_unassigned(draft)
+    _notify_leads_of_queued_request(draft, sess)
     return draft
 
 

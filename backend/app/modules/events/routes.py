@@ -27,10 +27,12 @@ from app.modules.events.schemas import (
     EventRequestDetailSchema,
     EventRequestSchema,
     FieldChangeSchema,
+    UnassignedRequestSchema,
 )
 from app.modules.events.services import (
     EventRecord,
     add_equipment_line,
+    assign_coordinator_to_request,
     complete_event_request,
     decide_event_request,
     get_event_record_for_coordinator,
@@ -41,6 +43,7 @@ from app.modules.events.services import (
     list_event_requests_for_coordinator,
     list_event_requests_for_organiser,
     list_event_requests_with_equipment,
+    list_unassigned_requests,
     reassign_coordinator,
     remove_equipment_line,
     request_clarification,
@@ -68,11 +71,13 @@ _edited_event_request_schema = EditedEventRequestSchema()
 _field_change_schema = FieldChangeSchema()
 _event_history_entry_schema = EventHistoryEntrySchema()
 _event_list_row_schema = EventRequestSchema(only=EVENT_LIST_FIELDS)
+_unassigned_request_schema = UnassignedRequestSchema()
 
 #: What each role's event list says when it is empty (SCRUM-24 AC10, ADR-0026).
 NO_ORGANISATION_REQUESTS_MESSAGE = "Your organisation has no event requests yet."
 NO_ASSIGNED_REQUESTS_MESSAGE = "No event requests are assigned to you yet."
 NO_EQUIPMENT_REQUESTS_MESSAGE = "No events have an equipment request yet."
+NO_UNASSIGNED_REQUESTS_MESSAGE = "No event requests are waiting to be assigned."
 
 
 def _event_list_body(listed: list[dict[str, Any]], empty_message: str) -> dict[str, Any]:
@@ -178,6 +183,19 @@ def list_assigned_requests() -> tuple[Response, int]:
     event_requests = list_event_requests_for_coordinator(g.current_user_id)
     listed = _event_request_schema.dump(event_requests, many=True)
     return jsonify(_event_list_body(listed, NO_ASSIGNED_REQUESTS_MESSAGE)), 200
+
+
+@bp.get("/requests/unassigned")
+@requires_role(Role.EVENT_COORDINATOR_LEAD)
+def list_unassigned() -> tuple[Response, int]:
+    """The requests waiting for the Lead, longest-waiting first (SCRUM-95 AC2).
+
+    Only the Event Coordinator Lead may see the queue (ADR-0036); every other role,
+    Event Coordinators included, gets ``403`` from the decorator.
+    """
+    event_requests = list_unassigned_requests()
+    listed = _unassigned_request_schema.dump(event_requests, many=True)
+    return jsonify(_event_list_body(listed, NO_UNASSIGNED_REQUESTS_MESSAGE)), 200
 
 
 @bp.get("/requests/awaiting-equipment")
@@ -298,6 +316,29 @@ def reassign_request(reference: str) -> tuple[Response, int]:
     """
     event_request, coordinator = reassign_coordinator(
         g.current_user_id, reference, request.get_json(silent=True)
+    )
+    body = _event_request_schema.dump(event_request)
+    body["coordinator"] = _coordinator_contact_schema.dump(coordinator)
+    return jsonify(body), 200
+
+
+# --------------------------------------------------------------------------
+# SCRUM-95 — the Event Coordinator Lead assigns a coordinator
+# --------------------------------------------------------------------------
+
+
+@bp.post("/requests/<reference>/coordinator")
+@requires_role(Role.EVENT_COORDINATOR_LEAD)
+def assign_coordinator(reference: str) -> tuple[Response, int]:
+    """Give a queued request to the Event Coordinator named by ``coordinator_email``.
+
+    SCRUM-95 AC3, AC6, ADR-0036. Only the Event Coordinator Lead may: an Event
+    Coordinator who calls this gets ``403`` from the decorator, so none can assign an
+    event to themselves or anyone else. Returns ``200`` with the request and the
+    coordinator's name and email. The Lead is recorded as having done it.
+    """
+    event_request, coordinator = assign_coordinator_to_request(
+        reference, request.get_json(silent=True), assigned_by=int(g.current_user_id)
     )
     body = _event_request_schema.dump(event_request)
     body["coordinator"] = _coordinator_contact_schema.dump(coordinator)

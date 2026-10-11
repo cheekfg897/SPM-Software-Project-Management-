@@ -34,7 +34,8 @@ from app.modules.events.models import (
     EventRequestStatus,
 )
 from app.modules.events.schemas import EventRequestSchema
-from app.modules.notifications.models import Notification
+from app.modules.notifications.models import Notification, NotificationKind
+from tests.events.cases import LEAD_ID
 
 pytestmark = pytest.mark.scrum_30
 
@@ -72,8 +73,9 @@ def hold_request(save: Callable[..., None], make_event_request: MakeEventRequest
 
 @pytest.mark.scrum_39
 @pytest.mark.scrum_95
-def test_a_submitted_request_is_saved_unassigned_and_logged(
+def test_a_submitted_request_is_saved_unassigned_and_only_the_lead_is_told(
     saved_users: list[User],
+    saved_leads: list[User],
     submit_valid_request: SubmitValidRequest,
     history_of: HistoryOf,
     coordinator_of: CoordinatorOf,
@@ -83,7 +85,9 @@ def test_a_submitted_request_is_saved_unassigned_and_logged(
     """Also SCRUM-39's guard: with nobody assigned, not even the organiser is told.
 
     Event Coordinators 3 and 9 are both there and both free, so until SCRUM-95 this
-    request would have gone to coordinator 3.
+    request would have gone to coordinator 3. The one thing said about it is each
+    Lead's ``request_queued_for_lead`` notice (AC4), which is why nothing is logged as
+    a warning: waiting for the Lead is no longer something that needs attention.
     """
     with caplog.at_level(logging.WARNING, logger="connectsphere.events"):
         submitted = submit_valid_request()
@@ -91,10 +95,14 @@ def test_a_submitted_request_is_saved_unassigned_and_logged(
     assert coordinator_of(submitted.id) is None
     assert submitted.status is EventRequestStatus.SUBMITTED
     assert history_of(submitted.id) == []
-    assert db_session.scalars(select(Notification)).all() == []
-    assert [record.getMessage() for record in caplog.records] == [
-        "event_request_unassigned reference=EVR-AAAAAAAA"
+    notices = db_session.execute(
+        select(Notification.recipient_id, Notification.kind).order_by(Notification.recipient_id)
+    ).all()
+    assert [tuple(notice) for notice in notices] == [
+        (LEAD_ID, NotificationKind.REQUEST_QUEUED_FOR_LEAD),
+        (12, NotificationKind.REQUEST_QUEUED_FOR_LEAD),
     ]
+    assert caplog.records == []
 
 
 @pytest.mark.scrum_95
