@@ -12,8 +12,10 @@ Nothing produces ``event_request_submitted`` any more either.
 Where those two notices are raised now is tested where it happens: the Lead's
 assignment (SCRUM-95) and a reassignment, in
 ``test_reassign_coordinator_notifications.py``, which also owns ADR-0015's
-lost-notice cases. Submission has no notification write left to lose, so the only
-commit it makes is the request's own; that test uses ``mock_session``.
+lost-notice cases, now also run through the Lead's assignment in
+``test_lead_assignment_queue.py``. Submission's one notification write, the Leads'
+notice, is tested for the commits it makes and for losing it; those tests use
+``mock_session``.
 
 Runs against ``db_session`` with the ``saved_users`` fixture, so the Event
 Coordinators really are there to be found and still nobody is told.
@@ -35,7 +37,7 @@ from app.modules.events.models import EventRequest
 from app.modules.events.services import submit_event_request
 from app.modules.notifications.schemas import MESSAGE_BY_KIND
 from app.modules.notifications.services import NotificationKind
-from tests.events.cases import LEAD_ID
+from tests.events.cases import LEAD_ID, LOST_CONNECTION
 
 pytestmark = [
     pytest.mark.scrum_28,
@@ -166,7 +168,7 @@ def test_a_rejected_submission_tells_no_lead(
 
 
 # --------------------------------------------------------------------------
-# ADR-0015 — submission has no notification write left to lose
+# ADR-0015 / ADR-0036 decision 13 — the Leads' notice is submission's one write to lose
 # --------------------------------------------------------------------------
 
 
@@ -181,9 +183,9 @@ def test_submitting_commits_the_request_then_the_leads_notice(
 
     The notice is the whole of what a request being unassigned says, so nothing is
     logged as a warning on the way (SCRUM-95 AC4, ADR-0036). ADR-0015's lost-notice
-    cases belong to the paths that still raise the assignment notices;
-    ``LOST_NOTIFICATION_CASES`` drives them in
-    ``test_reassign_coordinator_notifications.py``.
+    cases for the assignment notices are driven by ``LOST_NOTIFICATION_CASES`` in
+    ``test_lead_assignment_queue.py`` (the nearer home, as the Lead's assignment
+    raises them) and in ``test_reassign_coordinator_notifications.py``.
     """
     mock_session.scalars.return_value = [LEAD_ID]
 
@@ -205,3 +207,31 @@ def test_submitting_commits_the_request_then_the_leads_notice(
         (LEAD_ID, NotificationKind.REQUEST_QUEUED_FOR_LEAD)
     ]
     assert caplog.records == []
+
+
+@pytest.mark.usefixtures("organiser_is_found")
+def test_a_lost_leads_notice_still_returns_the_saved_request(
+    mock_session: MagicMock,
+    valid_event_request_payload: dict[str, Any],
+    today: date,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The request commits first; failing the reply would invite a second submission."""
+    mock_session.scalars.return_value = [LEAD_ID]
+    mock_session.commit.side_effect = [None, LOST_CONNECTION]
+
+    with caplog.at_level(logging.WARNING, logger="connectsphere.events"):
+        event_request = submit_event_request(
+            7,
+            valid_event_request_payload,
+            session=mock_session,
+            today=today,
+            reference_factory=lambda: "EVR-AAAAAAAA",
+        )
+
+    assert event_request.reference == "EVR-AAAAAAAA"
+    assert mock_session.commit.call_count == 2
+    mock_session.rollback.assert_called_once()
+    assert [record.getMessage() for record in caplog.records] == [
+        "event_request_notification_failed reference=EVR-AAAAAAAA kind=request_queued_for_lead"
+    ]
