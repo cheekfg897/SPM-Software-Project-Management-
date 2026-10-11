@@ -8,6 +8,9 @@ interface ImportMetaEnv {
   /** Integration tests only: a staff account on the running backend, made with `flask create-staff-user`. */
   readonly INTEGRATION_STAFF_EMAIL?: string
   readonly INTEGRATION_STAFF_PASSWORD?: string
+  /** A seeded Event Coordinator's sign-in for the integration tests that need one. */
+  readonly VITE_COORDINATOR_EMAIL?: string
+  readonly VITE_COORDINATOR_PASSWORD?: string
 }
 
 interface ImportMeta {

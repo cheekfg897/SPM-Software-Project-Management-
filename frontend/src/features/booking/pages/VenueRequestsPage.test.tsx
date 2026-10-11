@@ -48,14 +48,17 @@ async function fillRequest(view: ReturnType<typeof renderApp>, venueId: number) 
 }
 
 describe('SCRUM-42 venue requests page', () => {
-  it('shows the not-found page, and asks for nothing, when the event id is not a number', () => {
-    const requests = recordRequests()
+  it.each(['abc', '0', '-3', '1.5'])(
+    'shows the not-found page, and asks for nothing, when the event id is %s',
+    (eventId) => {
+      const requests = recordRequests()
 
-    renderApp('/events/abc/venue-requests', SESSION)
+      renderApp(`/events/${eventId}/venue-requests`, SESSION)
 
-    expect(screen.getByRole('heading', { name: 'Page not found' })).toBeInTheDocument()
-    expect(requests).toHaveLength(0)
-  })
+      expect(screen.getByRole('heading', { name: 'Page not found' })).toBeInTheDocument()
+      expect(requests).toHaveLength(0)
+    },
+  )
 
   it('says what is loading while the requests are read', () => {
     renderApp(APPROVED_PATH, SESSION)
@@ -169,7 +172,7 @@ describe('SCRUM-42 venue requests page', () => {
   it('shows the backend message when the event is not found', async () => {
     renderApp(`/events/${MOCK_BOOKING_EVENTS.someoneElses.id}/venue-requests`, SESSION)
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Event not found.')
+    expect(await screen.findByRole('alert')).toHaveTextContent('Event request not found.')
   })
 
   it('shows the backend message when the event is not approved', async () => {
