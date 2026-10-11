@@ -120,6 +120,22 @@ def other_organisers(
 
 
 @pytest.fixture()
+def saved_leads(make_user: Callable[..., User], save: Callable[..., None]) -> list[User]:
+    """Save two Event Coordinator Leads, 12 before 11, so every Lead has to be found.
+
+    Not part of ``saved_users``: a Lead on the submission path raises the
+    ``request_queued_for_lead`` notice (SCRUM-95 AC4), which tests about the other
+    notices there don't want in the way.
+    """
+    leads = [
+        make_user(email="lead12@example.com", role=Role.EVENT_COORDINATOR_LEAD, user_id=12),
+        make_user(email="lead11@example.com", role=Role.EVENT_COORDINATOR_LEAD, user_id=LEAD_ID),
+    ]
+    save(*leads)
+    return leads
+
+
+@pytest.fixture()
 def coordinator_three() -> CoordinatorContact:
     """Coordinator 3 of ``saved_users``, as the organiser sees them (SCRUM-24 AC7)."""
     return CoordinatorContact(full_name="Coordinator Three", email="coordinator3@example.com")

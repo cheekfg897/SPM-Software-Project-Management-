@@ -35,6 +35,7 @@ from app.modules.events.models import EventRequest
 from app.modules.events.services import submit_event_request
 from app.modules.notifications.schemas import MESSAGE_BY_KIND
 from app.modules.notifications.services import NotificationKind
+from tests.events.cases import LEAD_ID
 
 pytestmark = [
     pytest.mark.scrum_28,
@@ -114,23 +115,78 @@ def test_the_assignment_notification_says_what_happened() -> None:
 
 
 # --------------------------------------------------------------------------
+# SCRUM-95 AC4 — every Event Coordinator Lead is told the request is waiting
+# --------------------------------------------------------------------------
+
+
+def test_every_lead_is_told_once_that_a_request_is_waiting(
+    saved_users: list[User],
+    saved_leads: list[User],
+    submit_valid_request: SubmitValidRequest,
+    notifications_of: NotificationsOf,
+) -> None:
+    submitted = submit_valid_request()
+
+    waiting_notice = (
+        submitted.id,
+        "EVR-AAAAAAAA",
+        "ConnectSphere Partner Summit",
+        NotificationKind.REQUEST_QUEUED_FOR_LEAD,
+        None,
+    )
+    assert notifications_of(LEAD_ID) == [waiting_notice]
+    assert notifications_of(12) == [waiting_notice]
+
+
+def test_a_lead_is_told_nothing_else_and_nobody_else_is_told_of_the_queue(
+    saved_users: list[User],
+    saved_leads: list[User],
+    submit_valid_request: SubmitValidRequest,
+    notifications_of: NotificationsOf,
+) -> None:
+    submit_valid_request()
+
+    for user_id in (2, 3, 4, 5, 7, 9):
+        assert notifications_of(user_id) == []
+
+
+def test_a_rejected_submission_tells_no_lead(
+    saved_users: list[User],
+    saved_leads: list[User],
+    valid_event_request_payload: dict[str, Any],
+    submit_valid_request: SubmitValidRequest,
+    notifications_of: NotificationsOf,
+) -> None:
+    valid_event_request_payload["proposed_date"] = "2026-09-14"  # yesterday
+
+    with pytest.raises(ValidationError):
+        submit_valid_request()
+
+    assert notifications_of(LEAD_ID) == []
+
+
+# --------------------------------------------------------------------------
 # ADR-0015 — submission has no notification write left to lose
 # --------------------------------------------------------------------------
 
 
 @pytest.mark.usefixtures("organiser_is_found")
-def test_submitting_commits_once_and_sends_nothing(
+def test_submitting_commits_the_request_then_the_leads_notice(
     mock_session: MagicMock,
     valid_event_request_payload: dict[str, Any],
     today: date,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """One commit, the request's own: the two notices it used to send are gone.
+    """Two commits: the request's own, then the Leads' notice, which is all it sends.
 
-    ADR-0015's lost-notice cases belong to the paths that still raise those notices;
+    The notice is the whole of what a request being unassigned says, so nothing is
+    logged as a warning on the way (SCRUM-95 AC4, ADR-0036). ADR-0015's lost-notice
+    cases belong to the paths that still raise the assignment notices;
     ``LOST_NOTIFICATION_CASES`` drives them in
     ``test_reassign_coordinator_notifications.py``.
     """
+    mock_session.scalars.return_value = [LEAD_ID]
+
     with caplog.at_level(logging.WARNING, logger="connectsphere.events"):
         event_request = submit_event_request(
             7,
@@ -141,8 +197,10 @@ def test_submitting_commits_once_and_sends_nothing(
         )
 
     assert event_request.reference == "EVR-AAAAAAAA"
-    assert mock_session.commit.call_count == 1
+    assert mock_session.commit.call_count == 2
     mock_session.rollback.assert_not_called()
-    assert [record.getMessage() for record in caplog.records] == [
-        "event_request_unassigned reference=EVR-AAAAAAAA"
+    notices = mock_session.add_all.call_args.args[0]
+    assert [(notice.recipient_id, notice.kind) for notice in notices] == [
+        (LEAD_ID, NotificationKind.REQUEST_QUEUED_FOR_LEAD)
     ]
+    assert caplog.records == []
