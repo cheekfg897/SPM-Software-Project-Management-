@@ -48,6 +48,15 @@ async function fillRequest(view: ReturnType<typeof renderApp>, venueId: number) 
 }
 
 describe('SCRUM-42 venue requests page', () => {
+  it('shows the not-found page, and asks for nothing, when the event id is not a number', () => {
+    const requests = recordRequests()
+
+    renderApp('/events/abc/venue-requests', SESSION)
+
+    expect(screen.getByRole('heading', { name: 'Page not found' })).toBeInTheDocument()
+    expect(requests).toHaveLength(0)
+  })
+
   it('says what is loading while the requests are read', () => {
     renderApp(APPROVED_PATH, SESSION)
 

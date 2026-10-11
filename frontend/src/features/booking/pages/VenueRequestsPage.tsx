@@ -1,5 +1,6 @@
 import { useParams } from 'react-router'
 
+import { NotFoundPage } from '@/app/NotFoundPage'
 import { PageContainer } from '@/components/layout'
 import { ErrorAlert, Spinner } from '@/components/ui'
 
@@ -7,10 +8,7 @@ import { BookingRequestForm } from '../components/BookingRequestForm'
 import { BookingRequestList } from '../components/BookingRequestList'
 import { useBookingRequests } from '../hooks'
 
-/** An event's venue requests, and the form to raise another (SCRUM-42). Coordinators only. */
-export function VenueRequestsPage() {
-  const { eventId } = useParams()
-  const id = Number(eventId)
+function EventVenueRequests({ id }: { id: number }) {
   const requests = useBookingRequests(id)
 
   return (
@@ -39,4 +37,13 @@ export function VenueRequestsPage() {
       </section>
     </PageContainer>
   )
+}
+
+/** An event's venue requests, and the form to raise another (SCRUM-42). Coordinators only. */
+export function VenueRequestsPage() {
+  const id = Number(useParams().eventId)
+  if (!Number.isInteger(id)) {
+    return <NotFoundPage />
+  }
+  return <EventVenueRequests id={id} />
 }
