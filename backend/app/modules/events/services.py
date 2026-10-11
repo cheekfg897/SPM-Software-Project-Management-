@@ -230,6 +230,8 @@ class EventForBooking:
     approved event always has its dates and times (SCRUM-22, SCRUM-31).
     """
 
+    reference: str
+    name: str
     status: EventRequestStatus
     proposed_date: date
     end_date: date | None
@@ -252,6 +254,8 @@ def get_event_for_coordinator(
         raise NotFoundError(EVENT_REQUEST_NOT_FOUND_MESSAGE)
     _check_assigned_to(coordinator_id, event_request)
     return EventForBooking(
+        reference=event_request.reference,
+        name=event_request.name,
         status=event_request.status,
         proposed_date=event_request.proposed_date,
         end_date=event_request.end_date,
