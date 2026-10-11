@@ -5,9 +5,15 @@ import { ROLE } from '@/config/roles'
 import type { BookingRequest } from '@/features/booking/api'
 import type { FieldErrors } from '@/lib/api'
 
-import { errorResponse, notAllowed, notAuthenticated, validationError } from '../responses'
+import {
+  errorResponse,
+  notAllowed,
+  notAuthenticated,
+  readBody,
+  validationError,
+} from '../responses'
 
-import { accountForRequest, readBody } from './auth'
+import { accountForRequest } from './auth'
 import { MOCK_BOOKING_EVENTS, MOCK_BOOKING_VENUES } from './bookingFixtures'
 import type { MockBookingEvent } from './bookingFixtures'
 
@@ -18,6 +24,8 @@ import type { MockBookingEvent } from './bookingFixtures'
 
 const BOOKING_PATH = '/api/venues/events/:eventId/booking-requests'
 const REQUIRED_FIELDS = ['venue_id', 'starts_at', 'ends_at', 'purpose'] as const
+/** The backend's EVENT_REQUEST_NOT_FOUND_MESSAGE (events/services.py), also sent for another coordinator's event. */
+const EVENT_NOT_FOUND_MESSAGE = 'Event request not found.'
 const JUSTIFICATION_REQUIRED_MESSAGE =
   'A justification is required because the venue is not suitable.'
 const DUPLICATE_REQUEST_MESSAGE =
@@ -98,7 +106,7 @@ export const bookingHandlers: RequestHandler[] = [
     }
     const event = findOwnEvent(params.eventId, user.id)
     if (event === undefined) {
-      return errorResponse(404, 'not_found', 'Event not found.')
+      return errorResponse(404, 'not_found', EVENT_NOT_FOUND_MESSAGE)
     }
     return HttpResponse.json(requests.filter((existing) => existing.event_id === event.id))
   }),
@@ -116,7 +124,7 @@ export const bookingHandlers: RequestHandler[] = [
 
     const event = findOwnEvent(params.eventId, user.id)
     if (event === undefined) {
-      return errorResponse(404, 'not_found', 'Event not found.')
+      return errorResponse(404, 'not_found', EVENT_NOT_FOUND_MESSAGE)
     }
     if (event.status !== 'approved') {
       return errorResponse(

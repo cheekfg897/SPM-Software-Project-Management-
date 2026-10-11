@@ -25,6 +25,9 @@ export default defineConfig({
       // A staff account made with `flask create-staff-user`; CI makes one for each run.
       INTEGRATION_STAFF_EMAIL: process.env.INTEGRATION_STAFF_EMAIL ?? '',
       INTEGRATION_STAFF_PASSWORD: process.env.INTEGRATION_STAFF_PASSWORD ?? '',
+      // A seeded coordinator (flask create-staff-user) for the checks that need one.
+      VITE_COORDINATOR_EMAIL: process.env.COORDINATOR_EMAIL ?? '',
+      VITE_COORDINATOR_PASSWORD: process.env.COORDINATOR_PASSWORD ?? '',
     },
     // One backend, one database: run the files one after another.
     fileParallelism: false,
