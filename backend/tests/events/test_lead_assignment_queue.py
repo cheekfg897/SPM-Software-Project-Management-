@@ -201,16 +201,16 @@ def test_an_empty_queue_is_an_empty_list(db_session: Session) -> None:
     assert list_unassigned_requests() == []
 
 
+#: Every non-draft status but ``submitted``: none of them is waiting for the Lead.
+#: ``cancelled`` and ``rejected`` are the ones reachable with no coordinator, so they
+#: are what the status check exists for (ADR-0036).
+NOT_WAITING_STATUSES = [
+    status for status in NON_DRAFT_STATUSES if status is not EventRequestStatus.SUBMITTED
+]
+
+
 @pytest.mark.parametrize(
-    "status",
-    [
-        EventRequestStatus.DRAFT,
-        EventRequestStatus.UNDER_REVIEW,
-        EventRequestStatus.APPROVED,
-        EventRequestStatus.CANCELLED,
-        EventRequestStatus.REJECTED,
-    ],
-    ids=lambda status: status.value,
+    "status", [*NOT_WAITING_STATUSES, EventRequestStatus.DRAFT], ids=lambda status: status.value
 )
 def test_only_a_submitted_request_is_queued(
     queued: MakeEventRequest, status: EventRequestStatus
@@ -442,17 +442,11 @@ def test_a_failed_notification_write_still_returns_the_assigned_request(
 # ADR-0036 — what the Lead can't assign, and to whom; a refusal changes nothing
 # --------------------------------------------------------------------------
 
-#: Every non-draft status but ``submitted``: none of them is waiting for the Lead.
-#: ``cancelled`` and ``rejected`` are the ones reachable with no coordinator, so they
-#: are what the status check exists for (ADR-0036).
-NOT_WAITING_STATUSES = [
-    status for status in NON_DRAFT_STATUSES if status is not EventRequestStatus.SUBMITTED
-]
-
 #: Each refusal, on a request where every later check would also fail, so the answer
 #: names the first failure (ADR-0036). The request is saved with this status and
 #: coordinator, and the payload always names an email no Event Coordinator has.
 FIRST_FAILURE_CASES = [
+    pytest.param(EventRequestStatus.DRAFT, 3, NotFoundError, id="reference-before-assigned"),
     pytest.param(
         EventRequestStatus.CANCELLED, 3, ConflictError, id="already-assigned-before-status"
     ),
@@ -506,6 +500,9 @@ def test_only_a_request_waiting_in_the_queue_can_be_assigned(
     status: EventRequestStatus,
 ) -> None:
     """A cancelled or rejected request can have no coordinator and still not be waiting.
+
+    The other statuses are listed too: the guard looks at status alone, so pairing each
+    with no coordinator costs nothing and keeps the test exhaustive.
 
     AC3 gives the Lead the requests *in the queue*, which is the one status
     :func:`list_unassigned_requests` lists, so both read the same definition.
@@ -593,8 +590,10 @@ def test_an_invalid_payload_is_refused_before_the_reference_is_looked_up(
     db_session: Session,
 ) -> None:
     """The body is the caller's own, so checking it first reveals no request."""
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError) as exc_info:
         assign_coordinator_to_request("EVR-ZZZZZZZZ", {}, assigned_by=LEAD_ID)
+
+    assert exc_info.value.details == {"coordinator_email": ["Missing data for required field."]}
 
 
 @pytest.mark.parametrize(("status", "coordinator_id", "expected"), FIRST_FAILURE_CASES)
