@@ -117,18 +117,46 @@ describe('SCRUM-46 equipment mock: reservations', () => {
     })
     await expect(
       reserve(MOCK_OPEN_EVENT_REFERENCE, { equipment_type_id: 999, quantity: 1 }),
-    ).rejects.toMatchObject({ status: 404, message: 'Equipment type not found.' })
+    ).rejects.toMatchObject({
+      status: 400,
+      fieldErrors: { equipment_type_id: ['Equipment type not found.'] },
+    })
   })
 
-  it('refuses a quantity below one', async () => {
+  it('refuses a quantity below one and an id below one, in the backend wording', async () => {
     signInAs(MOCK_ACCOUNTS.technicalSupport)
 
     await expect(
-      reserve(MOCK_OPEN_EVENT_REFERENCE, { equipment_type_id: 1, quantity: 0 }),
+      reserve(MOCK_OPEN_EVENT_REFERENCE, { equipment_type_id: 0, quantity: 0 }),
     ).rejects.toMatchObject({
       status: 400,
-      fieldErrors: { quantity: ['Must be greater than or equal to 1.'] },
+      fieldErrors: {
+        equipment_type_id: ['equipment_type_id must be a positive number.'],
+        quantity: ['Quantity must be at least 1.'],
+      },
     })
+  })
+
+  it('refuses a quantity that is not a whole number', async () => {
+    signInAs(MOCK_ACCOUNTS.technicalSupport)
+
+    await expect(
+      reserve(MOCK_OPEN_EVENT_REFERENCE, { equipment_type_id: 1, quantity: 'two' }),
+    ).rejects.toMatchObject({ fieldErrors: { quantity: ['Not a valid integer.'] } })
+  })
+
+  it('checks the body before it looks for the event, as the backend does', async () => {
+    signInAs(MOCK_ACCOUNTS.technicalSupport)
+
+    await expect(reserve('EVR-NOPE', {})).rejects.toMatchObject({ status: 400 })
+  })
+
+  it('checks the event is open before it looks for the equipment type', async () => {
+    signInAs(MOCK_ACCOUNTS.technicalSupport)
+
+    await expect(
+      reserve(MOCK_CLOSED_EVENT_REFERENCE, { equipment_type_id: 999, quantity: 1 }),
+    ).rejects.toMatchObject({ status: 409 })
   })
 
   it('answers 409 for an event that is closed', async () => {
