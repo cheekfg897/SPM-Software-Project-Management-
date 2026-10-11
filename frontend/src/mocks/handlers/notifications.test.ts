@@ -6,7 +6,7 @@ import { MOCK_ACCOUNTS, mockTokenFor } from '../fixtures/accounts'
 
 import { resetMockNotifications } from './notifications'
 
-/** The notifications mock stands in for SCRUM-28's backend (routes.py in the notifications module). */
+/** The notifications mock stands in for SCRUM-28's backend (the notifications module's routes). */
 
 const PATH = '/api/notifications'
 
