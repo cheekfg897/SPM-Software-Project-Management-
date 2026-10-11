@@ -49,10 +49,17 @@ describe('SCRUM-28 notifications against the backend', () => {
   })
 
   it('refuses the list, the count and marking read without a token', async () => {
-    const calls = [fetchNotifications(), fetchUnreadCount(), markNotificationRead(1)]
+    // Each call is made only when its turn comes. Starting all three at once leaves the
+    // later rejections unattached while the first is awaited, which Node reports as an
+    // unhandled rejection and fails the run even though every assertion passes.
+    const calls = [
+      () => fetchNotifications(),
+      () => fetchUnreadCount(),
+      () => markNotificationRead(1),
+    ]
 
     for (const call of calls) {
-      expect(await refusal(call)).toMatchObject({ status: 401, code: 'authentication_error' })
+      expect(await refusal(call())).toMatchObject({ status: 401, code: 'authentication_error' })
     }
   })
 
