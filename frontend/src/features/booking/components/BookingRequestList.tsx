@@ -1,6 +1,6 @@
 import { useId } from 'react'
 
-import { formatShortDate, formatTimeRange } from '@/features/catalogue/formatDate'
+import { formatShortDate, formatTimeRange } from '@/lib/formatDate'
 
 import type { BookingRequest } from '../api'
 import { LAYOUT_OPTIONS } from '../constants'
