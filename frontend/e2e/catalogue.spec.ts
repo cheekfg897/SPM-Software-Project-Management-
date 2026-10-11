@@ -1,15 +1,14 @@
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
 
-import { MOCK_ACCOUNTS, mockSessionFor } from '../src/mocks/fixtures/accounts'
+import { MOCK_ACCOUNTS } from '../src/mocks/fixtures/accounts'
+
+import { signInAs } from './signInAs'
 
 /**
  * SCRUM-52: the event catalogue, against the mock catalogue (docs/adr/0032). The mock's
  * "now" is Monday 5 October 2026, so the same events show on every run.
  */
-
-const SESSION_STORAGE_KEY = 'connectsphere.session'
-const ATTENDEE_SESSION = mockSessionFor(MOCK_ACCOUNTS.attendee)
 
 function card(page: Page, eventName: string) {
   return page.getByRole('article').filter({ has: page.getByRole('heading', { name: eventName }) })
@@ -67,10 +66,7 @@ test('a visitor who clicks Register is asked to log in first', async ({ page }) 
 })
 
 test('an attendee registers for an event', async ({ page }) => {
-  await page.addInitScript(([key, session]) => localStorage.setItem(key, session), [
-    SESSION_STORAGE_KEY,
-    JSON.stringify(ATTENDEE_SESSION),
-  ] as const)
+  await signInAs(page, MOCK_ACCOUNTS.attendee)
   await page.goto('/events')
   const jazz = card(page, 'Jazz by the Bay')
   await expect(jazz.getByText('12 places left')).toBeVisible()
