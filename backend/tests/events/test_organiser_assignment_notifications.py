@@ -35,7 +35,6 @@ SubmitValidRequest = Callable[..., EventRequest]
 SaveDraft = Callable[[int, dict[str, Any]], EventRequest]
 Reassign = Callable[[int, str], tuple[EventRequest, CoordinatorContact]]
 NotificationsOf = Callable[[int], list[tuple[Any, ...]]]
-AssignmentNoticesOf = Callable[[int], list[NotificationKind]]
 
 ORGANISER_ID = 7
 COLLEAGUE_ID = 8
@@ -62,12 +61,12 @@ def test_the_organiser_notification_says_a_coordinator_was_assigned() -> None:
 def test_submitting_a_request_tells_the_organiser_nothing_about_assignment(
     saved_users: list[User],
     submit_valid_request: SubmitValidRequest,
-    assignment_notices_of: AssignmentNoticesOf,
+    notifications_of: NotificationsOf,
 ) -> None:
     """There is nothing to tell yet: the Lead has not given it to anybody (AC1)."""
     submit_valid_request()
 
-    assert assignment_notices_of(ORGANISER_ID) == []
+    assert notifications_of(ORGANISER_ID) == []
 
 
 @pytest.mark.scrum_95
@@ -75,7 +74,7 @@ def test_submitting_a_draft_tells_the_organiser_nothing_about_assignment(
     saved_users: list[User],
     save_draft: SaveDraft,
     valid_event_request_payload: dict[str, Any],
-    assignment_notices_of: AssignmentNoticesOf,
+    notifications_of: NotificationsOf,
     db_session: Session,
     today: date,
 ) -> None:
@@ -83,7 +82,7 @@ def test_submitting_a_draft_tells_the_organiser_nothing_about_assignment(
 
     submit_draft_event_request(ORGANISER_ID, DRAFT_REFERENCE, session=db_session, today=today)
 
-    assert assignment_notices_of(ORGANISER_ID) == []
+    assert notifications_of(ORGANISER_ID) == []
 
 
 def test_the_organiser_is_told_when_their_request_is_reassigned(
