@@ -4,7 +4,7 @@ import type { FieldErrors } from '@/lib/api'
 import { isRecord } from '@/lib/isRecord'
 
 /** The backend's message for a missing, invalid or expired token (app/common/errors.py). */
-const INVALID_TOKEN_MESSAGE = 'Missing, invalid or expired token.'
+export const INVALID_TOKEN_MESSAGE = 'Missing, invalid or expired token.'
 
 /** The backend's message when a signed-in user's role may not use a route (app/common/decorators.py). */
 export const NOT_PERMITTED_MESSAGE = 'You do not have permission to perform this action.'
