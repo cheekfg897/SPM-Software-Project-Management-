@@ -20,7 +20,12 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     include: ['src/integration/**/*.int.test.ts'],
-    env: { VITE_API_ORIGIN: BACKEND_URL },
+    env: {
+      VITE_API_ORIGIN: BACKEND_URL,
+      // A seeded coordinator (flask create-staff-user) for the checks that need one.
+      VITE_COORDINATOR_EMAIL: process.env.COORDINATOR_EMAIL ?? '',
+      VITE_COORDINATOR_PASSWORD: process.env.COORDINATOR_PASSWORD ?? '',
+    },
     // One backend, one database: run the files one after another.
     fileParallelism: false,
   },
