@@ -26,6 +26,7 @@ pytestmark = pytest.mark.scrum_30
 
 MakeEventRequest = Callable[..., EventRequest]
 SubmitValidRequest = Callable[..., EventRequest]
+LeadAssigns = Callable[[EventRequest, int], None]
 CallRoute = Callable[..., Any]
 ReplaceServices = Callable[[ModuleType, dict[str, Any]], dict[str, MagicMock]]
 
@@ -50,13 +51,18 @@ def list_service(
 # --------------------------------------------------------------------------
 
 
-def test_a_submitted_request_appears_in_the_assigned_coordinators_list(
-    saved_users: list[User], submit_valid_request: SubmitValidRequest
+@pytest.mark.scrum_95
+def test_a_submitted_request_appears_once_the_lead_assigns_it(
+    saved_users: list[User], submit_valid_request: SubmitValidRequest, lead_assigns: LeadAssigns
 ) -> None:
-    submit_valid_request()
+    """Until then it is in nobody's list: it waits in the Lead's queue (AC1)."""
+    submitted = submit_valid_request()
+
+    assert list_event_requests_for_coordinator(3) == []
+
+    lead_assigns(submitted, 3)
 
     assigned_to_3 = list_event_requests_for_coordinator(3)
-
     assert [event_request.reference for event_request in assigned_to_3] == ["EVR-AAAAAAAA"]
     assert list_event_requests_for_coordinator("9") == []
 

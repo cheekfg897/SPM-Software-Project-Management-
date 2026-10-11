@@ -45,7 +45,10 @@ from app.modules.events.services import (
     submit_event_request,
     update_event_request,
 )
-from app.modules.notifications.services import list_notifications_for_recipient
+from app.modules.notifications.services import (
+    NotificationKind,
+    list_notifications_for_recipient,
+)
 from tests.events.cases import DRAFT_REFERENCE
 
 MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "migrations" / "versions"
@@ -196,6 +199,23 @@ def history_of(
 
 
 @pytest.fixture()
+def lead_assigns(db_session: Session) -> Callable[[EventRequest, int], None]:
+    """Give a submitted request its coordinator, as the Event Coordinator Lead does.
+
+    Submission leaves a request unassigned (SCRUM-95 AC1), so a test whose own subject
+    needs an assigned coordinator takes this step explicitly. It sets the column and
+    nothing else; the audit entry and the notices belong to the Lead's own service,
+    which SCRUM-95 tests where it lives.
+    """
+
+    def _assign(event_request: EventRequest, coordinator_id: int) -> None:
+        event_request.coordinator_id = coordinator_id
+        db_session.commit()
+
+    return _assign
+
+
+@pytest.fixture()
 def coordinator_of(db_session: Session) -> Callable[[int], int | None]:
     """The coordinator a saved request is assigned to, read back from the database."""
 
@@ -290,6 +310,35 @@ def assert_migration_and_model_agree() -> Callable[
         assert previous.isdisjoint(added)
 
     return _assert
+
+
+#: The two notices an assignment raises: the new coordinator's (SCRUM-30 AC4) and the
+#: organiser's (SCRUM-39 AC1, ADR-0030).
+ASSIGNMENT_NOTIFICATION_KINDS = frozenset(
+    {NotificationKind.COORDINATOR_ASSIGNED, NotificationKind.REQUEST_ASSIGNED}
+)
+
+
+@pytest.fixture()
+def assignment_notices_of(
+    notifications_of: Callable[[int], list[tuple[Any, ...]]],
+) -> Callable[[int], list[NotificationKind]]:
+    """The assignment notices a user has, newest first, and no other kind.
+
+    Submitting a request raises neither of them any more (SCRUM-95 AC1): it is the
+    Event Coordinator Lead's assignment that does. Other kinds still reach the same
+    people on the same path, so a test about assignment asks only about these two
+    rather than for an empty list.
+    """
+
+    def _assignment_notices_of(user_id: int) -> list[NotificationKind]:
+        notices = []
+        for _event_request_id, _reference, _name, kind, _read_at in notifications_of(user_id):
+            if kind in ASSIGNMENT_NOTIFICATION_KINDS:
+                notices.append(kind)
+        return notices
+
+    return _assignment_notices_of
 
 
 @pytest.fixture()
