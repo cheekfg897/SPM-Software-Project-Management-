@@ -29,7 +29,7 @@ To change a decision, don't rewrite history. Add a new ADR that **supersedes** t
 | [0014](0014-equipment-type-location-and-quantity.md) | An equipment type is one uniquely named record, held at one venue or one named store | Accepted | SCRUM-27 |
 | [0015](0015-in-app-notifications.md) | Notifications are in-app rows, one per recipient, that snapshot their event | Accepted; who is told about a new request superseded by [0018](0018-least-loaded-coordinator-and-event-history.md); `detail` added by [0028](0028-review-and-decide.md) | SCRUM-28 |
 | [0016](0016-venue-block-warns-not-refuses.md) | A venue block is saved even over a confirmed booking, and reports what it cuts into | Accepted | SCRUM-34 |
-| [0017](0017-suitability-check-takes-requirements.md) | The suitability check takes an event's requirements explicitly; the justification rule waits for booking requests | Accepted | SCRUM-36 |
+| [0017](0017-suitability-check-takes-requirements.md) | The suitability check takes an event's requirements explicitly; the justification rule waits for booking requests | Accepted; the justification rule taken up by [0035](0035-venue-booking-requests.md) | SCRUM-36 |
 | [0018](0018-least-loaded-coordinator-and-event-history.md) | A submitted request goes to the least-loaded Event Coordinator; one event history table records what happens to an event | Accepted; the coordinator's detail view taken up by [0026](0026-role-event-lists.md); extended by [0028](0028-review-and-decide.md) and [0029](0029-clarification-requests.md) | SCRUM-30 |
 | [0019](0019-event-equipment-lines.md) | Equipment lines are recorded per event by Event Coordinators while the request awaits review, one per type, each notifying Technical Support | Accepted; a draft is `404` to staff, not `409`, superseded by [0024](0024-draft-event-requests.md); decision 3 (which statuses allow equipment changes) superseded by [0028](0028-review-and-decide.md) | SCRUM-37 |
 | [0020](0020-organisers-see-their-organisations-events.md) | Event Organisers see their client organisation's event requests, scoped by one condition; another organisation's is `404` | Accepted; extended by [0029](0029-clarification-requests.md) | SCRUM-7 |
@@ -46,6 +46,7 @@ To change a decision, don't rewrite history. Add a new ADR that **supersedes** t
 | [0031](0031-end-to-end-journey-through-the-test-client.md) | The request-to-approval journey is one end-to-end test, driven through Flask's test client on the in-memory database; the test client stays in `tests/e2e` | Accepted | SCRUM-41 |
 | [0032](0032-event-catalogue-contract.md) | The event catalogue API, proposed by the frontend ahead of SCRUM-52 | Proposed | SCRUM-52 |
 | [0034](0034-coordinators-see-only-their-own-events.md) | Event Coordinators see and open only the events assigned to them; the unassigned queue waits for the Lead | Accepted | SCRUM-24 |
+| [0035](0035-venue-booking-requests.md) | An assigned coordinator raises a Pending venue booking request for an approved event; every Venue Staff user is told | Accepted | SCRUM-42 |
 
 ## Template
 
