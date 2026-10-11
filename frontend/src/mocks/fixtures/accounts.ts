@@ -38,6 +38,14 @@ const BASE_ACCOUNTS = {
     role: ROLE.EVENT_COORDINATOR,
     organisation_id: null,
   },
+  technicalSupport: {
+    id: 5,
+    email: 'tariq@connectsphere.test',
+    password: 'Password123',
+    full_name: 'Tariq Hassan',
+    role: ROLE.TECHNICAL_SUPPORT_STAFF,
+    organisation_id: null,
+  },
 } as const satisfies Record<string, MockAccount>
 
 /** Accounts every mock run starts with. Tests and e2e journeys log in as these. */
