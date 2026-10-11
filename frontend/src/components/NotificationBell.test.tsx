@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 
 import { ROUTES } from '@/config/routes'
@@ -16,6 +16,15 @@ const BELL_WITH_TWO = 'Notifications, 2 unread'
 
 function bellInHeader(name: string | RegExp) {
   return within(screen.getByRole('banner')).findByRole('link', { name })
+}
+
+function requestsTo(requests: Request[], pathPart: string) {
+  return requests.filter((request) => request.url.includes(pathPart))
+}
+
+/** Let a request in flight finish and its answer reach the page. */
+function settle() {
+  return act(() => new Promise((resolve) => setTimeout(resolve, 20)))
 }
 
 describe('SCRUM-28 notification bell', () => {
@@ -40,9 +49,14 @@ describe('SCRUM-28 notification bell', () => {
     server.use(
       http.get('/api/notifications/unread-count', () => HttpResponse.json({ unread_count: 0 })),
     )
+    const requests = recordRequests()
     renderApp(ROUTES.HOME, { session })
 
     const bell = await bellInHeader('Notifications')
+    // The bell reads "Notifications" while loading too, so wait until the count was asked for
+    // and answered before checking that no badge appeared.
+    await waitFor(() => expect(requestsTo(requests, 'unread-count')).toHaveLength(1))
+    await settle()
 
     expect(bell.textContent).toBe('')
   })
@@ -52,8 +66,10 @@ describe('SCRUM-28 notification bell', () => {
     renderApp(ROUTES.HOME)
 
     await screen.findByRole('link', { name: 'Log in' })
+    await settle()
+
     expect(screen.queryByRole('link', { name: /^Notifications/ })).not.toBeInTheDocument()
-    expect(requests.filter((request) => request.url.includes('/api/notifications'))).toEqual([])
+    expect(requestsTo(requests, '/api/notifications')).toEqual([])
   })
 
   it('counts down by one when an unread notification is marked read', async () => {
