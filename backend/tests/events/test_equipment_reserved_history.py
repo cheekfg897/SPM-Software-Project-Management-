@@ -25,6 +25,8 @@ from app.modules.events.models import (
     EventRequestStatus,
 )
 from app.modules.events.services import (
+    RESERVATIONS_CLOSED_MESSAGE,
+    RESERVATIONS_CLOSED_STATUSES,
     get_event_equipment_need,
     list_event_history,
     record_equipment_reserved,
@@ -132,3 +134,8 @@ def test_the_organiser_never_sees_the_reservation_in_the_history(
     db_session.commit()
 
     assert list_event_history(7, REFERENCE, viewer_role=Role.EVENT_ORGANISER) == []
+
+
+def test_the_closed_message_names_every_status_that_closes_reservations() -> None:
+    for status in RESERVATIONS_CLOSED_STATUSES:
+        assert status.value in RESERVATIONS_CLOSED_MESSAGE

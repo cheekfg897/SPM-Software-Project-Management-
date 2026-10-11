@@ -15,7 +15,7 @@ from datetime import date, datetime, time, timezone
 from typing import Any
 
 import pytest
-from sqlalchemy import event, insert, select
+from sqlalchemy import event, insert, select, update
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import ORMExecuteState, Session
@@ -32,7 +32,7 @@ from app.modules.equipment.models import (
 )
 from app.modules.equipment.schemas import EquipmentReservationSchema
 from app.modules.events.models import EventHistoryKind, EventRequest, EventRequestStatus
-from app.modules.events.services import list_event_history
+from app.modules.events.services import RESERVATIONS_CLOSED_MESSAGE, list_event_history
 
 pytestmark = pytest.mark.scrum_46
 
@@ -444,3 +444,28 @@ def test_the_reservation_schema_dumps_exactly_the_agreed_fields_in_business_time
         "reserved_by": TECHNICAL_SUPPORT_ID,
         "created_at": "2026-10-01T16:00:00+08:00",
     }
+
+
+def test_the_locked_read_replaces_what_the_session_already_holds(
+    db_session: Session, equipment_type: EquipmentType
+) -> None:
+    # A copy loaded before the lock was taken may be stale: another request can have
+    # committed since. The locked read must return the row as it is now.
+    assert equipment_type.total_quantity == 10
+    db_session.execute(update(EquipmentType).values(total_quantity=3))
+
+    locked = services._locked_equipment_type(equipment_type.id, db_session)
+
+    assert locked.total_quantity == 3
+
+
+def test_a_closed_event_is_refused_with_the_message_the_events_module_owns(
+    saved_event_request: EventRequest, equipment_type: EquipmentType, save: Save
+) -> None:
+    saved_event_request.status = EventRequestStatus.REJECTED
+    save(saved_event_request)
+
+    with pytest.raises(services.EquipmentNotReservableError) as caught:
+        _reserve(REFERENCE, equipment_type, 1)
+
+    assert caught.value.message == RESERVATIONS_CLOSED_MESSAGE

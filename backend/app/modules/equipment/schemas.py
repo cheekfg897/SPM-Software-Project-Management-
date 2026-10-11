@@ -111,10 +111,12 @@ class EquipmentAvailabilitySchema(Schema):
     shortfall = fields.Integer(dump_only=True)
 
 
-class ReserveEquipmentSchema(Schema):
-    """Payload for reserving units of an equipment type for an event (SCRUM-46 AC1).
+class EquipmentUnitsSchema(Schema):
+    """An equipment type and how many of its units, to reserve them (SCRUM-46 AC1).
 
     The event comes from the URL and the period from the event, so neither is sent.
+    An event's equipment line asks for the same two things, so its schema extends this
+    one rather than repeating the fields.
     """
 
     equipment_type_id = WholeNumber(
