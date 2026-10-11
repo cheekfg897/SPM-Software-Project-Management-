@@ -16,11 +16,13 @@ import { EventEquipmentPage } from '@/features/equipment/pages/EventEquipmentPag
 import { MyEventRequests } from '@/features/eventRequests/components/MyEventRequests'
 import { LandingPage } from '@/features/landing/pages/LandingPage'
 import { NotificationsPage } from '@/features/notifications/pages/NotificationsPage'
+import { UnassignedQueuePage } from '@/features/lead/pages/UnassignedQueuePage'
 
 import { NotFoundPage } from './NotFoundPage'
 
 const ORGANISER_ROLES: readonly Role[] = [ROLE.EVENT_ORGANISER]
 const COORDINATOR_ROLES: readonly Role[] = [ROLE.EVENT_COORDINATOR]
+const LEAD_ROLES: readonly Role[] = [ROLE.EVENT_COORDINATOR_LEAD]
 
 /** The page tree. The browser router (App) and the test router (renderApp) both use it. */
 export const appRoutes: RouteObject[] = [
@@ -71,6 +73,14 @@ export const appRoutes: RouteObject[] = [
         element: (
           <RequireRole allowedRoles={EQUIPMENT_READER_ROLES} loginRoute={ROUTES.STAFF_LOGIN}>
             <EventEquipmentPage />
+          </RequireRole>
+        ),
+      },
+      {
+        path: ROUTES.LEAD_QUEUE,
+        element: (
+          <RequireRole allowedRoles={LEAD_ROLES} loginRoute={ROUTES.STAFF_LOGIN}>
+            <UnassignedQueuePage />
           </RequireRole>
         ),
       },
