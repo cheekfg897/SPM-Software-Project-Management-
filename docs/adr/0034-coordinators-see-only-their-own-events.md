@@ -1,6 +1,6 @@
 # ADR-0034: Event Coordinators see and open only the events assigned to them; the unassigned queue waits for the Lead
 
-- **Status:** Accepted
+- **Status:** Accepted; the Lead's queue taken up by [ADR-0036](0036-event-coordinator-lead.md)
 - **Date:** 2026-10-05
 - **Story:** SCRUM-24 See the events my role is involved in
 - **Supersedes:** [ADR-0026](0026-role-event-lists.md) decisions 1 (the coordinator's `/requests/unassigned` route), 3, 8 (coordinators opening unassigned requests) and 9

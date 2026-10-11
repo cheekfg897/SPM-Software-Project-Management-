@@ -46,6 +46,6 @@ INTEGRATION_STAFF_EMAIL=you@connectsphere.test INTEGRATION_STAFF_PASSWORD=<its p
 
 - **Event Organisers and Attendees** sign up at `/signup`. An Organiser needs the organisation
   ID ConnectSphere staff gave them (ADR-0013).
-- **Staff** (Event Coordinator, Venue Staff, Technical Support Staff) can't sign up. Their
+- **Staff** (Event Coordinator Lead, Event Coordinator, Venue Staff, Technical Support Staff) can't sign up. Their
   accounts are created with `flask create-staff-user` (ADR-0023), and they log in at
   `/staff/login`.
