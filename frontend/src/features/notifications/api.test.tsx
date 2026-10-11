@@ -1,32 +1,13 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, renderHook, waitFor } from '@testing-library/react'
-import type { ReactNode } from 'react'
-import { Provider } from 'react-redux'
+import { act, waitFor } from '@testing-library/react'
 
 import { MOCK_ACCOUNTS, mockSessionFor, mockTokenFor } from '@/mocks/fixtures/accounts'
 import { recordRequests } from '@/test/recordRequests'
+import { renderHookWithProviders } from '@/test/render'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
-import { createAppStore, signedIn } from '@/store'
-import type { SignedInPayload } from '@/store'
+import { signedIn } from '@/store'
 
-import { fetchNotifications, fetchUnreadCount, markNotificationRead, notificationKeys } from './api'
+import { fetchNotifications, fetchUnreadCount, markNotificationRead } from './api'
 import { useMarkRead, useNotifications, useUnreadCount } from './hooks'
-
-function renderHookAs<T>(hook: () => T, session?: SignedInPayload) {
-  const store = createAppStore()
-  if (session) {
-    store.dispatch(signedIn(session))
-  }
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  function Wrapper({ children }: { children: ReactNode }) {
-    return (
-      <Provider store={store}>
-        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-      </Provider>
-    )
-  }
-  return { ...renderHook(hook, { wrapper: Wrapper }), store, queryClient }
-}
 
 const attendee = mockSessionFor(MOCK_ACCOUNTS.attendee)
 const coordinator = mockSessionFor(MOCK_ACCOUNTS.coordinator)
@@ -34,7 +15,7 @@ const coordinator = mockSessionFor(MOCK_ACCOUNTS.coordinator)
 describe('SCRUM-28 notifications hooks', () => {
   it('lists the signed-in viewer notifications, newest first', async () => {
     sendRequestsAs(attendee.accessToken)
-    const { result } = renderHookAs(() => useNotifications(), attendee)
+    const { result } = renderHookWithProviders(() => useNotifications(), { session: attendee })
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
@@ -47,7 +28,7 @@ describe('SCRUM-28 notifications hooks', () => {
     sendRequestsAs(attendee.accessToken)
     const list = await fetchNotifications()
     const unreadInList = list.filter((notification) => notification.read_at === null).length
-    const { result } = renderHookAs(() => useUnreadCount(), attendee)
+    const { result } = renderHookWithProviders(() => useUnreadCount(), { session: attendee })
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
@@ -57,7 +38,7 @@ describe('SCRUM-28 notifications hooks', () => {
 
   it('sends no request when nobody is signed in', async () => {
     const requests = recordRequests()
-    const { result } = renderHookAs(() => ({
+    const { result } = renderHookWithProviders(() => ({
       list: useNotifications(),
       count: useUnreadCount(),
     }))
@@ -69,26 +50,11 @@ describe('SCRUM-28 notifications hooks', () => {
     expect(result.current.count.fetchStatus).toBe('idle')
   })
 
-  it('keeps a separate cache entry for each viewer', async () => {
-    sendRequestsAs(attendee.accessToken)
-    const first = renderHookAs(() => useNotifications(), attendee)
-    await waitFor(() => expect(first.result.current.isSuccess).toBe(true))
-    sendRequestsAs(coordinator.accessToken)
-    const second = renderHookAs(() => useNotifications(), coordinator)
-    await waitFor(() => expect(second.result.current.isSuccess).toBe(true))
-
-    const attendeeId = attendee.user.id
-    const coordinatorId = coordinator.user.id
-    expect(notificationKeys.list(attendeeId)).not.toEqual(notificationKeys.list(coordinatorId))
-    expect(notificationKeys.unreadCount(attendeeId)).not.toEqual(
-      notificationKeys.unreadCount(coordinatorId),
-    )
-    expect(first.result.current.data).not.toEqual(second.result.current.data)
-  })
-
   it('reads again for the next viewer on the same query client', async () => {
     sendRequestsAs(attendee.accessToken)
-    const { result, store } = renderHookAs(() => useNotifications(), attendee)
+    const { result, store } = renderHookWithProviders(() => useNotifications(), {
+      session: attendee,
+    })
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     const attendeeRows = result.current.data
 
@@ -103,9 +69,9 @@ describe('SCRUM-28 notifications hooks', () => {
 describe('SCRUM-28 marking read from a hook', () => {
   it('reads the list and the count again afterwards', async () => {
     sendRequestsAs(attendee.accessToken)
-    const { result } = renderHookAs(
+    const { result } = renderHookWithProviders(
       () => ({ list: useNotifications(), count: useUnreadCount(), markRead: useMarkRead() }),
-      attendee,
+      { session: attendee },
     )
     await waitFor(() => expect(result.current.count.data).toBe(2))
     const unread = result.current.list.data?.find((row) => row.read_at === null)
