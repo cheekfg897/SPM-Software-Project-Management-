@@ -19,6 +19,7 @@ export const EMPTY_QUEUE_MESSAGE = 'No event requests are waiting to be assigned
 export const NOT_A_COORDINATOR_MESSAGE = 'No Event Coordinator has this email address.'
 export const NOT_IN_QUEUE_MESSAGE = 'This event request already has a coordinator.'
 const NOT_FOUND_MESSAGE = 'Event request not found.'
+const MISSING_EMAIL_MESSAGE = 'Missing data for required field.'
 
 /** A queued request. The reference is the backend's key for it, and the queue shows it. */
 interface QueuedRequest {
@@ -60,19 +61,6 @@ export function resetMockLeadQueue(): void {
 }
 resetMockLeadQueue()
 
-/** The queue as the backend shows it: the reference, then AC2's six fields. */
-function shownInQueue(request: QueuedRequest) {
-  return {
-    reference: request.reference,
-    name: request.name,
-    proposed_date: request.proposed_date,
-    start_time: request.start_time,
-    end_time: request.end_time,
-    expected_attendance: request.expected_attendance,
-    submitted_at: request.submitted_at,
-  }
-}
-
 function isLead(request: Request): boolean {
   return accountForRequest(request)?.role === ROLE.EVENT_COORDINATOR_LEAD
 }
@@ -88,10 +76,11 @@ function refusalFor(request: Request) {
   return null
 }
 
-async function readEmail(request: Request): Promise<string> {
+/** The email the Lead typed, lower-cased, or null when the body does not carry one. */
+async function readEmail(request: Request): Promise<string | null> {
   const body: unknown = await request.json().catch(() => null)
   if (!isRecord(body) || typeof body.coordinator_email !== 'string') {
-    return ''
+    return null
   }
   return body.coordinator_email.trim().toLowerCase()
 }
@@ -116,7 +105,7 @@ export const leadHandlers: RequestHandler[] = [
     if (queue.length === 0) {
       return HttpResponse.json({ event_requests: [], message: EMPTY_QUEUE_MESSAGE })
     }
-    return HttpResponse.json({ event_requests: queue.map(shownInQueue) })
+    return HttpResponse.json({ event_requests: queue })
   }),
 
   http.post('/api/events/requests/:reference/coordinator', async ({ request, params }) => {
@@ -124,15 +113,20 @@ export const leadHandlers: RequestHandler[] = [
     if (refusal !== null) {
       return refusal
     }
-    // The backend's order: reference 404, not-waiting 409, then the email 400 last, so a
-    // refused assignment never reveals which addresses belong to coordinators.
+    // The backend's order: the payload 400 for a missing email, the reference 404, the
+    // not-waiting 409, then the unknown-email 400 last, so a refused assignment never
+    // reveals which addresses belong to coordinators.
+    const email = await readEmail(request)
+    if (email === null) {
+      return validationError({ coordinator_email: [MISSING_EMAIL_MESSAGE] })
+    }
     const queued = queue.find((candidate) => candidate.reference === params.reference)
     if (queued === undefined) {
       return wasEverQueued(String(params.reference))
         ? errorResponse(409, 'conflict', NOT_IN_QUEUE_MESSAGE)
         : errorResponse(404, 'not_found', NOT_FOUND_MESSAGE)
     }
-    const coordinator = coordinatorWithEmail(await readEmail(request))
+    const coordinator = coordinatorWithEmail(email)
     if (coordinator === undefined) {
       return validationError({ coordinator_email: [NOT_A_COORDINATOR_MESSAGE] })
     }

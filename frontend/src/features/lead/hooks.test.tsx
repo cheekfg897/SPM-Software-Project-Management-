@@ -98,6 +98,23 @@ describe('SCRUM-95 the Lead queue hooks', () => {
     })
   })
 
+  it('answers a missing email with the payload 400 before it looks up the reference', async () => {
+    sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.lead))
+    const { result } = renderQueueAndAssign()
+
+    // JSON.stringify drops an undefined value, so the body reaches the mock without the key.
+    result.current.assign.mutate({
+      reference: 'EVR-NOSUCH00',
+      coordinator_email: undefined as unknown as string,
+    })
+
+    await waitFor(() => expect(result.current.assign.isError).toBe(true))
+    expect((result.current.assign.error as ApiError).status).toBe(400) // -- the error is an ApiError, asserted in the 403 test
+    expect(fieldErrorsOf(result.current.assign.error)).toEqual({
+      coordinator_email: ['Missing data for required field.'],
+    })
+  })
+
   it('answers an unknown reference with 404 even when the email is also wrong', async () => {
     sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.lead))
     const { result } = renderQueueAndAssign()
