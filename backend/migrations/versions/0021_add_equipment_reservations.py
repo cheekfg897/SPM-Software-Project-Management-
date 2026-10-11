@@ -72,7 +72,11 @@ ADDED_NOTIFICATION_KIND_VALUES = ("equipment_reserved",)
 
 
 def _add_timestamps() -> list[sa.Column]:
-    """The ``created_at`` and ``updated_at`` columns every module table carries."""
+    """The ``created_at`` and ``updated_at`` columns of ``equipment_reservations``.
+
+    ``equipment_out_of_service`` has neither: its ``recorded_at`` and ``resolved_at``
+    say when its units went out of service and came back.
+    """
     return [
         sa.Column(
             "created_at",

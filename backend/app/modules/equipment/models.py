@@ -54,7 +54,7 @@ class EquipmentType(db.Model):  # type: ignore[name-defined]
     name: Mapped[str] = mapped_column(String(NAME_MAX_LENGTH), nullable=False)
     #: Free text; a blank description is stored as ``NULL``.
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    #: Units held in total. Reservations (SCRUM-37/45) and out-of-service units
+    #: Units held in total. Reservations (SCRUM-46) and out-of-service units
     #: (SCRUM-47) are subtracted when availability is calculated, never written here.
     total_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
 
