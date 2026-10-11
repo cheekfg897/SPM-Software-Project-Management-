@@ -38,6 +38,7 @@ from marshmallow import (
 from app.common.clock import local_today
 from app.common.fields import BusinessDateTime, WholeNumber
 from app.common.validation import not_blank
+from app.modules.equipment.schemas import EquipmentUnitsSchema
 from app.modules.events.models import (
     NAME_MAX_LENGTH,
     DecisionOutcome,
@@ -525,7 +526,7 @@ class RequestClarificationSchema(Schema):
         return data
 
 
-class EditEquipmentLineSchema(Schema):
+class EditEquipmentLineSchema(EquipmentUnitsSchema):
     """Payload for adding (``POST``) or editing (``PATCH``) an equipment line.
 
     SCRUM-37 AC1-AC3. Edits are loaded with ``partial`` set to this schema's field
@@ -534,13 +535,6 @@ class EditEquipmentLineSchema(Schema):
     unknown field.
     """
 
-    equipment_type_id = WholeNumber(
-        required=True,
-        validate=validate.Range(min=1, error="equipment_type_id must be a positive number."),
-    )
-    quantity = WholeNumber(
-        required=True, validate=validate.Range(min=1, error="Quantity must be at least 1.")
-    )
     notes = fields.String(allow_none=True, load_default=None)
 
     @post_load

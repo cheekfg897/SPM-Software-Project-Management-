@@ -1470,6 +1470,10 @@ def reassign_coordinator(
 EQUIPMENT_NOT_NEEDED_STATUSES: frozenset[EventRequestStatus] = frozenset(
     {EventRequestStatus.COMPLETED, EventRequestStatus.CANCELLED, EventRequestStatus.REJECTED}
 )
+#: Why a reservation is refused for such an event; names the statuses above.
+RESERVATIONS_CLOSED_MESSAGE = (
+    "Equipment can't be reserved for an event that is completed, cancelled or rejected."
+)
 
 
 @dataclass(frozen=True)
