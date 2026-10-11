@@ -390,7 +390,8 @@ def submit_event_request(
     organisation (SCRUM-66 AC4). Nobody is assigned to it: it waits unassigned
     for the Event Coordinator Lead to give it to a coordinator, which supersedes
     SCRUM-30's least-loaded assignment and SCRUM-28 AC3's notice to the
-    coordinators (SCRUM-95 AC1, ADR-0036). If the reference is already taken,
+    coordinators (SCRUM-95 AC1, ADR-0036). Every Event Coordinator Lead is then
+    notified that it is waiting (SCRUM-95 AC4). If the reference is already taken,
     the save is rolled back and retried with a new one, up to
     :data:`MAX_REFERENCE_ATTEMPTS` times.
 
@@ -881,7 +882,8 @@ def submit_draft_event_request(
     reported the same way ``POST /requests`` reports it, and nothing changes unless
     every rule passes. Its reference does not change (ADR-0004); like a fresh
     submission, it is saved with nobody assigned to it and waits for the Event
-    Coordinator Lead to give it to a coordinator (SCRUM-95 AC1, ADR-0036).
+    Coordinator Lead to give it to a coordinator (SCRUM-95 AC1, ADR-0036), and every
+    Lead is notified that it is waiting (SCRUM-95 AC4).
 
     Args:
         organiser_id: The caller's user id, taken from their token.
