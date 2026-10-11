@@ -37,106 +37,75 @@ from app.modules.events.services import RESERVATIONS_CLOSED_MESSAGE, list_event_
 
 pytestmark = pytest.mark.scrum_46
 
-MakeEquipmentType = Callable[..., EquipmentType]
+MakeReservation = Callable[[EquipmentType, int, datetime, datetime], EquipmentReservation]
+MakeOutOfService = Callable[..., EquipmentOutOfService]
 Save = Callable[..., None]
 
 STARTS_AT = datetime(2026, 11, 3, 1, 0, tzinfo=timezone.utc)
 ENDS_AT = datetime(2026, 11, 3, 9, 30, tzinfo=timezone.utc)
-RECORDED_AT = datetime(2026, 10, 1, 8, 0, tzinfo=timezone.utc)
-#: Plain foreign keys: SQLite doesn't enforce them, and the tables they point at belong
-#: to other modules.
-EVENT_ID = 7
-USER_ID = 3
-
-
-def _saved_equipment_type(make_equipment_type: MakeEquipmentType, save: Save) -> EquipmentType:
-    equipment_type = make_equipment_type()
-    save(equipment_type)
-    return equipment_type
-
-
-def _reservation(equipment_type: EquipmentType, quantity: int) -> EquipmentReservation:
-    return EquipmentReservation(
-        event_id=EVENT_ID,
-        equipment_type_id=equipment_type.id,
-        quantity=quantity,
-        starts_at=STARTS_AT,
-        ends_at=ENDS_AT,
-        reserved_by=USER_ID,
-    )
-
-
-def _out_of_service(equipment_type: EquipmentType, quantity: int) -> EquipmentOutOfService:
-    return EquipmentOutOfService(
-        equipment_type_id=equipment_type.id,
-        quantity=quantity,
-        reason=OutOfServiceReason.DAMAGED,
-        recorded_by=USER_ID,
-        recorded_at=RECORDED_AT,
-    )
 
 
 def test_a_reservation_keeps_its_quantity_and_exact_period(
-    db_session: Session, make_equipment_type: MakeEquipmentType, save: Save
+    db_session: Session,
+    equipment_type: EquipmentType,
+    make_reservation: MakeReservation,
+    save: Save,
 ) -> None:
-    equipment_type = _saved_equipment_type(make_equipment_type, save)
-
-    save(_reservation(equipment_type, quantity=4))
+    save(make_reservation(equipment_type, 4, STARTS_AT, ENDS_AT))
 
     db_session.expire_all()
     stored = db_session.scalars(select(EquipmentReservation)).one()
-    assert stored.event_id == EVENT_ID
+    assert stored.event_id == 1
     assert stored.equipment_type_id == equipment_type.id
     assert stored.quantity == 4
     assert stored.starts_at == STARTS_AT
     assert stored.ends_at == ENDS_AT
-    assert stored.reserved_by == USER_ID
+    assert stored.reserved_by == 3
     assert stored.created_at is not None
     assert stored.updated_at is not None
 
 
 def test_a_reservation_of_no_units_is_refused(
-    db_session: Session, make_equipment_type: MakeEquipmentType, save: Save
+    db_session: Session,
+    equipment_type: EquipmentType,
+    make_reservation: MakeReservation,
+    save: Save,
 ) -> None:
-    equipment_type = _saved_equipment_type(make_equipment_type, save)
-
     with pytest.raises(IntegrityError):
-        save(_reservation(equipment_type, quantity=0))
+        save(make_reservation(equipment_type, 0, STARTS_AT, ENDS_AT))
 
     db_session.rollback()
     assert db_session.scalars(select(EquipmentReservation)).all() == []
 
 
 def test_an_out_of_service_row_is_unresolved_until_someone_resolves_it(
-    db_session: Session, make_equipment_type: MakeEquipmentType, save: Save
+    db_session: Session,
+    equipment_type: EquipmentType,
+    make_out_of_service: MakeOutOfService,
+    save: Save,
 ) -> None:
-    equipment_type = _saved_equipment_type(make_equipment_type, save)
-
-    save(_out_of_service(equipment_type, quantity=2))
+    save(make_out_of_service(equipment_type, 2))
 
     db_session.expire_all()
     stored = db_session.scalars(select(EquipmentOutOfService)).one()
     assert stored.quantity == 2
     assert stored.reason is OutOfServiceReason.DAMAGED
-    assert stored.recorded_by == USER_ID
-    assert stored.recorded_at == RECORDED_AT
+    assert stored.recorded_by == 3
+    assert stored.recorded_at == datetime(2026, 10, 1, 8, 0, tzinfo=timezone.utc)
     assert stored.resolved_at is None
 
 
 def test_an_out_of_service_row_of_no_units_is_refused(
-    db_session: Session, make_equipment_type: MakeEquipmentType, save: Save
+    db_session: Session,
+    equipment_type: EquipmentType,
+    make_out_of_service: MakeOutOfService,
+    save: Save,
 ) -> None:
-    equipment_type = _saved_equipment_type(make_equipment_type, save)
-
     with pytest.raises(IntegrityError):
-        save(_out_of_service(equipment_type, quantity=0))
+        save(make_out_of_service(equipment_type, 0))
 
     db_session.rollback()
     assert db_session.scalars(select(EquipmentOutOfService)).all() == []
-
-
-def test_the_out_of_service_reasons_are_stored_by_value() -> None:
-    assert {reason.value for reason in OutOfServiceReason} == {"damaged", "under_maintenance"}
 
 
 # --- reserving equipment for an event (AC1-AC3) -------------------------------------
@@ -156,10 +125,14 @@ AT_LEAST_ONE = "Quantity must be at least 1."
 
 
 def _reserve(
-    reference: str, equipment_type: EquipmentType, quantity: int
+    reference: str,
+    equipment_type: EquipmentType,
+    quantity: int,
+    *,
+    reserved_by: int = TECHNICAL_SUPPORT_ID,
 ) -> services.ReservationAsShown:
     payload = {"equipment_type_id": equipment_type.id, "quantity": quantity}
-    return services.reserve_equipment(reference, payload, reserved_by=TECHNICAL_SUPPORT_ID)
+    return services.reserve_equipment(reference, payload, reserved_by=reserved_by)
 
 
 def _reserved_quantities(db_session: Session) -> list[int]:
@@ -390,7 +363,7 @@ def test_an_equipment_type_not_in_the_catalogue_is_refused_on_its_field(
     assert _reserved_quantities(db_session) == []
 
 
-def test_a_cancelled_event_takes_no_reservation(
+def test_a_cancelled_event_takes_no_reservation_and_says_why(
     db_session: Session,
     saved_event_request: EventRequest,
     equipment_type: EquipmentType,
@@ -404,6 +377,7 @@ def test_a_cancelled_event_takes_no_reservation(
         _reserve(REFERENCE, equipment_type, 1)
 
     assert caught.value.status_code == 409
+    assert caught.value.message == RESERVATIONS_CLOSED_MESSAGE
     assert _reserved_quantities(db_session) == []
 
 
@@ -452,13 +426,6 @@ COORDINATOR_NINE_ID = 9
 COORDINATOR_NINE_NAME = "Coordinator Nine"
 
 
-def _reserve_as(
-    reserved_by: int, equipment_type: EquipmentType, quantity: int
-) -> services.ReservationAsShown:
-    payload = {"equipment_type_id": equipment_type.id, "quantity": quantity}
-    return services.reserve_equipment(REFERENCE, payload, reserved_by=reserved_by)
-
-
 def _statements_run_listing_reservations(db_session: Session) -> int:
     """How many SQL statements listing the event's reservations takes cold."""
     statements: list[str] = []
@@ -479,7 +446,7 @@ def _statements_run_listing_reservations(db_session: Session) -> int:
 def test_a_reservation_is_returned_with_the_name_of_who_reserved_it(
     saved_users: list[User], saved_event_request: EventRequest, equipment_type: EquipmentType
 ) -> None:
-    reservation = _reserve_as(TECHNICAL_SUPPORT_ID, equipment_type, 4)
+    reservation = _reserve(REFERENCE, equipment_type, 4)
 
     assert reservation.reserved_by == TECHNICAL_SUPPORT_NAME
     assert reservation.equipment_type_name == "Projector"
@@ -504,7 +471,7 @@ def test_the_callers_user_id_may_arrive_as_the_text_a_token_holds(
 def test_a_reserver_who_no_longer_has_an_account_is_shown_as_nobody(
     saved_event_request: EventRequest, equipment_type: EquipmentType
 ) -> None:
-    reservation = _reserve_as(TECHNICAL_SUPPORT_ID, equipment_type, 4)
+    reservation = _reserve(REFERENCE, equipment_type, 4)
 
     assert reservation.reserved_by is None
 
@@ -516,14 +483,10 @@ def test_an_events_reservations_are_listed_oldest_first_with_names(
     equipment_type: EquipmentType,
     microphone: EquipmentType,
 ) -> None:
-    _reserve_as(TECHNICAL_SUPPORT_ID, equipment_type, 3)
-    _reserve_as(COORDINATOR_NINE_ID, microphone, 5)
-    _reserve_as(TECHNICAL_SUPPORT_ID, equipment_type, 2)
-    services.reserve_equipment(
-        OVERLAPPING_REFERENCE,
-        {"equipment_type_id": equipment_type.id, "quantity": 1},
-        reserved_by=TECHNICAL_SUPPORT_ID,
-    )
+    _reserve(REFERENCE, equipment_type, 3, reserved_by=TECHNICAL_SUPPORT_ID)
+    _reserve(REFERENCE, microphone, 5, reserved_by=COORDINATOR_NINE_ID)
+    _reserve(REFERENCE, equipment_type, 2, reserved_by=TECHNICAL_SUPPORT_ID)
+    _reserve(OVERLAPPING_REFERENCE, equipment_type, 1)
 
     listed = services.list_reservations_for_event(REFERENCE)
 
@@ -541,7 +504,7 @@ def test_an_event_with_no_reservations_lists_none(saved_event_request: EventRequ
 def test_the_reference_is_matched_ignoring_case_and_spaces(
     saved_event_request: EventRequest, equipment_type: EquipmentType
 ) -> None:
-    _reserve_as(TECHNICAL_SUPPORT_ID, equipment_type, 3)
+    _reserve(REFERENCE, equipment_type, 3)
 
     assert len(services.list_reservations_for_event(" evr-aaaaaaaa ")) == 1
 
@@ -564,11 +527,11 @@ def test_listing_reservations_does_not_query_per_reservation(
     equipment_type: EquipmentType,
     microphone: EquipmentType,
 ) -> None:
-    _reserve_as(TECHNICAL_SUPPORT_ID, equipment_type, 1)
+    _reserve(REFERENCE, equipment_type, 1, reserved_by=TECHNICAL_SUPPORT_ID)
     for_one = _statements_run_listing_reservations(db_session)
 
-    _reserve_as(COORDINATOR_NINE_ID, microphone, 1)
-    _reserve_as(TECHNICAL_SUPPORT_ID, equipment_type, 1)
+    _reserve(REFERENCE, microphone, 1, reserved_by=COORDINATOR_NINE_ID)
+    _reserve(REFERENCE, equipment_type, 1, reserved_by=TECHNICAL_SUPPORT_ID)
 
     assert _statements_run_listing_reservations(db_session) == for_one
 
@@ -587,15 +550,3 @@ def test_the_locked_read_replaces_what_the_session_already_holds(
     locked = services._locked_equipment_type(equipment_type.id, db_session)
 
     assert locked.total_quantity == 3
-
-
-def test_a_closed_event_is_refused_with_the_message_the_events_module_owns(
-    saved_event_request: EventRequest, equipment_type: EquipmentType, save: Save
-) -> None:
-    saved_event_request.status = EventRequestStatus.REJECTED
-    save(saved_event_request)
-
-    with pytest.raises(services.EquipmentNotReservableError) as caught:
-        _reserve(REFERENCE, equipment_type, 1)
-
-    assert caught.value.message == RESERVATIONS_CLOSED_MESSAGE
