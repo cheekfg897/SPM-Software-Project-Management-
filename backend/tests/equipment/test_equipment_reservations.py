@@ -13,6 +13,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator
 from datetime import date, datetime, time, timezone
 from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 from sqlalchemy import event, insert, select, update
@@ -154,7 +155,9 @@ EVENT_ENDS_AT = datetime(2026, 10, 15, 9, 0, tzinfo=timezone.utc)
 AT_LEAST_ONE = "Quantity must be at least 1."
 
 
-def _reserve(reference: str, equipment_type: EquipmentType, quantity: int) -> EquipmentReservation:
+def _reserve(
+    reference: str, equipment_type: EquipmentType, quantity: int
+) -> services.ReservationAsShown:
     payload = {"equipment_type_id": equipment_type.id, "quantity": quantity}
     return services.reserve_equipment(reference, payload, reserved_by=TECHNICAL_SUPPORT_ID)
 
@@ -419,18 +422,15 @@ def test_a_draft_or_an_unknown_event_is_not_found(
     assert _reserved_quantities(db_session) == []
 
 
-def test_the_reservation_schema_dumps_exactly_the_agreed_fields_in_business_time(
-    make_equipment_type: MakeEquipmentType,
-) -> None:
-    reservation = EquipmentReservation(
+def test_the_reservation_schema_dumps_exactly_the_agreed_fields_in_business_time() -> None:
+    reservation = services.ReservationAsShown(
         id=12,
-        event_id=EVENT_ID,
         equipment_type_id=2,
-        equipment_type=make_equipment_type(),
+        equipment_type_name="Projector",
         quantity=4,
         starts_at=EVENT_STARTS_AT,
         ends_at=EVENT_ENDS_AT,
-        reserved_by=TECHNICAL_SUPPORT_ID,
+        reserved_by=TECHNICAL_SUPPORT_NAME,
         created_at=datetime(2026, 10, 1, 8, 0, tzinfo=timezone.utc),
     )
 
@@ -441,9 +441,136 @@ def test_the_reservation_schema_dumps_exactly_the_agreed_fields_in_business_time
         "quantity": 4,
         "starts_at": "2026-10-15T09:00:00+08:00",
         "ends_at": "2026-10-15T17:00:00+08:00",
-        "reserved_by": TECHNICAL_SUPPORT_ID,
+        "reserved_by": TECHNICAL_SUPPORT_NAME,
         "created_at": "2026-10-01T16:00:00+08:00",
     }
+
+
+# --- reading an event's reservations (AC4) ------------------------------------------
+
+COORDINATOR_NINE_ID = 9
+COORDINATOR_NINE_NAME = "Coordinator Nine"
+
+
+def _reserve_as(
+    reserved_by: int, equipment_type: EquipmentType, quantity: int
+) -> services.ReservationAsShown:
+    payload = {"equipment_type_id": equipment_type.id, "quantity": quantity}
+    return services.reserve_equipment(REFERENCE, payload, reserved_by=reserved_by)
+
+
+def _statements_run_listing_reservations(db_session: Session) -> int:
+    """How many SQL statements listing the event's reservations takes cold."""
+    statements: list[str] = []
+
+    def _on_execute(conn: Any, cursor: Any, statement: str, *_: Any) -> None:
+        statements.append(statement)
+
+    db_session.expire_all()
+    bind = db_session.get_bind()
+    event.listen(bind, "before_cursor_execute", _on_execute)
+    try:
+        services.list_reservations_for_event(REFERENCE)
+    finally:
+        event.remove(bind, "before_cursor_execute", _on_execute)
+    return len(statements)
+
+
+def test_a_reservation_is_returned_with_the_name_of_who_reserved_it(
+    saved_users: list[User], saved_event_request: EventRequest, equipment_type: EquipmentType
+) -> None:
+    reservation = _reserve_as(TECHNICAL_SUPPORT_ID, equipment_type, 4)
+
+    assert reservation.reserved_by == TECHNICAL_SUPPORT_NAME
+    assert reservation.equipment_type_name == "Projector"
+    assert reservation.quantity == 4
+
+
+def test_the_callers_user_id_may_arrive_as_the_text_a_token_holds(
+    monkeypatch: pytest.MonkeyPatch,
+    saved_event_request: EventRequest,
+    equipment_type: EquipmentType,
+) -> None:
+    # SQLite would store "5" as 5 anyway, so check the id as the history receives it.
+    record = MagicMock()
+    monkeypatch.setattr(services.events_services, "record_equipment_reserved", record)
+    payload = {"equipment_type_id": equipment_type.id, "quantity": 1}
+
+    services.reserve_equipment(REFERENCE, payload, reserved_by=str(TECHNICAL_SUPPORT_ID))
+
+    assert record.call_args.kwargs["actor_id"] == TECHNICAL_SUPPORT_ID
+
+
+def test_a_reserver_who_no_longer_has_an_account_is_shown_as_nobody(
+    saved_event_request: EventRequest, equipment_type: EquipmentType
+) -> None:
+    reservation = _reserve_as(TECHNICAL_SUPPORT_ID, equipment_type, 4)
+
+    assert reservation.reserved_by is None
+
+
+def test_an_events_reservations_are_listed_oldest_first_with_names(
+    saved_users: list[User],
+    saved_event_request: EventRequest,
+    overlapping_event: EventRequest,
+    equipment_type: EquipmentType,
+    microphone: EquipmentType,
+) -> None:
+    _reserve_as(TECHNICAL_SUPPORT_ID, equipment_type, 3)
+    _reserve_as(COORDINATOR_NINE_ID, microphone, 5)
+    _reserve_as(TECHNICAL_SUPPORT_ID, equipment_type, 2)
+    services.reserve_equipment(
+        OVERLAPPING_REFERENCE,
+        {"equipment_type_id": equipment_type.id, "quantity": 1},
+        reserved_by=TECHNICAL_SUPPORT_ID,
+    )
+
+    listed = services.list_reservations_for_event(REFERENCE)
+
+    assert [(row.equipment_type_name, row.quantity, row.reserved_by) for row in listed] == [
+        ("Projector", 3, TECHNICAL_SUPPORT_NAME),
+        ("Microphone", 5, COORDINATOR_NINE_NAME),
+        ("Projector", 2, TECHNICAL_SUPPORT_NAME),
+    ]
+
+
+def test_an_event_with_no_reservations_lists_none(saved_event_request: EventRequest) -> None:
+    assert services.list_reservations_for_event(REFERENCE) == []
+
+
+def test_the_reference_is_matched_ignoring_case_and_spaces(
+    saved_event_request: EventRequest, equipment_type: EquipmentType
+) -> None:
+    _reserve_as(TECHNICAL_SUPPORT_ID, equipment_type, 3)
+
+    assert len(services.list_reservations_for_event(" evr-aaaaaaaa ")) == 1
+
+
+def test_listing_the_reservations_of_a_draft_or_unknown_event_is_not_found(
+    make_event_request: Callable[..., EventRequest], save: Save
+) -> None:
+    save(make_event_request(status=EventRequestStatus.DRAFT))
+
+    with pytest.raises(NotFoundError):
+        services.list_reservations_for_event(REFERENCE)
+    with pytest.raises(NotFoundError):
+        services.list_reservations_for_event("EVR-ZZZZZZZZ")
+
+
+def test_listing_reservations_does_not_query_per_reservation(
+    db_session: Session,
+    saved_users: list[User],
+    saved_event_request: EventRequest,
+    equipment_type: EquipmentType,
+    microphone: EquipmentType,
+) -> None:
+    _reserve_as(TECHNICAL_SUPPORT_ID, equipment_type, 1)
+    for_one = _statements_run_listing_reservations(db_session)
+
+    _reserve_as(COORDINATOR_NINE_ID, microphone, 1)
+    _reserve_as(TECHNICAL_SUPPORT_ID, equipment_type, 1)
+
+    assert _statements_run_listing_reservations(db_session) == for_one
 
 
 def test_the_locked_read_replaces_what_the_session_already_holds(

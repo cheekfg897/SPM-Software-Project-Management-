@@ -14,11 +14,12 @@ from typing import Any
 
 from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.common.database import resolve_session
 from app.common.errors import AppError, ConflictError, NotFoundError, ValidationError
 from app.common.validation import load_or_raise
+from app.modules.auth.services import get_user_full_names
 from app.modules.equipment.models import EquipmentOutOfService, EquipmentReservation, EquipmentType
 from app.modules.equipment.schemas import EditEquipmentTypeSchema, EquipmentUnitsSchema
 
@@ -49,6 +50,24 @@ class EquipmentAvailability:
     requested: int
     #: Units short of the request; 0 when the request is met.
     shortfall: int
+
+
+@dataclass(frozen=True)
+class ReservationAsShown:
+    """One reservation as the event record shows it (SCRUM-46 AC4).
+
+    No user id: the reserver is shown by name, as the events module shows its actors.
+    """
+
+    id: int
+    equipment_type_id: int
+    equipment_type_name: str
+    quantity: int
+    starts_at: datetime
+    ends_at: datetime
+    #: The reserver's full name, or ``None`` if they no longer exist.
+    reserved_by: str | None
+    created_at: datetime
 
 
 def _check_venue(venue_id: int | None, session: Session) -> None:
@@ -123,6 +142,29 @@ def _locked_equipment_type(equipment_type_id: int, session: Session) -> Equipmen
             "Invalid request.", details={"equipment_type_id": [EQUIPMENT_TYPE_NOT_FOUND_MESSAGE]}
         )
     return equipment_type
+
+
+def _as_shown(
+    reservations: list[EquipmentReservation], session: Session
+) -> list[ReservationAsShown]:
+    """The reservations with their reservers' names, looked up in one query."""
+    reserver_ids = {reservation.reserved_by for reservation in reservations}
+    names = get_user_full_names(reserver_ids, session=session)
+    shown = []
+    for reservation in reservations:
+        shown.append(
+            ReservationAsShown(
+                id=reservation.id,
+                equipment_type_id=reservation.equipment_type_id,
+                equipment_type_name=reservation.equipment_type.name,
+                quantity=reservation.quantity,
+                starts_at=reservation.starts_at,
+                ends_at=reservation.ends_at,
+                reserved_by=names.get(reservation.reserved_by),
+                created_at=reservation.created_at,
+            )
+        )
+    return shown
 
 
 def _commit_or_conflict(session: Session) -> None:
@@ -225,6 +267,29 @@ def equipment_availability_for_event(
     return rows
 
 
+def list_reservations_for_event(
+    reference: str, *, session: Session | None = None
+) -> list[ReservationAsShown]:
+    """The equipment reserved for an event, oldest first, for its record (SCRUM-46 AC4).
+
+    Args:
+        reference: The event's ``EVR-…`` reference.
+        session: Database session; defaults to ``db.session``.
+
+    Raises:
+        NotFoundError: 404 — no such event, or it is still a draft.
+    """
+    sess = resolve_session(session)
+    event_id = events_services.get_event_equipment_need(reference, session=sess).event_id
+    statement = (
+        select(EquipmentReservation)
+        .where(EquipmentReservation.event_id == event_id)
+        .options(joinedload(EquipmentReservation.equipment_type))
+        .order_by(EquipmentReservation.created_at, EquipmentReservation.id)
+    )
+    return _as_shown(list(sess.scalars(statement)), sess)
+
+
 def create_equipment_type(
     payload: Mapping[str, Any] | None, *, session: Session | None = None
 ) -> EquipmentType:
@@ -301,9 +366,9 @@ def reserve_equipment(
     reference: str,
     payload: Mapping[str, Any] | None,
     *,
-    reserved_by: int,
+    reserved_by: int | str,
     session: Session | None = None,
-) -> EquipmentReservation:
+) -> ReservationAsShown:
     """Reserve units of an equipment type for an event's own period (SCRUM-46).
 
     Up to what is free for the period may be reserved (AC1); asking for more is
@@ -315,11 +380,11 @@ def reserve_equipment(
     Args:
         reference: The event's ``EVR-…`` reference.
         payload: Decoded JSON body: ``equipment_type_id`` and ``quantity``.
-        reserved_by: The caller's user id, taken from their token.
+        reserved_by: The caller's user id, taken from their token (a string there).
         session: Database session; defaults to ``db.session``.
 
     Returns:
-        The saved :class:`EquipmentReservation`.
+        The saved reservation, as the event record shows it.
 
     Raises:
         ValidationError: 400 — invalid fields, an unknown equipment type, or more
@@ -330,6 +395,7 @@ def reserve_equipment(
             rejected.
     """
     data = load_or_raise(EquipmentUnitsSchema(), payload)
+    reserver_id = int(reserved_by)
     sess = resolve_session(session)
     need = events_services.get_event_equipment_need(reference, session=sess)
     if not need.accepts_reservations:
@@ -349,7 +415,7 @@ def reserve_equipment(
         quantity=data["quantity"],
         starts_at=need.starts_at,
         ends_at=need.ends_at,
-        reserved_by=reserved_by,
+        reserved_by=reserver_id,
     )
     sess.add(reservation)
     # Gives the reservation the id its history entry names.
@@ -361,7 +427,8 @@ def reserve_equipment(
         "reservation_id": reservation.id,
     }
     events_services.record_equipment_reserved(
-        need.event_id, history_details, actor_id=reserved_by, session=sess
+        need.event_id, history_details, actor_id=reserver_id, session=sess
     )
     sess.commit()
-    return reservation
+    (shown,) = _as_shown([reservation], sess)
+    return shown
