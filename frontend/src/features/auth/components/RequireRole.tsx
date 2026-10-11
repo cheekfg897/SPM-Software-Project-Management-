@@ -17,9 +17,10 @@ interface RequireRoleProps {
 }
 
 /**
- * Shows its page only to the roles allowed (or to anyone signed in, with none given). Someone signed out is sent to log in and brought
- * back; someone with another role goes to their own home. The backend still checks every
- * request itself: this only keeps people off pages that would refuse them.
+ * Shows its page only to the roles allowed (or to anyone signed in, with none given). Someone
+ * signed out is sent to log in and brought back; someone with another role goes to their own
+ * home. The backend still checks every request itself: this only keeps people off pages that
+ * would refuse them.
  */
 export function RequireRole({ allowedRoles, loginRoute, children }: RequireRoleProps) {
   const user = useAppSelector(selectSessionUser)
