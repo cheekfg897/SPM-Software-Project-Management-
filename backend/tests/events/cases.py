@@ -94,3 +94,10 @@ LOST_NOTIFICATION_CASES = [
     pytest.param([None, LOST_CONNECTION, None], "coordinator_assigned", id="the-coordinators"),
     pytest.param([None, None, LOST_CONNECTION], "request_assigned", id="the-organisers"),
 ]
+
+#: The Event Coordinator Lead who assigns a request in the tests (SCRUM-95 AC3). The
+#: assign service records the actor's id and never looks the actor up — the route's
+#: ``@requires_role`` is what proves they are the Lead — so no user with this id need
+#: be saved. Shared by the ``lead_assigns`` fixture and the tests that read the audit
+#: entry back.
+LEAD_ID = 11
