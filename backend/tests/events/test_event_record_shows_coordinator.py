@@ -4,8 +4,8 @@
 Organiser on the event record." The event record is the organiser's detail view of
 one request (``GET /api/events/requests/<reference>``, SCRUM-22). Users record a full
 name and an email and nothing else, so those are the contact details; the
-coordinator's user id is never shown, and ``coordinator`` is ``null`` until one is
-assigned (ADR-0018).
+coordinator's user id is never shown, and ``coordinator`` is ``null`` until the Event
+Coordinator Lead assigns one, which submitting no longer does (SCRUM-95 AC1).
 """
 
 from __future__ import annotations
@@ -30,6 +30,7 @@ pytestmark = pytest.mark.scrum_30
 
 MakeEventRequest = Callable[..., EventRequest]
 SubmitValidRequest = Callable[..., EventRequest]
+LeadAssigns = Callable[[EventRequest, int], None]
 
 REFERENCE = "EVR-AAAAAAAA"
 COORDINATOR_THREE = CoordinatorContact(
@@ -67,9 +68,10 @@ def open_record(
 
 
 def test_the_organiser_sees_the_assigned_coordinators_name_and_email(
-    saved_users: list[User], submit_valid_request: SubmitValidRequest
+    saved_users: list[User], submit_valid_request: SubmitValidRequest, lead_assigns: LeadAssigns
 ) -> None:
-    submit_valid_request()
+    submitted = submit_valid_request()
+    lead_assigns(submitted, 3)
 
     record = get_event_record_for_organiser("7", REFERENCE)
 

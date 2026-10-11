@@ -26,6 +26,16 @@ class DriverError(Exception):
 #: back off the returned object just to look it up again.
 DRAFT_REFERENCE = "EVR-DDDDDDDD"
 
+#: A draft with every field a submission needs, so it can be submitted as it stands
+#: (SCRUM-20). Shared by the tests that submit a draft.
+COMPLETE_DRAFT_PAYLOAD = {
+    "name": "Partner Summit",
+    "proposed_date": "2026-10-15",
+    "start_time": "09:00",
+    "end_time": "17:00",
+    "expected_attendance": 250,
+}
+
 #: The five columns a draft may leave empty and every other request must have
 #: (SCRUM-20, ADR-0024).
 DETAIL_COLUMNS = ["proposed_date", "end_date", "start_time", "end_time", "expected_attendance"]
