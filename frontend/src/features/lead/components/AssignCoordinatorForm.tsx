@@ -8,13 +8,15 @@ import { useAssignCoordinator } from '../hooks'
 
 interface AssignCoordinatorFormProps {
   reference: string
+  /** The request's name, so the field and button say which request they belong to. */
+  name: string
 }
 
 /**
  * Gives one queued request to the Event Coordinator with the typed email address. There is no
  * list of coordinators to pick from (ADR-0021: user ids are not shown), so the Lead types it.
  */
-export function AssignCoordinatorForm({ reference }: AssignCoordinatorFormProps) {
+export function AssignCoordinatorForm({ reference, name }: AssignCoordinatorFormProps) {
   const [email, setEmail] = useState('')
   const assign = useAssignCoordinator()
   const emailErrors = fieldErrorsOf(assign.error).coordinator_email
@@ -27,7 +29,7 @@ export function AssignCoordinatorForm({ reference }: AssignCoordinatorFormProps)
   return (
     <form onSubmit={submit} className="mt-5 space-y-3">
       <TextField
-        label="Coordinator email"
+        label={`Coordinator email for ${name}`}
         name="coordinator_email"
         type="email"
         autoComplete="off"
@@ -37,7 +39,7 @@ export function AssignCoordinatorForm({ reference }: AssignCoordinatorFormProps)
         errors={emailErrors}
       />
       {emailErrors === undefined && <ErrorAlert error={assign.error} />}
-      <Button type="submit" isPending={assign.isPending}>
+      <Button type="submit" isPending={assign.isPending} aria-label={`Assign ${name}`}>
         Assign
       </Button>
     </form>

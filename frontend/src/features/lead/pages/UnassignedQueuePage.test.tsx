@@ -39,8 +39,8 @@ describe('SCRUM-95 the Lead queue screen', () => {
     })
     const summit = await findRequest('Annual Partner Summit')
 
-    await user.type(summit.getByLabelText('Coordinator email'), MOCK_ACCOUNTS.coordinator.email)
-    await user.click(summit.getByRole('button', { name: 'Assign' }))
+    await user.type(summit.getByLabelText(/^Coordinator email/), MOCK_ACCOUNTS.coordinator.email)
+    await user.click(summit.getByRole('button', { name: /^Assign/ }))
 
     await waitFor(() =>
       expect(
@@ -62,10 +62,10 @@ describe('SCRUM-95 the Lead queue screen', () => {
     })
     const summit = await findRequest('Annual Partner Summit')
 
-    await user.type(summit.getByLabelText('Coordinator email'), 'nobody@example.com')
-    await user.click(summit.getByRole('button', { name: 'Assign' }))
+    await user.type(summit.getByLabelText(/^Coordinator email/), 'nobody@example.com')
+    await user.click(summit.getByRole('button', { name: /^Assign/ }))
 
-    const field = await summit.findByLabelText('Coordinator email')
+    const field = await summit.findByLabelText(/^Coordinator email/)
     await waitFor(() => expect(field).toHaveAccessibleDescription(NOT_A_COORDINATOR_MESSAGE))
     expect(field).toBeInvalid()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
@@ -86,8 +86,8 @@ describe('SCRUM-95 the Lead queue screen', () => {
     })
     const summit = await findRequest('Annual Partner Summit')
 
-    await user.type(summit.getByLabelText('Coordinator email'), MOCK_ACCOUNTS.coordinator.email)
-    await user.click(summit.getByRole('button', { name: 'Assign' }))
+    await user.type(summit.getByLabelText(/^Coordinator email/), MOCK_ACCOUNTS.coordinator.email)
+    await user.click(summit.getByRole('button', { name: /^Assign/ }))
 
     expect(await summit.findByRole('alert')).toHaveTextContent(
       'This event request already has a coordinator.',
@@ -122,6 +122,41 @@ describe('SCRUM-95 the Lead queue screen', () => {
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 
+  it('names the request in each email field and Assign button, so rows can be told apart', async () => {
+    renderApp(ROUTES.LEAD_QUEUE, { session: mockSessionFor(MOCK_ACCOUNTS.lead) })
+
+    expect(
+      await screen.findByLabelText('Coordinator email for Annual Partner Summit'),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByLabelText('Coordinator email for Product Launch Evening'),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Assign Annual Partner Summit' })).toBeInTheDocument()
+  })
+
+  it('reads the queue again when Try again is pressed after a failure', async () => {
+    server.use(
+      http.get(
+        QUEUE_URL,
+        () =>
+          HttpResponse.json(
+            { error: 'server_error', message: 'Something went wrong.' },
+            { status: 500 },
+          ),
+        { once: true },
+      ),
+    )
+    const { user } = renderApp(ROUTES.LEAD_QUEUE, {
+      session: mockSessionFor(MOCK_ACCOUNTS.lead),
+    })
+    await user.click(await screen.findByRole('button', { name: 'Try again' }))
+
+    expect(
+      await screen.findByRole('article', { name: 'Annual Partner Summit' }),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
   it('offers an Event Coordinator neither the queue nor the assign control (AC6)', async () => {
     const requests = recordRequests()
     const { router } = renderApp(ROUTES.LEAD_QUEUE, {
@@ -131,8 +166,8 @@ describe('SCRUM-95 the Lead queue screen', () => {
     await waitFor(() => expect(router.state.location.pathname).not.toBe(ROUTES.LEAD_QUEUE))
     expect(router.state.location.pathname).toBe(ROUTES.STAFF_HOME)
     expect(screen.queryByRole('heading', { name: 'Unassigned requests' })).not.toBeInTheDocument()
-    expect(screen.queryByLabelText('Coordinator email')).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Assign' })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/^Coordinator email/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Assign/ })).not.toBeInTheDocument()
     expect(requests.some((request) => new URL(request.url).pathname === QUEUE_URL)).toBe(false)
   })
 
