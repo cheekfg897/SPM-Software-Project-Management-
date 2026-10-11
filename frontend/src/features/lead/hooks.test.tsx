@@ -9,8 +9,6 @@ import { sendRequestsAs } from '@/test/sendRequestsAs'
 
 import { useAssignCoordinator, useUnassignedQueue } from './hooks'
 
-const FIRST_REFERENCE = 'ER-0001'
-
 function wrapper({ children }: { children: ReactNode }) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -41,6 +39,7 @@ describe('SCRUM-95 the Lead queue hooks', () => {
       'expected_attendance',
       'name',
       'proposed_date',
+      'reference',
       'start_time',
       'submitted_at',
     ])
@@ -61,29 +60,35 @@ describe('SCRUM-95 the Lead queue hooks', () => {
     const requests = recordRequests()
     const { result } = renderQueueAndAssign()
     await waitFor(() => expect(result.current.queue.isSuccess).toBe(true))
-    const before = result.current.queue.data?.event_requests.length ?? 0
+    const rows = result.current.queue.data?.event_requests ?? []
+    const before = rows.length
+    const queuedReference = rows[0]?.reference ?? ''
+    expect(queuedReference).not.toBe('')
 
     result.current.assign.mutate({
-      reference: FIRST_REFERENCE,
+      reference: queuedReference,
       coordinator_email: MOCK_ACCOUNTS.coordinator.email,
     })
 
     await waitFor(() => expect(result.current.assign.isSuccess).toBe(true))
     const post = requests.find((request) => request.method === 'POST')
     expect(new URL(post?.url ?? '').pathname).toBe(
-      `/api/events/requests/${FIRST_REFERENCE}/coordinator`,
+      `/api/events/requests/${queuedReference}/coordinator`,
     )
     expect(await post?.json()).toEqual({ coordinator_email: MOCK_ACCOUNTS.coordinator.email })
     expect(result.current.assign.data?.coordinator.email).toBe(MOCK_ACCOUNTS.coordinator.email)
     await waitFor(() => expect(result.current.queue.data?.event_requests).toHaveLength(before - 1))
+    const remaining = result.current.queue.data?.event_requests.map((row) => row.reference)
+    expect(remaining).not.toContain(queuedReference)
   })
 
   it('surfaces an unknown email as a field error on coordinator_email', async () => {
     sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.lead))
     const { result } = renderQueueAndAssign()
+    await waitFor(() => expect(result.current.queue.isSuccess).toBe(true))
 
     result.current.assign.mutate({
-      reference: FIRST_REFERENCE,
+      reference: result.current.queue.data?.event_requests[0]?.reference ?? '',
       coordinator_email: 'nobody@example.com',
     })
 
