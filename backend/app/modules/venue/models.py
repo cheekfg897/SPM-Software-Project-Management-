@@ -15,12 +15,14 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    Index,
     Integer,
     SmallInteger,
     String,
     Text,
     Time,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -297,6 +299,19 @@ class VenueBookingRequest(db.Model):  # type: ignore[name-defined]
     __table_args__ = (
         CheckConstraint("ends_at > starts_at", name="ck_venue_booking_requests_ends_after_start"),
         CheckConstraint("expected_occupancy >= 1", name="ck_venue_booking_requests_occupancy_min"),
+        # AC6: one Pending request per event, venue and period. A partial index, so
+        # requests that are no longer Pending (SCRUM-43) don't block a new one. The
+        # unit suite runs on SQLite, which has partial indexes too, so it enforces it.
+        Index(
+            "uq_venue_booking_requests_pending",
+            "event_id",
+            "venue_id",
+            "starts_at",
+            "ends_at",
+            unique=True,
+            postgresql_where=text("status = 'pending'"),
+            sqlite_where=text("status = 'pending'"),
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

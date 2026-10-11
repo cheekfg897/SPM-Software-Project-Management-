@@ -82,6 +82,10 @@ def test_upgrade_creates_the_table_and_adds_both_kinds_outside_the_transaction(
     notification = "ALTER TYPE notification_kind ADD VALUE IF NOT EXISTS 'venue_booking_requested'"
     assert "CREATE TYPE booking_request_status AS ENUM ('pending')" in sql
     assert "CREATE TABLE venue_booking_requests" in sql
+    assert (
+        "CREATE UNIQUE INDEX uq_venue_booking_requests_pending ON venue_booking_requests "
+        "(event_id, venue_id, starts_at, ends_at) WHERE status = 'pending'"
+    ) in sql
     # Postgres won't let a transaction use an enum value it added, so the additions sit
     # after the table, between a COMMIT and a new BEGIN.
     assert sql.index("CREATE TABLE venue_booking_requests") < sql.index("COMMIT")
