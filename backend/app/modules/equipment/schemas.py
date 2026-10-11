@@ -19,7 +19,7 @@ from marshmallow import (
     validates_schema,
 )
 
-from app.common.fields import WholeNumber
+from app.common.fields import BusinessDateTime, WholeNumber
 from app.common.validation import not_blank
 from app.modules.equipment.models import NAME_MAX_LENGTH, STORE_NAME_MAX_LENGTH
 
@@ -109,3 +109,34 @@ class EquipmentAvailabilitySchema(Schema):
     available = fields.Integer(dump_only=True)
     requested = fields.Integer(dump_only=True)
     shortfall = fields.Integer(dump_only=True)
+
+
+class ReserveEquipmentSchema(Schema):
+    """Payload for reserving units of an equipment type for an event (SCRUM-46 AC1).
+
+    The event comes from the URL and the period from the event, so neither is sent.
+    """
+
+    equipment_type_id = WholeNumber(
+        required=True,
+        validate=validate.Range(min=1, error="equipment_type_id must be a positive number."),
+    )
+    quantity = WholeNumber(
+        required=True, validate=validate.Range(min=1, error="Quantity must be at least 1.")
+    )
+
+
+class EquipmentReservationSchema(Schema):
+    """One reservation as the API shows it, times in business time (SCRUM-46 AC4).
+
+    The event is left out: a reservation is always read under the event's reference.
+    """
+
+    id = fields.Integer(dump_only=True)
+    equipment_type_id = fields.Integer(dump_only=True)
+    equipment_type_name = fields.String(attribute="equipment_type.name", dump_only=True)
+    quantity = fields.Integer(dump_only=True)
+    starts_at = BusinessDateTime(dump_only=True)
+    ends_at = BusinessDateTime(dump_only=True)
+    reserved_by = fields.Integer(dump_only=True)
+    created_at = BusinessDateTime(dump_only=True)
