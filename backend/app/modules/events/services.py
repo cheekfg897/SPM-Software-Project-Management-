@@ -1466,7 +1466,7 @@ def reassign_coordinator(
 # --------------------------------------------------------------------------
 
 #: Statuses of events that won't run, so their equipment no longer needs arranging
-#: (SCRUM-38 AC1, ADR-0022).
+#: (SCRUM-38 AC1, ADR-0022) and none can be reserved for them (SCRUM-46, ADR-0037).
 EQUIPMENT_NOT_NEEDED_STATUSES: frozenset[EventRequestStatus] = frozenset(
     {EventRequestStatus.COMPLETED, EventRequestStatus.CANCELLED, EventRequestStatus.REJECTED}
 )
@@ -1964,13 +1964,6 @@ class EventPeriodIncompleteError(AppError):
     error_code = "event_period_incomplete"
 
 
-#: An event in one of these is over or will not happen, so no equipment can be
-#: reserved for it (SCRUM-46).
-RESERVATIONS_CLOSED_STATUSES: frozenset[EventRequestStatus] = frozenset(
-    {EventRequestStatus.COMPLETED, EventRequestStatus.CANCELLED, EventRequestStatus.REJECTED}
-)
-
-
 @dataclass(frozen=True)
 class EventEquipmentNeed:
     """When an event runs and how much of each equipment type it asks for (SCRUM-45).
@@ -2108,7 +2101,7 @@ def get_event_equipment_need(
         starts_at=starts_at,
         ends_at=ends_at,
         requested=requested,
-        accepts_reservations=event_request.status not in RESERVATIONS_CLOSED_STATUSES,
+        accepts_reservations=event_request.status not in EQUIPMENT_NOT_NEEDED_STATUSES,
     )
 
 
