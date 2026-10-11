@@ -36,4 +36,12 @@ describe('SelectField', () => {
     expect(select).toHaveAttribute('aria-invalid', 'true')
     expect(select).toHaveAccessibleDescription('Not allowed.')
   })
+
+  it('shows a hint under the select', () => {
+    render(
+      <SelectField label="Layout" name="layout" options={OPTIONS} hint="Leave empty if open." />,
+    )
+
+    expect(screen.getByLabelText('Layout')).toHaveAccessibleDescription('Leave empty if open.')
+  })
 })
