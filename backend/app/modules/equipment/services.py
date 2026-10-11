@@ -20,7 +20,7 @@ from app.common.database import resolve_session
 from app.common.errors import AppError, ConflictError, NotFoundError, ValidationError
 from app.common.validation import load_or_raise
 from app.modules.equipment.models import EquipmentOutOfService, EquipmentReservation, EquipmentType
-from app.modules.equipment.schemas import EditEquipmentTypeSchema, ReserveEquipmentSchema
+from app.modules.equipment.schemas import EditEquipmentTypeSchema, EquipmentUnitsSchema
 
 # The module, not its names: events.services imports this module too (to check a
 # catalogue entry), and module-attribute access is what lets the two import each other.
@@ -28,9 +28,6 @@ from app.modules.events import services as events_services
 from app.modules.venue.services import get_venue
 
 EQUIPMENT_TYPE_NOT_FOUND_MESSAGE = "Equipment type not found."
-NOT_RESERVABLE_MESSAGE = (
-    "Equipment can't be reserved for an event that is completed, cancelled or rejected."
-)
 
 
 class EquipmentNotReservableError(AppError):
@@ -112,7 +109,14 @@ def _locked_equipment_type(equipment_type_id: int, session: Session) -> Equipmen
     Raises:
         ValidationError: 400 on ``equipment_type_id`` — no such equipment type.
     """
-    statement = select(EquipmentType).where(EquipmentType.id == equipment_type_id).with_for_update()
+    # populate_existing: a copy the session loaded earlier may predate another
+    # request's commit, so the locked row must overwrite it, not be skipped as known.
+    statement = (
+        select(EquipmentType)
+        .where(EquipmentType.id == equipment_type_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
     equipment_type = session.scalar(statement)
     if equipment_type is None:
         raise ValidationError(
@@ -325,11 +329,11 @@ def reserve_equipment(
         EquipmentNotReservableError: 409 — the event is completed, cancelled or
             rejected.
     """
-    data = load_or_raise(ReserveEquipmentSchema(), payload)
+    data = load_or_raise(EquipmentUnitsSchema(), payload)
     sess = resolve_session(session)
     need = events_services.get_event_equipment_need(reference, session=sess)
     if not need.accepts_reservations:
-        raise EquipmentNotReservableError(NOT_RESERVABLE_MESSAGE)
+        raise EquipmentNotReservableError(events_services.RESERVATIONS_CLOSED_MESSAGE)
 
     # Lock, then count. Counting first would miss a reservation committed while this
     # one waited for the lock (Review Focus 3).
