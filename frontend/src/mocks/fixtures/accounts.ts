@@ -54,6 +54,15 @@ const BASE_ACCOUNTS = {
     role: ROLE.VENUE_STAFF,
     organisation_id: null,
   },
+  // id 7: 1 to 6 are taken by the accounts above and the unlinked organiser below.
+  lead: {
+    id: 7,
+    email: 'leon@connectsphere.test',
+    password: 'Password123',
+    full_name: 'Leon Goh',
+    role: ROLE.EVENT_COORDINATOR_LEAD,
+    organisation_id: null,
+  },
 } as const satisfies Record<string, MockAccount>
 
 /** Accounts every mock run starts with. Tests and e2e journeys log in as these. */
