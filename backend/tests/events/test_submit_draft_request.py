@@ -32,8 +32,8 @@ from app.modules.events.services import (
     list_event_requests_for_organiser,
     submit_draft_event_request,
 )
-from app.modules.notifications.models import Notification
-from tests.events.cases import COMPLETE_DRAFT_PAYLOAD, DRAFT_REFERENCE
+from app.modules.notifications.models import Notification, NotificationKind
+from tests.events.cases import COMPLETE_DRAFT_PAYLOAD, DRAFT_REFERENCE, LEAD_ID
 
 pytestmark = pytest.mark.scrum_20
 
@@ -153,6 +153,31 @@ def test_a_submitted_draft_waits_unassigned_with_no_history_or_notice(
     assert coordinator_of(draft.id) is None
     assert history_of(draft.id) == []
     assert db_session.scalars(select(Notification)).all() == []
+
+
+@pytest.mark.scrum_95
+def test_a_submitted_draft_tells_every_lead_it_is_waiting(
+    saved_users: list[User],
+    saved_leads: list[User],
+    save_draft: SaveDraft,
+    notifications_of: Callable[[int], list[tuple[Any, ...]]],
+    db_session: Session,
+    today: date,
+) -> None:
+    """AC4 on the draft path: the notice a fresh submission raises, once per Lead."""
+    draft = save_draft(ORGANISER_ID, COMPLETE_DRAFT_PAYLOAD)
+
+    _submit(DRAFT_REFERENCE, db_session, today)
+
+    waiting_notice = (
+        draft.id,
+        DRAFT_REFERENCE,
+        COMPLETE_DRAFT_PAYLOAD["name"],
+        NotificationKind.REQUEST_QUEUED_FOR_LEAD,
+        None,
+    )
+    assert notifications_of(LEAD_ID) == [waiting_notice]
+    assert notifications_of(12) == [waiting_notice]
 
 
 def test_colleagues_see_the_request_once_it_is_submitted(

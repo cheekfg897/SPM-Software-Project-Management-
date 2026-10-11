@@ -309,10 +309,14 @@ def test_a_coordinator_opening_a_record_sees_the_request_its_equipment_and_its_c
 
 
 def test_coordinators_have_no_list_of_unassigned_requests(app: Flask) -> None:
-    """The unassigned queue is the Lead's (SCRUM-95); no coordinator route lists it."""
+    """The unassigned queue is the Lead's alone (SCRUM-95 AC2, AC6, ADR-0036).
+
+    ``/requests/unassigned`` is the Lead's route, not a reference for the record route
+    to look up, and the Event Coordinator is not among the roles it allows.
+    """
     adapter = app.url_map.bind("localhost")
 
-    assert adapter.match("/api/events/requests/unassigned") == (
-        RECORD_ENDPOINT,
-        {"reference": "unassigned"},
-    )
+    endpoint, view_args = adapter.match("/api/events/requests/unassigned")
+
+    assert (endpoint, view_args) == ("events.list_unassigned", {})
+    assert app.view_functions[endpoint].allowed_roles == frozenset({"event_coordinator_lead"})

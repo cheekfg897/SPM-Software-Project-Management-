@@ -4,21 +4,22 @@ An organiser drafts a request and submits it. It arrives unassigned, the Event
 Coordinator Lead gives it to a coordinator, and that coordinator reviews it, asks a
 question, and can't approve it until the organiser answers. The organiser answers and
 amends the attendance, and the coordinator approves. Every call goes through the real
-routes with Flask's test client (ADR-0031) — bar the Lead's assignment, which has no
-route yet; see ``lead_assigns_outside_the_api`` — so this proves that the stories fit
-together, not only that each one works on its own.
+routes with Flask's test client (ADR-0031), the Lead's assignment included, so this
+proves that the stories fit together, not only that each one works on its own.
 
 The user stories and acceptance criteria it exercises (SCRUM-41 AC3):
 
 - SCRUM-19 "submit an event request": AC5.
 - SCRUM-20 "save and resume a draft event request": AC1, AC3, AC4.
 - SCRUM-24 "see the events my role is involved in": AC9.
-- SCRUM-30 "assign a coordinator to a submitted event": AC3, AC5.
+- SCRUM-30 "assign a coordinator to a submitted event": AC3, AC5. The assignment itself
+  is SCRUM-95's now; what stays here is that the coordinator and the organiser see it.
 - SCRUM-31 "review and decide a submitted request": AC1, AC2, AC3, AC4, AC8, AC9, AC10.
 - SCRUM-32 "ask the organiser for clarification": AC1, AC2, AC3, AC4.
 - SCRUM-33 "update event information and flag significant changes": AC4, AC5.
 - SCRUM-39 "be notified about review and approval decisions": AC1, AC2, AC3, AC4.
-- SCRUM-95 "submitted requests reach the Event Coordinator Lead unassigned": AC1, AC5.
+- SCRUM-95 "submitted requests reach the Event Coordinator Lead unassigned": AC1, AC2,
+  AC3, AC4, AC5, AC6.
 
 Each step's banner comment names the ones it covers. It runs with the rest of the
 suite in CI, so a broken journey fails the backend check (SCRUM-41 AC2).
@@ -26,22 +27,17 @@ suite in CI, so a broken journey fails the backend check (SCRUM-41 AC2).
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from datetime import timedelta
 from typing import Any
 
 import pytest
 from flask.testing import FlaskClient
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 from werkzeug.test import TestResponse
 
 from app.common.clock import local_today
 from app.modules.auth.permissions import Role
-from app.modules.auth.services import create_staff_user, get_user_by_email
-from app.modules.events.models import EventHistoryKind, EventRequest
-from app.modules.events.services import record_event_history
-from app.modules.notifications.services import EventSummary, NotificationKind, notify_users
+from app.modules.auth.services import create_staff_user
 from tests.e2e.actors import Actor, SignIn
 
 pytestmark = [pytest.mark.scrum_41, pytest.mark.e2e]
@@ -62,6 +58,7 @@ CLARIFICATION_RESPONSE = "Yes, two guests use wheelchairs, and 50 more partners 
 APPROVAL = {"outcome": "approved"}
 
 REQUESTS_PATH = "/api/events/requests"
+UNASSIGNED_PATH = f"{REQUESTS_PATH}/unassigned"
 DRAFTS_PATH = f"{REQUESTS_PATH}/drafts"
 
 
@@ -109,55 +106,13 @@ def coordinator(db_session: Session, sign_in: SignIn, password: str) -> Actor:
 
 
 @pytest.fixture()
-def lead_assigns_outside_the_api(
-    db_session: Session, coordinator: Actor, password: str
-) -> Callable[[str], None]:
-    """Give a submitted request to the coordinator, as the Event Coordinator Lead does.
-
-    SCRUM-95 AC1 stopped submission assigning anybody, and the Lead's own route,
-    ``POST /api/events/requests/<reference>/coordinator``, is not built yet, so this
-    journey has no way to put a coordinator on the request through the API. Until it
-    has, this does by hand what that route will do — set the column, record the audit
-    entry under the Lead (ADR-0036), and raise the coordinator's and the organiser's
-    notices — through the same services the route will call.
-
-    This is a deliberate, temporary breach of ADR-0031's rule that every call in this
-    journey goes through the real routes, and the only one. It is not the intended
-    design: once the route exists, call it instead and delete this fixture.
-    """
-    lead = create_staff_user(
+def lead(db_session: Session, sign_in: SignIn, password: str) -> Actor:
+    """The only Event Coordinator Lead, created as staff are (ADR-0023), signed in."""
+    create_staff_user(
         {**LEAD_ACCOUNT, "password": password, "role": Role.EVENT_COORDINATOR_LEAD.value},
         session=db_session,
     )
-    carl = get_user_by_email(COORDINATOR_ACCOUNT["email"], session=db_session)
-    assert carl is not None
-
-    def _assign(reference: str) -> None:
-        event_request = db_session.scalars(
-            select(EventRequest).where(EventRequest.reference == reference)
-        ).one()
-        event_request.coordinator_id = carl.id
-        record_event_history(
-            event_request,
-            EventHistoryKind.COORDINATOR_ASSIGNED,
-            actor_id=lead.id,
-            details={"coordinator_id": carl.id},
-            session=db_session,
-        )
-        db_session.commit()
-
-        event = EventSummary(
-            id=event_request.id, reference=event_request.reference, name=event_request.name
-        )
-        notify_users([carl.id], event, NotificationKind.COORDINATOR_ASSIGNED, session=db_session)
-        notify_users(
-            [event_request.organiser_id],
-            event,
-            NotificationKind.REQUEST_ASSIGNED,
-            session=db_session,
-        )
-
-    return _assign
+    return sign_in(LEAD_ACCOUNT["email"], password)
 
 
 @pytest.fixture()
@@ -178,9 +133,7 @@ def organiser(client: FlaskClient, coordinator: Actor, sign_in: SignIn, password
 
 
 def test_a_request_travels_from_draft_to_approval(
-    organiser: Actor,
-    coordinator: Actor,
-    lead_assigns_outside_the_api: Callable[[str], None],
+    organiser: Actor, coordinator: Actor, lead: Actor
 ) -> None:
     # --- 1. Draft: saved with only a name, then completed (SCRUM-20 AC1, AC3, AC4) ---
     draft = _body(organiser.post(DRAFTS_PATH, {"name": EVENT_NAME}), 201)
@@ -205,12 +158,20 @@ def test_a_request_travels_from_draft_to_approval(
     assert [(row["reference"], row["status"]) for row in listed] == [(reference, "submitted")]
 
     # --- 3. Assignment: it arrives unassigned, then the Lead gives it to Carl ---
-    # (SCRUM-95 AC1, AC5; SCRUM-30 AC3, AC5; SCRUM-24 AC9; SCRUM-31 AC2;
+    # (SCRUM-95 AC1-AC6; SCRUM-30 AC3, AC5; SCRUM-24 AC9; SCRUM-31 AC2;
     #  SCRUM-39 AC1, AC4)
     assert _record(organiser, reference)["coordinator"] is None
     assert _body(coordinator.get(f"{REQUESTS_PATH}/assigned"), 200)["event_requests"] == []
+    assert _latest_notification(lead) == ("request_queued_for_lead", None)
+    queue = _body(lead.get(UNASSIGNED_PATH), 200)["event_requests"]
+    assert [row["name"] for row in queue] == [EVENT_NAME]
+    assert coordinator.get(UNASSIGNED_PATH).status_code == 403
 
-    lead_assigns_outside_the_api(reference)
+    carl_assigned = {"coordinator_email": COORDINATOR_ACCOUNT["email"]}
+    assert coordinator.post(f"{request_path}/coordinator", carl_assigned).status_code == 403
+    assigned_to = _body(lead.post(f"{request_path}/coordinator", carl_assigned), 200)
+    assert assigned_to["coordinator"] == COORDINATOR_ACCOUNT
+    assert _body(lead.get(UNASSIGNED_PATH), 200)["event_requests"] == []
 
     assert _record(organiser, reference)["coordinator"] == COORDINATOR_ACCOUNT
     assert _record(coordinator, reference)["expected_attendance"] == 250
