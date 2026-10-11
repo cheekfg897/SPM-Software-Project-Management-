@@ -4,12 +4,39 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import date, datetime, time
+from typing import Any
 
 import pytest
 from sqlalchemy.orm import Session
 
 from app.modules.events.models import EventRequest, EventRequestStatus
-from app.modules.venue.models import Booking, BookingStatus, Venue, VenueBlock
+from app.modules.venue import services
+from app.modules.venue.models import Booking, BookingStatus, Venue, VenueBlock, VenueBookingRequest
+
+COORDINATOR_ID = 3
+SavedEvent = Callable[..., EventRequest]
+
+
+def booking_payload(**overrides: Any) -> dict[str, Any]:
+    """A valid payload for raising a request; ``overrides`` replace its fields."""
+    payload = {
+        "venue_id": 3,
+        "starts_at": "2026-11-01T09:00:00+08:00",
+        "ends_at": "2026-11-01T12:00:00+08:00",
+        "purpose": "Main hall",
+    }
+    return {**payload, **overrides}
+
+
+def raise_booking(
+    venue: Venue, event: EventRequest, session: Session, **overrides: Any
+) -> VenueBookingRequest:
+    """Raise a booking request for ``event`` at ``venue`` as its coordinator."""
+    payload = booking_payload(**{"venue_id": venue.id, **overrides})
+    shown = services.raise_booking_request(
+        event.id, payload, requested_by=COORDINATOR_ID, session=session
+    )
+    return shown.request
 
 
 @pytest.fixture()
@@ -70,7 +97,7 @@ def saved_event(save: Callable[..., None]) -> Callable[..., EventRequest]:
             reference=f"EVR-{counter['n']:08d}",
             status=status,
             organiser_id=7,
-            coordinator_id=3,
+            coordinator_id=COORDINATOR_ID,
             name="Partner Summit",
             proposed_date=date(2026, 11, 1),
             end_date=date(2026, 11, 2),
