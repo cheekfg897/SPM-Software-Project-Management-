@@ -743,9 +743,21 @@ def _venue_is_suitable(
         ) from None
 
 
-def _notify_venue_staff(
-    request: VenueBookingRequest, event: EventForBooking, session: Session | None
-) -> None:
+def show_booking_request(
+    request: VenueBookingRequest, event: EventForBooking
+) -> BookingRequestAsShown:
+    """The request with its event's timing and accessibility needs beside it (AC4)."""
+    return BookingRequestAsShown(
+        request=request,
+        proposed_date=event.proposed_date,
+        end_date=event.end_date,
+        start_time=event.start_time,
+        end_time=event.end_time,
+        accessibility_needs=event.accessibility_needs,
+    )
+
+
+def _notify_venue_staff(event_id: int, event: EventForBooking, session: Session | None) -> None:
     """Tell every Venue Staff user the request needs a decision (AC9, ADR-0035).
 
     Runs after the request's own commit, in a second commit (ADR-0015). If the
@@ -753,7 +765,7 @@ def _notify_venue_staff(
     request is already saved, and failing the reply would invite a second request.
     """
     active_session = resolve_session(session)
-    summary = EventSummary(id=request.event_id, reference=event.reference, name=event.name)
+    summary = EventSummary(id=event_id, reference=event.reference, name=event.name)
     try:
         notify_users(
             list_user_ids_with_role(Role.VENUE_STAFF, session=session),
@@ -772,8 +784,11 @@ def raise_booking_request(
     *,
     requested_by: int,
     session: Session | None = None,
-) -> VenueBookingRequest:
+) -> BookingRequestAsShown:
     """Raise a Pending booking request for an approved event (SCRUM-42 AC1, AC3, AC5).
+
+    Returns the request with its event's details beside it (AC4), taken from the event
+    read before saving, so a saved request is never lost to a failed second read.
 
     Occupancy defaults to the event's expected attendance; the event has no layout, so
     the layout defaults to none. A venue unsuitable for the request's own occupancy
@@ -804,40 +819,7 @@ def raise_booking_request(
 
     request = VenueBookingRequest(event_id=event_id, requested_by=requested_by, **data)
     _save_request(request, session)
-    _notify_venue_staff(request, event, session)
-    return request
-
-
-def show_booking_request(
-    request: VenueBookingRequest, event: EventForBooking
-) -> BookingRequestAsShown:
-    """The request with its event's timing and accessibility needs beside it (AC4)."""
-    return BookingRequestAsShown(
-        request=request,
-        proposed_date=event.proposed_date,
-        end_date=event.end_date,
-        start_time=event.start_time,
-        end_time=event.end_time,
-        accessibility_needs=event.accessibility_needs,
-    )
-
-
-def raise_and_show_booking_request(
-    event_id: int,
-    payload: Mapping[str, Any] | None,
-    *,
-    requested_by: int,
-    session: Session | None = None,
-) -> BookingRequestAsShown:
-    """Raise a booking request and return it with its event's details (AC4).
-
-    Raises:
-        As :func:`raise_booking_request`.
-    """
-    from app.modules.events import services as event_services  # circular at import time
-
-    request = raise_booking_request(event_id, payload, requested_by=requested_by, session=session)
-    event = event_services.get_event_for_coordinator(event_id, requested_by, session=session)
+    _notify_venue_staff(event_id, event, session)
     return show_booking_request(request, event)
 
 
