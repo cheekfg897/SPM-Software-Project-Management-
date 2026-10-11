@@ -1857,6 +1857,45 @@ def list_event_requests_with_equipment(*, session: Session | None = None) -> lis
     )
 
 
+# --------------------------------------------------------------------------
+# SCRUM-95 — the Event Coordinator Lead's queue of unassigned requests
+# --------------------------------------------------------------------------
+
+
+def list_unassigned_requests(*, session: Session | None = None) -> list[EventRequest]:
+    """Submitted requests with no coordinator, oldest submission first (SCRUM-95 AC2).
+
+    A queue: the request that has waited longest is first, and one with the same time
+    goes by id, the mirror of :func:`_list_event_requests_newest_first`. Nothing waiting
+    is an empty list, not an error.
+
+    Only ``SUBMITTED`` requests are listed, not everything past the draft stage: a
+    request that is under review or beyond has necessarily been given a coordinator, so
+    only a submitted one can still be waiting for the Lead. A request SCRUM-30 assigned
+    before the Lead existed keeps its coordinator, so ``coordinator_id IS NULL`` leaves
+    it out without any data migration (ADR-0036).
+
+    The submission time is the request's ``created_at`` (ADR-0036). There is no separate
+    submission instant, so a request that sat as a draft shows when the draft was
+    started, not when it was submitted.
+
+    Args:
+        session: Database session; defaults to ``db.session``.
+
+    Returns:
+        The waiting requests, oldest first.
+    """
+    stmt = (
+        select(EventRequest)
+        .where(
+            EventRequest.status == EventRequestStatus.SUBMITTED,
+            EventRequest.coordinator_id.is_(None),
+        )
+        .order_by(EventRequest.created_at.asc(), EventRequest.id.asc())
+    )
+    return list(resolve_session(session).scalars(stmt))
+
+
 def get_event_record_for_coordinator(
     coordinator_id: int | str, reference: str, *, session: Session | None = None
 ) -> EventRecord:
