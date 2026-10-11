@@ -2,11 +2,11 @@
 
 AC1: the Event Organiser who submitted a request is told when an Event Coordinator is
 assigned to it, with a ``request_assigned`` notification (ADR-0030). That happens
-wherever a coordinator is assigned: a fresh submission, a submitted draft (SCRUM-20)
-and a reassignment (SCRUM-87). Only the submitter is told, not their colleagues
-(decision 39-1). With no coordinator to assign, nobody is told
-(``test_assign_coordinator.py``); a lost notice is covered with the coordinator's
-tests, in ``test_submit_event_request_notifies_coordinators.py`` and
+wherever a coordinator is assigned, which since SCRUM-95 is no longer submitting one:
+a submitted request waits unassigned for the Event Coordinator Lead (SCRUM-95 AC1,
+ADR-0036), so submitting tells the organiser nothing, and a reassignment (SCRUM-87)
+is what is left here to tell them. Only the submitter is told, not their colleagues
+(decision 39-1). A lost notice is covered with the coordinator's tests, in
 ``test_reassign_coordinator_notifications.py``.
 
 Runs against ``db_session`` with ``saved_users``: organiser 7 in client organisation
@@ -35,6 +35,7 @@ SubmitValidRequest = Callable[..., EventRequest]
 SaveDraft = Callable[[int, dict[str, Any]], EventRequest]
 Reassign = Callable[[int, str], tuple[EventRequest, CoordinatorContact]]
 NotificationsOf = Callable[[int], list[tuple[Any, ...]]]
+AssignmentNoticesOf = Callable[[int], list[NotificationKind]]
 
 ORGANISER_ID = 7
 COLLEAGUE_ID = 8
@@ -57,33 +58,32 @@ def test_the_organiser_notification_says_a_coordinator_was_assigned() -> None:
     )
 
 
-def test_the_organiser_is_told_when_their_submitted_request_is_assigned(
+@pytest.mark.scrum_95
+def test_submitting_a_request_tells_the_organiser_nothing_about_assignment(
     saved_users: list[User],
     submit_valid_request: SubmitValidRequest,
-    notifications_of: NotificationsOf,
+    assignment_notices_of: AssignmentNoticesOf,
 ) -> None:
+    """There is nothing to tell yet: the Lead has not given it to anybody (AC1)."""
     submit_valid_request()
 
-    assert notifications_of(ORGANISER_ID) == [
-        _organiser_notification(1, "EVR-AAAAAAAA", "ConnectSphere Partner Summit")
-    ]
+    assert assignment_notices_of(ORGANISER_ID) == []
 
 
-def test_the_organiser_is_told_when_their_submitted_draft_is_assigned(
+@pytest.mark.scrum_95
+def test_submitting_a_draft_tells_the_organiser_nothing_about_assignment(
     saved_users: list[User],
     save_draft: SaveDraft,
     valid_event_request_payload: dict[str, Any],
-    notifications_of: NotificationsOf,
+    assignment_notices_of: AssignmentNoticesOf,
     db_session: Session,
     today: date,
 ) -> None:
-    draft = save_draft(ORGANISER_ID, valid_event_request_payload)
+    save_draft(ORGANISER_ID, valid_event_request_payload)
 
     submit_draft_event_request(ORGANISER_ID, DRAFT_REFERENCE, session=db_session, today=today)
 
-    assert notifications_of(ORGANISER_ID) == [
-        _organiser_notification(draft.id, DRAFT_REFERENCE, "ConnectSphere Partner Summit")
-    ]
+    assert assignment_notices_of(ORGANISER_ID) == []
 
 
 def test_the_organiser_is_told_when_their_request_is_reassigned(
