@@ -6,8 +6,9 @@ const LEAD_PATHS = {
   coordinatorFor: (reference: string) => `/api/events/requests/${reference}/coordinator`,
 } as const
 
-/** One request waiting in the queue. The backend shows these six fields and no more. */
+/** One request waiting in the queue: the reference that names it, then the six fields AC2 lists. */
 export interface UnassignedRequest {
+  reference: string
   name: string
   proposed_date: string
   start_time: string

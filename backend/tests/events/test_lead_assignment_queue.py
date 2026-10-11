@@ -242,16 +242,17 @@ def test_the_oldest_submission_comes_first_and_an_equal_time_goes_by_id(
     ]
 
 
-def test_each_queue_entry_shows_exactly_what_ac2_lists(
+def test_each_queue_entry_shows_its_reference_and_exactly_what_ac2_lists(
     make_event_request: MakeEventRequest,
 ) -> None:
-    """Name, date, times, expected attendance and submission time, in business time."""
+    """The reference, then AC2: name, date, times, attendance, submission time."""
     event_request = make_event_request()
     event_request.created_at = datetime(2026, 10, 1, 9, tzinfo=timezone.utc)
 
     shown = UnassignedRequestSchema().dump(event_request)
 
     assert shown == {
+        "reference": "EVR-AAAAAAAA",
         "name": "Partner Summit",
         "proposed_date": "2026-10-15",
         "start_time": "09:00:00",
