@@ -293,30 +293,6 @@ def assert_migration_and_model_agree() -> Callable[
 
 
 @pytest.fixture()
-def notifications_of() -> Callable[[int], list[tuple[Any, ...]]]:
-    """A user's notifications, newest first, as rows of what each one records.
-
-    Each row is (event request id, reference, name, kind, read at).
-    """
-
-    def _notifications_of(user_id: int) -> list[tuple[Any, ...]]:
-        rows = []
-        for notification in list_notifications_for_recipient(user_id):
-            rows.append(
-                (
-                    notification.event_request_id,
-                    notification.event_reference,
-                    notification.event_name,
-                    notification.kind,
-                    notification.read_at,
-                )
-            )
-        return rows
-
-    return _notifications_of
-
-
-@pytest.fixture()
 def detailed_notifications_of() -> Callable[[int], list[tuple[Any, ...]]]:
     """A user's notifications, newest first, as (reference, kind, detail) rows.
 
