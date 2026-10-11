@@ -14,7 +14,7 @@ test('SCRUM-28: an attendee opens their notifications and marks one read', async
   ] as const)
   await page.goto('/events')
 
-  // The mock gives the attendee two unread notifications and one read (mocks/handlers/notifications.ts).
+  // The counts come from the mock: two unread and one read (mocks/handlers/notifications.ts).
   const header = page.getByRole('banner')
   const bellWithTwo = header.getByRole('link', { name: 'Notifications, 2 unread' })
   await expect(bellWithTwo).toBeVisible()
