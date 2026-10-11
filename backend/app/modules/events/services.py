@@ -1950,10 +1950,9 @@ def get_event_record_for_coordinator(
 
 
 # --------------------------------------------------------------------------
-# SCRUM-68 — mark an event as completed after it has taken place
+# SCRUM-45 / SCRUM-46 — equipment availability and reservation
 # --------------------------------------------------------------------------
 
-NOT_CONFIRMED_MESSAGE = "Only a confirmed event can be marked completed."
 PERIOD_INCOMPLETE_MESSAGE = "The event has no complete date and times yet."
 
 
@@ -1983,16 +1982,6 @@ class EventEquipmentNeed:
     accepts_reservations: bool
 
 
-NOT_YET_ENDED_MESSAGE = "The event has not ended yet."
-
-
-class RequestNotCompletableError(AppError):
-    """The event can't be marked completed yet, or in its current state (409)."""
-
-    status_code = 409
-    error_code = "request_not_completable"
-
-
 def _business_instant(day: date | None, at: time | None) -> datetime:
     """A date and wall-clock time in business time (ADR-0002) as a UTC-aware instant.
 
@@ -2014,66 +2003,6 @@ def _event_period(event_request: EventRequest) -> tuple[datetime, datetime]:
     starts_at = _business_instant(event_request.proposed_date, event_request.start_time)
     ends_at = _business_instant(event_request.end_date, event_request.end_time)
     return starts_at, ends_at
-
-
-def _has_ended(event_request: EventRequest, now: datetime) -> bool:
-    """Whether ``now`` is at or after the event's end (SCRUM-68 AC2, ADR-0027).
-
-    The end is ``end_date`` + ``end_time``, a wall-clock time in business time.
-    """
-    # A draft may leave both empty, but a draft never reaches this check (ADR-0024).
-    return now >= _business_instant(event_request.end_date, event_request.end_time)
-
-
-def complete_event_request(
-    coordinator_id: int | str,
-    reference: str,
-    *,
-    session: Session | None = None,
-    now: datetime | None = None,
-) -> EventRequest:
-    """Mark a confirmed event completed once it has ended (SCRUM-68).
-
-    Only the request's assigned coordinator may do it (ADR-0027). The checks run in
-    the order edits and reassignment use: the reference, then ownership, then status,
-    then the end time. The ``completed`` status and an ``event_completed`` history
-    entry naming the caller are saved in one commit (AC5); the entry's
-    ``occurred_at`` is the same ``now`` the end was checked against. No one is
-    notified.
-
-    Args:
-        coordinator_id: The caller's user id, taken from their token.
-        reference: The ``EVR-…`` reference; case and surrounding spaces are ignored.
-        session: Database session; defaults to ``db.session``.
-        now: The current instant, timezone-aware; defaults to the real clock.
-
-    Returns:
-        The request, now ``completed``.
-
-    Raises:
-        NotFoundError: 404 — no such request, a draft, or not the caller's.
-        RequestNotCompletableError: 409 — the request isn't confirmed (AC3), or the
-            event hasn't ended yet (AC2).
-    """
-    sess = resolve_session(session)
-    if now is None:
-        now = datetime.now(timezone.utc)
-    event_request = _event_request_assigned_to(coordinator_id, reference, sess)
-    if event_request.status is not EventRequestStatus.CONFIRMED:
-        raise RequestNotCompletableError(NOT_CONFIRMED_MESSAGE)
-    if not _has_ended(event_request, now):
-        raise RequestNotCompletableError(NOT_YET_ENDED_MESSAGE)
-
-    event_request.status = EventRequestStatus.COMPLETED
-    record_event_history(
-        event_request,
-        EventHistoryKind.EVENT_COMPLETED,
-        actor_id=int(coordinator_id),
-        session=sess,
-        now=now,
-    )
-    sess.commit()
-    return event_request
 
 
 def get_event_equipment_need(
@@ -2157,6 +2086,81 @@ def notify_coordinator_equipment_reserved(event_id: int, *, session: Session | N
     _raise_notifications(
         [event_request.coordinator_id], event_request, NotificationKind.EQUIPMENT_RESERVED, sess
     )
+
+
+# --------------------------------------------------------------------------
+# SCRUM-68 — mark an event as completed after it has taken place
+# --------------------------------------------------------------------------
+
+NOT_CONFIRMED_MESSAGE = "Only a confirmed event can be marked completed."
+NOT_YET_ENDED_MESSAGE = "The event has not ended yet."
+
+
+class RequestNotCompletableError(AppError):
+    """The event can't be marked completed yet, or in its current state (409)."""
+
+    status_code = 409
+    error_code = "request_not_completable"
+
+
+def _has_ended(event_request: EventRequest, now: datetime) -> bool:
+    """Whether ``now`` is at or after the event's end (SCRUM-68 AC2, ADR-0027).
+
+    The end is ``end_date`` + ``end_time``, a wall-clock time in business time.
+    """
+    # A draft may leave both empty, but a draft never reaches this check (ADR-0024).
+    return now >= _business_instant(event_request.end_date, event_request.end_time)
+
+
+def complete_event_request(
+    coordinator_id: int | str,
+    reference: str,
+    *,
+    session: Session | None = None,
+    now: datetime | None = None,
+) -> EventRequest:
+    """Mark a confirmed event completed once it has ended (SCRUM-68).
+
+    Only the request's assigned coordinator may do it (ADR-0027). The checks run in
+    the order edits and reassignment use: the reference, then ownership, then status,
+    then the end time. The ``completed`` status and an ``event_completed`` history
+    entry naming the caller are saved in one commit (AC5); the entry's
+    ``occurred_at`` is the same ``now`` the end was checked against. No one is
+    notified.
+
+    Args:
+        coordinator_id: The caller's user id, taken from their token.
+        reference: The ``EVR-…`` reference; case and surrounding spaces are ignored.
+        session: Database session; defaults to ``db.session``.
+        now: The current instant, timezone-aware; defaults to the real clock.
+
+    Returns:
+        The request, now ``completed``.
+
+    Raises:
+        NotFoundError: 404 — no such request, a draft, or not the caller's.
+        RequestNotCompletableError: 409 — the request isn't confirmed (AC3), or the
+            event hasn't ended yet (AC2).
+    """
+    sess = resolve_session(session)
+    if now is None:
+        now = datetime.now(timezone.utc)
+    event_request = _event_request_assigned_to(coordinator_id, reference, sess)
+    if event_request.status is not EventRequestStatus.CONFIRMED:
+        raise RequestNotCompletableError(NOT_CONFIRMED_MESSAGE)
+    if not _has_ended(event_request, now):
+        raise RequestNotCompletableError(NOT_YET_ENDED_MESSAGE)
+
+    event_request.status = EventRequestStatus.COMPLETED
+    record_event_history(
+        event_request,
+        EventHistoryKind.EVENT_COMPLETED,
+        actor_id=int(coordinator_id),
+        session=sess,
+        now=now,
+    )
+    sess.commit()
+    return event_request
 
 
 # --------------------------------------------------------------------------
