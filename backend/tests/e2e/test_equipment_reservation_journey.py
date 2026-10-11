@@ -3,7 +3,9 @@
 Two events share a day. Technical Support reserve projectors for the first, so the
 second has fewer free (SCRUM-46 AC2, SCRUM-45 AC1), asking for more than are free is
 refused with how many are (AC3), and the event's history shows who reserved what (AC4).
-Every call goes through the real routes with Flask's test client (ADR-0031).
+The first event's coordinator reads its equipment but not the other event's, which is
+not assigned to them (ADR-0019, ADR-0037). Every call goes through the real routes
+with Flask's test client (ADR-0031).
 """
 
 from __future__ import annotations
@@ -23,7 +25,9 @@ from tests.e2e.actors import Actor, SignIn
 
 pytestmark = [pytest.mark.scrum_46, pytest.mark.e2e]
 
+PASSWORD = "Password123"
 TECHNICAL_SUPPORT_ACCOUNT = {"full_name": "Tina Technician", "email": "tina@example.com"}
+COORDINATOR_ACCOUNT = {"full_name": "Cara Coordinator", "email": "cara@example.com"}
 FIRST_EVENT = "EVR-AAAAAAAA"
 #: Same day as the first, starting at noon, so the two overlap.
 SECOND_EVENT = "EVR-BBBBBBBB"
@@ -43,32 +47,43 @@ def _free_projectors(actor: Actor, reference: str) -> int:
     return row["available"]
 
 
+def _create_staff(account: dict[str, str], role: Role, session: Session) -> int:
+    """Create a staff account as staff are created (ADR-0023); return its user id."""
+    user = create_staff_user({**account, "password": PASSWORD, "role": role.value}, session=session)
+    return user.id
+
+
 @pytest.fixture()
 def technical_support(db_session: Session, sign_in: SignIn) -> Actor:
-    """The Technical Support account, created as staff are (ADR-0023) and signed in."""
-    password = "Password123"
-    create_staff_user(
-        {
-            **TECHNICAL_SUPPORT_ACCOUNT,
-            "password": password,
-            "role": Role.TECHNICAL_SUPPORT_STAFF.value,
-        },
-        session=db_session,
-    )
-    return sign_in(TECHNICAL_SUPPORT_ACCOUNT["email"], password)
+    """The Technical Support account, signed in."""
+    _create_staff(TECHNICAL_SUPPORT_ACCOUNT, Role.TECHNICAL_SUPPORT_STAFF, db_session)
+    return sign_in(TECHNICAL_SUPPORT_ACCOUNT["email"], PASSWORD)
+
+
+@pytest.fixture()
+def coordinator_id(db_session: Session) -> int:
+    """The Event Coordinator's user id; the first event is assigned to them."""
+    return _create_staff(COORDINATOR_ACCOUNT, Role.EVENT_COORDINATOR, db_session)
+
+
+@pytest.fixture()
+def coordinator(coordinator_id: int, sign_in: SignIn) -> Actor:
+    """The Event Coordinator, signed in."""
+    return sign_in(COORDINATOR_ACCOUNT["email"], PASSWORD)
 
 
 @pytest.fixture()
 def two_overlapping_events(
-    db_session: Session, make_event_request: Callable[..., EventRequest]
+    db_session: Session, make_event_request: Callable[..., EventRequest], coordinator_id: int
 ) -> None:
-    db_session.add(make_event_request(reference=FIRST_EVENT))
+    """The first assigned to the coordinator, the second to nobody yet."""
+    db_session.add(make_event_request(reference=FIRST_EVENT, coordinator_id=coordinator_id))
     db_session.add(make_event_request(reference=SECOND_EVENT, start_time=time(12, 0)))
     db_session.commit()
 
 
 def test_reserving_for_one_event_leaves_less_for_an_overlapping_one(
-    technical_support: Actor, two_overlapping_events: None
+    technical_support: Actor, coordinator: Actor, two_overlapping_events: None
 ) -> None:
     equipment_type = _body(technical_support.post("/api/equipment/types", PROJECTORS), 201)
     reservations_path = f"/api/equipment/events/{FIRST_EVENT}/reservations"
@@ -95,3 +110,13 @@ def test_reserving_for_one_event_leaves_less_for_an_overlapping_one(
     [entry] = _body(technical_support.get(history_path), 200)["history"]
     assert (entry["kind"], entry["actor_name"]) == ("equipment_reserved", "Tina Technician")
     assert entry["details"]["quantity"] == 4
+
+    # --- The first event's coordinator reads its equipment (ADR-0019, ADR-0037) ---
+    assert [row["id"] for row in _body(coordinator.get(reservations_path), 200)] == [
+        reservation["id"]
+    ]
+    assert _free_projectors(coordinator, FIRST_EVENT) == 6
+
+    # --- ...but not the second event's, which is not theirs: as if it didn't exist ---
+    not_theirs = _body(coordinator.get(f"/api/equipment/events/{SECOND_EVENT}/availability"), 404)
+    assert not_theirs["message"] == "Event request not found."

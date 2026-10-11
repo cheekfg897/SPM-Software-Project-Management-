@@ -19,6 +19,10 @@ Public surface for other modules (import from here, not from sub-files):
 * :func:`app.modules.events.services.decide_event_request`
 * :func:`app.modules.events.services.request_clarification`
 * :func:`app.modules.events.services.resubmit_event_request`
+* :func:`app.modules.events.services.get_event_equipment_need`
+* :func:`app.modules.events.services.get_event_equipment_need_for_viewer`
+* :func:`app.modules.events.services.record_equipment_reserved`
+* :func:`app.modules.events.services.notify_coordinator_equipment_reserved`
 """
 
 from __future__ import annotations

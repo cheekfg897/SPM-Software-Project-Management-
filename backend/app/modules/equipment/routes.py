@@ -24,6 +24,10 @@ from app.modules.equipment.schemas import (
 
 bp = Blueprint("equipment", __name__, url_prefix="/api/equipment")
 
+#: Who reads an event's equipment, as with its equipment lines (ADR-0019, ADR-0037).
+#: Which events a coordinator may read is the services' job.
+_EQUIPMENT_READERS = (Role.EVENT_COORDINATOR, Role.TECHNICAL_SUPPORT_STAFF)
+
 _equipment_type_schema = EquipmentTypeSchema()
 _availability_schema = EquipmentAvailabilitySchema()
 _reservation_schema = EquipmentReservationSchema()
@@ -64,14 +68,16 @@ def update_equipment_type(equipment_type_id: int) -> tuple[Response, int]:
 
 
 @bp.get("/events/<reference>/availability")
-@requires_role(*INTERNAL_ROLES)
+@requires_role(*_EQUIPMENT_READERS)
 def get_event_availability(reference: str) -> tuple[Response, int]:
     """What is free of each equipment type for the event's own period (SCRUM-45).
 
-    Internal roles: Technical Support check it before reserving, and coordinators
-    judge from it whether an event is feasible.
+    Technical Support check it before reserving, for any event; a coordinator judges
+    from it whether an event assigned to them is feasible.
     """
-    availability = services.equipment_availability_for_event(reference)
+    availability = services.equipment_availability_for_event(
+        g.current_user_id, reference, viewer_role=Role(g.current_user_role)
+    )
     return jsonify(_availability_schema.dump(availability, many=True)), 200
 
 
@@ -86,8 +92,13 @@ def reserve_equipment(reference: str) -> tuple[Response, int]:
 
 
 @bp.get("/events/<reference>/reservations")
-@requires_role(*INTERNAL_ROLES)
+@requires_role(*_EQUIPMENT_READERS)
 def list_event_reservations(reference: str) -> tuple[Response, int]:
-    """The equipment reserved for the event, oldest first (SCRUM-46 AC4)."""
-    reservations = services.list_reservations_for_event(reference)
+    """The equipment reserved for the event, oldest first (SCRUM-46 AC4).
+
+    Technical Support for any event; a coordinator for an event assigned to them.
+    """
+    reservations = services.list_reservations_for_event(
+        g.current_user_id, reference, viewer_role=Role(g.current_user_role)
+    )
     return jsonify(_reservation_schema.dump(reservations, many=True)), 200
