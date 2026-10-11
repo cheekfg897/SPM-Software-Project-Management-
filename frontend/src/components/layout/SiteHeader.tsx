@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { NavLink, useNavigate } from 'react-router'
 
-import { NotificationBell } from '@/components/NotificationBell'
+import { NotificationBell } from '@/features/notifications/components/NotificationBell'
 import { Button, ButtonLink } from '@/components/ui'
 import { ROUTES } from '@/config/routes'
 import { selectSessionUser, signedOut, useAppDispatch, useAppSelector } from '@/store'
