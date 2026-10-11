@@ -24,7 +24,7 @@ export interface Notification {
 
 export const notificationKeys = {
   all: ['notifications'] as const,
-  /** One viewer's list: signing in as someone else reads it again instead of showing the last viewer's. */
+  /** One viewer's list: signing in as someone else reads it again, not the last viewer's. */
   list: (viewerId: number | null) => [...notificationKeys.all, 'list', viewerId] as const,
   unreadCount: (viewerId: number | null) =>
     [...notificationKeys.all, 'unread-count', viewerId] as const,
