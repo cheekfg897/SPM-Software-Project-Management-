@@ -25,7 +25,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "0022_add_lead_role"
-down_revision = "0019_add_review_kinds"
+down_revision = "0021_add_equipment_reservations"
 branch_labels = None
 depends_on = None
 
@@ -53,6 +53,9 @@ PREVIOUS_NOTIFICATION_KIND_VALUES = (
     "clarification_requested",
     "clarification_answered",
     "request_assigned",
+    # Added below us in the stack: 0020 (SCRUM-42) and 0021 (SCRUM-46).
+    "venue_booking_requested",
+    "equipment_reserved",
 )
 
 #: Added here (SCRUM-95 AC4).
