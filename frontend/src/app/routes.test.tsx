@@ -2,14 +2,21 @@ import { screen, within } from '@testing-library/react'
 
 import { ROUTES } from '@/config/routes'
 import { MOCK_ACCOUNTS, mockSessionFor } from '@/mocks/fixtures/accounts'
+import { eventEquipmentPath, ROUTES } from '@/config/routes'
+import { ROLE } from '@/config/roles'
 import { renderApp } from '@/test/render'
 
 // A token the mock backend accepts: the header now asks it for the unread count.
 const ATTENDEE = mockSessionFor(MOCK_ACCOUNTS.attendee)
 
+/** A path a visitor could open: the equipment route needs an event reference filled in. */
+function openablePath(path: string): string {
+  return path === ROUTES.EVENT_EQUIPMENT ? eventEquipmentPath('EVR-ROUTE0001') : path
+}
+
 describe('app routes', () => {
   it.each(Object.values(ROUTES))('%s renders a page with a heading', async (path) => {
-    renderApp(path)
+    renderApp(openablePath(path))
 
     expect(await screen.findByRole('heading', { level: 1 })).toBeInTheDocument()
   })

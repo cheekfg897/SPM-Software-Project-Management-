@@ -12,6 +12,7 @@ import { StaffHomePage } from '@/features/auth/pages/StaffHomePage'
 import { StaffLoginPage } from '@/features/auth/pages/StaffLoginPage'
 import { VenueRequestsPage } from '@/features/booking/pages/VenueRequestsPage'
 import { CataloguePage } from '@/features/catalogue/pages/CataloguePage'
+import { EventEquipmentPage } from '@/features/equipment/pages/EventEquipmentPage'
 import { MyEventRequests } from '@/features/eventRequests/components/MyEventRequests'
 import { LandingPage } from '@/features/landing/pages/LandingPage'
 import { NotificationsPage } from '@/features/notifications/pages/NotificationsPage'
@@ -62,6 +63,10 @@ export const appRoutes: RouteObject[] = [
         element: (
           <RequireRole allowedRoles={COORDINATOR_ROLES} loginRoute={ROUTES.STAFF_LOGIN}>
             <VenueRequestsPage />
+        path: ROUTES.EVENT_EQUIPMENT,
+        element: (
+          <RequireRole allowedRoles={INTERNAL_ROLES} loginRoute={ROUTES.STAFF_LOGIN}>
+            <EventEquipmentPage />
           </RequireRole>
         ),
       },
