@@ -495,6 +495,20 @@ def test_a_request_is_shown_with_the_event_it_was_raised_from(
     )
 
 
+def test_a_raised_request_comes_back_with_the_events_details(
+    db_session: Session, venue: Venue, saved_event: SavedEvent
+) -> None:
+    event = saved_event()
+
+    shown = services.raise_and_show_booking_request(
+        event.id, _payload(venue_id=venue.id), requested_by=COORDINATOR_ID, session=db_session
+    )
+
+    assert shown.request in _saved_requests(db_session)
+    assert shown.start_time == time(9, 0)
+    assert shown.accessibility_needs == "Step-free entrance"
+
+
 # --------------------------------------------------------------------------
 # Listing the requests raised for an event
 # --------------------------------------------------------------------------
