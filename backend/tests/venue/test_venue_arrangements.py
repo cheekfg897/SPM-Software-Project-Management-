@@ -229,3 +229,88 @@ def test_a_coordinator_who_is_not_assigned_cannot_withdraw(
         services.withdraw_arrangement(
             event.reference, arrangement.id, coordinator_id=99, session=db_session
         )
+
+
+def _cancel_all(event: EventRequest, session: Session) -> list[BookingRequestAsShown]:
+    return services.cancel_all_arrangements(
+        event.reference, coordinator_id=COORDINATOR_ID, session=session
+    )
+
+
+def test_cancelling_all_retires_every_arrangement(
+    db_session: Session,
+    make_venue: Callable[..., Venue],
+    save: Callable[..., None],
+    saved_event: SavedEvent,
+) -> None:
+    event = saved_event()
+    _two_arrangements(db_session, make_venue, save, event)
+
+    retired = _cancel_all(event, db_session)
+
+    assert len(retired) == 2
+    assert all(shown.request.status is BookingRequestStatus.WITHDRAWN for shown in retired)
+    assert services.count_active_arrangements(event.id, session=db_session) == 0
+
+
+def test_cancelling_all_leaves_another_events_arrangements_alone(
+    db_session: Session, venue: Venue, saved_event: SavedEvent
+) -> None:
+    mine = saved_event()
+    theirs = saved_event()
+    raise_booking(venue, mine, db_session)
+    raise_booking(venue, theirs, db_session)
+
+    _cancel_all(mine, db_session)
+
+    assert services.count_active_arrangements(theirs.id, session=db_session) == 1
+
+
+def test_cancelling_all_on_an_event_with_no_arrangements_does_nothing(
+    db_session: Session, saved_event: SavedEvent
+) -> None:
+    """Review Focus 3: an empty event is not an error."""
+    event = saved_event()
+
+    assert _cancel_all(event, db_session) == []
+    assert _history(db_session) == []
+
+
+def test_cancelling_all_skips_arrangements_already_withdrawn(
+    db_session: Session,
+    make_venue: Callable[..., Venue],
+    save: Callable[..., None],
+    saved_event: SavedEvent,
+) -> None:
+    """A second cancel-all must not refuse because the first already retired them."""
+    event = saved_event()
+    first_id, _ = _two_arrangements(db_session, make_venue, save, event)
+    _withdraw(event, first_id, db_session)
+
+    retired = _cancel_all(event, db_session)
+
+    assert len(retired) == 1
+    assert services.count_active_arrangements(event.id, session=db_session) == 0
+
+
+def test_cancelling_all_for_an_event_that_is_not_the_callers_changes_nothing(
+    db_session: Session,
+    make_venue: Callable[..., Venue],
+    save: Callable[..., None],
+    saved_event: SavedEvent,
+) -> None:
+    """A refused call writes nothing: every arrangement stays pending, no new history.
+
+    Every active arrangement is pending, so the helper's 409 cannot fire part-way
+    through the loop; the refusal that can happen is the 404 before the loop starts.
+    """
+    event = saved_event()
+    _two_arrangements(db_session, make_venue, save, event)
+    history_before = len(_history(db_session))
+
+    with pytest.raises(NotFoundError):
+        services.cancel_all_arrangements(event.reference, coordinator_id=99, session=db_session)
+
+    active = services.list_active_arrangements(event.id, session=db_session)
+    assert [arrangement.status for arrangement in active] == [BookingRequestStatus.PENDING] * 2
+    assert len(_history(db_session)) == history_before
