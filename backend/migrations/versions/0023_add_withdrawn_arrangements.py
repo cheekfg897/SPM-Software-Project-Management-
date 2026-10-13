@@ -15,8 +15,12 @@ SCRUM-93 "Book several venues for one event" (ADR-0039):
 an arrangement an ``approved`` status to be cancelled from.
 
 Values are added outside the migration's transaction, with ``IF NOT EXISTS``, as 0019
-and 0022 do. Downgrading rebuilds both enum types without the new values (lossy): a
-withdrawn arrangement goes back to ``pending`` and the new history entries are deleted.
+and 0022 do. Downgrading rebuilds both enum types without the new values and is lossy:
+withdrawn arrangements and the new history entries are deleted, not restored. A
+withdrawn arrangement is not reverted to ``pending``: that would resurrect a retired
+arrangement as live Pending work (and could collide with a re-raised one on the
+pending-request unique index), ``withdrawn`` has no earlier representation, and 0022
+likewise deletes the rows whose enum value disappears.
 """
 
 from __future__ import annotations
@@ -89,18 +93,33 @@ def upgrade() -> None:
         _add_enum_values("event_history_entry_kind", ADDED_HISTORY_KIND_VALUES)
 
 
-def downgrade() -> None:
-    # A withdrawn arrangement goes back to the status it was withdrawn from, and the
-    # new history entries are deleted, before each type is rebuilt.
-    op.execute(
-        sa.text("UPDATE venue_booking_requests SET status = 'pending' WHERE status = 'withdrawn'")
+def _drop_pending_index() -> None:
+    op.drop_index("uq_venue_booking_requests_pending", table_name="venue_booking_requests")
+
+
+def _create_pending_index() -> None:
+    # Same definition as migration 0020 (SCRUM-42 AC6).
+    op.create_index(
+        "uq_venue_booking_requests_pending",
+        "venue_booking_requests",
+        ["event_id", "venue_id", "starts_at", "ends_at"],
+        unique=True,
+        postgresql_where=sa.text("status = 'pending'"),
     )
+
+
+def downgrade() -> None:
+    op.execute(sa.text("DELETE FROM venue_booking_requests WHERE status = 'withdrawn'"))
+    # The pending index's predicate (status = 'pending') can't be re-created against
+    # the renamed enum type, so it is dropped around the rebuild.
+    _drop_pending_index()
     _rebuild_enum_without_added_values(
         "booking_request_status",
         "venue_booking_requests",
         "status",
         PREVIOUS_REQUEST_STATUS_VALUES,
     )
+    _create_pending_index()
     for value in ADDED_HISTORY_KIND_VALUES:
         op.execute(
             sa.text("DELETE FROM event_history_entries WHERE kind = :value").bindparams(value=value)
