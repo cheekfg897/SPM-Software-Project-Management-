@@ -5,7 +5,7 @@ from __future__ import annotations
 import importlib.util
 import io
 from collections.abc import Callable
-from datetime import date, datetime, time
+from datetime import UTC, date, datetime, time
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -23,6 +23,7 @@ from app.modules.auth.permissions import ALL_ROLES, Role
 from app.modules.equipment.models import EquipmentType
 from app.modules.events import routes
 from app.modules.events.models import (
+    EquipmentLineStatus,
     EventEquipmentLine,
     EventHistoryEntry,
     EventHistoryKind,
@@ -31,6 +32,7 @@ from app.modules.events.models import (
 )
 from app.modules.events.services import (
     CoordinatorContact,
+    EquipmentLineAsShown,
     EventEdit,
     EventRecord,
     assign_coordinator_to_request,
@@ -508,6 +510,23 @@ def line_as_shown() -> dict[str, Any]:
         "notes": "Needs HDMI",
         "status": "requested",
     }
+
+
+@pytest.fixture()
+def reviewed_line() -> EquipmentLineAsShown:
+    """A line of ten with six provided, as staff see it with its reviewer (SCRUM-48)."""
+    return EquipmentLineAsShown(
+        id=7,
+        equipment_type_id=1,
+        quantity=10,
+        notes=None,
+        status=EquipmentLineStatus.PARTIALLY_FULFILLED,
+        provided_quantity=6,
+        shortfall=4,
+        outcome_note="Only six in stock",
+        reviewed_by="Alice Example",
+        reviewed_at=datetime(2026, 10, 13, 9, 30, tzinfo=UTC),
+    )
 
 
 @pytest.fixture()

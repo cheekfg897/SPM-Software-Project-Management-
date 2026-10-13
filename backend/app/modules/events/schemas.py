@@ -620,7 +620,7 @@ class EquipmentLineSchema(Schema):
 
 
 class EquipmentLineWithOutcomeSchema(EquipmentLineSchema):
-    """An equipment line with its review outcome, for Technical Support (SCRUM-48 AC4).
+    """An equipment line with its review outcome, for staff (SCRUM-48 AC4).
 
     Dumped from ``EquipmentLineAsShown``, so the reviewer is a name, never a user id.
     The organiser's record keeps :class:`EquipmentLineSchema`: the outcome is not
