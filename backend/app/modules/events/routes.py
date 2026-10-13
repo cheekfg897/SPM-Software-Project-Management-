@@ -37,12 +37,14 @@ from app.modules.events.services import (
     decide_event_request,
     get_event_record_for_coordinator,
     get_event_record_for_organiser,
+    list_active_requests,
     list_equipment_lines,
     list_equipment_requests_awaiting_action,
     list_event_history,
     list_event_requests_for_coordinator,
     list_event_requests_for_organiser,
     list_event_requests_with_equipment,
+    list_requests_for_each_coordinator,
     list_unassigned_requests,
     reassign_coordinator,
     remove_equipment_line,
@@ -78,15 +80,20 @@ NO_ORGANISATION_REQUESTS_MESSAGE = "Your organisation has no event requests yet.
 NO_ASSIGNED_REQUESTS_MESSAGE = "No event requests are assigned to you yet."
 NO_EQUIPMENT_REQUESTS_MESSAGE = "No events have an equipment request yet."
 NO_UNASSIGNED_REQUESTS_MESSAGE = "No event requests are waiting to be assigned."
+NO_ACTIVE_REQUESTS_MESSAGE = "There are no active event requests."
+NO_WORKLOAD_MESSAGE = "No coordinator has an active event request."
 
 
-def _event_list_body(listed: list[dict[str, Any]], empty_message: str) -> dict[str, Any]:
-    """A role's event list; an empty one also says there are none (SCRUM-24 AC10).
+def _event_list_body(
+    listed: list[dict[str, Any]], empty_message: str, list_name: str = "event_requests"
+) -> dict[str, Any]:
+    """A role's list under ``list_name``; an empty one also says there are none.
 
     Copies ``search_venues``'s precedent (SCRUM-35 AC4): ``message`` is added only
-    when the list is empty, so a client shows it whenever it is present.
+    when the list is empty, so a client shows it whenever it is present (SCRUM-24
+    AC10). The Lead's workload list is the one that names its list differently.
     """
-    body: dict[str, Any] = {"event_requests": listed}
+    body: dict[str, Any] = {list_name: listed}
     if not listed:
         body["message"] = empty_message
     return body
@@ -196,6 +203,37 @@ def list_unassigned() -> tuple[Response, int]:
     event_requests = list_unassigned_requests()
     listed = _unassigned_request_schema.dump(event_requests, many=True)
     return jsonify(_event_list_body(listed, NO_UNASSIGNED_REQUESTS_MESSAGE)), 200
+
+
+@bp.get("/requests/active")
+@requires_role(Role.EVENT_COORDINATOR_LEAD)
+def list_active() -> tuple[Response, int]:
+    """Every active event with its status and coordinator, newest first (SCRUM-96 AC1).
+
+    Only the Event Coordinator Lead may see it (AC3); the coordinator is shown by
+    name, never by id.
+    """
+    listed = []
+    for active in list_active_requests():
+        row = _event_list_row_schema.dump(active.event_request)
+        row["coordinator"] = active.coordinator_name
+        listed.append(row)
+    return jsonify(_event_list_body(listed, NO_ACTIVE_REQUESTS_MESSAGE)), 200
+
+
+@bp.get("/coordinators/workload")
+@requires_role(Role.EVENT_COORDINATOR_LEAD)
+def list_coordinator_workload() -> tuple[Response, int]:
+    """Each coordinator with the active events assigned to them (SCRUM-96 AC2).
+
+    Only the Event Coordinator Lead may see it (AC3); coordinators are shown by name,
+    never by id.
+    """
+    listed = []
+    for workload in list_requests_for_each_coordinator():
+        events = _event_list_row_schema.dump(workload.assigned, many=True)
+        listed.append({"coordinator": workload.coordinator_name, "event_requests": events})
+    return jsonify(_event_list_body(listed, NO_WORKLOAD_MESSAGE, "coordinators")), 200
 
 
 @bp.get("/requests/awaiting-equipment")
