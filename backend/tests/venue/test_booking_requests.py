@@ -34,7 +34,13 @@ from app.modules.venue.schemas import (
     RaiseBookingRequestSchema,
     VenueBookingRequestSchema,
 )
-from tests.venue.conftest import COORDINATOR_ID, SavedEvent, booking_payload, raise_booking
+from tests.venue.conftest import (
+    COORDINATOR_ID,
+    SavedEvent,
+    booking_payload,
+    raise_booking,
+    saved_requests,
+)
 
 pytestmark = pytest.mark.scrum_42
 
@@ -66,10 +72,6 @@ def _request() -> VenueBookingRequest:
         status=BookingRequestStatus.PENDING,
         requested_by=7,
     )
-
-
-def _saved_requests(session: Session) -> list[VenueBookingRequest]:
-    return session.query(VenueBookingRequest).all()
 
 
 def _history(session: Session) -> list[EventHistoryEntry]:
@@ -240,7 +242,7 @@ def test_occupancy_and_layout_default_to_the_events(
         datetime(2026, 11, 1, 4, 0, tzinfo=UTC),
         None,
     )
-    assert _saved_requests(db_session) == [request]
+    assert saved_requests(db_session) == [request]
 
 
 def test_occupancy_and_layout_sent_override_the_events(
@@ -280,7 +282,7 @@ def test_an_unsuitable_venue_is_accepted_with_a_justification(
     )
 
     assert request.justification == "Only hall free"
-    assert _saved_requests(db_session) == [request]
+    assert saved_requests(db_session) == [request]
 
 
 def test_suitability_uses_the_requests_occupancy_not_the_events(
@@ -318,7 +320,7 @@ def test_an_event_that_is_not_approved_is_refused_naming_its_status(
     assert caught.value.message == (
         "Only an approved event can have a venue booking request; this one is submitted."
     )
-    assert _saved_requests(db_session) == []
+    assert saved_requests(db_session) == []
 
 
 @pytest.mark.parametrize("coordinator_id", [9, None], ids=["other-coordinator", "unassigned"])
@@ -410,7 +412,7 @@ def test_a_refused_request_records_nothing(
     with pytest.raises(ValidationError):
         raise_booking(venue, saved_event(), db_session, **overrides)
 
-    assert _saved_requests(db_session) == []
+    assert saved_requests(db_session) == []
     assert _history(db_session) == []
 
 
@@ -439,7 +441,7 @@ def test_a_second_pending_request_for_the_same_event_venue_and_period_is_refused
 
     assert raised.value.message == DUPLICATE_MESSAGE
     # The refused attempt was rolled back, so only the first is kept.
-    assert _saved_requests(db_session) == [first]
+    assert saved_requests(db_session) == [first]
     assert len(_history(db_session)) == 1
 
 
@@ -451,7 +453,7 @@ def test_the_same_event_and_venue_at_a_different_period_is_saved(
 
     raise_booking(venue, event, db_session, ends_at="2026-11-01T13:00:00+08:00")
 
-    assert len(_saved_requests(db_session)) == 2
+    assert len(saved_requests(db_session)) == 2
 
 
 def test_the_same_event_at_a_different_venue_and_overlapping_time_is_saved(
@@ -468,7 +470,7 @@ def test_the_same_event_at_a_different_venue_and_overlapping_time_is_saved(
 
     raise_booking(other_venue, event, db_session)
 
-    assert len(_saved_requests(db_session)) == 2
+    assert len(saved_requests(db_session)) == 2
 
 
 def test_an_integrity_error_that_is_not_the_duplicate_is_not_turned_into_a_conflict(
@@ -481,7 +483,7 @@ def test_an_integrity_error_that_is_not_the_duplicate_is_not_turned_into_a_confl
         with pytest.raises(IntegrityError):
             raise_booking(venue, event, db_session)
 
-    assert _saved_requests(db_session) == []
+    assert saved_requests(db_session) == []
 
 
 # --------------------------------------------------------------------------
@@ -522,7 +524,7 @@ def test_a_raised_request_comes_back_with_the_events_details(
         session=db_session,
     )
 
-    assert shown.request in _saved_requests(db_session)
+    assert shown.request in saved_requests(db_session)
     assert shown.start_time == time(9, 0)
     assert shown.accessibility_needs == "Step-free entrance"
 

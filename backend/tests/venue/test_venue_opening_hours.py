@@ -224,7 +224,8 @@ def test_update_rejects_an_incomplete_period(
     reload_venue: Callable[[int], Venue],
 ) -> None:
     """Partial updates must not relax required fields inside a period."""
-    venue = make_venue()
+    period = VenueOpeningPeriod(open_day=MON, open_time=time(9), close_day=MON, close_time=time(18))
+    venue = make_venue(opening_periods=[period])
     save(venue)
 
     with pytest.raises(ValidationError) as exc_info:
@@ -235,7 +236,7 @@ def test_update_rejects_an_incomplete_period(
         )
 
     assert "close" in exc_info.value.details["opening_hours"][0]
-    assert _hours_shown(reload_venue(venue.id)) == []
+    assert _hours_shown(reload_venue(venue.id)) == [_json("monday", "09:00", "monday", "18:00")]
 
 
 def test_update_replaces_the_whole_schedule(
