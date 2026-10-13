@@ -1029,3 +1029,30 @@ def withdraw_arrangement(
     _withdraw_and_record(arrangement, coordinator_id, session)
     sess.commit()
     return show_booking_request(arrangement, event)
+
+
+def cancel_all_arrangements(
+    reference: str, *, coordinator_id: int, session: Session | None = None
+) -> list[BookingRequestAsShown]:
+    """Retire every arrangement the event still has (AC6's explicit "cancel all").
+
+    AC6 keeps one arrangement's fate from touching the others unless the coordinator
+    asks for all of them, which is this call rather than a loop the client writes.
+    Every active arrangement is pending today, so each is withdrawn; SCRUM-43 adds
+    cancelling the approved ones. An event with none is not an error.
+
+    Returns:
+        The retired arrangements, earliest period first, or an empty list.
+
+    Raises:
+        NotFoundError: 404 — no such event among the coordinator's own.
+    """
+    from app.modules.events import services as event_services  # circular at import time
+
+    sess = resolve_session(session)
+    event = event_services.get_event_for_coordinator(reference, coordinator_id, session=session)
+    arrangements = list_active_arrangements(event.id, session=session)
+    for arrangement in arrangements:
+        _withdraw_and_record(arrangement, coordinator_id, session)
+    sess.commit()
+    return [show_booking_request(arrangement, event) for arrangement in arrangements]

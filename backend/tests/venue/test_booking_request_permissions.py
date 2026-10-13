@@ -39,6 +39,7 @@ ROUTES = [
     ("venue.raise_booking_request", "POST", "raise_booking_request"),
     ("venue.list_booking_requests", "GET", "list_booking_requests_for_event"),
     ("venue.withdraw_arrangement", "POST", "withdraw_arrangement"),
+    ("venue.cancel_all_arrangements", "POST", "cancel_all_arrangements"),
 ]
 ROUTE_IDS = [route[0] for route in ROUTES]
 
@@ -78,6 +79,7 @@ def mock_services(
             "raise_booking_request": shown,
             "list_booking_requests_for_event": [shown],
             "withdraw_arrangement": shown,
+            "cancel_all_arrangements": [shown],
         },
     )
 
@@ -180,6 +182,19 @@ def test_withdrawing_an_arrangement_returns_200_with_the_withdrawn_request(
     assert response.get_json()["id"] == 11
     mock_services["withdraw_arrangement"].assert_called_once_with(
         REFERENCE, 11, coordinator_id=COORDINATOR_ID
+    )
+
+
+@pytest.mark.scrum_93
+def test_cancelling_all_arrangements_returns_200_with_each_retired_request(
+    call_route: CallRoute, mock_services: dict[str, MagicMock], coordinator_token: str
+) -> None:
+    response, status = _call(call_route, "venue.cancel_all_arrangements", "POST", coordinator_token)
+
+    assert status == 200
+    assert [entry["id"] for entry in response.get_json()] == [11]
+    mock_services["cancel_all_arrangements"].assert_called_once_with(
+        REFERENCE, coordinator_id=COORDINATOR_ID
     )
 
 
