@@ -43,6 +43,7 @@ from app.modules.venue.opening_hours import Period, covers_period
 from app.modules.venue.schemas import (
     BlockVenueSchema,
     BookingRequestAsShown,
+    ChangeArrangementSchema,
     EditVenueSchema,
     RaiseBookingRequestSchema,
     VenueSearchSchema,
@@ -937,6 +938,11 @@ def list_booking_requests_for_event(
 
 ARRANGEMENT_NOT_FOUND_MESSAGE = "Venue arrangement not found."
 WITHDRAW_NOT_PENDING_MESSAGE = "Only a pending arrangement can be withdrawn; this one is {status}."
+CHANGE_NOT_PENDING_MESSAGE = "Only a pending arrangement can be changed; this one is {status}."
+
+#: What a coordinator may change on a pending arrangement (AC6). Not the venue or the
+#: period: those identify the slot Venue Staff were asked about.
+CHANGEABLE_FIELDS = ("purpose", "expected_occupancy", "required_layout", "justification")
 
 
 def list_active_arrangements(
@@ -1056,3 +1062,84 @@ def cancel_all_arrangements(
         _withdraw_and_record(arrangement, coordinator_id, session)
     sess.commit()
     return [show_booking_request(arrangement, event) for arrangement in arrangements]
+
+
+def _changes_to_apply(
+    arrangement: VenueBookingRequest, data: Mapping[str, Any]
+) -> dict[str, dict[str, Any]]:
+    """Which of ``CHANGEABLE_FIELDS`` ``data`` actually alters, and from what.
+
+    Every changeable field is a string, an integer or ``None``, so the previous and new
+    values go into the history entry's details as they are.
+    """
+    changes: dict[str, dict[str, Any]] = {}
+    for field in CHANGEABLE_FIELDS:
+        if field not in data:
+            continue
+        previous = getattr(arrangement, field)
+        if previous != data[field]:
+            changes[field] = {"previous": previous, "new": data[field]}
+    return changes
+
+
+def change_arrangement(
+    reference: str,
+    arrangement_id: int,
+    payload: Mapping[str, Any] | None,
+    *,
+    coordinator_id: int,
+    session: Session | None = None,
+) -> BookingRequestAsShown:
+    """Change a pending arrangement's purpose, occupancy, layout or justification (AC6).
+
+    Only the fields sent change, and only while Venue Staff have yet to decide: changing
+    a decided arrangement would quietly void their decision. Suitability is re-checked
+    against the merged values, so a change that outgrows the venue needs a justification
+    just as raising one does. That check runs before anything is written, so a refused
+    change leaves the arrangement exactly as it was. A change that alters nothing writes
+    no history entry.
+
+    Raises:
+        ValidationError: 400 — invalid values, or no justification for a venue the
+            changed arrangement no longer suits.
+        NotFoundError: 404 — no such event among the coordinator's own, or no such
+            arrangement on it.
+        ConflictError: 409 — the arrangement is no longer pending.
+    """
+    from app.modules.events import services as event_services  # circular at import time
+
+    schema = ChangeArrangementSchema()
+    data = load_or_raise(schema, payload, partial=tuple(schema.fields))
+    sess = resolve_session(session)
+    event = event_services.get_event_for_coordinator(reference, coordinator_id, session=session)
+    arrangement = _arrangement_of_event(event.id, arrangement_id, sess)
+    if arrangement.status is not BookingRequestStatus.PENDING:
+        raise ConflictError(CHANGE_NOT_PENDING_MESSAGE.format(status=arrangement.status.value))
+
+    occupancy = data.get("expected_occupancy", arrangement.expected_occupancy)
+    layout = data.get("required_layout", arrangement.required_layout)
+    justification = data.get("justification", arrangement.justification)
+    suitable = _venue_is_suitable(arrangement.venue_id, occupancy, layout, session)
+    if not suitable and not justification:
+        raise ValidationError(
+            "Invalid request.", details={"justification": [JUSTIFICATION_REQUIRED_MESSAGE]}
+        )
+
+    changes = _changes_to_apply(arrangement, data)
+    if not changes:
+        return show_booking_request(arrangement, event)
+
+    for field, change in changes.items():
+        setattr(arrangement, field, change["new"])
+    event_services.record_venue_arrangement_changed(
+        event.id,
+        actor_id=coordinator_id,
+        details={
+            "venue_booking_request_id": arrangement.id,
+            "venue_id": arrangement.venue_id,
+            "changes": changes,
+        },
+        session=session,
+    )
+    sess.commit()
+    return show_booking_request(arrangement, event)

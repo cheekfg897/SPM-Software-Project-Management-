@@ -432,6 +432,22 @@ class RaiseBookingRequestSchema(TimeRangeSchema):
     justification = fields.String(validate=not_blank)
 
 
+class ChangeArrangementSchema(Schema):
+    """Payload for ``PATCH`` on one of an event's arrangements (SCRUM-93 AC6).
+
+    Every field is optional; only those sent change. The venue and the period are left
+    out on purpose: together they are the slot Venue Staff were asked about, so moving
+    either means withdrawing this arrangement and raising another.
+    """
+
+    purpose = fields.String(validate=not_blank)
+    expected_occupancy = fields.Integer(
+        validate=validate.Range(min=1, error="expected_occupancy must be a positive number.")
+    )
+    required_layout = fields.String(validate=validate.OneOf(LayoutType.values()))
+    justification = fields.String(validate=not_blank)
+
+
 @dataclass(frozen=True)
 class BookingRequestAsShown:
     """A booking request with the event details Venue Staff need beside it (AC4).

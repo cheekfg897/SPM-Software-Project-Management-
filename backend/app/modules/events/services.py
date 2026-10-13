@@ -1116,6 +1116,28 @@ def record_venue_arrangement_withdrawn(
     )
 
 
+def record_venue_arrangement_changed(
+    event_id: int,
+    *,
+    actor_id: int,
+    details: dict[str, Any],
+    session: Session | None = None,
+) -> EventHistoryEntry:
+    """Add the history entry for a changed arrangement, without committing (SCRUM-93).
+
+    The entry rides in the caller's transaction, so it is saved with the change it
+    records or not at all (ADR-0018).
+    """
+    event_request = resolve_session(session).get(EventRequest, event_id)
+    return record_event_history(
+        event_request,
+        EventHistoryKind.VENUE_ARRANGEMENT_CHANGED,
+        actor_id=actor_id,
+        details=details,
+        session=session,
+    )
+
+
 def _event_request_with_editable_equipment(
     coordinator_id: int | str, reference: str, session: Session
 ) -> EventRequest:
