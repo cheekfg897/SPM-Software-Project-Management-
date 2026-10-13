@@ -233,6 +233,30 @@ def test_cancelling_all_retires_every_arrangement(
     assert services.count_active_arrangements(event.id, session=db_session) == 0
 
 
+def test_cancelling_all_commits_once_for_the_whole_batch(
+    db_session: Session,
+    make_venue: Callable[..., Venue],
+    save: Callable[..., None],
+    saved_event: SavedEvent,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One commit for the batch; a commit each would allow a partial cancel-all."""
+    event = saved_event()
+    two_arrangements(db_session, make_venue, save, event)
+    real_commit = db_session.commit
+    commits: list[int] = []
+
+    def counting_commit() -> None:
+        commits.append(1)
+        real_commit()
+
+    monkeypatch.setattr(db_session, "commit", counting_commit)
+    services.cancel_all_arrangements(
+        event.reference, coordinator_id=COORDINATOR_ID, session=db_session
+    )
+    assert len(commits) == 1
+
+
 def test_cancelling_all_leaves_another_events_arrangements_alone(
     db_session: Session, venue: Venue, saved_event: SavedEvent
 ) -> None:
