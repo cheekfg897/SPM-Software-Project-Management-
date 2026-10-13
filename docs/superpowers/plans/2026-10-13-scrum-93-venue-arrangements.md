@@ -417,7 +417,7 @@ git commit -m "feat(SCRUM-93): count an event's active venue arrangements"
 - Modify: `backend/app/modules/events/services.py` (a recorder beside `record_venue_booking_requested`, around line 1034)
 - Modify: `backend/app/modules/venue/services.py` (the SCRUM-93 section)
 - Modify: `backend/app/modules/venue/routes.py` (after `list_booking_requests`)
-- Test: `backend/tests/venue/test_venue_arrangements.py` (append), `backend/tests/venue/test_venue_permissions.py` (append)
+- Test: `backend/tests/venue/test_venue_arrangements.py` (append), `backend/tests/venue/test_booking_request_permissions.py` (append)
 
 **Interfaces:**
 - Consumes: `list_active_arrangements`, `RETIRED_REQUEST_STATUSES`, `BookingRequestStatus.WITHDRAWN`, `EventHistoryKind.VENUE_ARRANGEMENT_WITHDRAWN` from Task 1; `show_booking_request(request, event) -> BookingRequestAsShown` and `BookingRequestAsShown` from SCRUM-42; `event_services.get_event_for_coordinator(reference, coordinator_id, *, session)` returning `EventForBooking` (has `.id`).
@@ -679,7 +679,7 @@ def withdraw_arrangement(reference: str, arrangement_id: int) -> tuple[Response,
 
 - [ ] **Step 7: Add the permission test**
 
-Open `backend/tests/venue/test_venue_permissions.py`, read how it parametrises the existing booking-request routes, and add a case for `venue.withdraw_arrangement` in exactly that style — Event Coordinator allowed, every other role refused. Do not invent a new pattern; match the file.
+Open `backend/tests/venue/test_booking_request_permissions.py`, read how it parametrises the existing booking-request routes, and add a case for `venue.withdraw_arrangement` in exactly that style — Event Coordinator allowed, every other role refused. Do not invent a new pattern; match the file.
 
 - [ ] **Step 8: Run lint and the whole suite**
 
@@ -703,7 +703,7 @@ git commit -m "feat(SCRUM-93): withdraw one of an event's venue arrangements"
 **Files:**
 - Modify: `backend/app/modules/venue/services.py` (SCRUM-93 section)
 - Modify: `backend/app/modules/venue/routes.py`
-- Test: `backend/tests/venue/test_venue_arrangements.py` (append), `backend/tests/venue/test_venue_permissions.py` (append)
+- Test: `backend/tests/venue/test_venue_arrangements.py` (append), `backend/tests/venue/test_booking_request_permissions.py` (append)
 
 **Interfaces:**
 - Consumes: `list_active_arrangements`, `_withdraw_and_record`, `show_booking_request` from Tasks 1-2.
@@ -833,7 +833,7 @@ def cancel_all_arrangements(reference: str) -> tuple[Response, int]:
 
 - [ ] **Step 6: Add the permission test**
 
-Add a `venue.cancel_all_arrangements` case to `backend/tests/venue/test_venue_permissions.py`, in the file's existing style.
+Add a `venue.cancel_all_arrangements` case to `backend/tests/venue/test_booking_request_permissions.py`, in the file's existing style.
 
 - [ ] **Step 7: Run lint and the whole suite**
 
@@ -857,7 +857,7 @@ git commit -m "feat(SCRUM-93): retire every venue arrangement on one request"
 - Modify: `backend/app/modules/venue/schemas.py` (a new schema beside `RaiseBookingRequestSchema`, around line 404)
 - Modify: `backend/app/modules/venue/services.py` (SCRUM-93 section)
 - Modify: `backend/app/modules/venue/routes.py`
-- Test: Create `backend/tests/venue/test_venue_arrangement_changes.py`; append to `backend/tests/venue/test_venue_permissions.py`
+- Test: Create `backend/tests/venue/test_venue_arrangement_changes.py`; append to `backend/tests/venue/test_booking_request_permissions.py`
 
 **Interfaces:**
 - Consumes: `_arrangement_of_event` (Task 2), `_venue_is_suitable`, `JUSTIFICATION_REQUIRED_MESSAGE`, `show_booking_request`, `load_or_raise`; `EventHistoryKind.VENUE_ARRANGEMENT_CHANGED` (Task 1).
@@ -1247,7 +1247,7 @@ def change_arrangement(reference: str, arrangement_id: int) -> tuple[Response, i
 
 - [ ] **Step 9: Add the permission test**
 
-Add a `venue.change_arrangement` case to `backend/tests/venue/test_venue_permissions.py`, in the file's existing style.
+Add a `venue.change_arrangement` case to `backend/tests/venue/test_booking_request_permissions.py`, in the file's existing style.
 
 - [ ] **Step 10: Run lint and the whole suite**
 
