@@ -19,18 +19,16 @@ import pytest
 from flask import Flask
 
 from app.common.errors import AuthenticationError, AuthorizationError
-from app.modules.auth.permissions import ALL_ROLES, Role
+from app.modules.auth.permissions import Role
 from app.modules.events import routes
 from app.modules.events.models import EventRequest, EventRequestStatus
 from app.modules.events.services import ActiveRequest, CoordinatorWorkload
+from tests.events.conftest import NON_LEAD_ROLES
 
 pytestmark = pytest.mark.scrum_96
 
 CallRoute = Callable[..., Any]
 ReplaceServices = Callable[[ModuleType, dict[str, Any]], dict[str, MagicMock]]
-
-#: Every role but the Lead, so a role added later is refused unless a test says not.
-NON_LEAD_ROLES = sorted(ALL_ROLES - {Role.EVENT_COORDINATOR_LEAD}, key=lambda role: role.value)
 
 #: Each route as ``(endpoint, path, service it calls)``.
 ROUTES = {

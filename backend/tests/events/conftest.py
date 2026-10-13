@@ -55,6 +55,10 @@ from tests.events.cases import DRAFT_REFERENCE, LEAD_ID
 MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "migrations" / "versions"
 
 
+#: Every role but the Lead, so a role added later is refused unless a test says not.
+NON_LEAD_ROLES = sorted(ALL_ROLES - {Role.EVENT_COORDINATOR_LEAD}, key=lambda role: role.value)
+
+
 #: Every role but Event Coordinator, in a fixed order so test ids are stable.
 NON_COORDINATOR_ROLES = sorted(ALL_ROLES - {Role.EVENT_COORDINATOR}, key=lambda role: role.value)
 
