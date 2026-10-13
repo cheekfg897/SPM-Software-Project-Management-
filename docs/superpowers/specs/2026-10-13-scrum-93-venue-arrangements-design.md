@@ -128,7 +128,7 @@ A payload that changes nothing is accepted and writes no history entry.
 ### 6. History (not an AC)
 
 Following ADR-0035 §8, which added `venue_booking_requested` for the same reason: the team
-asked that arrangement changes be traceable on the event. Three `EventHistoryKind` values,
+asked that arrangement changes be traceable on the event. Two `EventHistoryKind` values,
 written in the same commit as the change they record, so there is never a change without its
 entry:
 

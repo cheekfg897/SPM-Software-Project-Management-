@@ -137,8 +137,9 @@ class BookingRequestStatus(str, enum.Enum):
 
 
 #: Statuses that take an arrangement out of an event's venue count (SCRUM-93).
-#: SCRUM-43 adds ``CANCELLED`` and ``REJECTED`` here; ``ON_HOLD`` must stay out, because
-#: SCRUM-75 treats a held arrangement as one of the event's active venues.
+#: SCRUM-43 adds ``CANCELLED`` here. ``REJECTED`` stays out, because SCRUM-49 and
+#: SCRUM-97 gate on every active arrangement being approved. ``ON_HOLD`` stays out too,
+#: because SCRUM-75 treats a held arrangement as one of the event's active venues.
 RETIRED_REQUEST_STATUSES = frozenset({BookingRequestStatus.WITHDRAWN})
 
 

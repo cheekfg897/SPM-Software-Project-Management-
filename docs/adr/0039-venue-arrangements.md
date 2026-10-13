@@ -10,7 +10,7 @@ SCRUM-93 lets one event use several venues at once, such as a conference with an
 ## Decision
 1. **An arrangement is a `VenueBookingRequest`.** There is no new table and no rename, because SCRUM-42, SCRUM-45 and SCRUM-95 all build on `venue_booking_requests`. The two words mean the same row (and later the `Booking` it becomes), so a reader does not go looking for a missing model.
 2. **Only `withdrawn` is added to the status enum.** `cancelled` waits for SCRUM-43, where `approved` first exists. Following [ADR-0035](0035-venue-booking-requests.md) §3, a value is added when it has code: `cancelled` now would be a value nothing can produce and no test can reach. Migration `0023` also adds the two history kinds below.
-3. **"Active" is defined by exclusion.** `RETIRED_REQUEST_STATUSES` holds `withdrawn` today, and `list_active_arrangements` and `count_active_arrangements` return everything else. SCRUM-43 adds `cancelled` and `rejected` to the set; `on_hold` stays active when SCRUM-43 and SCRUM-75 add it, which is what SCRUM-75's "more than one active venue arrangement" needs. The consumers are **SCRUM-75** (the multi-venue test), **SCRUM-49** and **SCRUM-97**.
+3. **"Active" is defined by exclusion.** `RETIRED_REQUEST_STATUSES` holds `withdrawn` today, and `list_active_arrangements` and `count_active_arrangements` return everything else. SCRUM-43 adds `cancelled` to the set (`rejected` stays out, so a rejected arrangement still blocks SCRUM-49's confirmation and SCRUM-97's Safety Review gate, which ask for every active arrangement to be approved); `on_hold` stays active when SCRUM-43 and SCRUM-75 add it, which is what SCRUM-75's "more than one active venue arrangement" needs. The consumers are **SCRUM-75** (the multi-venue test), **SCRUM-49** and **SCRUM-97**.
 4. **Withdraw is `pending` to `withdrawn` only.** Any other status is a `409` naming the current status, as `raise_booking_request` does for a wrong-status event. Only the event's assigned coordinator may; another coordinator gets `404` ([ADR-0035](0035-venue-booking-requests.md) §6). An arrangement id that belongs to another event is a `404` too. Withdrawing one arrangement leaves the event's others untouched.
 5. **Arrangements keep a status instead of being deleted,** unlike equipment lines, which `remove_equipment_line` hard-deletes. SCRUM-75 ignores withdrawn and cancelled arrangements, and SCRUM-94 expects an expired hold to stay visible in history; both require the retired row to exist.
 6. **`cancel-all` keeps AC6's own word although today it only withdraws.** It retires every active arrangement in one call, is a no-op returning an empty list when there are none, and skips arrangements already withdrawn. The route and service names mean SCRUM-43 widens what it retires without renaming a published endpoint.
@@ -25,6 +25,7 @@ SCRUM-93 lets one event use several venues at once, such as a conference with an
     - `on_hold` in AC5 and AC7: **SCRUM-43** and **SCRUM-75**.
     - Releasing a confirmed `Booking` when its arrangement is cancelled: **SCRUM-43**; no `Booking` row is written by any code path yet.
     - Notifying anyone about a change, withdrawal or cancellation: **SCRUM-50**.
+    - Tickets to open: decide whether a rejected arrangement should block event confirmation — SCRUM-43 and SCRUM-49 must agree before either ships.
 13. **Defaults to review (not agreed with the team).** The ACs do not settle these, so the code accepts them rather than guessing a rule:
     - **Withdraw versus cancel is split by the arrangement's status,** with cancel left to SCRUM-43. The ACs define neither word, and this is the reading under which both are needed.
     - **AC6's "cancelling" is deferred rather than built against an unreachable status.** The alternative was to add `cancelled` now and `pragma`-exclude code no test can reach.
@@ -35,6 +36,7 @@ SCRUM-93 lets one event use several venues at once, such as a conference with an
     - **The downgrade deletes withdrawn arrangements rather than reverting them,** so it is lossy.
     - **`required_layout` can be cleared with `null`; nothing else can be cleared.**
     - **A reason is not required to change an arrangement,** unlike the justification rule. Arrangements carry no note field; the only requirement is a justification when the changed arrangement no longer suits its venue, and otherwise none is asked for.
+    - **There is no event-status guard on withdraw, change or cancel-all,** so a coordinator can act on an arrangement of a Completed, Cancelled or Rejected event, whereas `raise_booking_request` requires Approved. Probably right, but unrecorded.
     - **A change that alters nothing is accepted silently** and writes no history entry.
 
 ## Consequences
@@ -48,7 +50,7 @@ SCRUM-93 lets one event use several venues at once, such as a conference with an
 - The shared test helpers `SECOND_PERIOD`, `two_venues` and `two_arrangements` live in `backend/tests/venue/conftest.py`, extracted on their second real use.
 
 ## Revisit when
-- SCRUM-43 adds `approved`, `rejected`, `on_hold` and `cancelled`: extend `RETIRED_REQUEST_STATUSES`, widen `cancel-all`, add `<id>/cancel` and `venue_arrangement_cancelled`. Note that anyone adding a value to `booking_request_status` must keep the downgrade's index drop and re-create.
+- SCRUM-43 adds `approved`, `rejected`, `on_hold` and `cancelled`: extend `RETIRED_REQUEST_STATUSES` with `cancelled` only, widen `cancel-all`, add `<id>/cancel` and `venue_arrangement_cancelled`. Note that anyone adding a value to `booking_request_status` must keep the downgrade's index drop and re-create.
 - **SCRUM-43 makes the commit-once rollback reachable.** `cancel_all_arrangements` commits once, so a refusal partway through would commit nothing, but `list_active_arrangements` returns only `pending` rows today, so that refusal cannot fire inside the loop. The guard itself is covered through `withdraw_arrangement`; the rollback path becomes reachable, and needs a test, when `approved` exists.
 - SCRUM-50 adds notifications for a change, withdrawal or cancellation.
 - The team decides whether a change should be able to move the period or the venue, rather than withdraw and raise another.
