@@ -33,11 +33,11 @@ from app.modules.notifications.models import Notification
 from app.modules.notifications.services import (
     NotificationKind,
 )
-from tests.events.cases import LOST_NOTIFICATION_CASES
+from tests.events.cases import LEAD_ID, LOST_NOTIFICATION_CASES
 
 pytestmark = [pytest.mark.scrum_87, pytest.mark.scrum_39]
 
-Reassign = Callable[[int, str], tuple[EventRequest, CoordinatorContact]]
+Reassign = Callable[[str], tuple[EventRequest, CoordinatorContact]]
 NotificationsOf = Callable[[int], list[tuple[Any, ...]]]
 
 REFERENCE = "EVR-AAAAAAAA"
@@ -52,7 +52,7 @@ NINE = "coordinator9@example.com"
 def test_the_new_coordinator_is_told_the_event_is_theirs(
     reassign: Reassign, notifications_of: NotificationsOf, saved_event_request: EventRequest
 ) -> None:
-    reassign(3, NINE)
+    reassign(NINE)
 
     assert notifications_of(9) == [
         (
@@ -78,14 +78,14 @@ def test_the_new_coordinator_is_told_the_event_is_theirs(
 def test_nobody_else_is_notified_of_a_reassignment(
     reassign: Reassign, notifications_of: NotificationsOf, user_id: int
 ) -> None:
-    reassign(3, NINE)
+    reassign(NINE)
 
     assert notifications_of(user_id) == []
 
 
 def test_a_refused_reassignment_notifies_nobody(reassign: Reassign, db_session: Session) -> None:
     with pytest.raises(ConflictError):
-        reassign(3, "coordinator3@example.com")
+        reassign("coordinator3@example.com")
 
     assert db_session.scalars(select(Notification)).all() == []
 
@@ -108,7 +108,7 @@ def test_a_failed_notification_write_still_returns_the_reassigned_event(
 
     with caplog.at_level(logging.WARNING, logger="connectsphere.events"):
         event_request, _ = reassign_coordinator(
-            3, REFERENCE, {"coordinator_email": NINE}, session=mock_session
+            LEAD_ID, REFERENCE, {"coordinator_email": NINE}, session=mock_session
         )
 
     assert event_request.coordinator_id == 9

@@ -32,7 +32,7 @@ from app.modules.events.services import (
     remove_equipment_line,
     update_equipment_line,
 )
-from tests.events.cases import DRAFT_REFERENCE, NON_DRAFT_STATUSES
+from tests.events.cases import DRAFT_REFERENCE, LEAD_ID, NON_DRAFT_STATUSES
 
 pytestmark = pytest.mark.scrum_20
 
@@ -159,7 +159,7 @@ def _remove_a_line(reference: str) -> Any:
 
 def _reassign(reference: str) -> Any:
     payload = {"coordinator_email": COORDINATOR_NINE_EMAIL}
-    return reassign_coordinator(COORDINATOR_ID, reference, payload)
+    return reassign_coordinator(LEAD_ID, reference, payload)
 
 
 #: Every way internal staff can act on a request by its reference (ADR-0019, ADR-0021).

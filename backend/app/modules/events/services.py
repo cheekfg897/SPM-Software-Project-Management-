@@ -1304,23 +1304,20 @@ class RequestNotReassignableError(AppError):
     error_code = "request_not_reassignable"
 
 
-def _coordinator_to_replace(actor_id: int | str, event_request: EventRequest) -> int:
-    """The caller, if the request is theirs to hand on (ADR-0021).
+def _coordinator_to_replace(event_request: EventRequest) -> int:
+    """The request's current coordinator, if it can be handed on (ADR-0021).
 
-    Only its current coordinator may reassign a request. The ownership check comes
-    after the "no coordinator" one, which has its own answer, and before the status
-    one, so another coordinator learns no more about a finished event than about an
-    open one.
+    Who may reassign is the route's business (SCRUM-96: the Lead only); this checks
+    the request. The "no coordinator" check comes first, because giving a request its
+    first coordinator is the Lead's assignment route, not a reassignment.
 
     Raises:
         RequestNotReassignableError: 409 — the request has no coordinator.
-        NotFoundError: 404 — the caller isn't its coordinator (ADR-0019).
-        RequestNotReassignableError: 409 — the request isn't submitted, under review
-            or confirmed.
+        RequestNotReassignableError: 409 — the request isn't in one of the
+            ``REASSIGNABLE_STATUSES``.
     """
     if event_request.coordinator_id is None:
         raise RequestNotReassignableError(NOT_ASSIGNED_MESSAGE)
-    _check_assigned_to(actor_id, event_request)
     if event_request.status not in REASSIGNABLE_STATUSES:
         raise RequestNotReassignableError(NOT_REASSIGNABLE_MESSAGE)
     return event_request.coordinator_id
@@ -1350,20 +1347,22 @@ def reassign_coordinator(
     *,
     session: Session | None = None,
 ) -> tuple[EventRequest, CoordinatorContact]:
-    """Move an event request to a different Event Coordinator (SCRUM-87).
+    """Move an event request to a different Event Coordinator (SCRUM-87, SCRUM-96).
 
-    Only the request's current coordinator may do it, while it is submitted, under
-    review or confirmed (ADR-0021). The request's one ``coordinator_id`` is replaced
-    (AC1, AC2), and a ``coordinator_reassigned`` history entry is saved in the same
-    commit: the previous and the new coordinator's ids and names as they were then,
-    who did it and when (AC3, AC7). The event then lists, and gives access to, the new
-    coordinator only (AC4, AC5). Once saved, the new coordinator gets the usual
-    ``coordinator_assigned`` notification (AC4) and the organiser a ``request_assigned``
-    one (SCRUM-39 AC1, ADR-0030); a failure there is logged, not raised (ADR-0015).
-    The previous coordinator isn't notified, since they made the change.
+    The Event Coordinator Lead does it, whichever coordinator holds the request (the
+    route admits no one else, SCRUM-96 AC3), while it is submitted, under review,
+    awaiting clarification, approved or confirmed (ADR-0021). The request's one
+    ``coordinator_id`` is replaced (AC1, AC2), and a ``coordinator_reassigned`` history
+    entry is saved in the same commit: the previous and the new coordinator's ids and
+    names as they were then, who did it and when (AC3, AC7). The event then lists, and
+    gives access to, the new coordinator only (AC4, AC5). Once saved, the new
+    coordinator gets the usual ``coordinator_assigned`` notification (AC4) and the
+    organiser a ``request_assigned`` one (SCRUM-39 AC1, ADR-0030); a failure there is
+    logged, not raised (ADR-0015).
+    The previous coordinator isn't notified yet; SCRUM-96 changes that.
 
     Args:
-        actor_id: The caller's user id, taken from their token.
+        actor_id: The Lead's user id, taken from their token, recorded as the actor.
         reference: The ``EVR-…`` reference; case and surrounding spaces are ignored.
         payload: Decoded JSON body: ``coordinator_email``.
         session: Database session; defaults to ``db.session``.
@@ -1375,15 +1374,15 @@ def reassign_coordinator(
     Raises:
         ValidationError: 400 — payload invalid, or no Event Coordinator has that
             email.
-        NotFoundError: 404 — no such request, or the caller isn't its coordinator.
+        NotFoundError: 404 — no such request.
         RequestNotReassignableError: 409 — the request has no coordinator, or isn't
-            submitted, under review, approved or confirmed.
+            submitted, under review, awaiting clarification, approved or confirmed.
         ConflictError: 409 — that coordinator already has the request.
     """
     data = load_or_raise(ReassignCoordinatorSchema(), payload)
     sess = resolve_session(session)
     event_request = _event_request_for_staff(reference, sess)
-    previous_coordinator_id = _coordinator_to_replace(actor_id, event_request)
+    previous_coordinator_id = _coordinator_to_replace(event_request)
     coordinator_id = _event_coordinator_id_by_email(data["coordinator_email"], sess)
     if coordinator_id == previous_coordinator_id:
         raise ConflictError(ALREADY_ASSIGNED_MESSAGE)
@@ -1974,8 +1973,8 @@ def assign_coordinator_to_request(
     in the coordinator's list, which reads ``coordinator_id`` (AC5, ADR-0018).
 
     This is a first assignment and never a move: a request that already has a
-    coordinator is refused. Changing one is a reassignment, which the coordinator does
-    themselves through SCRUM-87's ``/reassign``.
+    coordinator is refused. Changing one is a reassignment, which the Lead does through
+    SCRUM-87's ``/reassign`` (SCRUM-96).
 
     The checks run in this order, so the first failure decides the answer: payload
     ``400``; reference ``404``; already assigned ``409``; not waiting ``409``; email

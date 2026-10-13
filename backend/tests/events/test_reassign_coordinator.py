@@ -1,11 +1,11 @@
 """Unit tests for SCRUM-87 "Reassign an event to a different coordinator": the service.
 
 AC1: an assigned event can be reassigned to a different Event Coordinator, named by
-their email; only its current coordinator may do it, while the request is submitted,
-under review or confirmed (ADR-0021). AC2: the event still has exactly one
-coordinator. AC3 and AC7: the change is written to the event history in the same
-commit as the change itself, naming the previous and the new coordinator by id and
-by name, who did it and when.
+their email; since SCRUM-96 only an Event Coordinator Lead may do it, while the request
+is submitted, under review, awaiting clarification, approved or confirmed (ADR-0021).
+AC2: the event still has exactly one coordinator. AC3 and AC7: the change is written to
+the event history in the same commit as the change itself, naming the previous and the
+new coordinator by id and by name, who did it and when.
 AC4 and AC5: the event leaves the previous coordinator's list, and their access to
 its equipment, for the new coordinator's. AC6: the organiser's event record shows
 the new coordinator's name and email. A refused reassignment changes nothing.
@@ -47,10 +47,11 @@ from app.modules.events.services import (
     list_event_requests_for_coordinator,
     reassign_coordinator,
 )
+from tests.events.cases import LEAD_ID
 
 pytestmark = pytest.mark.scrum_87
 
-Reassign = Callable[[int, str], tuple[EventRequest, CoordinatorContact]]
+Reassign = Callable[[str], tuple[EventRequest, CoordinatorContact]]
 CoordinatorOf = Callable[[int], int | None]
 HistoryOf = Callable[[int], list[tuple[EventHistoryKind, int | None, dict[str, Any] | None]]]
 AssertNothingChanged = Callable[[int | None], None]
@@ -103,7 +104,7 @@ def assert_nothing_changed(
 def test_an_assigned_event_is_reassigned_to_another_event_coordinator(
     reassign: Reassign, coordinator_of: CoordinatorOf, saved_event_request: EventRequest
 ) -> None:
-    event_request, _ = reassign(3, NINE)
+    event_request, _ = reassign(NINE)
 
     assert event_request.reference == REFERENCE
     assert coordinator_of(saved_event_request.id) == 9
@@ -112,17 +113,18 @@ def test_an_assigned_event_is_reassigned_to_another_event_coordinator(
 def test_the_new_coordinators_email_ignores_case(
     reassign: Reassign, coordinator_of: CoordinatorOf, saved_event_request: EventRequest
 ) -> None:
-    reassign(3, "Coordinator9@Example.COM")
+    reassign("Coordinator9@Example.COM")
 
     assert coordinator_of(saved_event_request.id) == 9
 
 
 def test_the_reference_ignores_case_and_surrounding_spaces(
     saved_users: list[User],
+    saved_leads: list[User],
     saved_event_request: EventRequest,
     coordinator_of: CoordinatorOf,
 ) -> None:
-    reassign_coordinator(3, "  evr-aaaaaaaa ", {"coordinator_email": NINE})
+    reassign_coordinator(LEAD_ID, "  evr-aaaaaaaa ", {"coordinator_email": NINE})
 
     assert coordinator_of(saved_event_request.id) == 9
 
@@ -137,7 +139,7 @@ def test_an_event_that_is_not_over_can_be_reassigned(
 ) -> None:
     set_status(status)
 
-    reassign(3, NINE)
+    reassign(NINE)
 
     assert coordinator_of(saved_event_request.id) == 9
 
@@ -147,30 +149,16 @@ def test_an_event_that_is_not_over_can_be_reassigned(
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "status",
-    [EventRequestStatus.SUBMITTED, EventRequestStatus.COMPLETED],
-    ids=lambda status: status.value,
-)
-def test_only_the_events_own_coordinator_may_reassign_it(
-    reassign: Reassign,
-    set_status: Callable[[EventRequestStatus], None],
-    assert_nothing_changed: AssertNothingChanged,
-    status: EventRequestStatus,
+def test_any_lead_may_reassign_any_reassignable_event(
+    saved_users: list[User],
+    saved_leads: list[User],
+    saved_event_request: EventRequest,
+    coordinator_of: CoordinatorOf,
 ) -> None:
-    """Another coordinator gets the equipment routes' "not yours" 404 (ADR-0019).
+    """Lead 12, who never coordinated the event, moves it from 3 to 9 (SCRUM-96 AC3)."""
+    reassign_coordinator(12, REFERENCE, {"coordinator_email": NINE})
 
-    It comes before the status check, so a finished event says no more than an open
-    one to a coordinator it doesn't belong to.
-    """
-    set_status(status)
-
-    with pytest.raises(NotFoundError) as exc_info:
-        reassign(9, NINE)
-
-    assert exc_info.value.status_code == 404
-    assert exc_info.value.message == EVENT_REQUEST_NOT_FOUND_MESSAGE
-    assert_nothing_changed(3)
+    assert coordinator_of(saved_event_request.id) == 9
 
 
 @pytest.mark.parametrize("status", NOT_REASSIGNABLE, ids=lambda status: status.value)
@@ -183,7 +171,7 @@ def test_a_finished_event_cannot_be_reassigned(
     set_status(status)
 
     with pytest.raises(RequestNotReassignableError) as exc_info:
-        reassign(3, NINE)
+        reassign(NINE)
 
     refused = exc_info.value
     assert (refused.status_code, refused.error_code) == (409, "request_not_reassignable")
@@ -201,7 +189,7 @@ def test_an_unassigned_event_cannot_be_reassigned(
     save(saved_event_request)
 
     with pytest.raises(RequestNotReassignableError) as exc_info:
-        reassign(3, NINE)
+        reassign(NINE)
 
     refused = exc_info.value
     assert (refused.status_code, refused.error_code) == (409, "request_not_reassignable")
@@ -213,7 +201,7 @@ def test_reassigning_to_the_current_coordinator_is_a_conflict(
     reassign: Reassign, assert_nothing_changed: AssertNothingChanged
 ) -> None:
     with pytest.raises(ConflictError) as exc_info:
-        reassign(3, "coordinator3@example.com")
+        reassign("coordinator3@example.com")
 
     refused = exc_info.value
     assert (refused.status_code, refused.error_code) == (409, "conflict")
@@ -230,7 +218,7 @@ def test_only_an_event_coordinator_can_be_given_the_event(
     reassign: Reassign, assert_nothing_changed: AssertNothingChanged, email: str
 ) -> None:
     with pytest.raises(ValidationError) as exc_info:
-        reassign(3, email)
+        reassign(email)
 
     assert exc_info.value.status_code == 400
     assert exc_info.value.details == {"coordinator_email": [NOT_A_COORDINATOR_MESSAGE]}
@@ -252,7 +240,7 @@ def test_the_new_coordinators_email_is_required_and_checked(
     expected: str,
 ) -> None:
     with pytest.raises(ValidationError) as exc_info:
-        reassign_coordinator(3, REFERENCE, payload)
+        reassign_coordinator(LEAD_ID, REFERENCE, payload)
 
     assert exc_info.value.status_code == 400
     assert exc_info.value.details == {"coordinator_email": [expected]}
@@ -263,7 +251,7 @@ def test_an_unknown_reference_is_404(
     saved_users: list[User], assert_nothing_changed: AssertNothingChanged
 ) -> None:
     with pytest.raises(NotFoundError) as exc_info:
-        reassign_coordinator(3, "EVR-ZZZZZZZZ", {"coordinator_email": NINE})
+        reassign_coordinator(LEAD_ID, "EVR-ZZZZZZZZ", {"coordinator_email": NINE})
 
     assert exc_info.value.status_code == 404
     assert exc_info.value.message == EVENT_REQUEST_NOT_FOUND_MESSAGE
@@ -283,11 +271,11 @@ def test_the_reassignment_is_recorded_in_the_history_with_who_did_it_and_when(
 ) -> None:
     before = datetime.now(timezone.utc)
 
-    reassign(3, NINE)
+    reassign(NINE)
 
     after = datetime.now(timezone.utc)
     assert history_of(saved_event_request.id) == [
-        (EventHistoryKind.COORDINATOR_REASSIGNED, 3, FROM_3_TO_9)
+        (EventHistoryKind.COORDINATOR_REASSIGNED, LEAD_ID, FROM_3_TO_9)
     ]
     entry = db_session.scalars(select(EventHistoryEntry)).one()
     assert before <= entry.occurred_at <= after
@@ -305,7 +293,7 @@ def test_the_change_and_its_history_entry_are_saved_in_one_commit(
 
     mock_session.commit.side_effect = note_what_is_saved
 
-    reassign_coordinator(3, REFERENCE, {"coordinator_email": NINE}, session=mock_session)
+    reassign_coordinator(LEAD_ID, REFERENCE, {"coordinator_email": NINE}, session=mock_session)
 
     assert seen_at_commit[0] == (9, [EventHistoryKind.COORDINATOR_REASSIGNED])
 
@@ -318,7 +306,7 @@ def test_the_change_and_its_history_entry_are_saved_in_one_commit(
 def test_the_event_moves_from_the_previous_coordinators_list_to_the_new_ones(
     reassign: Reassign,
 ) -> None:
-    reassign(3, NINE)
+    reassign(NINE)
 
     assigned_to_9 = list_event_requests_for_coordinator(9)
     assert [event_request.reference for event_request in assigned_to_9] == [REFERENCE]
@@ -328,7 +316,7 @@ def test_the_event_moves_from_the_previous_coordinators_list_to_the_new_ones(
 def test_the_previous_coordinator_can_no_longer_change_the_events_equipment(
     reassign: Reassign, valid_equipment_line_payload: dict[str, Any]
 ) -> None:
-    reassign(3, NINE)
+    reassign(NINE)
 
     with pytest.raises(NotFoundError) as exc_info:
         add_equipment_line(3, REFERENCE, valid_equipment_line_payload)
@@ -341,7 +329,7 @@ def test_the_new_coordinator_can_change_the_events_equipment(
     valid_equipment_line_payload: dict[str, Any],
     saved_event_request: EventRequest,
 ) -> None:
-    reassign(3, NINE)
+    reassign(NINE)
 
     line = add_equipment_line(9, REFERENCE, valid_equipment_line_payload)
 
@@ -356,7 +344,7 @@ def test_the_new_coordinator_can_change_the_events_equipment(
 def test_the_new_coordinators_contact_is_returned_and_shown_to_the_organiser(
     reassign: Reassign,
 ) -> None:
-    _, contact = reassign(3, NINE)
+    _, contact = reassign(NINE)
 
     assert contact == COORDINATOR_NINE
     assert get_event_record_for_organiser(7, REFERENCE).coordinator == COORDINATOR_NINE

@@ -33,7 +33,7 @@ pytestmark = pytest.mark.scrum_39
 
 SubmitValidRequest = Callable[..., EventRequest]
 SaveDraft = Callable[[int, dict[str, Any]], EventRequest]
-Reassign = Callable[[int, str], tuple[EventRequest, CoordinatorContact]]
+Reassign = Callable[[str], tuple[EventRequest, CoordinatorContact]]
 NotificationsOf = Callable[[int], list[tuple[Any, ...]]]
 
 ORGANISER_ID = 7
@@ -88,7 +88,7 @@ def test_submitting_a_draft_tells_the_organiser_nothing_about_assignment(
 def test_the_organiser_is_told_when_their_request_is_reassigned(
     reassign: Reassign, notifications_of: NotificationsOf, saved_event_request: EventRequest
 ) -> None:
-    reassign(3, "coordinator9@example.com")
+    reassign("coordinator9@example.com")
 
     assert notifications_of(ORGANISER_ID) == [
         _organiser_notification(saved_event_request.id, "EVR-AAAAAAAA", "Partner Summit")
