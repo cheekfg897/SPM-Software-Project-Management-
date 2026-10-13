@@ -54,6 +54,11 @@ class NotificationKind(str, enum.Enum):
     #: Tells Venue Staff a venue booking request was raised for their venue (SCRUM-42
     #: AC9, ADR-0035).
     VENUE_BOOKING_REQUESTED = "venue_booking_requested"
+    #: Tells the coordinator who raised a request that Venue Staff approved or
+    #: rejected it; the reason, if any, is the notification's ``detail``
+    #: (SCRUM-43 AC6, ADR-0042).
+    VENUE_BOOKING_APPROVED = "venue_booking_approved"
+    VENUE_BOOKING_REJECTED = "venue_booking_rejected"
     #: Tells the event's coordinator that equipment was reserved for it (SCRUM-46 AC5,
     #: ADR-0037).
     EQUIPMENT_RESERVED = "equipment_reserved"

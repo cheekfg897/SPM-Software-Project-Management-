@@ -34,6 +34,8 @@ MESSAGE_BY_KIND: dict[NotificationKind, str] = {
     NotificationKind.VENUE_BOOKING_REQUESTED: (
         "A venue booking request is waiting for your decision."
     ),
+    NotificationKind.VENUE_BOOKING_APPROVED: "Your venue booking request was approved.",
+    NotificationKind.VENUE_BOOKING_REJECTED: "Your venue booking request was rejected.",
     NotificationKind.EQUIPMENT_RESERVED: "Equipment was reserved for an event.",
     NotificationKind.REQUEST_QUEUED_FOR_LEAD: (
         "A new event request is waiting in the unassigned queue."
