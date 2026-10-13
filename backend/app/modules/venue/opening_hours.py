@@ -11,8 +11,8 @@ same timeline instead of re-deriving it.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from datetime import time
+from collections.abc import Iterable, Sequence
+from datetime import datetime, time
 from typing import NamedTuple
 
 MINUTES_PER_DAY = 24 * 60
@@ -71,11 +71,11 @@ def week_interval(period: Period) -> tuple[int, int]:
     return start, end
 
 
-def find_overlap(periods: Sequence[Period]) -> tuple[int, int] | None:
-    """Return the indexes of two overlapping periods, or ``None`` if none overlap.
+def _week_pieces(periods: Sequence[Period]) -> list[tuple[int, int, int]]:
+    """Each period as ``(start, end, index)`` minute ranges lying inside the week.
 
-    Periods that only touch (one closes at 12:00, the next opens at 12:00)
-    do not overlap. Assumes every period is valid.
+    A period that runs past the week's end (Sunday into Monday) becomes two pieces,
+    one at each end of the timeline. Assumes every period is valid.
     """
     pieces: list[tuple[int, int, int]] = []
     for index, period in enumerate(periods):
@@ -85,13 +85,57 @@ def find_overlap(periods: Sequence[Period]) -> tuple[int, int] | None:
             pieces.append((0, end - MINUTES_PER_WEEK, index))
         else:
             pieces.append((start, end, index))
+    return pieces
 
-    pieces.sort()
+
+def find_overlap(periods: Sequence[Period]) -> tuple[int, int] | None:
+    """Return the indexes of two overlapping periods, or ``None`` if none overlap.
+
+    Periods that only touch (one closes at 12:00, the next opens at 12:00)
+    do not overlap. Assumes every period is valid.
+    """
     furthest_end, furthest_index = -1, -1
-    for start, end, index in pieces:
+    for start, end, index in sorted(_week_pieces(periods)):
         if start < furthest_end:
             return tuple(sorted((furthest_index, index)))  # type: ignore[return-value]
         # Sorted by start, a piece that doesn't overlap starts at or after
         # furthest_end, and every piece has positive length, so it ends later.
         furthest_end, furthest_index = end, index
     return None
+
+
+def _minutes_into_week(moment: datetime) -> int:
+    """How far ``moment`` sits into its own week, in minutes from Monday 00:00."""
+    return moment.weekday() * MINUTES_PER_DAY + _minutes(moment.time())
+
+
+def _merged(ranges: Iterable[tuple[int, int]]) -> list[tuple[int, int]]:
+    """``ranges`` in start order, with any that overlap or touch joined into one."""
+    merged: list[tuple[int, int]] = []
+    for start, end in sorted(ranges):
+        if merged and start <= merged[-1][1]:
+            opens, closes = merged[-1]
+            merged[-1] = (opens, max(closes, end))
+        else:
+            merged.append((start, end))
+    return merged
+
+
+def covers_period(periods: Sequence[Period], start: datetime, end: datetime) -> bool:
+    """Whether the weekly schedule is open for the whole of ``start`` to ``end``.
+
+    Only each instant's weekday and clock time are read, so both must already be in
+    business time (ADR-0009). Two periods that touch count as one continuous opening,
+    and a venue with no period at all is closed all week. Assumes periods are valid.
+    """
+    open_ranges = _merged((opens, closes) for opens, closes, _ in _week_pieces(periods))
+    # The same week again, so a request running past Sunday midnight stays one range.
+    next_week = [
+        (opens + MINUTES_PER_WEEK, closes + MINUTES_PER_WEEK) for opens, closes in open_ranges
+    ]
+    wanted_start = _minutes_into_week(start)
+    wanted_end = wanted_start + round((end - start).total_seconds() / 60)
+    return any(
+        opens <= wanted_start and wanted_end <= closes
+        for opens, closes in _merged(open_ranges + next_week)
+    )

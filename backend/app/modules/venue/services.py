@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import TYPE_CHECKING, Any
 
 from flask import current_app
@@ -18,6 +18,7 @@ from sqlalchemy import ColumnElement, and_, or_, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.common.clock import to_business_time
 from app.common.database import resolve_session
 from app.common.errors import ConflictError, NotFoundError, ValidationError
 from app.common.validation import load_or_raise
@@ -33,9 +34,10 @@ from app.modules.venue.models import (
     VenueBlock,
     VenueBookingRequest,
     VenueOpeningPeriod,
+    Weekday,
     join_list_field,
 )
-from app.modules.venue.opening_hours import Period
+from app.modules.venue.opening_hours import Period, covers_period
 from app.modules.venue.schemas import (
     BlockVenueSchema,
     BookingRequestAsShown,
@@ -680,6 +682,11 @@ def check_venue_suitability(
 
 JUSTIFICATION_REQUIRED_MESSAGE = "A justification is required because the venue is not suitable."
 
+OUTSIDE_OPENING_HOURS_MESSAGE = "The request falls outside the venue's operating hours."
+
+#: Where a day's opening hours start and end when a period runs over the day boundary.
+MIDNIGHT = time(0)
+
 
 PENDING_INDEX_NAME = "uq_venue_booking_requests_pending"
 DUPLICATE_REQUEST_MESSAGE = "A pending request for this event, venue and period already exists."
@@ -726,21 +733,90 @@ def _save_request(request: VenueBookingRequest, session: Session | None) -> None
         raise
 
 
-def _venue_is_suitable(
-    venue_id: int, occupancy: int, layout: str | None, session: Session | None
-) -> bool:
-    """Whether the venue suits this request's own occupancy and layout (AC7).
-
-    Raises:
-        ValidationError: 400 — no such venue, reported on ``venue_id``.
-    """
-    requirements = {"expected_attendance": occupancy, "required_layout": layout}
+def _venue_for_request(venue_id: int, session: Session | None) -> Venue:
+    """The venue a request names; an unknown one is reported on ``venue_id`` (AC1)."""
     try:
-        return check_venue_suitability(venue_id, requirements, session=session).suitable
+        return get_venue(venue_id, session=session)
     except NotFoundError:
         raise ValidationError(
             "Invalid request.", details={"venue_id": ["Venue not found."]}
         ) from None
+
+
+def _weekly_hours(venue: Venue) -> list[Period]:
+    """The venue's stored opening periods, as the week timeline's own type."""
+    return [
+        Period(period.open_day, period.open_time, period.close_day, period.close_time)
+        for period in venue.opening_periods
+    ]
+
+
+def _part_of_day_open(period: VenueOpeningPeriod, day: Weekday) -> tuple[time, time] | None:
+    """The stretch of ``day`` that ``period`` leaves the venue open, or ``None``.
+
+    An overnight period is clipped to the day asked about: Saturday 20:00 to Sunday
+    04:00 is ``20:00``-``00:00`` on the Saturday and ``00:00``-``04:00`` on the Sunday.
+    A period closing at exactly 00:00 ends as ``day`` begins, so it opens none of it.
+    """
+    if period.open_day == day:
+        closes = period.close_time if period.close_day == day else MIDNIGHT
+        return period.open_time, closes
+    if period.close_day == day and period.close_time != MIDNIGHT:
+        return MIDNIGHT, period.close_time
+    return None
+
+
+def _hours_on(venue: Venue, day: Weekday) -> str:
+    """The parts of ``day`` the venue is open, e.g. ``"09:00-12:00, 13:00-18:00"``.
+
+    Earliest first, counting a period that ran over from the day before. Empty when
+    nothing opens any part of the day, which means the venue is closed.
+    """
+    in_week_order = sorted(venue.opening_periods, key=lambda p: (p.open_day, p.open_time))
+    stretches: list[str] = []
+    for period in in_week_order:
+        open_part = _part_of_day_open(period, day)
+        if open_part is not None:
+            opens, closes = open_part
+            stretches.append(f"{opens:%H:%M}-{closes:%H:%M}")
+    return ", ".join(stretches)
+
+
+def _require_within_opening_hours(venue: Venue, starts_at: datetime, ends_at: datetime) -> None:
+    """Refuse a request that doesn't fall inside the venue's operating hours (AC2).
+
+    Hours are weekly and in business time, so the stored UTC instants are converted
+    back before they are placed on the week. The message names the hours on the day
+    the request starts: hours are agreed outside the system, so the coordinator has
+    nothing to change in the request itself.
+
+    Raises:
+        ValidationError: 400 — the period falls outside the venue's hours.
+    """
+    start = to_business_time(starts_at)
+    if covers_period(_weekly_hours(venue), start, to_business_time(ends_at)):
+        return
+
+    day = Weekday(start.weekday())
+    hours = _hours_on(venue, day)
+    opening = f"open {hours}" if hours else "closed"
+    raise ValidationError(
+        "Invalid request.",
+        details={
+            "starts_at": [
+                f"{OUTSIDE_OPENING_HOURS_MESSAGE}"
+                f" The venue is {opening} on {day.label.capitalize()}."
+            ]
+        },
+    )
+
+
+def _venue_is_suitable(
+    venue_id: int, occupancy: int, layout: str | None, session: Session | None
+) -> bool:
+    """Whether the venue suits this request's own occupancy and layout (AC7)."""
+    requirements = {"expected_attendance": occupancy, "required_layout": layout}
+    return check_venue_suitability(venue_id, requirements, session=session).suitable
 
 
 def show_booking_request(
@@ -795,8 +871,12 @@ def raise_booking_request(
     and layout needs a justification (AC7). The request and the event's history entry
     are saved in one commit; Venue Staff are then notified in a second (AC9).
 
+    The venue must be open for the whole period: hours are agreed outside the system,
+    so a request outside them is refused rather than queued for Venue Staff (AC2).
+
     Raises:
-        ValidationError: 400 — invalid payload, unknown venue or no justification.
+        ValidationError: 400 — invalid payload, unknown venue, a period outside the
+            venue's operating hours, or no justification.
         NotFoundError: 404 — no such event, or ``requested_by`` doesn't coordinate it.
         ConflictError: 409 — the event isn't approved.
     """
@@ -809,8 +889,11 @@ def raise_booking_request(
     data.setdefault("expected_occupancy", event.expected_attendance)
     data.setdefault("required_layout", None)
 
+    venue = _venue_for_request(data["venue_id"], session)
+    _require_within_opening_hours(venue, data["starts_at"], data["ends_at"])
+
     suitable = _venue_is_suitable(
-        data["venue_id"], data["expected_occupancy"], data["required_layout"], session
+        venue.id, data["expected_occupancy"], data["required_layout"], session
     )
     if not suitable and "justification" not in data:
         raise ValidationError(

@@ -8,7 +8,7 @@
 SCRUM-42 lets an Event Coordinator raise a venue booking request from an approved event: a venue, a date, a start and end time, a purpose, an expected occupancy and a required layout. The request starts Pending, carries the event's timing and accessibility needs to Venue Staff, tells Venue Staff, and refuses a second Pending request for the same event, venue and period. The ACs leave several points open: who counts as the right Venue Staff, how a duplicate is detected, what an event's "layout" is when events store none, which event statuses qualify, what a non-assigned coordinator sees, and how much of the request's life this story owns.
 
 ## Decision
-1. **Every Venue Staff user is notified.** The data model does not say which Venue Staff look after which venue, so nobody can be picked out. As in [ADR-0015](0015-in-app-notifications.md), one in-app notification per recipient is written, to all of them, with a new `NotificationKind`. Narrowing it to the staff responsible for the venue needs a story that models responsibility; no ticket exists for that yet.
+1. **Every Venue Staff user is notified.** The data model does not say which Venue Staff look after which venue, so nobody can be picked out. As in [ADR-0015](0015-in-app-notifications.md), one in-app notification per recipient is written, to all of them, with a new `NotificationKind`. **Settled on 2026-10-13:** the product owner confirmed that Venue Staff are not assigned to particular venues, and removed the "responsible for" wording from SCRUM-42, SCRUM-24, SCRUM-43, SCRUM-50, SCRUM-84 and SCRUM-93. Notifying every Venue Staff user is now the specified behaviour, not a stopgap, and no story is needed.
 2. **AC6 is a database rule: a partial unique index over Pending requests only.** `uq_venue_booking_requests_pending` is unique on event, venue and period (start and end) where `status = 'pending'`. Once a request is decided it drops out of the index, so a new request for the same slot is allowed. The service flushes inside a `try` and turns the `IntegrityError` into a `ConflictError` (409). It recognises the duplicate by the index name in Postgres, and by `UNIQUE constraint failed` in SQLite (the unit suite), because that is the only text each database gives. A different integrity error is re-raised, not mislabelled.
 3. **The status enum holds only `pending`.** Deciding a request is SCRUM-43, which adds the other values. Postgres can add enum values but not remove them, so we add them when they have code.
 4. **Layout and occupancy defaults (AC3).** An event stores free-text `venue_requirements` and an `expected_attendance`, but no layout. Occupancy defaults to `expected_attendance`; the required layout defaults to none. A later story that gives events a layout adds the default with it.
@@ -26,13 +26,41 @@ SCRUM-42 lets an Event Coordinator raise a venue booking request from an approve
     - Overlap detection when a request is approved (two requests for one venue and time): **SCRUM-44**. AC2 here allows overlapping requests for different venues, and the unique index only stops exact duplicates.
     - Per-arrangement refinements: **SCRUM-93**.
     - Venue Staff reading requests: both routes are coordinator-only, so Venue Staff are told by notification (decision 1) but have no page or API to open the request from. We leave this to **SCRUM-43** (deciding a request), where Venue Staff must open requests anyway. SCRUM-43's scope could not be verified (Jira was unreachable when this was written); if it does not cover a staff read route, one must be added.
-    - Narrowing notifications to the Venue Staff responsible for a venue: no ticket yet; it first needs a story that models venue responsibility.
 
-14. **Defaults to review (not agreed with the team).** The ACs do not settle these, so the code accepts them rather than guessing a rule: a request for a period in the past, a request outside the event's own dates, and a request against a deactivated venue are all saved. "Same period" in AC6 means an exact match of start and end; a request that merely overlaps another for the same venue is allowed (overlap is SCRUM-44).
+14. **Operating hours gate the request (AC2, added to the ticket on 2026-10-13).** A request
+    whose period is not wholly inside the venue's weekly opening hours is refused with a `400`;
+    hours are agreed outside the system, so there is no in-system way to ask for different ones
+    and nothing for Venue Staff to decide. Four points the AC leaves open:
+    - **The arithmetic lives in `opening_hours.py`**, whose docstring already reserved the weekly
+      timeline for "later venue-availability work". `covers_period(periods, start, end)` joins the
+      venue's periods into continuous openings and asks whether the request fits inside one. The
+      piece-building `find_overlap` already did is extracted to `_week_pieces` and shared, so the
+      two never disagree about where a period sits in the week. Two periods that touch (09:00-12:00
+      then 12:00-18:00) are one opening; a gap between them is not. The week is laid end to end
+      twice, so a request from Sunday into Monday is one range rather than two.
+    - **Hours are compared in business time.** Request instants are stored UTC ([ADR-0009](0009-booking-times-in-utc.md)),
+      but opening hours are a weekday plus a clock time, so both ends are put back through
+      `to_business_time` before they are placed on the week ([ADR-0008](0008-venue-opening-hours.md)).
+    - **A venue with no opening period is closed all week,** which is what `Venue.opening_periods`
+      already means ("a day with no period is a closed day"). It cannot arise through the API,
+      because `EditVenueSchema.opening_hours` defaults to every day 09:00-18:00, so this only
+      affects rows written directly. The test fixture `make_venue` now applies that same default
+      instead of no hours at all, so a fixture venue behaves like a real one; a test that wants a
+      closed venue passes `opening_periods=[]`.
+    - **The refusal names the hours on the day the request starts,** reported on `starts_at`
+      ("The venue is open 09:00-18:00 on Sunday", or "closed on Sunday"), listing every period on
+      that day so a venue that shuts for lunch explains itself. The start day is the one the AC
+      points at ("its operating hours on that day"); a request that legitimately runs past midnight
+      into the next day's hours is accepted by `covers_period`, so the day is only ever reported
+      when the request is refused. The check runs **before** AC7's justification check, because a
+      justification cannot rescue a request outside the hours.
+
+15. **Defaults to review (not agreed with the team).** The ACs do not settle these, so the code accepts them rather than guessing a rule: a request for a period in the past, a request outside the event's own dates, and a request against a deactivated venue are all saved. "Same period" in AC6 means an exact match of start and end; a request that merely overlaps another for the same venue is allowed (overlap is SCRUM-44).
 
 ## Consequences
 - AC6 holds under concurrent submissions, because the database enforces it, not a read-then-write check.
-- Every Venue Staff user is notified of every request, including for venues they do not handle, until responsibility is modelled.
+- Every Venue Staff user is notified of every request, which is what the customer wants: staff are not assigned to venues.
+- A venue whose hours were written straight to the database, bypassing the schema default, accepts no requests at all until hours are set.
 - Duplicate detection reads error text. A database or driver upgrade that changes the wording would turn a duplicate into a `500`; the duplicate test would catch it on SQLite, not on Postgres, which CI does not run.
 - Event history views must tolerate the new `venue_booking_requested` kind.
 - The events service is a little larger, and the lazy import is less greppable.
@@ -41,8 +69,8 @@ SCRUM-42 lets an Event Coordinator raise a venue booking request from an approve
 
 ## Revisit when
 - SCRUM-43 decides requests (add statuses, and revisit what the unique index covers).
-- A story models which Venue Staff look after which venue (narrow the notifications).
 - Events gain a layout (default the request's layout from it).
 - The frontend gets a venue catalogue (replace the Venue ID field with a picker).
-- The team decides whether past, out-of-event-dates or deactivated-venue requests should be refused (decision 14).
+- The team decides whether past, out-of-event-dates or deactivated-venue requests should be refused (decision 15).
+- A venue needs different hours for one event (today AC2 has no exception, by the customer's instruction).
 - Confirmed events should accept replacement requests (SCRUM-92 may relax the `approved`-only rule).
