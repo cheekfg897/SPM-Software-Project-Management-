@@ -22,10 +22,10 @@ SCRUM-42 lets an Event Coordinator raise a venue booking request from an approve
 12. **Frontend.** The page is `/events/:reference/venue-requests`, reached by URL only: no event screens exist yet to link from. A value that is not shaped like a reference (`EVR-` and 8 letters or digits, any case) shows the not-found page without asking the backend; the page checks the shape only, not the look-alike-free alphabet, so mock references stay valid. The form takes a numeric **Venue ID**, because the frontend has no venue catalogue to pick from; a venue picker is a follow-up ticket for the team to raise. Date-times are typed in business time and sent with the `+08:00` offset (`BUSINESS_UTC_OFFSET`).
 13. **Deferred acceptance criteria, each with its owner.**
     - The "Needs Alternative Venue" replacement flow (AC8): **SCRUM-92**.
-    - Deciding a request (approve, reject): **SCRUM-43**.
+    - Deciding a request (approve, reject): **SCRUM-43**, done in [ADR-0042](0042-venue-booking-decisions.md).
     - Overlap detection when a request is approved (two requests for one venue and time): **SCRUM-44**. AC2 here allows overlapping requests for different venues, and the unique index only stops exact duplicates.
     - Per-arrangement refinements: **SCRUM-93**.
-    - Venue Staff reading requests: both routes are coordinator-only, so Venue Staff are told by notification (decision 1) but have no page or API to open the request from. We leave this to **SCRUM-43** (deciding a request), where Venue Staff must open requests anyway. SCRUM-43's scope could not be verified (Jira was unreachable when this was written); if it does not cover a staff read route, one must be added.
+    - Venue Staff reading requests: both routes are coordinator-only, so Venue Staff are told by notification (decision 1) but have no page or API to open the request from. We leave this to **SCRUM-43** (deciding a request), where Venue Staff must open requests anyway. SCRUM-43's scope could not be verified (Jira was unreachable when this was written); if it does not cover a staff read route, one must be added. **Settled on 2026-10-14:** it does — `GET /api/venues/booking-requests` is the queue ([ADR-0042](0042-venue-booking-decisions.md) decision 1).
 
 14. **Operating hours gate the request (AC2, added to the ticket on 2026-10-13).** A request
     whose period is not wholly inside the venue's weekly opening hours is refused with a `400`;
@@ -68,7 +68,7 @@ SCRUM-42 lets an Event Coordinator raise a venue booking request from an approve
 - The status enum, the history kind and the notification kind are added in migration `0020`.
 
 ## Revisit when
-- SCRUM-43 decides requests (add statuses, and revisit what the unique index covers).
+- SCRUM-43 decided requests in [ADR-0042](0042-venue-booking-decisions.md), which added `approved` and `rejected`. The unique index still covers Pending only; SCRUM-75 widens it to On Hold, which the ticket now asks for.
 - Events gain a layout (default the request's layout from it).
 - The frontend gets a venue catalogue (replace the Venue ID field with a picker).
 - The team decides whether past, out-of-event-dates or deactivated-venue requests should be refused (decision 15).
