@@ -106,19 +106,24 @@ without renaming a published endpoint.
 
 ### 5. Change an arrangement (AC6)
 
-A `pending` arrangement's `purpose`, `expected_occupancy`, `required_layout`, `starts_at` and
-`ends_at` may change, by its assigned coordinator. Once decided it may not: changing it would
-silently void Venue Staff's decision. Partial update, shaped like
+A `pending` arrangement's `purpose`, `expected_occupancy`, `required_layout` and
+`justification` may change, by its assigned coordinator. Once decided it may not: changing it
+would silently void Venue Staff's decision. Partial update, shaped like
 `events/services.py::update_equipment_line` — only the fields sent change.
 
-A change re-runs both checks the original raise ran, against the new values:
+**The venue and the period do not move.** Together they *are* the slot Venue Staff were asked
+about, so changing either is a different ask: withdraw the arrangement and raise another. This
+is why withdrawing must free the unique index (§"Why arrangements keep a status"), and it keeps
+the change path free of period arithmetic — no re-running the opening-hours check, and no
+partial-period problem where only one end of a range is sent.
 
-- AC3 suitability, and AC7's justification requirement when the new occupancy or layout no
-  longer suits the venue;
-- SCRUM-42 AC2's operating-hours check when the period changes.
+A change re-runs AC3's suitability check against the **merged** values (what is sent, falling
+back to what is stored) and requires a justification when the venue no longer suits them, the
+same rule `raise_booking_request` applies. Reuse `_venue_is_suitable` and
+`JUSTIFICATION_REQUIRED_MESSAGE` as they stand; validate before applying, so a refused change
+leaves the row untouched.
 
-Reuse `_require_within_opening_hours` and `_venue_is_suitable` as they stand. The venue itself
-cannot change — that is a different arrangement, raised separately and withdrawn here.
+A payload that changes nothing is accepted and writes no history entry.
 
 ### 6. History (not an AC)
 
@@ -129,7 +134,7 @@ entry:
 
 | Kind | `details` |
 |---|---|
-| `venue_arrangement_changed` | `venue_booking_request_id`, `venue_id`, and each changed field with its previous and new value (dates as ISO strings, as SCRUM-33's `field_changed` does) |
+| `venue_arrangement_changed` | `venue_booking_request_id`, `venue_id`, and each changed field with its previous and new value. Every changeable field is a string, an integer or `None`, so no date conversion is needed — unlike SCRUM-33's `field_changed` |
 | `venue_arrangement_withdrawn` | `venue_booking_request_id`, `venue_id` |
 
 `actor_id` is the coordinator in both. Migration `0023` adds the kinds alongside the status.
@@ -182,8 +187,9 @@ Recorded here and in the ADR rather than settled silently:
    The alternative was to add `cancelled` now and `pragma`-exclude code no test can reach.
 3. **A decided arrangement cannot be changed** (§5); the ACs do not say when changing stops
    being allowed.
-4. **The venue cannot be changed** on an existing arrangement (§5) — that is a different
-   arrangement, raised separately.
+4. **Neither the venue nor the period can be changed** on an existing arrangement (§5) —
+   together they are the slot Venue Staff were asked about, so moving either is a new ask.
+   Withdraw and raise another.
 5. **`cancel-all` keeps AC6's word** although today it only withdraws (§4), so SCRUM-43 need
    not rename a published route.
 6. **No notifications.** AC6 asks for none and SCRUM-50 owns them, but a coordinator
@@ -196,7 +202,7 @@ Tests first, from the ACs, seen failing. Marker `scrum_93`, declared in `pytest.
 | File | Covers |
 |---|---|
 | `tests/venue/test_venue_arrangements.py` | withdraw, its status guard, siblings untouched, cancel-all, the active predicate and counts |
-| `tests/venue/test_venue_arrangement_changes.py` | partial change, the re-run suitability/justification and opening-hours checks, the decided-arrangement guard, history details |
+| `tests/venue/test_venue_arrangement_changes.py` | partial change, the re-run suitability and justification checks on merged values, the refused change leaving the row untouched, the no-op change, the non-pending guard, history details |
 | existing `tests/venue/test_booking_requests.py` | add the AC1/AC2 coverage gaps found while verifying the table above, and the re-raise-after-withdraw case |
 
 Permission tests call the view through `app.test_request_context`, as `tests/conftest.py` does
