@@ -3,9 +3,15 @@ import { DISPLAY_LOCALE } from '@/config/time'
 import type { EventRequest } from './api'
 
 /**
- * When an event request is on, for its row in a list. A request's dates and times are business
- * time as written, with no offset (ADR-0002), so they are read just as they are: building them
- * as UTC moments and formatting them in UTC keeps 12 Nov at 9:00 am, wherever the viewer is.
+ * When an event request is on, for its row in a list.
+ *
+ * A request's dates and times are Singapore business time written with no time zone
+ * ("2026-11-12", "09:00:00"; ADR-0002, ADR-0009), and they are shown exactly as written.
+ * Intl can only format a Date, which is a moment in time, so each value is made into a moment
+ * and read back out in the same zone: then nothing shifts, and the device's own time zone has
+ * no say. That zone is UTC because it is neutral, not because events are in UTC: it has no
+ * daylight saving and no history. Asia/Singapore would be wrong here: it was UTC+7:30 before
+ * 1982, so a time on the 1970 placeholder date below would come back half an hour early.
  */
 
 const DAY_FORMAT = new Intl.DateTimeFormat(DISPLAY_LOCALE, {
