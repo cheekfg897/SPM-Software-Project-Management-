@@ -435,7 +435,8 @@ class RaiseBookingRequestSchema(TimeRangeSchema):
 class ChangeArrangementSchema(Schema):
     """Payload for ``PATCH`` on one of an event's arrangements (SCRUM-93 AC6).
 
-    Every field is optional; only those sent change. The venue and the period are left
+    Every field is optional; only those sent change, and the layout is cleared by
+    sending it as ``null``. The venue and the period are left
     out on purpose: together they are the slot Venue Staff were asked about, so moving
     either means withdrawing this arrangement and raising another.
     """
@@ -444,7 +445,7 @@ class ChangeArrangementSchema(Schema):
     expected_occupancy = fields.Integer(
         validate=validate.Range(min=1, error="expected_occupancy must be a positive number.")
     )
-    required_layout = fields.String(validate=validate.OneOf(LayoutType.values()))
+    required_layout = fields.String(validate=validate.OneOf(LayoutType.values()), allow_none=True)
     justification = fields.String(validate=not_blank)
 
 
