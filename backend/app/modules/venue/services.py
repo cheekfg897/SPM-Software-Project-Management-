@@ -940,18 +940,15 @@ ARRANGEMENT_NOT_FOUND_MESSAGE = "Venue arrangement not found."
 WITHDRAW_NOT_PENDING_MESSAGE = "Only a pending arrangement can be withdrawn; this one is {status}."
 CHANGE_NOT_PENDING_MESSAGE = "Only a pending arrangement can be changed; this one is {status}."
 
-#: What a coordinator may change on a pending arrangement (AC6). Not the venue or the
-#: period: those identify the slot Venue Staff were asked about.
-CHANGEABLE_FIELDS = ("purpose", "expected_occupancy", "required_layout", "justification")
-
 
 def list_active_arrangements(
     event_id: int, *, session: Session | None = None
 ) -> list[VenueBookingRequest]:
-    """The event's arrangements that still count towards its venues (AC5).
+    """The event's arrangements that still count towards its venues.
 
-    Retired ones are left out, so SCRUM-75 can ask whether an event has more than one
-    venue. Earliest period first, as the event's own list of requests is.
+    Retired ones are left out. The consumers are SCRUM-75 (is the event multi-venue?),
+    SCRUM-49 (confirmation) and SCRUM-97 (the Safety Review gate). Earliest period
+    first, as the event's own list of requests is.
     """
     query = (
         select(VenueBookingRequest)
@@ -1067,18 +1064,18 @@ def cancel_all_arrangements(
 def _changes_to_apply(
     arrangement: VenueBookingRequest, data: Mapping[str, Any]
 ) -> dict[str, dict[str, Any]]:
-    """Which of ``CHANGEABLE_FIELDS`` ``data`` actually alters, and from what.
+    """Which of the fields in ``data`` actually alter the arrangement, and from what.
 
-    Every changeable field is a string, an integer or ``None``, so the previous and new
-    values go into the history entry's details as they are.
+    ``data`` has been through ``ChangeArrangementSchema``, which rejects unknown fields,
+    so every key is an attribute of the arrangement. Each is a string, an integer or
+    ``None``, so the previous and new values go into the history entry's details as they
+    are.
     """
     changes: dict[str, dict[str, Any]] = {}
-    for field in CHANGEABLE_FIELDS:
-        if field not in data:
-            continue
+    for field, new_value in data.items():
         previous = getattr(arrangement, field)
-        if previous != data[field]:
-            changes[field] = {"previous": previous, "new": data[field]}
+        if previous != new_value:
+            changes[field] = {"previous": previous, "new": new_value}
     return changes
 
 
@@ -1094,11 +1091,10 @@ def change_arrangement(
 
     Only the fields sent change (the layout is cleared by sending it as ``null``), and
     only while Venue Staff have yet to decide: changing a decided arrangement would
-    quietly void their decision. Suitability is re-checked
-    against the merged values, so a change that outgrows the venue needs a justification
-    just as raising one does. That check runs before anything is written, so a refused
-    change leaves the arrangement exactly as it was. A change that alters nothing writes
-    no history entry.
+    quietly void their decision. Suitability is re-checked against the merged values, so
+    a change that outgrows the venue needs a justification just as raising one does.
+    That check runs before anything is written, so a refused change leaves the
+    arrangement exactly as it was. A change that alters nothing writes no history entry.
 
     Raises:
         ValidationError: 400 — invalid values, or no justification for a venue the

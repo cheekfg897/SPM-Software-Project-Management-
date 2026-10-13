@@ -436,9 +436,9 @@ class ChangeArrangementSchema(Schema):
     """Payload for ``PATCH`` on one of an event's arrangements (SCRUM-93 AC6).
 
     Every field is optional; only those sent change, and the layout is cleared by
-    sending it as ``null``. The venue and the period are left
-    out on purpose: together they are the slot Venue Staff were asked about, so moving
-    either means withdrawing this arrangement and raising another.
+    sending it as ``null``. The venue and the period are left out on purpose: together
+    they are the slot Venue Staff were asked about, so moving either means withdrawing
+    this arrangement and raising another.
     """
 
     purpose = fields.String(validate=not_blank)
