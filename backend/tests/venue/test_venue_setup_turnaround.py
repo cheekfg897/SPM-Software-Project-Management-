@@ -336,7 +336,8 @@ def test_a_longer_turnaround_reports_confirmed_bookings_that_now_overlap(
     venue = make_venue(setup_minutes=0, turnaround_minutes=0)
     save(venue)
     first, second = make_booking(venue, _at(9), _at(10)), make_booking(venue, _at(10, 30), _at(11))
-    save(first, second)
+    # The later one is saved first, so the ids don't already match start order.
+    save(second, first)
 
     _, warnings, _ = services.update_venue(venue.id, {"turnaround_minutes": 45})
 
