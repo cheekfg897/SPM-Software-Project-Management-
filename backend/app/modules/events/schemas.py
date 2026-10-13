@@ -619,6 +619,21 @@ class EquipmentLineSchema(Schema):
     status = fields.Enum(EquipmentLineStatus, by_value=True, dump_only=True)
 
 
+class EquipmentLineWithOutcomeSchema(EquipmentLineSchema):
+    """An equipment line with its review outcome, for Technical Support (SCRUM-48 AC4).
+
+    Dumped from ``EquipmentLineAsShown``, so the reviewer is a name, never a user id.
+    The organiser's record keeps :class:`EquipmentLineSchema`: the outcome is not
+    shared with them yet.
+    """
+
+    provided_quantity = fields.Integer(dump_only=True, allow_none=True)
+    shortfall = fields.Integer(dump_only=True, allow_none=True)
+    outcome_note = fields.String(dump_only=True, allow_none=True)
+    reviewed_by = fields.String(dump_only=True, allow_none=True)
+    reviewed_at = BusinessDateTime(dump_only=True, allow_none=True)
+
+
 class EquipmentAwaitingActionSchema(Schema):
     """One event's equipment still awaiting Technical Support (SCRUM-38 AC2, ADR-0022).
 

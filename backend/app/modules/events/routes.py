@@ -23,6 +23,7 @@ from app.modules.events.schemas import (
     EditedEventRequestSchema,
     EquipmentAwaitingActionSchema,
     EquipmentLineSchema,
+    EquipmentLineWithOutcomeSchema,
     EventHistoryEntrySchema,
     EventRequestDetailSchema,
     EventRequestSchema,
@@ -35,6 +36,7 @@ from app.modules.events.services import (
     assign_coordinator_to_request,
     complete_event_request,
     decide_event_request,
+    equipment_lines_as_shown,
     get_event_record_for_coordinator,
     get_event_record_for_organiser,
     list_active_requests,
@@ -68,6 +70,7 @@ _decision_schema = DecisionSchema()
 _clarification_schema = ClarificationSchema(many=True)
 _event_request_detail_schema = EventRequestDetailSchema()
 _equipment_line_schema = EquipmentLineSchema()
+_equipment_line_with_outcome_schema = EquipmentLineWithOutcomeSchema()
 _equipment_event_schema = EventRequestSchema(only=EQUIPMENT_EVENT_FIELDS)
 _equipment_awaiting_action_schema = EquipmentAwaitingActionSchema()
 _edited_event_request_schema = EditedEventRequestSchema()
@@ -315,7 +318,9 @@ def list_equipment(reference: str) -> tuple[Response, int]:
     )
     body = {
         "event": _equipment_event_schema.dump(event_request),
-        "equipment_lines": _equipment_line_schema.dump(lines, many=True),
+        "equipment_lines": _equipment_line_with_outcome_schema.dump(
+            equipment_lines_as_shown(lines), many=True
+        ),
     }
     return jsonify(body), 200
 
@@ -345,7 +350,8 @@ def record_outcome(reference: str, line_id: int) -> tuple[Response, int]:
     line = record_equipment_outcome(
         g.current_user_id, reference, line_id, request.get_json(silent=True)
     )
-    return jsonify(_equipment_line_schema.dump(line)), 200
+    [shown] = equipment_lines_as_shown([line])
+    return jsonify(_equipment_line_with_outcome_schema.dump(shown)), 200
 
 
 # --------------------------------------------------------------------------

@@ -8,6 +8,7 @@ by a mock that a refused call must never reach.
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import UTC, datetime
 from types import ModuleType
 from typing import Any
 from unittest.mock import MagicMock
@@ -19,6 +20,7 @@ from app.common.errors import AuthenticationError, AuthorizationError
 from app.modules.auth.permissions import ALL_ROLES, Role
 from app.modules.events import routes
 from app.modules.events.models import EquipmentLineStatus, EventEquipmentLine
+from app.modules.events.services import EquipmentLineAsShown
 
 pytestmark = pytest.mark.scrum_48
 
@@ -37,14 +39,29 @@ OTHER_ROLES = sorted(ALL_ROLES - {Role.TECHNICAL_SUPPORT_STAFF}, key=lambda role
 
 @pytest.fixture()
 def outcome_service(replace_services: ReplaceServices) -> MagicMock:
-    """Replace the service with one answering a fulfilled line."""
+    """Replace the service with one answering a fulfilled line and its reviewer."""
     line = EventEquipmentLine(
         id=LINE_ID,
         equipment_type_id=1,
         quantity=10,
         status=EquipmentLineStatus.FULFILLED,
     )
-    return replace_services(routes, {"record_equipment_outcome": line})["record_equipment_outcome"]
+    shown = EquipmentLineAsShown(
+        id=LINE_ID,
+        equipment_type_id=1,
+        quantity=10,
+        notes=None,
+        status=EquipmentLineStatus.FULFILLED,
+        provided_quantity=10,
+        shortfall=0,
+        outcome_note=None,
+        reviewed_by="Alice Example",
+        reviewed_at=datetime(2026, 10, 13, 9, 30, tzinfo=UTC),
+    )
+    mocks = replace_services(
+        routes, {"record_equipment_outcome": line, "equipment_lines_as_shown": [shown]}
+    )
+    return mocks["record_equipment_outcome"]
 
 
 def test_the_route_allows_only_technical_support_staff(app: Flask) -> None:
@@ -81,4 +98,10 @@ def test_technical_support_records_the_outcome_as_themselves(
 
     assert status == 200
     outcome_service.assert_called_once_with("999", REFERENCE, LINE_ID, {})
-    assert response.get_json()["id"] == LINE_ID
+    body = response.get_json()
+    assert body["id"] == LINE_ID
+    assert (body["provided_quantity"], body["shortfall"], body["reviewed_by"]) == (
+        10,
+        0,
+        "Alice Example",
+    )

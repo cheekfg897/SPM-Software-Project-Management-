@@ -14,6 +14,7 @@ stopped before any service call happens.
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import UTC, datetime
 from types import ModuleType
 from typing import Any, NamedTuple
 from unittest.mock import MagicMock
@@ -25,8 +26,8 @@ from app.common.errors import AuthenticationError, AuthorizationError
 from app.modules.auth.models import User
 from app.modules.auth.permissions import ALL_ROLES, Role
 from app.modules.events import routes
-from app.modules.events.models import EventEquipmentLine, EventRequest
-from app.modules.events.services import EventRecord
+from app.modules.events.models import EquipmentLineStatus, EventEquipmentLine, EventRequest
+from app.modules.events.services import EquipmentLineAsShown, EventRecord
 
 pytestmark = pytest.mark.scrum_37
 
@@ -76,8 +77,28 @@ def _call(call_route: CallRoute, route: EquipmentRoute, token: str | None) -> An
 
 
 @pytest.fixture()
+def reviewed_line() -> EquipmentLineAsShown:
+    """A line of ten with six provided, as the list route shows it (SCRUM-48)."""
+    return EquipmentLineAsShown(
+        id=7,
+        equipment_type_id=1,
+        quantity=10,
+        notes=None,
+        status=EquipmentLineStatus.PARTIALLY_FULFILLED,
+        provided_quantity=6,
+        shortfall=4,
+        outcome_note="Only six in stock",
+        reviewed_by="Alice Example",
+        reviewed_at=datetime(2026, 10, 13, 9, 30, tzinfo=UTC),
+    )
+
+
+@pytest.fixture()
 def mock_services(
-    replace_services: ReplaceServices, shown_event: EventRequest, shown_line: EventEquipmentLine
+    replace_services: ReplaceServices,
+    shown_event: EventRequest,
+    shown_line: EventEquipmentLine,
+    reviewed_line: EquipmentLineAsShown,
 ) -> dict[str, MagicMock]:
     """Replace every equipment line service the routes call with a mock."""
     return replace_services(
@@ -87,6 +108,7 @@ def mock_services(
             "list_equipment_lines": (shown_event, [shown_line]),
             "update_equipment_line": shown_line,
             "remove_equipment_line": None,
+            "equipment_lines_as_shown": [reviewed_line],
         },
     )
 
@@ -200,13 +222,28 @@ def test_the_list_route_shows_the_lines_and_when_the_event_is(
     token_for: TokenFor,
     mock_services: dict[str, MagicMock],
     event_as_shown: dict[str, Any],
-    line_as_shown: dict[str, Any],
     role: Role,
 ) -> None:
     response, status = _call(call_route, LIST, token_for(role=role))
 
     assert status == 200
-    assert response.get_json() == {"event": event_as_shown, "equipment_lines": [line_as_shown]}
+    assert response.get_json() == {
+        "event": event_as_shown,
+        "equipment_lines": [
+            {
+                "id": 7,
+                "equipment_type_id": 1,
+                "quantity": 10,
+                "notes": None,
+                "status": "partially_fulfilled",
+                "provided_quantity": 6,
+                "shortfall": 4,
+                "outcome_note": "Only six in stock",
+                "reviewed_by": "Alice Example",
+                "reviewed_at": "2026-10-13T17:30:00+08:00",
+            }
+        ],
+    }
     mock_services[LIST.service].assert_called_once_with(CALLER_ID, REFERENCE, viewer_role=role)
 
 
