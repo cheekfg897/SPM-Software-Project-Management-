@@ -348,36 +348,34 @@ def test_a_longer_turnaround_reports_confirmed_bookings_that_now_overlap(
     assert (first.status, second.status) == (BookingStatus.CONFIRMED, BookingStatus.CONFIRMED)
 
 
-def test_a_longer_turnaround_reports_a_confirmed_booking_that_now_runs_into_a_block(
+def test_a_longer_turnaround_reports_every_block_a_confirmed_booking_now_runs_into(
     db_session: Session,
     make_venue: MakeVenue,
     make_booking: MakeBooking,
     make_block: MakeBlock,
     save: Save,
 ) -> None:
-    """09:00-10:00 with 45 minutes' turnaround holds the venue until 10:45.
+    """09:00-10:00 with 30 minutes' setup and 45 minutes' turnaround holds 08:30-10:45.
 
-    That cuts into a block starting at 10:30, but only touches one starting at 10:45.
+    That cuts into both blocks between 10:15 and 10:45, but only touches the one at
+    10:45: blocks aren't padded (ADR-0033), so the setup time doesn't pull it in.
     """
-    venue = make_venue(setup_minutes=0, turnaround_minutes=0)
+    venue = make_venue(setup_minutes=30, turnaround_minutes=0)
     save(venue)
     booking = make_booking(venue, _at(9), _at(10))
-    reached = make_block(venue, _at(10, 30), _at(10, 45))
+    first_reached = make_block(venue, _at(10, 15), _at(10, 30))
+    second_reached = make_block(venue, _at(10, 30), _at(10, 45))
     clear = make_block(venue, _at(10, 45), _at(12))
-    save(booking, reached, clear)
+    save(booking, first_reached, second_reached, clear)
 
     _, _, block_warnings = services.update_venue(venue.id, {"turnaround_minutes": 45})
 
     assert block_warnings == [
-        services.BlockOverlapWarning(
-            booking_id=booking.id,
-            block_id=reached.id,
-            overlap_start=_at(10, 30),
-            overlap_end=_at(10, 45),
-        )
+        services.BlockOverlapWarning(booking.id, first_reached.id, _at(10, 15), _at(10, 30)),
+        services.BlockOverlapWarning(booking.id, second_reached.id, _at(10, 30), _at(10, 45)),
     ]
     assert booking.status == BookingStatus.CONFIRMED
-    assert db_session.get(VenueBlock, reached.id) is not None
+    assert db_session.get(VenueBlock, first_reached.id) is not None
 
 
 def test_bookings_still_far_enough_apart_after_a_change_are_not_reported(
