@@ -26,6 +26,7 @@ from app.modules.events.models import (
     EventHistoryKind,
     EventRequest,
 )
+from app.modules.events.schemas import EquipmentLineWithOutcomeSchema
 from app.modules.notifications.models import NotificationKind
 
 pytestmark = pytest.mark.scrum_48
@@ -370,3 +371,101 @@ def test_a_line_with_an_outcome_leaves_the_awaiting_action_list(
 
     after = services.list_equipment_requests_awaiting_action(session=db_session, today=today)
     assert after == []
+
+
+# --------------------------------------------------------------------------
+# Showing the outcome on the event record (AC4)
+# --------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def dump_lines(db_session: Session) -> Callable[[list[EventEquipmentLine]], list[dict[str, Any]]]:
+    """Serialise lines the way the Technical Support routes show them."""
+
+    def _dump(lines: list[EventEquipmentLine]) -> list[dict[str, Any]]:
+        shown = services.equipment_lines_as_shown(lines, session=db_session)
+        return EquipmentLineWithOutcomeSchema().dump(shown, many=True)
+
+    return _dump
+
+
+def test_a_line_shows_its_outcome_and_the_reviewer_by_name(
+    record_outcome: Callable[..., EventEquipmentLine],
+    dump_lines: Callable[[list[EventEquipmentLine]], list[dict[str, Any]]],
+    ten_requested: EventEquipmentLine,
+) -> None:
+    line = record_outcome(ten_requested, provided_quantity=6, note="Only six in stock")
+
+    [shown] = dump_lines([line])
+
+    assert shown == {
+        "id": line.id,
+        "equipment_type_id": line.equipment_type_id,
+        "quantity": 10,
+        "notes": "Needs HDMI",
+        "status": "partially_fulfilled",
+        "provided_quantity": 6,
+        "shortfall": 4,
+        "outcome_note": "Only six in stock",
+        "reviewed_by": "Alice Example",
+        "reviewed_at": "2026-10-13T17:30:00+08:00",
+    }
+
+
+def test_a_line_met_in_full_shows_no_shortfall(
+    record_outcome: Callable[..., EventEquipmentLine],
+    dump_lines: Callable[[list[EventEquipmentLine]], list[dict[str, Any]]],
+    ten_requested: EventEquipmentLine,
+) -> None:
+    line = record_outcome(ten_requested, provided_quantity=10)
+
+    [shown] = dump_lines([line])
+
+    assert (shown["provided_quantity"], shown["shortfall"], shown["outcome_note"]) == (10, 0, None)
+
+
+def test_a_line_with_no_outcome_shows_every_outcome_field_empty(
+    dump_lines: Callable[[list[EventEquipmentLine]], list[dict[str, Any]]],
+    ten_requested: EventEquipmentLine,
+) -> None:
+    [shown] = dump_lines([ten_requested])
+
+    assert shown["status"] == "requested"
+    outcome_fields = [
+        "provided_quantity",
+        "shortfall",
+        "outcome_note",
+        "reviewed_by",
+        "reviewed_at",
+    ]
+    assert {name: shown[name] for name in outcome_fields} == dict.fromkeys(outcome_fields)
+
+
+def test_a_reviewer_who_no_longer_exists_shows_as_none(
+    db_session: Session,
+    record_outcome: Callable[..., EventEquipmentLine],
+    dump_lines: Callable[[list[EventEquipmentLine]], list[dict[str, Any]]],
+    saved_users: list[User],
+    ten_requested: EventEquipmentLine,
+) -> None:
+    line = record_outcome(ten_requested, provided_quantity=10)
+    reviewer = next(user for user in saved_users if user.id == REVIEWER_ID)
+    db_session.delete(reviewer)
+    db_session.commit()
+
+    [shown] = dump_lines([line])
+
+    assert shown["reviewed_by"] is None
+    assert shown["provided_quantity"] == 10
+
+
+def test_the_reviewers_id_is_never_shown(
+    record_outcome: Callable[..., EventEquipmentLine],
+    dump_lines: Callable[[list[EventEquipmentLine]], list[dict[str, Any]]],
+    ten_requested: EventEquipmentLine,
+) -> None:
+    line = record_outcome(ten_requested, provided_quantity=10)
+
+    [shown] = dump_lines([line])
+
+    assert REVIEWER_ID not in shown.values()

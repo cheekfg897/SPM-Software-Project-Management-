@@ -161,6 +161,28 @@ class ClarificationAsShown:
 
 
 @dataclass(frozen=True)
+class EquipmentLineAsShown:
+    """An equipment line with its review outcome, as staff see it (SCRUM-48 AC4).
+
+    No user ids: the reviewing staff member is shown by name. The outcome fields stay
+    ``None`` until an outcome is recorded.
+    """
+
+    id: int
+    equipment_type_id: int
+    quantity: int
+    notes: str | None
+    status: EquipmentLineStatus
+    provided_quantity: int | None
+    #: How many fewer units are provided than requested.
+    shortfall: int | None
+    outcome_note: str | None
+    #: The reviewer's full name, or ``None`` if they no longer exist.
+    reviewed_by: str | None
+    reviewed_at: datetime | None
+
+
+@dataclass(frozen=True)
 class EventRecord:
     """A request with what its record shows beside it (SCRUM-30 AC3, ADR-0026)."""
 
@@ -1176,6 +1198,9 @@ def _commit_line_or_conflict(session: Session) -> None:
         raise ConflictError(DUPLICATE_LINE_MESSAGE) from exc
 
 
+EQUIPMENT_LINE_NOT_FOUND_MESSAGE = "Equipment line not found."
+
+
 def _line_of_event(
     event_request: EventRequest, line_id: int, session: Session
 ) -> EventEquipmentLine:
@@ -1190,7 +1215,7 @@ def _line_of_event(
     )
     line = session.scalar(stmt)
     if line is None:
-        raise NotFoundError("Equipment line not found.")
+        raise NotFoundError(EQUIPMENT_LINE_NOT_FOUND_MESSAGE)
     return line
 
 
@@ -1295,6 +1320,39 @@ def list_equipment_lines(
         viewer_id, reference, viewer_role, resolve_session(session)
     )
     return event_request, list(event_request.equipment_lines)
+
+
+def equipment_lines_as_shown(
+    lines: Iterable[EventEquipmentLine], *, session: Session | None = None
+) -> list[EquipmentLineAsShown]:
+    """The lines with their review outcome and the reviewers' names (SCRUM-48 AC4).
+
+    Names are looked up now, in one query, so a removed reviewer shows as ``None``.
+    """
+    lines = list(lines)
+    reviewer_ids = {line.reviewed_by for line in lines if line.reviewed_by is not None}
+    names = get_user_full_names(reviewer_ids, session=session)
+
+    shown: list[EquipmentLineAsShown] = []
+    for line in lines:
+        shortfall = None
+        if line.provided_quantity is not None:
+            shortfall = line.quantity - line.provided_quantity
+        shown.append(
+            EquipmentLineAsShown(
+                id=line.id,
+                equipment_type_id=line.equipment_type_id,
+                quantity=line.quantity,
+                notes=line.notes,
+                status=line.status,
+                provided_quantity=line.provided_quantity,
+                shortfall=shortfall,
+                outcome_note=line.outcome_note,
+                reviewed_by=names.get(line.reviewed_by),
+                reviewed_at=line.reviewed_at,
+            )
+        )
+    return shown
 
 
 def update_equipment_line(
@@ -3000,7 +3058,6 @@ def has_recorded_outcomes(event_id: int, *, session: Session | None = None) -> b
 
 OUTCOME_NOTE_REQUIRED_MESSAGE = "A note is required unless the whole request can be provided."
 PROVIDED_ABOVE_REQUESTED_MESSAGE = "Cannot provide more than was requested."
-EQUIPMENT_LINE_NOT_FOUND_MESSAGE = "Equipment line not found."
 
 
 def _check_outcome_is_possible(line: EventEquipmentLine, outcome: Mapping[str, Any]) -> None:
