@@ -123,6 +123,12 @@ class EventHistoryKind(str, enum.Enum):
     #: Venue Staff decided it; ``details`` holds ``venue_booking_request_id`` and
     #: ``venue_id`` (SCRUM-93 AC6).
     VENUE_ARRANGEMENT_WITHDRAWN = "venue_arrangement_withdrawn"
+    #: Technical Support recorded or revised the outcome of an equipment review;
+    #: ``details`` holds ``equipment_line_id``, ``equipment_type_id``,
+    #: ``equipment_type_name``, ``quantity``, ``provided_quantity``, ``status`` and
+    #: ``note`` (``None`` when the request was met in full), and ``actor_id`` is the
+    #: reviewer (SCRUM-48 AC4, AC5).
+    EQUIPMENT_OUTCOME_RECORDED = "equipment_outcome_recorded"
 
 
 class DecisionOutcome(str, enum.Enum):
@@ -137,13 +143,22 @@ class DecisionOutcome(str, enum.Enum):
 
 
 class EquipmentLineStatus(str, enum.Enum):
-    """Where an event's equipment line stands (SCRUM-37 AC4, ADR-0019).
+    """Where an event's equipment line stands (SCRUM-37 AC4, ADR-0019, SCRUM-48).
 
-    Only ``REQUESTED`` is written so far; SCRUM-46 adds ``reserved`` with an
-    ``ALTER TYPE ... ADD VALUE`` migration.
+    ``REQUESTED`` until Technical Support records the outcome of their review, which
+    is then one of the three outcome values. The outcome follows from how much was
+    provided: :func:`app.modules.events.services.outcome_status_for` is the only
+    place that decides, so the status and ``provided_quantity`` cannot disagree.
     """
 
     REQUESTED = "requested"
+    #: Everything the coordinator asked for will be provided (SCRUM-48 AC2).
+    FULFILLED = "fulfilled"
+    #: Some but not all of it; the shortfall is ``quantity - provided_quantity``
+    #: and a note says why (SCRUM-48 AC1).
+    PARTIALLY_FULFILLED = "partially_fulfilled"
+    #: None of it is available; the note carries the required reason (SCRUM-48 AC3).
+    UNAVAILABLE = "unavailable"
 
 
 class EventRequest(db.Model):  # type: ignore[name-defined]
@@ -295,6 +310,10 @@ class EventEquipmentLine(db.Model):  # type: ignore[name-defined]
     __tablename__ = "event_equipment_lines"
     __table_args__ = (
         CheckConstraint("quantity >= 1", name="ck_event_equipment_lines_quantity_min"),
+        CheckConstraint(
+            "provided_quantity IS NULL OR provided_quantity BETWEEN 0 AND quantity",
+            name="ck_event_equipment_lines_provided_within_quantity",
+        ),
         UniqueConstraint(
             "event_request_id",
             "equipment_type_id",
@@ -324,6 +343,17 @@ class EventEquipmentLine(db.Model):  # type: ignore[name-defined]
         nullable=False,
         default=EquipmentLineStatus.REQUESTED,
     )
+    #: How many units Technical Support will actually provide (SCRUM-48). ``None``
+    #: means no outcome has been recorded yet, which is what SCRUM-97 and SCRUM-49
+    #: gate the Safety Review on; the shortfall is ``quantity`` minus this.
+    provided_quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: Why the request could not be met in full. Required when less than the whole
+    #: quantity is provided (SCRUM-48 AC1, AC3).
+    outcome_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: The Technical Support user who recorded the outcome, shown by name on the
+    #: event record (SCRUM-48 AC4).
+    reviewed_by: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

@@ -30,7 +30,9 @@ def test_migration_and_model_agree_on_the_line_status_values(
 ) -> None:
     migration = load_migration(MIGRATION)
 
-    assert set(migration.LINE_STATUS_VALUES) == {status.value for status in EquipmentLineStatus}
+    # Subset, not equality: a later migration (SCRUM-48) adds the outcome statuses this
+    # migration doesn't know about.
+    assert set(migration.LINE_STATUS_VALUES) <= {status.value for status in EquipmentLineStatus}
 
 
 def test_migration_and_model_agree_on_the_notification_kinds(
