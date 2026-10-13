@@ -1,0 +1,286 @@
+"""Unit tests for SCRUM-43 — Venue Staff approve or reject a venue booking request.
+
+The queue is every Pending request, ordered by the date of the event it is for (AC1),
+each beside its event's details (AC2). Approving creates the confirmed booking and
+moves the request to Approved (AC3); rejecting needs a reason and books nothing. The
+decision rides in one commit with the event's history entry, as raising one does
+(ADR-0035). Holding a request is SCRUM-75, and refusing an overlap is SCRUM-44.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from datetime import UTC, datetime
+
+import pytest
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.common.errors import ConflictError, NotFoundError, ValidationError
+from app.modules.auth.permissions import Role
+from app.modules.events.models import EventHistoryEntry, EventHistoryKind
+from app.modules.venue import services
+from app.modules.venue.models import (
+    Booking,
+    BookingRequestStatus,
+    BookingStatus,
+    CalendarEntryKind,
+    Venue,
+)
+from tests.venue.conftest import (
+    SECOND_PERIOD,
+    VENUE_STAFF_ID,
+    SavedEvent,
+    decide,
+    raise_booking,
+    two_venues,
+)
+
+pytestmark = pytest.mark.scrum_43
+
+NOVEMBER_FIRST = {
+    "starts_at": "2026-11-01T09:00:00+08:00",
+    "ends_at": "2026-11-01T12:00:00+08:00",
+}
+
+
+def _bookings(session: Session) -> list[Booking]:
+    return list(session.scalars(select(Booking)))
+
+
+def _queue_ids(session: Session) -> list[int]:
+    return [shown.request.id for shown in services.list_pending_booking_requests(session=session)]
+
+
+def test_the_queue_is_empty_when_no_request_is_waiting(db_session: Session) -> None:
+    """What the Venue Staff page shows an empty state for."""
+    assert services.list_pending_booking_requests(session=db_session) == []
+
+
+def test_the_queue_shows_a_pending_request_beside_its_events_details(
+    db_session: Session, venue: Venue, saved_event: SavedEvent
+) -> None:
+    """AC2: the event's timing and accessibility needs travel with the request."""
+    event = saved_event()
+    raise_booking(venue, event, db_session, expected_occupancy=90, required_layout="theatre")
+
+    queue = services.list_pending_booking_requests(session=db_session)
+
+    assert len(queue) == 1
+    shown = queue[0]
+    assert shown.request.purpose == "Main hall"
+    assert shown.request.expected_occupancy == 90
+    assert shown.request.required_layout == "theatre"
+    assert shown.proposed_date == event.proposed_date
+    assert shown.start_time == event.start_time
+    assert shown.accessibility_needs == "Step-free entrance"
+
+
+def test_the_queue_is_ordered_by_the_events_date_not_the_requests_period(
+    db_session: Session,
+    make_venue: Callable[..., Venue],
+    save: Callable[..., None],
+    saved_event: SavedEvent,
+) -> None:
+    """AC1. The later event's request is for the earlier period, so the two disagree."""
+    auditorium, breakout = two_venues(make_venue, save)
+    later_event = saved_event(proposed_date=datetime(2026, 11, 5, tzinfo=UTC).date())
+    earlier_event = saved_event(proposed_date=datetime(2026, 11, 1, tzinfo=UTC).date())
+    for_later = raise_booking(auditorium, later_event, db_session, **NOVEMBER_FIRST)
+    for_earlier = raise_booking(breakout, earlier_event, db_session, **SECOND_PERIOD)
+
+    assert _queue_ids(db_session) == [for_earlier.id, for_later.id]
+
+
+def test_the_queue_leaves_out_requests_that_are_no_longer_pending(
+    db_session: Session,
+    make_venue: Callable[..., Venue],
+    save: Callable[..., None],
+    saved_event: SavedEvent,
+    saved_users: list[object],
+) -> None:
+    """A decided or withdrawn request is not waiting for anyone (AC1)."""
+    auditorium, breakout = two_venues(make_venue, save)
+    event = saved_event()
+    approved = raise_booking(auditorium, event, db_session)
+    still_pending = raise_booking(breakout, event, db_session, **SECOND_PERIOD)
+    decide(approved.id, "approved", db_session)
+
+    assert _queue_ids(db_session) == [still_pending.id]
+
+
+def test_approving_creates_a_confirmed_booking_for_the_requested_period(
+    db_session: Session, venue: Venue, saved_event: SavedEvent, saved_users: list[object]
+) -> None:
+    """AC3."""
+    event = saved_event()
+    request = raise_booking(venue, event, db_session)
+
+    decide(request.id, "approved", db_session)
+
+    bookings = _bookings(db_session)
+    assert len(bookings) == 1
+    booking = bookings[0]
+    assert booking.venue_id == venue.id
+    assert booking.event_id == event.id
+    assert booking.status is BookingStatus.CONFIRMED
+    assert booking.start_time == request.starts_at
+    assert booking.end_time == request.ends_at
+
+
+def test_approving_moves_the_request_to_approved(
+    db_session: Session, venue: Venue, saved_event: SavedEvent, saved_users: list[object]
+) -> None:
+    """AC3."""
+    request = raise_booking(venue, saved_event(), db_session)
+
+    decided = decide(request.id, "approved", db_session)
+
+    assert decided.status is BookingRequestStatus.APPROVED
+
+
+def test_an_approval_may_carry_a_reason_for_the_coordinator(
+    db_session: Session, venue: Venue, saved_event: SavedEvent, saved_users: list[object]
+) -> None:
+    """AC6: the decision and any reason are visible on the request."""
+    request = raise_booking(venue, saved_event(), db_session)
+
+    decided = decide(request.id, "approved", db_session, reason="Stage is already set up")
+
+    assert decided.decision_reason == "Stage is already set up"
+
+
+def test_the_approved_booking_occupies_the_calendar_with_setup_and_turnaround(
+    db_session: Session,
+    make_venue: Callable[..., Venue],
+    save: Callable[..., None],
+    saved_event: SavedEvent,
+    saved_users: list[object],
+) -> None:
+    """AC7: the venue is unavailable, padded by its buffers (ADR-0011)."""
+    venue = make_venue(setup_minutes=30, turnaround_minutes=45)
+    save(venue)
+    request = raise_booking(venue, saved_event(), db_session)
+
+    decide(request.id, "approved", db_session)
+
+    entries = services.get_venue_calendar(
+        venue.id,
+        datetime(2026, 11, 1, tzinfo=UTC),
+        datetime(2026, 11, 2, tzinfo=UTC),
+        viewer_role=Role.VENUE_STAFF,
+        session=db_session,
+    )
+    assert [entry.kind for entry in entries] == [CalendarEntryKind.CONFIRMED_BOOKING]
+    assert entries[0].start_time == datetime(2026, 11, 1, 0, 30, tzinfo=UTC)
+    assert entries[0].end_time == datetime(2026, 11, 1, 4, 45, tzinfo=UTC)
+
+
+def test_rejecting_records_the_reason_and_books_nothing(
+    db_session: Session, venue: Venue, saved_event: SavedEvent, saved_users: list[object]
+) -> None:
+    """AC3, AC6."""
+    request = raise_booking(venue, saved_event(), db_session)
+
+    decided = decide(request.id, "rejected", db_session, reason="Double-booked for maintenance")
+
+    assert decided.status is BookingRequestStatus.REJECTED
+    assert decided.decision_reason == "Double-booked for maintenance"
+    assert _bookings(db_session) == []
+
+
+def test_rejecting_without_a_reason_is_refused(
+    db_session: Session, venue: Venue, saved_event: SavedEvent
+) -> None:
+    """The coordinator has to be told why, as a rejected event request is (ADR-0028)."""
+    request = raise_booking(venue, saved_event(), db_session)
+
+    with pytest.raises(ValidationError) as refusal:
+        decide(request.id, "rejected", db_session)
+
+    assert refusal.value.details == {"reason": [services.REJECTION_REASON_REQUIRED_MESSAGE]}
+    assert db_session.get(services.VenueBookingRequest, request.id).status is (
+        BookingRequestStatus.PENDING
+    )
+
+
+def test_an_outcome_that_is_neither_approved_nor_rejected_is_refused(
+    db_session: Session, venue: Venue, saved_event: SavedEvent
+) -> None:
+    """Holding is SCRUM-75; until then "on_hold" is not an outcome this route takes."""
+    request = raise_booking(venue, saved_event(), db_session)
+
+    with pytest.raises(ValidationError) as refusal:
+        decide(request.id, "on_hold", db_session)
+
+    assert "outcome" in refusal.value.details
+
+
+def test_a_request_that_was_already_decided_cannot_be_decided_again(
+    db_session: Session, venue: Venue, saved_event: SavedEvent, saved_users: list[object]
+) -> None:
+    """The booking is made once; changing a decision is not in this story's ACs."""
+    request = raise_booking(venue, saved_event(), db_session)
+    decide(request.id, "approved", db_session)
+
+    with pytest.raises(ConflictError) as refusal:
+        decide(request.id, "rejected", db_session, reason="Changed my mind")
+
+    assert refusal.value.message == services.DECISION_NOT_PENDING_MESSAGE.format(status="approved")
+    assert len(_bookings(db_session)) == 1
+
+
+def test_a_request_that_does_not_exist_is_not_found(db_session: Session) -> None:
+    with pytest.raises(NotFoundError) as refusal:
+        decide(404, "approved", db_session)
+
+    assert refusal.value.message == services.BOOKING_REQUEST_NOT_FOUND_MESSAGE
+
+
+def test_deciding_one_request_leaves_the_events_other_requests_alone(
+    db_session: Session,
+    make_venue: Callable[..., Venue],
+    save: Callable[..., None],
+    saved_event: SavedEvent,
+    saved_users: list[object],
+) -> None:
+    """AC8: one venue's decision says nothing about the event's other venues."""
+    auditorium, breakout = two_venues(make_venue, save)
+    event = saved_event()
+    approved = raise_booking(auditorium, event, db_session)
+    untouched = raise_booking(breakout, event, db_session, **SECOND_PERIOD)
+
+    decide(approved.id, "approved", db_session)
+
+    other = db_session.get(services.VenueBookingRequest, untouched.id)
+    assert other.status is BookingRequestStatus.PENDING
+    assert other.decision_reason is None
+    assert [booking.venue_id for booking in _bookings(db_session)] == [auditorium.id]
+
+
+@pytest.mark.parametrize(
+    ("outcome", "kind"),
+    [
+        ("approved", EventHistoryKind.VENUE_BOOKING_APPROVED),
+        ("rejected", EventHistoryKind.VENUE_BOOKING_REJECTED),
+    ],
+)
+def test_the_decision_is_recorded_in_the_events_history(
+    db_session: Session,
+    venue: Venue,
+    saved_event: SavedEvent,
+    saved_users: list[object],
+    outcome: str,
+    kind: EventHistoryKind,
+) -> None:
+    """Traceable on the event, as raising the request is (ADR-0035 decision 8)."""
+    request = raise_booking(venue, saved_event(), db_session)
+
+    decide(request.id, outcome, db_session, reason="As agreed with the organiser")
+
+    entries = list(db_session.scalars(select(EventHistoryEntry).order_by(EventHistoryEntry.id)))
+    assert [entry.kind for entry in entries] == [EventHistoryKind.VENUE_BOOKING_REQUESTED, kind]
+    assert entries[-1].actor_id == VENUE_STAFF_ID
+    assert entries[-1].details["venue_booking_request_id"] == request.id
+    assert entries[-1].details["venue_id"] == venue.id
+    assert entries[-1].details["reason"] == "As agreed with the organiser"

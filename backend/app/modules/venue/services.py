@@ -28,6 +28,7 @@ from app.modules.notifications.services import EventSummary, NotificationKind, n
 from app.modules.venue.models import (
     RETIRED_REQUEST_STATUSES,
     Booking,
+    BookingDecision,
     BookingRequestStatus,
     BookingStatus,
     CalendarEntryKind,
@@ -44,6 +45,7 @@ from app.modules.venue.schemas import (
     BlockVenueSchema,
     BookingRequestAsShown,
     ChangeArrangementSchema,
+    DecideBookingRequestSchema,
     EditVenueSchema,
     RaiseBookingRequestSchema,
     VenueSearchSchema,
@@ -836,25 +838,39 @@ def show_booking_request(
     )
 
 
-def _notify_venue_staff(event: EventForBooking, session: Session | None) -> None:
-    """Tell every Venue Staff user the request needs a decision (AC9, ADR-0035).
+def _notify_about_booking(
+    recipient_ids: list[int],
+    event: EventForBooking,
+    kind: NotificationKind,
+    *,
+    detail: str | None = None,
+    session: Session | None = None,
+) -> None:
+    """Notify about a booking request after its own commit, in a second (ADR-0015).
 
-    Runs after the request's own commit, in a second commit (ADR-0015). If the
-    notifications can't be saved, only they are lost and a warning is logged: the
-    request is already saved, and failing the reply would invite a second request.
+    If the notifications can't be saved, only they are lost and a warning is logged:
+    the request or decision is already saved, and failing the reply would invite the
+    caller to send it again. Shared by the two notices the venue module sends; moving
+    it into ``notifications.services`` alongside the events module's copy stays a
+    follow-up (ADR-0035, ADR-0042).
     """
     active_session = resolve_session(session)
     summary = EventSummary(id=event.id, reference=event.reference, name=event.name)
     try:
-        notify_users(
-            list_user_ids_with_role(Role.VENUE_STAFF, session=session),
-            summary,
-            NotificationKind.VENUE_BOOKING_REQUESTED,
-            session=session,
-        )
+        notify_users(recipient_ids, summary, kind, session=session, detail=detail)
     except SQLAlchemyError:
         active_session.rollback()
         logger.warning("venue_booking_notification_failed reference=%s", event.reference)
+
+
+def _notify_venue_staff(event: EventForBooking, session: Session | None) -> None:
+    """Tell every Venue Staff user the request needs a decision (AC9, ADR-0035)."""
+    _notify_about_booking(
+        list_user_ids_with_role(Role.VENUE_STAFF, session=session),
+        event,
+        NotificationKind.VENUE_BOOKING_REQUESTED,
+        session=session,
+    )
 
 
 def raise_booking_request(
@@ -1140,3 +1156,177 @@ def change_arrangement(
     )
     sess.commit()
     return show_booking_request(arrangement, event)
+
+
+# --------------------------------------------------------------------------
+# SCRUM-43 — Venue Staff approve or reject a booking request
+# --------------------------------------------------------------------------
+
+
+BOOKING_REQUEST_NOT_FOUND_MESSAGE = "Booking request not found."
+DECISION_NOT_PENDING_MESSAGE = "Only a pending request can be decided; this one is {status}."
+REJECTION_REASON_REQUIRED_MESSAGE = "A reason is required to reject a booking request."
+
+#: Where each outcome leaves the request (AC3), and which notice the coordinator gets
+#: (AC6). SCRUM-75 adds holding to both.
+_STATUS_BY_DECISION = {
+    BookingDecision.APPROVED: BookingRequestStatus.APPROVED,
+    BookingDecision.REJECTED: BookingRequestStatus.REJECTED,
+}
+_NOTIFICATION_BY_DECISION = {
+    BookingDecision.APPROVED: NotificationKind.VENUE_BOOKING_APPROVED,
+    BookingDecision.REJECTED: NotificationKind.VENUE_BOOKING_REJECTED,
+}
+
+
+def list_pending_booking_requests(*, session: Session | None = None) -> list[BookingRequestAsShown]:
+    """Every request waiting for a decision, the earliest event first (AC1, AC2).
+
+    Any Venue Staff member sees the whole queue: staff are not assigned to venues
+    (ADR-0035 decision 1). The order is the event's date, then its start time, then the
+    request's id, so a queue read twice is in the same order. The events are read
+    through the events service and the ordering is done here, because the date lives in
+    the events module and this module may not join across it.
+    """
+    from app.modules.events import services as event_services  # circular at import time
+
+    requests = list(
+        resolve_session(session).scalars(
+            select(VenueBookingRequest).where(
+                VenueBookingRequest.status == BookingRequestStatus.PENDING
+            )
+        )
+    )
+    events = event_services.get_events_for_booking(
+        {request.event_id for request in requests}, session=session
+    )
+    waiting = [(events[request.event_id], request) for request in requests]
+    waiting.sort(key=lambda pair: (pair[0].proposed_date, pair[0].start_time, pair[1].id))
+    return [show_booking_request(request, event) for event, request in waiting]
+
+
+def _request_to_decide(request_id: int, session: Session | None) -> VenueBookingRequest:
+    """The request ``request_id`` names, if it is still waiting for a decision.
+
+    Raises:
+        NotFoundError: 404 — no such request.
+        ConflictError: 409 — it was decided or withdrawn already; the message names
+            the status it is in.
+    """
+    request = resolve_session(session).get(VenueBookingRequest, request_id)
+    if request is None:
+        raise NotFoundError(BOOKING_REQUEST_NOT_FOUND_MESSAGE)
+    if request.status is not BookingRequestStatus.PENDING:
+        raise ConflictError(DECISION_NOT_PENDING_MESSAGE.format(status=request.status.value))
+    return request
+
+
+def _booking_for(request: VenueBookingRequest) -> Booking:
+    """The confirmed booking an approval makes, for the period asked for (AC3).
+
+    Whether the period clashes with another booking is SCRUM-44's check; this story's
+    ACs do not ask for one (ADR-0042).
+    """
+    return Booking(
+        venue_id=request.venue_id,
+        event_id=request.event_id,
+        start_time=request.starts_at,
+        end_time=request.ends_at,
+        status=BookingStatus.CONFIRMED,
+    )
+
+
+def _save_decision(
+    request: VenueBookingRequest,
+    decision: BookingDecision,
+    booking: Booking | None,
+    *,
+    decided_by: int,
+    session: Session | None,
+) -> None:
+    """Save the decision, any booking it makes and the history entry in one commit.
+
+    The event's history entry rides in the same transaction as the decision it
+    records, as raising a request does (ADR-0035 decision 8).
+    """
+    from app.modules.events import services as event_services  # circular at import time
+
+    active_session = resolve_session(session)
+    request.status = _STATUS_BY_DECISION[decision]
+    if booking is not None:
+        active_session.add(booking)
+    active_session.flush()
+    event_services.record_venue_booking_decided(
+        request.event_id,
+        outcome=decision.value,
+        actor_id=decided_by,
+        details={
+            "venue_booking_request_id": request.id,
+            "venue_id": request.venue_id,
+            "booking_id": booking.id if booking is not None else None,
+            "reason": request.decision_reason,
+        },
+        session=session,
+    )
+    active_session.commit()
+
+
+def decide_booking_request(
+    request_id: int,
+    payload: Mapping[str, Any] | None,
+    *,
+    decided_by: int,
+    session: Session | None = None,
+) -> BookingRequestAsShown:
+    """Approve or reject a Pending booking request (SCRUM-43 AC3, AC6, AC7, AC8).
+
+    Approving makes a confirmed booking for the period asked for, which the venue's
+    calendar then shows as unavailable, padded by its setup and turnaround time
+    (ADR-0011). Rejecting books nothing and needs a reason. Either way the request
+    keeps the reason, the event's history gets an entry in the same commit, and the
+    coordinator who raised the request is told in a second commit (ADR-0015). The
+    event's other requests are untouched (AC8): each is decided on its own.
+
+    Holding a request instead of approving it is SCRUM-75, and refusing a period that
+    clashes with another booking is SCRUM-44.
+
+    Args:
+        request_id: The request's own id, as the queue lists it.
+        payload: Decoded JSON body: ``outcome`` and an optional ``reason``.
+        decided_by: The deciding Venue Staff user's id, taken from their token.
+        session: Database session; defaults to ``db.session``.
+
+    Returns:
+        The decided request, with its event's details beside it.
+
+    Raises:
+        NotFoundError: 404 — no such request.
+        ConflictError: 409 — the request is not Pending.
+        ValidationError: 400 — payload invalid, or a rejection without a reason.
+    """
+    from app.modules.events import services as event_services  # circular at import time
+
+    request = _request_to_decide(request_id, session)
+    data = load_or_raise(DecideBookingRequestSchema(), payload)
+    decision = data["outcome"]
+    reason = data["reason"]
+    if decision is BookingDecision.REJECTED and reason is None:
+        raise ValidationError(
+            "Invalid request.", details={"reason": [REJECTION_REASON_REQUIRED_MESSAGE]}
+        )
+
+    # The request's event_id is a foreign key, so the event is always there.
+    event = event_services.get_events_for_booking([request.event_id], session=session)[
+        request.event_id
+    ]
+    request.decision_reason = reason
+    booking = _booking_for(request) if decision is BookingDecision.APPROVED else None
+    _save_decision(request, decision, booking, decided_by=decided_by, session=session)
+    _notify_about_booking(
+        [request.requested_by],
+        event,
+        _NOTIFICATION_BY_DECISION[decision],
+        detail=reason,
+        session=session,
+    )
+    return show_booking_request(request, event)
