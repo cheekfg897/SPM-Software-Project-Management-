@@ -106,6 +106,27 @@ class CoordinatorContact:
 
 
 @dataclass(frozen=True)
+class ActiveRequest:
+    """One active event with the name of its coordinator, for the Lead (SCRUM-96 AC1).
+
+    No user id: the coordinator is shown by name. ``coordinator_name`` is ``None``
+    while a submitted request waits for the Lead to assign it.
+    """
+
+    event_request: EventRequest
+    coordinator_name: str | None
+
+
+@dataclass(frozen=True)
+class CoordinatorWorkload:
+    """A coordinator and their active events, for the Lead (SCRUM-96 AC2)."""
+
+    coordinator_id: int
+    coordinator_name: str
+    assigned: list[EventRequest]
+
+
+@dataclass(frozen=True)
 class DecisionAsShown:
     """The request's current decision as its record shows it (SCRUM-31 AC9, ADR-0028).
 
@@ -300,14 +321,21 @@ def _warn_unassigned(event_request: EventRequest) -> None:
 
 
 def _notify_about_assignment(
-    event_request: EventRequest, coordinator_id: int, session: Session
+    event_request: EventRequest,
+    coordinator_id: int,
+    session: Session,
+    *,
+    previous_id: int | None = None,
 ) -> None:
-    """Tell the new coordinator, then the organiser, that the request is assigned.
+    """Tell the new coordinator, the organiser and any previous coordinator.
 
     The coordinator hears the event is theirs (SCRUM-30 AC4, SCRUM-87 AC4, SCRUM-39
     AC4), and the organiser who submitted it hears a coordinator has been assigned
-    (SCRUM-39 AC1, ADR-0030). They are two separate writes, so losing one notice
-    doesn't lose the other (ADR-0015).
+    (SCRUM-39 AC1, ADR-0030). On a reassignment the coordinator who held the request
+    hears it has moved on, with the same ``request_assigned`` notice the organiser
+    gets, because the Lead made the change, not them (SCRUM-96 AC5); a first assignment
+    has no ``previous_id``. They are separate writes, so losing one notice doesn't lose
+    the others (ADR-0015).
     """
     _raise_notifications(
         [coordinator_id], event_request, NotificationKind.COORDINATOR_ASSIGNED, session
@@ -315,6 +343,10 @@ def _notify_about_assignment(
     _raise_notifications(
         [event_request.organiser_id], event_request, NotificationKind.REQUEST_ASSIGNED, session
     )
+    if previous_id is not None:
+        _raise_notifications(
+            [previous_id], event_request, NotificationKind.REQUEST_ASSIGNED, session
+        )
 
 
 def _notify_leads_of_queued_request(event_request: EventRequest, session: Session) -> None:
@@ -1274,12 +1306,14 @@ def remove_equipment_line(
 # SCRUM-87 — reassign an event to a different coordinator
 # --------------------------------------------------------------------------
 
-#: Statuses in which an event request may move to another coordinator: from
-#: submission until the event is over (SCRUM-87, ADR-0021; ``approved`` from SCRUM-31,
+#: The active statuses, from submission until the event is over. A request in one may
+#: move to another coordinator (SCRUM-87, ADR-0021; ``approved`` from SCRUM-31,
 #: ADR-0028; ``awaiting_clarification`` from SCRUM-32, ADR-0029). A completed, cancelled
 #: or rejected event has nothing left to coordinate; a draft is hidden from
-#: coordinators altogether, so it never reaches this check (SCRUM-20, ADR-0024).
-REASSIGNABLE_STATUSES: frozenset[EventRequestStatus] = frozenset(
+#: coordinators altogether, so it never reaches this check (SCRUM-20, ADR-0024). The
+#: Event Coordinator Lead's list of every active event reads the same set, so the two
+#: can't drift (SCRUM-96 AC1, ADR-0041).
+ACTIVE_STATUSES: frozenset[EventRequestStatus] = frozenset(
     {
         EventRequestStatus.SUBMITTED,
         EventRequestStatus.UNDER_REVIEW,
@@ -1314,11 +1348,11 @@ def _coordinator_to_replace(event_request: EventRequest) -> int:
     Raises:
         RequestNotReassignableError: 409 — the request has no coordinator.
         RequestNotReassignableError: 409 — the request isn't in one of the
-            ``REASSIGNABLE_STATUSES``.
+            ``ACTIVE_STATUSES``.
     """
     if event_request.coordinator_id is None:
         raise RequestNotReassignableError(NOT_ASSIGNED_MESSAGE)
-    if event_request.status not in REASSIGNABLE_STATUSES:
+    if event_request.status not in ACTIVE_STATUSES:
         raise RequestNotReassignableError(NOT_REASSIGNABLE_MESSAGE)
     return event_request.coordinator_id
 
@@ -1358,8 +1392,8 @@ def reassign_coordinator(
     gives access to, the new coordinator only (AC4, AC5). Once saved, the new
     coordinator gets the usual ``coordinator_assigned`` notification (AC4) and the
     organiser a ``request_assigned`` one (SCRUM-39 AC1, ADR-0030); a failure there is
-    logged, not raised (ADR-0015).
-    The previous coordinator isn't notified yet; SCRUM-96 changes that.
+    logged, not raised (ADR-0015). The previous coordinator is told too, with a
+    ``request_assigned`` notification (SCRUM-96 AC5).
 
     Args:
         actor_id: The Lead's user id, taken from their token, recorded as the actor.
@@ -1405,8 +1439,9 @@ def reassign_coordinator(
         session=sess,
     )
     sess.commit()
-    # The previous coordinator isn't told: only they may reassign, so they did this.
-    _notify_about_assignment(event_request, coordinator_id, sess)
+    _notify_about_assignment(
+        event_request, coordinator_id, sess, previous_id=previous_coordinator_id
+    )
     return event_request, coordinator
 
 
@@ -1927,6 +1962,66 @@ def list_unassigned_requests(*, session: Session | None = None) -> list[EventReq
         .order_by(EventRequest.created_at.asc(), EventRequest.id.asc())
     )
     return list(resolve_session(session).scalars(stmt))
+
+
+def _active_requests_newest_first(session: Session) -> list[EventRequest]:
+    """Every request in an :data:`ACTIVE_STATUSES` status, newest first."""
+    return _list_event_requests_newest_first(EventRequest.status.in_(ACTIVE_STATUSES), session)
+
+
+def list_active_requests(*, session: Session | None = None) -> list[ActiveRequest]:
+    """Every active event with its coordinator's name, newest first (SCRUM-96 AC1).
+
+    "Active" is :data:`ACTIVE_STATUSES`, the same set a reassignment accepts (ADR-0041):
+    drafts, and completed, cancelled and rejected events, are left out. The Lead
+    supervises every coordinator, so the list is not filtered by Lead (SCRUM-96
+    Assumption). A submitted request still waiting to be assigned is active, and is
+    listed with no coordinator.
+
+    Args:
+        session: Database session; defaults to ``db.session``.
+
+    Returns:
+        The active events, each with its coordinator's full name or ``None``.
+    """
+    sess = resolve_session(session)
+    event_requests = _active_requests_newest_first(sess)
+    coordinator_ids = {r.coordinator_id for r in event_requests if r.coordinator_id is not None}
+    names = get_user_full_names(coordinator_ids, session=sess)
+    active = []
+    for event_request in event_requests:
+        coordinator_name = names.get(event_request.coordinator_id)
+        active.append(ActiveRequest(event_request, coordinator_name))
+    return active
+
+
+def list_requests_for_each_coordinator(
+    *, session: Session | None = None
+) -> list[CoordinatorWorkload]:
+    """Each coordinator's active events, coordinators by name (SCRUM-96 AC2).
+
+    A coordinator with no active event is left out rather than listed empty, so the
+    list shows who has work to supervise; a request nobody holds yet is in no one's
+    list. A coordinator's events are newest first, as in :func:`list_active_requests`.
+
+    Args:
+        session: Database session; defaults to ``db.session``.
+
+    Returns:
+        One entry per coordinator who holds an active event, ordered by name then id.
+    """
+    sess = resolve_session(session)
+    held_by: dict[int, list[EventRequest]] = {}
+    for event_request in _active_requests_newest_first(sess):
+        if event_request.coordinator_id is None:
+            continue
+        held_by.setdefault(event_request.coordinator_id, []).append(event_request)
+    names = get_user_full_names(held_by, session=sess)
+    workloads = [
+        CoordinatorWorkload(coordinator_id, names[coordinator_id], assigned)
+        for coordinator_id, assigned in held_by.items()
+    ]
+    return sorted(workloads, key=lambda w: (w.coordinator_name, w.coordinator_id))
 
 
 def _request_waiting_for_the_lead(reference: str, session: Session) -> EventRequest:

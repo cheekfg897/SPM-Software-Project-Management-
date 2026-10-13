@@ -94,6 +94,17 @@ LOST_NOTIFICATION_CASES = [
     pytest.param([None, LOST_CONNECTION, None], "coordinator_assigned", id="the-coordinators"),
     pytest.param([None, None, LOST_CONNECTION], "request_assigned", id="the-organisers"),
 ]
+#: The same for a reassignment, which saves one more notice: the previous coordinator's
+#: comes last (SCRUM-96 AC5). Losing one still sends the other two.
+LOST_REASSIGNMENT_NOTIFICATION_CASES = [
+    pytest.param(
+        [None, LOST_CONNECTION, None, None], "coordinator_assigned", id="the-new-coordinators"
+    ),
+    pytest.param([None, None, LOST_CONNECTION, None], "request_assigned", id="the-organisers"),
+    pytest.param(
+        [None, None, None, LOST_CONNECTION], "request_assigned", id="the-previous-coordinators"
+    ),
+]
 
 #: The Event Coordinator Lead who assigns a request in the tests (SCRUM-95 AC3). The
 #: assign service records the actor's id and never looks the actor up — the route's
