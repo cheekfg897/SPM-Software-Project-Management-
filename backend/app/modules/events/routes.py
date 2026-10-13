@@ -47,6 +47,7 @@ from app.modules.events.services import (
     list_requests_for_each_coordinator,
     list_unassigned_requests,
     reassign_coordinator,
+    record_equipment_outcome,
     remove_equipment_line,
     request_clarification,
     resubmit_event_request,
@@ -335,6 +336,16 @@ def remove_equipment(reference: str, line_id: int) -> tuple[Response, int]:
     """Remove an equipment line of a request assigned to the caller (SCRUM-37 AC2)."""
     remove_equipment_line(g.current_user_id, reference, line_id)
     return Response(), 204
+
+
+@bp.post("/requests/<reference>/equipment/<int:line_id>/outcome")
+@requires_role(Role.TECHNICAL_SUPPORT_STAFF)
+def record_outcome(reference: str, line_id: int) -> tuple[Response, int]:
+    """Record or revise the outcome of this event's equipment review (SCRUM-48)."""
+    line = record_equipment_outcome(
+        g.current_user_id, reference, line_id, request.get_json(silent=True)
+    )
+    return jsonify(_equipment_line_schema.dump(line)), 200
 
 
 # --------------------------------------------------------------------------

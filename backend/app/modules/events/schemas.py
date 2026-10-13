@@ -587,6 +587,24 @@ class EditEquipmentLineSchema(Schema):
         return data
 
 
+class RecordEquipmentOutcomeSchema(Schema):
+    """Payload for recording the outcome of an equipment review (SCRUM-48).
+
+    ``provided_quantity`` is how many units will actually be provided; the status and
+    the shortfall follow from it. ``note`` is where AC3's reason goes. A blank note is
+    treated as no note, so the service decides whether one is needed.
+    """
+
+    provided_quantity = WholeNumber(required=True, validate=validate.Range(min=0))
+    note = fields.String(allow_none=True, load_default=None)
+
+    @post_load
+    def _trim_note(self, data: dict[str, Any], **_: Any) -> dict[str, Any]:
+        if data["note"] is not None:
+            data["note"] = data["note"].strip() or None
+        return data
+
+
 class EquipmentLineSchema(Schema):
     """One equipment line as the API shows it (SCRUM-37 AC4).
 
