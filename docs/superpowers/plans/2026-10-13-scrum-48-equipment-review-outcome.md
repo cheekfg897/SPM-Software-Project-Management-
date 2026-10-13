@@ -14,6 +14,20 @@
 
 **Branch:** `feat/SCRUM-48-equipment-review-outcome`, branched from `feat/SCRUM-93-venue-arrangements` so migration `0024` can chain on SCRUM-93's `0023`. SCRUM-93 is still in flight; when it finishes, this branch rebases onto its final tip. Expect mechanical conflicts in the append regions of `events/models.py` (enum members) and `events/services.py`.
 
+## What changed during implementation
+
+This plan is the historical design; three names in it differ from what shipped. Read the code
+and ADR-0040 as authoritative:
+
+- `has_recorded_outcomes` was renamed **`all_outcomes_recorded`**, which is what SCRUM-97 and
+  SCRUM-49 should build on.
+- `OUTCOME_STATUSES` was deleted as unused.
+- Migration `0024`'s revision id is **`0024_add_equipment_outcome`**, not
+  `0024_add_equipment_review_outcome` — the latter is 33 characters and `alembic_version` is
+  `VARCHAR(32)`. Later migrations must chain on the shorter id.
+
+ADR-0040 records the rest, including the follow-ups this plan did not anticipate.
+
 ## Global Constraints
 
 - **British spelling** in code and API (`organiser`, `serialise`, `fulfilled`, `cancelled`).
