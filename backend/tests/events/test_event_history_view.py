@@ -23,7 +23,11 @@ from app.common.errors import NotFoundError
 from app.modules.auth.models import User
 from app.modules.auth.permissions import Role
 from app.modules.events.models import EventHistoryKind, EventRequest, EventRequestStatus
-from app.modules.events.services import list_event_history, record_event_history
+from app.modules.events.services import (
+    EVENT_REQUEST_NOT_FOUND_MESSAGE,
+    list_event_history,
+    record_event_history,
+)
 
 pytestmark = pytest.mark.scrum_33
 
@@ -102,11 +106,11 @@ def recorded_history(
 
 INTERNAL_VIEWERS = [
     (3, Role.EVENT_COORDINATOR),
-    (9, Role.EVENT_COORDINATOR),
+    (8, Role.EVENT_COORDINATOR_LEAD),
     (4, Role.VENUE_STAFF),
     (5, Role.TECHNICAL_SUPPORT_STAFF),
 ]
-INTERNAL_VIEWER_IDS = ["own-coordinator", "other-coordinator", "venue-staff", "technical-support"]
+INTERNAL_VIEWER_IDS = ["assigned-coordinator", "lead", "venue-staff", "technical-support"]
 
 
 @pytest.mark.parametrize(
@@ -171,6 +175,44 @@ def test_an_organiser_cannot_see_another_organisations_history(
         list_event_history(7, "EVR-BBBBBBBB", viewer_role=Role.EVENT_ORGANISER)
 
     assert exc_info.value.status_code == 404
+
+
+# --------------------------------------------------------------------------
+# SCRUM-96 AC6 — a coordinator reads only the history of events assigned to them
+# --------------------------------------------------------------------------
+
+
+def test_a_coordinator_cannot_read_the_history_of_an_event_assigned_to_someone_else(
+    recorded_history: EventRequest,
+) -> None:
+    """Coordinator 3 holds it, so coordinator 9 gets an unknown reference's 404."""
+    with pytest.raises(NotFoundError) as unassigned_error:
+        list_event_history(9, REFERENCE, viewer_role=Role.EVENT_COORDINATOR)
+    with pytest.raises(NotFoundError) as unknown_error:
+        list_event_history(9, "EVR-ZZZZZZZZ", viewer_role=Role.EVENT_COORDINATOR)
+
+    assert unassigned_error.value.status_code == 404
+    assert unassigned_error.value.message == EVENT_REQUEST_NOT_FOUND_MESSAGE
+    assert unassigned_error.value.message == unknown_error.value.message
+
+
+def test_a_coordinator_cannot_read_the_history_of_an_unassigned_event(
+    saved_users: list[User],
+    make_event_request: Callable[..., EventRequest],
+    save: Callable[..., None],
+) -> None:
+    save(make_event_request(reference="EVR-CCCCCCCC", coordinator_id=None))
+
+    with pytest.raises(NotFoundError):
+        list_event_history(3, "EVR-CCCCCCCC", viewer_role=Role.EVENT_COORDINATOR)
+
+
+def test_an_organiser_still_reads_their_own_organisations_history(
+    recorded_history: EventRequest,
+) -> None:
+    entries = list_event_history(7, REFERENCE, viewer_role=Role.EVENT_ORGANISER)
+
+    assert len(entries) == 3
 
 
 def test_an_unknown_reference_is_404(saved_users: list[User]) -> None:

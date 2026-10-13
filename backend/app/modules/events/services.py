@@ -1842,10 +1842,11 @@ def list_event_history(
 ) -> list[HistoryEntryAsShown]:
     """An event's history, oldest first, with names resolved and no user ids (SCRUM-33).
 
-    Internal staff may see any event's history; an Event Organiser only their client
-    organisation's, and never a ``field_changed`` entry about
-    ``internal_planning_notes`` (ADR-0025) or an ``equipment_reserved`` entry
-    (SCRUM-46).
+    Internal staff may see any event's history, except an Event Coordinator, who may
+    see only the events assigned to them (SCRUM-96 AC6, SCRUM-24 AC10). An Event
+    Organiser sees only their client organisation's, and never a ``field_changed``
+    entry about ``internal_planning_notes`` (ADR-0025) or an ``equipment_reserved``
+    entry (SCRUM-46).
 
     Args:
         viewer_id: The caller's user id, taken from their token.
@@ -1861,11 +1862,13 @@ def list_event_history(
         OrganiserWithoutOrganisationError: 403 — an organiser with no client
             organisation (ADR-0020).
         NotFoundError: 404 — no such event request, or for an organiser, none in
-            their organisation.
+            their organisation, or for a coordinator, none assigned to them.
     """
     sess = resolve_session(session)
     is_internal_viewer = viewer_role in INTERNAL_ROLES
-    if is_internal_viewer:
+    if viewer_role is Role.EVENT_COORDINATOR:
+        event_request = _event_request_assigned_to(viewer_id, reference, sess)
+    elif is_internal_viewer:
         event_request = _event_request_for_staff(reference, sess)
     else:
         event_request = get_event_request_for_organiser(viewer_id, reference, session=sess)
