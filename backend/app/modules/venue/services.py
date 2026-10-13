@@ -120,38 +120,104 @@ class OverlapWarning:
     overlap_end: datetime
 
 
-def _confirmed_overlaps(venue: Venue, session: Session) -> list[OverlapWarning]:
-    """Every pair of the venue's confirmed bookings whose padded periods overlap."""
-    bookings = session.scalars(
+def _shared_period(
+    first: tuple[datetime, datetime], second: tuple[datetime, datetime]
+) -> tuple[datetime, datetime] | None:
+    """The time two periods have in common, or ``None`` if they don't overlap.
+
+    Periods that only touch (one ends at 11:00, the next starts at 11:00) share nothing.
+    """
+    first_start, first_end = first
+    second_start, second_end = second
+    shared_start = max(first_start, second_start)
+    shared_end = min(first_end, second_end)
+    if shared_start < shared_end:
+        return shared_start, shared_end
+    return None
+
+
+def _confirmed_bookings(venue: Venue, session: Session) -> list[Booking]:
+    """The venue's confirmed bookings, in start order."""
+    stmt = (
         select(Booking)
         .where(Booking.venue_id == venue.id, Booking.status == BookingStatus.CONFIRMED)
         .order_by(Booking.start_time, Booking.id)
-    ).all()
+    )
+    return list(session.scalars(stmt))
+
+
+def _blocks_in_start_order(venue: Venue, session: Session) -> list[VenueBlock]:
+    """The venue's blocks, earliest first."""
+    stmt = (
+        select(VenueBlock)
+        .where(VenueBlock.venue_id == venue.id)
+        .order_by(VenueBlock.start_time, VenueBlock.id)
+    )
+    return list(session.scalars(stmt))
+
+
+def _confirmed_overlaps(venue: Venue, bookings: list[Booking]) -> list[OverlapWarning]:
+    """Every pair of ``bookings`` whose padded periods overlap."""
     warnings: list[OverlapWarning] = []
     for index, first in enumerate(bookings):
-        first_start, first_end = _occupied(venue, first.start_time, first.end_time)
+        first_held = _occupied(venue, first.start_time, first.end_time)
         for second in bookings[index + 1 :]:
-            second_start, second_end = _occupied(venue, second.start_time, second.end_time)
-            overlap_start = max(first_start, second_start)
-            overlap_end = min(first_end, second_end)
-            if overlap_start < overlap_end:
+            second_held = _occupied(venue, second.start_time, second.end_time)
+            shared = _shared_period(first_held, second_held)
+            if shared is not None:
+                overlap_start, overlap_end = shared
                 warnings.append(OverlapWarning((first.id, second.id), overlap_start, overlap_end))
+    return warnings
+
+
+@dataclass(frozen=True)
+class BlockOverlapWarning:
+    """A confirmed booking whose padded period overlaps a block (SCRUM-67 AC4)."""
+
+    booking_id: int
+    block_id: int
+    overlap_start: datetime
+    overlap_end: datetime
+
+
+def _block_overlaps(
+    venue: Venue, bookings: list[Booking], session: Session
+) -> list[BlockOverlapWarning]:
+    """Each of ``bookings`` whose padded period overlaps one of the venue's blocks.
+
+    The block itself isn't padded (ADR-0011), the same rule a new block's conflict
+    check uses (ADR-0016).
+    """
+    blocks = _blocks_in_start_order(venue, session)
+    warnings: list[BlockOverlapWarning] = []
+    for booking in bookings:
+        held = _occupied(venue, booking.start_time, booking.end_time)
+        for block in blocks:
+            shared = _shared_period(held, (block.start_time, block.end_time))
+            if shared is not None:
+                overlap_start, overlap_end = shared
+                warnings.append(
+                    BlockOverlapWarning(booking.id, block.id, overlap_start, overlap_end)
+                )
     return warnings
 
 
 def update_venue(
     venue_id: int, payload: Mapping[str, Any] | None, *, session: Session | None = None
-) -> tuple[Venue, list[OverlapWarning]]:
+) -> tuple[Venue, list[OverlapWarning], list[BlockOverlapWarning]]:
     """Update a venue's editable fields (SCRUM-25 AC1/AC2, SCRUM-67 AC1/AC4).
 
     Only the fields present in ``payload`` are changed. ``opening_hours``, if
     present, replaces the whole weekly schedule (ADR-0008).
 
-    If the setup or turnaround time changes, confirmed bookings are left as they are
-    but re-checked against the new padding, and any pair that now overlaps is returned.
+    If the setup or turnaround time changes, confirmed bookings and blocks are left as
+    they are but re-checked against the new padding (ADR-0033). Every pair of confirmed
+    bookings that now overlaps is returned, and so is every confirmed booking that now
+    runs into a block.
 
     Returns:
-        The updated venue, and the overlap warnings (empty unless a buffer changed).
+        The updated venue, the bookings that overlap each other and the bookings that
+        overlap a block; both lists are empty unless a buffer changed.
 
     Raises:
         NotFoundError: 404 — no such venue.
@@ -174,8 +240,9 @@ def update_venue(
 
     sess.commit()
     if _buffers(venue) == buffers_before:
-        return venue, []
-    return venue, _confirmed_overlaps(venue, sess)
+        return venue, [], []
+    bookings = _confirmed_bookings(venue, sess)
+    return venue, _confirmed_overlaps(venue, bookings), _block_overlaps(venue, bookings, sess)
 
 
 def deactivate_venue(venue_id: int, *, session: Session | None = None) -> Venue:
@@ -521,12 +588,7 @@ def list_venue_blocks(venue_id: int, *, session: Session | None = None) -> list[
     """
     sess = resolve_session(session)
     venue = get_venue(venue_id, session=sess)
-    stmt = (
-        select(VenueBlock)
-        .where(VenueBlock.venue_id == venue.id)
-        .order_by(VenueBlock.start_time, VenueBlock.id)
-    )
-    return list(sess.scalars(stmt))
+    return _blocks_in_start_order(venue, sess)
 
 
 def remove_venue_block(venue_id: int, block_id: int, *, session: Session | None = None) -> None:

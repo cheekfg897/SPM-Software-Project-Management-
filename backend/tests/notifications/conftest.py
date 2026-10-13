@@ -44,10 +44,10 @@ def notify(
 
 @pytest.fixture()
 def reload_notification(db_session: Session) -> Callable[[int], Notification]:
-    """Read a notification back from the database, not from the session's cache."""
+    """Read a notification back from the database, dropping anything uncommitted."""
 
     def _reload(notification_id: int) -> Notification:
-        db_session.expire_all()
+        db_session.rollback()
         notification = db_session.get(Notification, notification_id)
         assert notification is not None
         return notification

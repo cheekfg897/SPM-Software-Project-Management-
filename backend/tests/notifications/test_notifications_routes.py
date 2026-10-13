@@ -21,6 +21,7 @@ from app.common.errors import AuthenticationError, NotFoundError
 from app.modules.auth.models import User
 from app.modules.auth.permissions import ALL_ROLES, Role
 from app.modules.notifications.models import Notification
+from app.modules.notifications.services import mark_notification_read
 
 pytestmark = pytest.mark.scrum_28
 
@@ -37,12 +38,13 @@ UNREAD_COUNT_ROUTE: Route = (
     "/api/notifications/unread-count",
     {},
 )
-#: Marks notification 1, the first one saved in a test.
+#: Marks notification 2, the second one saved in a test, so a route that always marked
+#: notification 1 is caught.
 MARK_READ_ROUTE: Route = (
     "notifications.mark_read",
     "POST",
-    "/api/notifications/1/read",
-    {"notification_id": 1},
+    "/api/notifications/2/read",
+    {"notification_id": 2},
 )
 ROUTES = [LIST_ROUTE, UNREAD_COUNT_ROUTE, MARK_READ_ROUTE]
 ROUTE_IDS = [route[0] for route in ROUTES]
@@ -127,6 +129,27 @@ def test_list_route_shows_the_callers_notifications_newest_first_with_every_fiel
 
 
 # --------------------------------------------------------------------------
+# AC4 — a notification that has been read stays in the list, marked as read
+# --------------------------------------------------------------------------
+
+
+def test_list_route_still_shows_a_notification_once_it_is_read(
+    app: Flask, notify: Notify, caller_token: str
+) -> None:
+    notify(CALLER_ID)
+    mark_notification_read(1, CALLER_ID, now=datetime(2026, 10, 1, 3, 0, tzinfo=timezone.utc))
+
+    response, status = _call(app, LIST_ROUTE, caller_token)
+
+    assert status == 200
+    assert response.get_json() == {
+        "notifications": [
+            _shown(1, created_at="2026-10-01T09:00:00+08:00", read_at="2026-10-01T11:00:00+08:00")
+        ]
+    }
+
+
+# --------------------------------------------------------------------------
 # AC5 — the caller's unread count
 # --------------------------------------------------------------------------
 
@@ -153,15 +176,16 @@ def test_mark_read_route_marks_the_callers_notification_and_returns_it(
     reload_notification: ReloadNotification,
     caller_token: str,
 ) -> None:
-    notify(CALLER_ID)
+    notify(CALLER_ID, CALLER_ID)
 
     response, status = _call(app, MARK_READ_ROUTE, caller_token)
 
     assert status == 200
     body = response.get_json()
     assert body["read_at"] is not None
-    assert body == _shown(1, created_at="2026-10-01T09:00:00+08:00", read_at=body["read_at"])
-    assert reload_notification(1).read_at is not None
+    assert body == _shown(2, created_at="2026-10-01T09:00:00+08:00", read_at=body["read_at"])
+    assert reload_notification(2).read_at is not None
+    assert reload_notification(1).read_at is None
 
 
 def test_mark_read_route_hides_another_users_notification(
@@ -170,10 +194,10 @@ def test_mark_read_route_hides_another_users_notification(
     reload_notification: ReloadNotification,
     caller_token: str,
 ) -> None:
-    notify(6)
+    notify(CALLER_ID, 6)
 
     with pytest.raises(NotFoundError) as exc_info:
         _call(app, MARK_READ_ROUTE, caller_token)
 
     assert exc_info.value.status_code == 404
-    assert reload_notification(1).read_at is None
+    assert reload_notification(2).read_at is None
