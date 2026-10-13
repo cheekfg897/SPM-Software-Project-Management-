@@ -111,6 +111,10 @@ class EventHistoryKind(str, enum.Enum):
     #: ``venue_booking_request_id``, ``venue_id``, ``starts_at`` and ``ends_at`` (ISO
     #: strings), and ``actor_id`` is the coordinator (SCRUM-42, ADR-0035).
     VENUE_BOOKING_REQUESTED = "venue_booking_requested"
+    #: Venue Staff approved a venue booking request for the event (SCRUM-43 AC3).
+    VENUE_BOOKING_APPROVED = "venue_booking_approved"
+    #: Venue Staff rejected a venue booking request for the event (SCRUM-43 AC3).
+    VENUE_BOOKING_REJECTED = "venue_booking_rejected"
     #: Technical Support reserved units of an equipment type for the event; ``details``
     #: holds ``equipment_type_id``, ``equipment_type_name``, ``quantity`` and
     #: ``reservation_id``, and ``actor_id`` is who reserved them (SCRUM-46, ADR-0037).

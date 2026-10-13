@@ -124,22 +124,40 @@ class RequirementKind(str, enum.Enum):
 
 
 class BookingRequestStatus(str, enum.Enum):
-    """Where a venue booking request stands (SCRUM-42, SCRUM-93).
+    """Where a venue booking request stands (SCRUM-42, SCRUM-93, SCRUM-43).
 
-    ``PENDING`` and ``WITHDRAWN`` exist so far; SCRUM-43 adds approving, rejecting
-    and cancelling, and SCRUM-75 adds holding.
+    SCRUM-75 adds holding. Nothing cancels a request yet: SCRUM-93 withdraws one and
+    SCRUM-43 decides one, so a ``CANCELLED`` value waits for the story that needs it.
     """
 
     PENDING = "pending"
     #: The coordinator retracted the arrangement before Venue Staff decided it
     #: (SCRUM-93 AC6). The row stays so SCRUM-75 can ignore it when counting venues.
     WITHDRAWN = "withdrawn"
+    #: Venue Staff approved the request, so the venue is booked (SCRUM-43 AC3).
+    APPROVED = "approved"
+    #: Venue Staff refused the request, with a reason (SCRUM-43 AC3, AC6).
+    REJECTED = "rejected"
+
+
+class BookingDecision(str, enum.Enum):
+    """What Venue Staff decided about a request (SCRUM-43 AC3).
+
+    The events module has its own ``DecisionOutcome`` for event requests, with the same
+    two values. A module never imports another module's models, so this one is its
+    own; unifying them would mean moving the enum into ``app.common``, which is a
+    refactor across both modules rather than part of this story (ADR-0042).
+    """
+
+    APPROVED = "approved"
+    REJECTED = "rejected"
 
 
 #: Statuses that take an arrangement out of an event's venue count (SCRUM-93).
-#: SCRUM-43 adds ``CANCELLED`` here. ``REJECTED`` stays out, because SCRUM-49 and
-#: SCRUM-97 gate on every active arrangement being approved. ``ON_HOLD`` stays out too,
-#: because SCRUM-75 treats a held arrangement as one of the event's active venues.
+#: ``REJECTED`` stays out, because SCRUM-49 and SCRUM-97 gate on every active
+#: arrangement being approved, so a rejected one must keep them waiting. ``ON_HOLD``
+#: stays out too, because SCRUM-75 treats a held arrangement as one of the event's
+#: active venues.
 RETIRED_REQUEST_STATUSES = frozenset({BookingRequestStatus.WITHDRAWN})
 
 
@@ -340,6 +358,9 @@ class VenueBookingRequest(db.Model):  # type: ignore[name-defined]
     required_layout: Mapped[str | None] = mapped_column(String(50), nullable=True)
     #: Why the request goes ahead although the venue is unsuitable for it (AC7).
     justification: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: Why Venue Staff decided as they did; required to reject (SCRUM-43 AC6). Who
+    #: decided and when are in the event's history entry, as for raising a request.
+    decision_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[BookingRequestStatus] = mapped_column(
         Enum(
             BookingRequestStatus,
