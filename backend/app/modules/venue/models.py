@@ -124,12 +124,22 @@ class RequirementKind(str, enum.Enum):
 
 
 class BookingRequestStatus(str, enum.Enum):
-    """Where a venue booking request stands (SCRUM-42).
+    """Where a venue booking request stands (SCRUM-42, SCRUM-93).
 
-    Only ``PENDING`` exists so far; SCRUM-43 adds approving and rejecting.
+    ``PENDING`` and ``WITHDRAWN`` exist so far; SCRUM-43 adds approving, rejecting
+    and cancelling, and SCRUM-75 adds holding.
     """
 
     PENDING = "pending"
+    #: The coordinator retracted the arrangement before Venue Staff decided it
+    #: (SCRUM-93 AC6). The row stays so SCRUM-75 can ignore it when counting venues.
+    WITHDRAWN = "withdrawn"
+
+
+#: Statuses that take an arrangement out of an event's venue count (SCRUM-93).
+#: SCRUM-43 adds ``CANCELLED`` and ``REJECTED`` here; ``ON_HOLD`` must stay out, because
+#: SCRUM-75 treats a held arrangement as one of the event's active venues.
+RETIRED_REQUEST_STATUSES = frozenset({BookingRequestStatus.WITHDRAWN})
 
 
 class Venue(db.Model):  # type: ignore[name-defined]

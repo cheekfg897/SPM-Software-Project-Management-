@@ -66,7 +66,7 @@ def test_migration_and_models_agree_on_the_enum_values(load_migration: LoadMigra
     assert notifications <= {kind.value for kind in NotificationKind}
     assert migration.ADDED_HISTORY_KIND_VALUES == ("venue_booking_requested",)
     assert migration.ADDED_NOTIFICATION_KIND_VALUES == ("venue_booking_requested",)
-    assert set(migration.REQUEST_STATUS_VALUES) == {s.value for s in BookingRequestStatus}
+    assert set(migration.REQUEST_STATUS_VALUES) <= {s.value for s in BookingRequestStatus}
 
 
 def test_upgrade_creates_the_table_and_adds_both_kinds_outside_the_transaction(

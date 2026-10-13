@@ -115,6 +115,14 @@ class EventHistoryKind(str, enum.Enum):
     #: holds ``equipment_type_id``, ``equipment_type_name``, ``quantity`` and
     #: ``reservation_id``, and ``actor_id`` is who reserved them (SCRUM-46, ADR-0037).
     EQUIPMENT_RESERVED = "equipment_reserved"
+    #: The assigned coordinator changed one of the event's venue arrangements;
+    #: ``details`` holds ``venue_booking_request_id``, ``venue_id`` and each changed
+    #: field with its ``previous`` and ``new`` value (SCRUM-93 AC6).
+    VENUE_ARRANGEMENT_CHANGED = "venue_arrangement_changed"
+    #: The assigned coordinator withdrew one of the event's venue arrangements before
+    #: Venue Staff decided it; ``details`` holds ``venue_booking_request_id`` and
+    #: ``venue_id`` (SCRUM-93 AC6).
+    VENUE_ARRANGEMENT_WITHDRAWN = "venue_arrangement_withdrawn"
 
 
 class DecisionOutcome(str, enum.Enum):

@@ -26,6 +26,7 @@ from app.modules.auth.permissions import Role
 from app.modules.auth.services import list_user_ids_with_role
 from app.modules.notifications.services import EventSummary, NotificationKind, notify_users
 from app.modules.venue.models import (
+    RETIRED_REQUEST_STATUSES,
     Booking,
     BookingStatus,
     CalendarEntryKind,
@@ -926,3 +927,32 @@ def list_booking_requests_for_event(
     )
     requests = resolve_session(session).scalars(query).all()
     return [show_booking_request(request, event) for request in requests]
+
+
+# --------------------------------------------------------------------------
+# SCRUM-93 — several venue arrangements for one event
+# --------------------------------------------------------------------------
+
+
+def list_active_arrangements(
+    event_id: int, *, session: Session | None = None
+) -> list[VenueBookingRequest]:
+    """The event's arrangements that still count towards its venues (AC5).
+
+    Retired ones are left out, so SCRUM-75 can ask whether an event has more than one
+    venue. Earliest period first, as the event's own list of requests is.
+    """
+    query = (
+        select(VenueBookingRequest)
+        .where(
+            VenueBookingRequest.event_id == event_id,
+            VenueBookingRequest.status.not_in(RETIRED_REQUEST_STATUSES),
+        )
+        .order_by(VenueBookingRequest.starts_at, VenueBookingRequest.id)
+    )
+    return list(resolve_session(session).scalars(query).all())
+
+
+def count_active_arrangements(event_id: int, *, session: Session | None = None) -> int:
+    """How many venues the event still has arranged (SCRUM-75's multi-venue test)."""
+    return len(list_active_arrangements(event_id, session=session))
