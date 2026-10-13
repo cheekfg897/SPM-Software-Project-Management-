@@ -10,6 +10,7 @@ pushed because JWT creation and several rules read from ``app.config``.
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
+from datetime import time
 from types import ModuleType
 from typing import Any
 from unittest.mock import MagicMock
@@ -25,7 +26,7 @@ from app.extensions import db
 from app.modules.auth.models import User
 from app.modules.auth.permissions import Role
 from app.modules.equipment.models import EquipmentType
-from app.modules.venue.models import Venue, VenueOpeningPeriod
+from app.modules.venue.models import Venue, VenueOpeningPeriod, Weekday
 
 
 @pytest.fixture(scope="session")
@@ -246,11 +247,21 @@ def organiser_registration_payload(
     return _payload
 
 
+def default_opening_periods() -> list[VenueOpeningPeriod]:
+    """Every day 09:00 to 18:00, the same schedule ``EditVenueSchema`` defaults to."""
+    return [
+        VenueOpeningPeriod(open_day=day, open_time=time(9), close_day=day, close_time=time(18))
+        for day in Weekday
+    ]
+
+
 @pytest.fixture()
 def make_venue() -> Callable[..., Venue]:
     """Factory for ``Venue`` objects; add one to ``db_session`` to persist it.
 
     Setup and turnaround default to 0, so only tests that set them deal with buffers.
+    Opening hours default to every day 09:00-18:00, as a venue created through the API
+    has; pass ``opening_periods=[]`` for a venue that is closed all week.
     """
     counter = {"id": 0}
 
@@ -276,7 +287,9 @@ def make_venue() -> Callable[..., Venue]:
             facilities=facilities,
             accessibility_features=accessibility_features,
             supported_layouts=supported_layouts,
-            opening_periods=opening_periods or [],
+            opening_periods=(
+                default_opening_periods() if opening_periods is None else opening_periods
+            ),
             setup_minutes=setup_minutes,
             turnaround_minutes=turnaround_minutes,
             is_active=is_active,
