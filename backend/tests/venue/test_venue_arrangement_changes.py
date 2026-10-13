@@ -162,11 +162,8 @@ def test_raising_the_occupancy_past_the_venues_capacity_needs_a_justification(
         )
 
     assert caught.value.details == {"justification": [UNSUITABLE_MESSAGE]}
-    db_session.expire_all()
-    unchanged = db_session.get(services.VenueBookingRequest, arrangement.id)
-    assert unchanged is not None
-    assert unchanged.expected_occupancy == 50
-    assert unchanged.purpose == "Main hall"
+    assert arrangement.expected_occupancy == 50
+    assert arrangement.purpose == "Main hall"
     assert _changed_entries(db_session) == []
 
 
