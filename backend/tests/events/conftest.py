@@ -537,17 +537,18 @@ def edit_event(
 
 @pytest.fixture()
 def reassign(
-    saved_users: list[User], saved_event_request: EventRequest
-) -> Callable[[int, str], tuple[EventRequest, CoordinatorContact]]:
+    saved_users: list[User], saved_leads: list[User], saved_event_request: EventRequest
+) -> Callable[[str], tuple[EventRequest, CoordinatorContact]]:
     """Reassign ``saved_event_request`` to the user with this email (SCRUM-87).
 
-    The request, ``EVR-AAAAAAAA``, starts with Event Coordinator 3; ``actor_id`` is
-    who reassigns it. Runs on ``db_session`` with ``saved_users``.
+    The request, ``EVR-AAAAAAAA``, starts with Event Coordinator 3; the Event
+    Coordinator Lead does the reassigning, as only they may (SCRUM-96 AC3). Runs on
+    ``db_session`` with ``saved_users`` and ``saved_leads``.
     """
 
-    def _reassign(actor_id: int, coordinator_email: str) -> tuple[EventRequest, CoordinatorContact]:
+    def _reassign(coordinator_email: str) -> tuple[EventRequest, CoordinatorContact]:
         payload = {"coordinator_email": coordinator_email}
-        return reassign_coordinator(actor_id, "EVR-AAAAAAAA", payload)
+        return reassign_coordinator(LEAD_ID, "EVR-AAAAAAAA", payload)
 
     return _reassign
 
