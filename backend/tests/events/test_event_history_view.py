@@ -1,6 +1,7 @@
 """Unit tests for SCRUM-33 "Update event information and flag significant changes".
 
-``list_event_history``: internal staff see an event's whole history, oldest first,
+``list_event_history``: the Lead, Venue Staff and Technical Support see any event's
+history, and an Event Coordinator only their own events' (SCRUM-96 AC6), oldest first,
 with every actor and coordinator name resolved and no user ids anywhere in the reply
 (ADR-0025). An Event Organiser sees the same event's history for their own client
 organisation only, minus any ``field_changed`` entry about
@@ -182,6 +183,7 @@ def test_an_organiser_cannot_see_another_organisations_history(
 # --------------------------------------------------------------------------
 
 
+@pytest.mark.scrum_96
 def test_a_coordinator_cannot_read_the_history_of_an_event_assigned_to_someone_else(
     recorded_history: EventRequest,
 ) -> None:
@@ -196,6 +198,7 @@ def test_a_coordinator_cannot_read_the_history_of_an_event_assigned_to_someone_e
     assert unassigned_error.value.message == unknown_error.value.message
 
 
+@pytest.mark.scrum_96
 def test_a_coordinator_cannot_read_the_history_of_an_unassigned_event(
     saved_users: list[User],
     make_event_request: Callable[..., EventRequest],
@@ -203,16 +206,10 @@ def test_a_coordinator_cannot_read_the_history_of_an_unassigned_event(
 ) -> None:
     save(make_event_request(reference="EVR-CCCCCCCC", coordinator_id=None))
 
-    with pytest.raises(NotFoundError):
+    with pytest.raises(NotFoundError) as exc_info:
         list_event_history(3, "EVR-CCCCCCCC", viewer_role=Role.EVENT_COORDINATOR)
 
-
-def test_an_organiser_still_reads_their_own_organisations_history(
-    recorded_history: EventRequest,
-) -> None:
-    entries = list_event_history(7, REFERENCE, viewer_role=Role.EVENT_ORGANISER)
-
-    assert len(entries) == 3
+    assert exc_info.value.message == EVENT_REQUEST_NOT_FOUND_MESSAGE
 
 
 def test_an_unknown_reference_is_404(saved_users: list[User]) -> None:
