@@ -60,6 +60,9 @@ class NotificationKind(str, enum.Enum):
     #: Tells the Event Coordinator Lead that a submitted request has entered the
     #: unassigned queue (SCRUM-95 AC4, ADR-0036).
     REQUEST_QUEUED_FOR_LEAD = "request_queued_for_lead"
+    #: Technical Support recorded the outcome of an equipment review, so the
+    #: coordinator knows what will be provided (SCRUM-48 AC3).
+    EQUIPMENT_OUTCOME_RECORDED = "equipment_outcome_recorded"
 
 
 class Notification(db.Model):  # type: ignore[name-defined]

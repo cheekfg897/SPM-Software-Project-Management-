@@ -38,6 +38,9 @@ MESSAGE_BY_KIND: dict[NotificationKind, str] = {
     NotificationKind.REQUEST_QUEUED_FOR_LEAD: (
         "A new event request is waiting in the unassigned queue."
     ),
+    NotificationKind.EQUIPMENT_OUTCOME_RECORDED: (
+        "Technical Support has recorded the outcome of your equipment request."
+    ),
 }
 
 #: Where a notification links to: the event's page, found by its reference

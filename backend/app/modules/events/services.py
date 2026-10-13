@@ -1829,8 +1829,11 @@ def update_event_request(
 #: A field_changed entry about one of these is for internal eyes only (ADR-0025).
 INTERNAL_ONLY_FIELDS: frozenset[str] = frozenset({"internal_planning_notes"})
 #: Entries of these kinds are for internal eyes only: which equipment Technical
-#: Support set aside is their working, not the organiser's (SCRUM-46, ADR-0037).
-INTERNAL_ONLY_KINDS: frozenset[EventHistoryKind] = frozenset({EventHistoryKind.EQUIPMENT_RESERVED})
+#: Support set aside, and what they ruled on a request, is their working, not the
+#: organiser's (SCRUM-46, ADR-0037, SCRUM-48).
+INTERNAL_ONLY_KINDS: frozenset[EventHistoryKind] = frozenset(
+    {EventHistoryKind.EQUIPMENT_RESERVED, EventHistoryKind.EQUIPMENT_OUTCOME_RECORDED}
+)
 
 
 @dataclass(frozen=True)
@@ -2930,3 +2933,57 @@ def resubmit_event_request(
     _notify_coordinator_of_answer(event_request, response, sess)
     _reassess_arrangements(event_request, changes, sess)
     return event_request
+
+
+# --------------------------------------------------------------------------
+# SCRUM-48 — record the outcome of an equipment review
+# --------------------------------------------------------------------------
+
+#: The statuses that mean an outcome has been recorded (SCRUM-48).
+OUTCOME_STATUSES = frozenset(
+    {
+        EquipmentLineStatus.FULFILLED,
+        EquipmentLineStatus.PARTIALLY_FULFILLED,
+        EquipmentLineStatus.UNAVAILABLE,
+    }
+)
+
+
+def outcome_status_for(quantity: int, provided: int) -> EquipmentLineStatus:
+    """Which outcome ``provided`` units against a request for ``quantity`` is.
+
+    The only place the outcome status is decided, so it can never disagree with the
+    quantity stored beside it (SCRUM-48 AC1-AC3).
+    """
+    if provided == quantity:
+        return EquipmentLineStatus.FULFILLED
+    if provided == 0:
+        return EquipmentLineStatus.UNAVAILABLE
+    return EquipmentLineStatus.PARTIALLY_FULFILLED
+
+
+def lines_without_outcome(
+    event_id: int, *, session: Session | None = None
+) -> list[EventEquipmentLine]:
+    """The event's equipment lines Technical Support has not yet ruled on (SCRUM-48).
+
+    SCRUM-97 and SCRUM-49 refuse to let an event into Safety Review while this is
+    not empty: every equipment request must carry a recorded outcome first.
+    """
+    query = (
+        select(EventEquipmentLine)
+        .where(
+            EventEquipmentLine.event_request_id == event_id,
+            EventEquipmentLine.provided_quantity.is_(None),
+        )
+        .order_by(EventEquipmentLine.id)
+    )
+    return list(resolve_session(session).scalars(query).all())
+
+
+def has_recorded_outcomes(event_id: int, *, session: Session | None = None) -> bool:
+    """Whether every one of the event's equipment lines has an outcome (SCRUM-48).
+
+    ``True`` for an event with no equipment at all, because nothing is outstanding.
+    """
+    return not lines_without_outcome(event_id, session=session)
