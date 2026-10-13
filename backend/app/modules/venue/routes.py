@@ -257,3 +257,26 @@ def change_arrangement(reference: str, arrangement_id: int) -> tuple[Response, i
         coordinator_id=int(g.current_user_id),
     )
     return jsonify(_booking_request_schema.dump(shown)), 200
+
+
+# --------------------------------------------------------------------------
+# SCRUM-43 — Venue Staff approve or reject a booking request
+# --------------------------------------------------------------------------
+
+
+@bp.get("/booking-requests")
+@requires_role(Role.VENUE_STAFF)
+def list_pending_booking_requests() -> tuple[Response, int]:
+    """Every booking request waiting for a decision, the earliest event first."""
+    shown = services.list_pending_booking_requests()
+    return jsonify(_booking_request_schema.dump(shown, many=True)), 200
+
+
+@bp.post("/booking-requests/<int:request_id>/decision")
+@requires_role(Role.VENUE_STAFF)
+def decide_booking_request(request_id: int) -> tuple[Response, int]:
+    """Approve or reject a Pending booking request, with a reason."""
+    shown = services.decide_booking_request(
+        request_id, request.get_json(silent=True), decided_by=int(g.current_user_id)
+    )
+    return jsonify(_booking_request_schema.dump(shown)), 200

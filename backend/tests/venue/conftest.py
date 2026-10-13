@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import date, datetime, time
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 
 import pytest
@@ -11,9 +11,19 @@ from sqlalchemy.orm import Session
 
 from app.modules.events.models import EventRequest, EventRequestStatus
 from app.modules.venue import services
-from app.modules.venue.models import Booking, BookingStatus, Venue, VenueBlock, VenueBookingRequest
+from app.modules.venue.models import (
+    Booking,
+    BookingRequestStatus,
+    BookingStatus,
+    Venue,
+    VenueBlock,
+    VenueBookingRequest,
+)
+from app.modules.venue.schemas import BookingRequestAsShown
 
 COORDINATOR_ID = 3
+#: The Venue Staff user ``saved_users`` saves; they decide booking requests (SCRUM-43).
+VENUE_STAFF_ID = 4
 SavedEvent = Callable[..., EventRequest]
 
 
@@ -35,6 +45,19 @@ def raise_booking(
     payload = booking_payload(**{"venue_id": venue.id, **overrides})
     shown = services.raise_booking_request(
         event.reference, payload, requested_by=COORDINATOR_ID, session=session
+    )
+    return shown.request
+
+
+def decide(
+    request_id: int, outcome: str, session: Session, reason: str | None = None
+) -> VenueBookingRequest:
+    """Decide a request as Venue Staff; ``reason`` is left out when it is ``None``."""
+    payload: dict[str, Any] = {"outcome": outcome}
+    if reason is not None:
+        payload["reason"] = reason
+    shown = services.decide_booking_request(
+        request_id, payload, decided_by=VENUE_STAFF_ID, session=session
     )
     return shown.request
 
@@ -70,6 +93,34 @@ def two_arrangements(
 def saved_requests(session: Session) -> list[VenueBookingRequest]:
     """Every booking request saved, to check what a call did or did not save."""
     return session.query(VenueBookingRequest).all()
+
+
+@pytest.fixture()
+def shown() -> BookingRequestAsShown:
+    """A Pending request as Venue Staff see it, beside its event's details.
+
+    For the route tests, which replace the services: the request is never saved.
+    """
+    request = VenueBookingRequest(
+        event_id=5,
+        venue_id=2,
+        requested_by=COORDINATOR_ID,
+        starts_at=datetime(2026, 11, 1, 1, 0, tzinfo=UTC),
+        ends_at=datetime(2026, 11, 1, 4, 0, tzinfo=UTC),
+        purpose="Main hall",
+        expected_occupancy=80,
+        required_layout=None,
+        status=BookingRequestStatus.PENDING,
+    )
+    request.id = 11
+    return BookingRequestAsShown(
+        request=request,
+        proposed_date=date(2026, 11, 1),
+        end_date=date(2026, 11, 2),
+        start_time=time(9, 0),
+        end_time=time(17, 30),
+        accessibility_needs="Step-free entrance",
+    )
 
 
 @pytest.fixture()
@@ -118,13 +169,20 @@ def make_block() -> Callable[..., VenueBlock]:
 
 @pytest.fixture()
 def saved_event(save: Callable[..., None]) -> Callable[..., EventRequest]:
-    """Factory for a saved event: approved, coordinated by user 3, 250 attending.
+    """Factory for a saved event: approved, coordinated by user 3, 80 attending.
+
+    It runs on 1 November 2026 and the next day unless ``proposed_date`` says otherwise;
+    the end date always follows the proposed date.
 
     The event has no layout of its own, only free-text venue requirements.
     """
     counter = {"n": 0}
 
-    def _save(status: EventRequestStatus = EventRequestStatus.APPROVED) -> EventRequest:
+    def _save(
+        status: EventRequestStatus = EventRequestStatus.APPROVED,
+        *,
+        proposed_date: date = date(2026, 11, 1),
+    ) -> EventRequest:
         counter["n"] += 1
         event = EventRequest(
             reference=f"EVR-{counter['n']:08d}",
@@ -132,8 +190,8 @@ def saved_event(save: Callable[..., None]) -> Callable[..., EventRequest]:
             organiser_id=7,
             coordinator_id=COORDINATOR_ID,
             name="Partner Summit",
-            proposed_date=date(2026, 11, 1),
-            end_date=date(2026, 11, 2),
+            proposed_date=proposed_date,
+            end_date=proposed_date + timedelta(days=1),
             start_time=time(9, 0),
             end_time=time(17, 30),
             expected_attendance=80,

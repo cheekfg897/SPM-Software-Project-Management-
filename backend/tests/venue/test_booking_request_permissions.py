@@ -9,7 +9,6 @@ the real service, which the listing route passes on as a 404.
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import UTC, date, datetime, time
 from types import ModuleType
 from typing import Any
 from unittest.mock import MagicMock
@@ -21,7 +20,6 @@ from app.modules.auth.models import User
 from app.modules.auth.permissions import ALL_ROLES, Role
 from app.modules.events.models import EventRequest
 from app.modules.venue import services
-from app.modules.venue.models import BookingRequestStatus, VenueBookingRequest
 from app.modules.venue.schemas import BookingRequestAsShown
 from tests.venue.conftest import COORDINATOR_ID
 
@@ -43,31 +41,6 @@ ROUTES = [
     ("venue.change_arrangement", "PATCH", "change_arrangement"),
 ]
 ROUTE_IDS = [route[0] for route in ROUTES]
-
-
-@pytest.fixture()
-def shown() -> BookingRequestAsShown:
-    """A Pending request as Venue Staff see it, beside its event's details."""
-    request = VenueBookingRequest(
-        event_id=5,
-        venue_id=2,
-        requested_by=COORDINATOR_ID,
-        starts_at=datetime(2026, 11, 1, 1, 0, tzinfo=UTC),
-        ends_at=datetime(2026, 11, 1, 4, 0, tzinfo=UTC),
-        purpose="Main hall",
-        expected_occupancy=80,
-        required_layout=None,
-        status=BookingRequestStatus.PENDING,
-    )
-    request.id = 11
-    return BookingRequestAsShown(
-        request=request,
-        proposed_date=date(2026, 11, 1),
-        end_date=date(2026, 11, 2),
-        start_time=time(9, 0),
-        end_time=time(17, 30),
-        accessibility_needs="Step-free entrance",
-    )
 
 
 @pytest.fixture()
@@ -143,6 +116,7 @@ def test_raising_a_request_returns_201_with_the_request_and_the_events_details(
         "required_layout": None,
         "justification": None,
         "status": "pending",
+        "decision_reason": None,
         "event_proposed_date": "2026-11-01",
         "event_end_date": "2026-11-02",
         "event_start_time": "09:00:00",

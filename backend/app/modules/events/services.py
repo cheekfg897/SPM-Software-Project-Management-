@@ -16,10 +16,10 @@ from __future__ import annotations
 
 import logging
 import secrets
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Collection, Iterable, Mapping
 from dataclasses import asdict, dataclass, replace
 from datetime import date, datetime, time, timezone
-from typing import Any
+from typing import Any, Literal
 
 from marshmallow import Schema
 from sqlalchemy import Row, and_, or_, select
@@ -1051,18 +1051,8 @@ class EventForBooking:
     accessibility_needs: str | None
 
 
-def get_event_for_coordinator(
-    reference: str, coordinator_id: int | str, *, session: Session | None = None
-) -> EventForBooking:
-    """The event ``coordinator_id`` is assigned to, at any status (SCRUM-42, ADR-0019).
-
-    The event is found by its ``EVR-…`` reference; case and surrounding spaces are
-    ignored (ADR-0004).
-
-    Raises:
-        NotFoundError: 404 — no such event, or it isn't assigned to this coordinator.
-    """
-    event_request = _event_request_assigned_to(coordinator_id, reference, resolve_session(session))
+def _for_booking(event_request: EventRequest) -> EventForBooking:
+    """The event as the venue module needs it; the one place the two are mapped."""
     return EventForBooking(
         id=event_request.id,
         reference=event_request.reference,
@@ -1075,6 +1065,39 @@ def get_event_for_coordinator(
         expected_attendance=event_request.expected_attendance,
         accessibility_needs=event_request.accessibility_needs,
     )
+
+
+def get_event_for_coordinator(
+    reference: str, coordinator_id: int | str, *, session: Session | None = None
+) -> EventForBooking:
+    """The event ``coordinator_id`` is assigned to, at any status (SCRUM-42, ADR-0019).
+
+    The event is found by its ``EVR-…`` reference; case and surrounding spaces are
+    ignored (ADR-0004).
+
+    Raises:
+        NotFoundError: 404 — no such event, or it isn't assigned to this coordinator.
+    """
+    event_request = _event_request_assigned_to(coordinator_id, reference, resolve_session(session))
+    return _for_booking(event_request)
+
+
+def get_events_for_booking(
+    event_ids: Collection[int], *, session: Session | None = None
+) -> dict[int, EventForBooking]:
+    """The events behind a set of booking requests, by id (SCRUM-43 AC1, AC2).
+
+    Venue Staff see requests for events they coordinate nothing of, so there is no
+    coordinator to check: whoever may read the queue may read the events on it. An id
+    with no event is left out rather than raising, so one deleted event cannot hide
+    the whole queue.
+    """
+    if not event_ids:
+        return {}
+    requests = resolve_session(session).scalars(
+        select(EventRequest).where(EventRequest.id.in_(event_ids))
+    )
+    return {event_request.id: _for_booking(event_request) for event_request in requests}
 
 
 def get_approved_event_for_coordinator(
@@ -1111,6 +1134,37 @@ def record_venue_booking_requested(
     return record_event_history(
         event_request,
         EventHistoryKind.VENUE_BOOKING_REQUESTED,
+        actor_id=actor_id,
+        details=details,
+        session=session,
+    )
+
+
+#: Which history entry each venue booking decision writes (SCRUM-43 AC3). The venue
+#: module may not import ``EventHistoryKind``, so it names its outcome and this maps it.
+_VENUE_BOOKING_DECISION_KINDS = {
+    "approved": EventHistoryKind.VENUE_BOOKING_APPROVED,
+    "rejected": EventHistoryKind.VENUE_BOOKING_REJECTED,
+}
+
+
+def record_venue_booking_decided(
+    event_id: int,
+    *,
+    outcome: Literal["approved", "rejected"],
+    actor_id: int,
+    details: dict[str, Any],
+    session: Session | None = None,
+) -> EventHistoryEntry:
+    """Add the history entry for a decided request, without committing (SCRUM-43).
+
+    The entry rides in the caller's transaction, so it is saved with the decision it
+    records or not at all (ADR-0018).
+    """
+    event_request = resolve_session(session).get(EventRequest, event_id)
+    return record_event_history(
+        event_request,
+        _VENUE_BOOKING_DECISION_KINDS[outcome],
         actor_id=actor_id,
         details=details,
         session=session,
