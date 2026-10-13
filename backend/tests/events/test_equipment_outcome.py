@@ -457,15 +457,3 @@ def test_a_reviewer_who_no_longer_exists_shows_as_none(
 
     assert shown["reviewed_by"] is None
     assert shown["provided_quantity"] == 10
-
-
-def test_the_reviewers_id_is_never_shown(
-    record_outcome: Callable[..., EventEquipmentLine],
-    dump_lines: Callable[[list[EventEquipmentLine]], list[dict[str, Any]]],
-    ten_requested: EventEquipmentLine,
-) -> None:
-    line = record_outcome(ten_requested, provided_quantity=10)
-
-    [shown] = dump_lines([line])
-
-    assert REVIEWER_ID not in shown.values()

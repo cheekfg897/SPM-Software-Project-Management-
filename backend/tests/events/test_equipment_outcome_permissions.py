@@ -8,7 +8,6 @@ by a mock that a refused call must never reach.
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import UTC, datetime
 from types import ModuleType
 from typing import Any
 from unittest.mock import MagicMock
@@ -38,30 +37,30 @@ OTHER_ROLES = sorted(ALL_ROLES - {Role.TECHNICAL_SUPPORT_STAFF}, key=lambda role
 
 
 @pytest.fixture()
-def outcome_service(replace_services: ReplaceServices) -> MagicMock:
-    """Replace the service with one answering a fulfilled line and its reviewer."""
-    line = EventEquipmentLine(
-        id=LINE_ID,
-        equipment_type_id=1,
-        quantity=10,
-        status=EquipmentLineStatus.FULFILLED,
+def recorded_line() -> EventEquipmentLine:
+    """The line the service answers with once the outcome is recorded."""
+    return EventEquipmentLine(
+        id=LINE_ID, equipment_type_id=1, quantity=10, status=EquipmentLineStatus.FULFILLED
     )
-    shown = EquipmentLineAsShown(
-        id=LINE_ID,
-        equipment_type_id=1,
-        quantity=10,
-        notes=None,
-        status=EquipmentLineStatus.FULFILLED,
-        provided_quantity=10,
-        shortfall=0,
-        outcome_note=None,
-        reviewed_by="Alice Example",
-        reviewed_at=datetime(2026, 10, 13, 9, 30, tzinfo=UTC),
+
+
+@pytest.fixture()
+def outcome_services(
+    replace_services: ReplaceServices,
+    recorded_line: EventEquipmentLine,
+    reviewed_line: EquipmentLineAsShown,
+) -> dict[str, MagicMock]:
+    """Replace the recording service, and the one that adds the reviewer's name."""
+    return replace_services(
+        routes,
+        {"record_equipment_outcome": recorded_line, "equipment_lines_as_shown": [reviewed_line]},
     )
-    mocks = replace_services(
-        routes, {"record_equipment_outcome": line, "equipment_lines_as_shown": [shown]}
-    )
-    return mocks["record_equipment_outcome"]
+
+
+@pytest.fixture()
+def outcome_service(outcome_services: dict[str, MagicMock]) -> MagicMock:
+    """The mock standing in for the recording service."""
+    return outcome_services["record_equipment_outcome"]
 
 
 def test_the_route_allows_only_technical_support_staff(app: Flask) -> None:
@@ -90,18 +89,25 @@ def test_a_call_without_a_token_is_401(call_route: CallRoute, outcome_service: M
 
 
 def test_technical_support_records_the_outcome_as_themselves(
-    call_route: CallRoute, token_for: Callable[..., str], outcome_service: MagicMock
+    call_route: CallRoute,
+    token_for: Callable[..., str],
+    outcome_services: dict[str, MagicMock],
+    recorded_line: EventEquipmentLine,
 ) -> None:
     response, status = call_route(
         ENDPOINT, "POST", PATH, VIEW_KWARGS, token_for(role=Role.TECHNICAL_SUPPORT_STAFF)
     )
 
     assert status == 200
-    outcome_service.assert_called_once_with("999", REFERENCE, LINE_ID, {})
+    outcome_services["record_equipment_outcome"].assert_called_once_with(
+        "999", REFERENCE, LINE_ID, {}
+    )
+    # The route shows the line it was given, with the reviewer's name added.
+    outcome_services["equipment_lines_as_shown"].assert_called_once_with([recorded_line])
     body = response.get_json()
-    assert body["id"] == LINE_ID
-    assert (body["provided_quantity"], body["shortfall"], body["reviewed_by"]) == (
-        10,
-        0,
+    assert (body["id"], body["provided_quantity"], body["shortfall"], body["reviewed_by"]) == (
+        7,
+        6,
+        4,
         "Alice Example",
     )

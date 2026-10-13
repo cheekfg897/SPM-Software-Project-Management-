@@ -14,7 +14,6 @@ stopped before any service call happens.
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import UTC, datetime
 from types import ModuleType
 from typing import Any, NamedTuple
 from unittest.mock import MagicMock
@@ -26,7 +25,7 @@ from app.common.errors import AuthenticationError, AuthorizationError
 from app.modules.auth.models import User
 from app.modules.auth.permissions import ALL_ROLES, Role
 from app.modules.events import routes
-from app.modules.events.models import EquipmentLineStatus, EventEquipmentLine, EventRequest
+from app.modules.events.models import EventEquipmentLine, EventRequest
 from app.modules.events.services import EquipmentLineAsShown, EventRecord
 
 pytestmark = pytest.mark.scrum_37
@@ -74,23 +73,6 @@ NON_READER_ROLES = sorted(ALL_ROLES - set(LINE_READERS), key=lambda role: role.v
 
 def _call(call_route: CallRoute, route: EquipmentRoute, token: str | None) -> Any:
     return call_route(route.endpoint, route.method, route.path, route.view_kwargs, token)
-
-
-@pytest.fixture()
-def reviewed_line() -> EquipmentLineAsShown:
-    """A line of ten with six provided, as the list route shows it (SCRUM-48)."""
-    return EquipmentLineAsShown(
-        id=7,
-        equipment_type_id=1,
-        quantity=10,
-        notes=None,
-        status=EquipmentLineStatus.PARTIALLY_FULFILLED,
-        provided_quantity=6,
-        shortfall=4,
-        outcome_note="Only six in stock",
-        reviewed_by="Alice Example",
-        reviewed_at=datetime(2026, 10, 13, 9, 30, tzinfo=UTC),
-    )
 
 
 @pytest.fixture()
@@ -222,6 +204,7 @@ def test_the_list_route_shows_the_lines_and_when_the_event_is(
     token_for: TokenFor,
     mock_services: dict[str, MagicMock],
     event_as_shown: dict[str, Any],
+    shown_line: EventEquipmentLine,
     role: Role,
 ) -> None:
     response, status = _call(call_route, LIST, token_for(role=role))
@@ -245,6 +228,7 @@ def test_the_list_route_shows_the_lines_and_when_the_event_is(
         ],
     }
     mock_services[LIST.service].assert_called_once_with(CALLER_ID, REFERENCE, viewer_role=role)
+    mock_services["equipment_lines_as_shown"].assert_called_once_with([shown_line])
 
 
 def test_the_organisers_detail_route_shows_the_equipment_lines(
