@@ -38,7 +38,7 @@ def test_a_new_arrangement_is_active(
     assert services.count_active_arrangements(event.id, session=db_session) == 1
 
 
-def test_an_event_withtwo_venues_has_two_active_arrangements(
+def test_an_event_with_two_venues_has_two_active_arrangements(
     db_session: Session,
     make_venue: Callable[..., Venue],
     save: Callable[..., None],
