@@ -585,3 +585,19 @@ def test_another_coordinator_cannot_list_the_events_requests(
 
     with pytest.raises(NotFoundError):
         _list(event, db_session, coordinator_id=9)
+
+
+def test_the_same_venue_and_period_can_be_requested_again_after_a_withdrawal(
+    db_session: Session, venue: Venue, saved_event: SavedEvent
+) -> None:
+    """Withdrawing frees the slot: the pending index covers pending rows only."""
+    event = saved_event()
+    first = raise_booking(venue, event, db_session)
+    services.withdraw_arrangement(
+        event.reference, first.id, coordinator_id=COORDINATOR_ID, session=db_session
+    )
+
+    second = raise_booking(venue, event, db_session)
+
+    assert second.id != first.id
+    assert len(saved_requests(db_session)) == 2
