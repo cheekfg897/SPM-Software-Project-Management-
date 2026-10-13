@@ -40,6 +40,7 @@ ROUTES = [
     ("venue.list_booking_requests", "GET", "list_booking_requests_for_event"),
     ("venue.withdraw_arrangement", "POST", "withdraw_arrangement"),
     ("venue.cancel_all_arrangements", "POST", "cancel_all_arrangements"),
+    ("venue.change_arrangement", "PATCH", "change_arrangement"),
 ]
 ROUTE_IDS = [route[0] for route in ROUTES]
 
@@ -80,6 +81,7 @@ def mock_services(
             "list_booking_requests_for_event": [shown],
             "withdraw_arrangement": shown,
             "cancel_all_arrangements": [shown],
+            "change_arrangement": shown,
         },
     )
 
@@ -215,3 +217,22 @@ def test_a_coordinator_who_is_not_the_events_coordinator_gets_404_when_listing(
             {"reference": event.reference},
             token_for(other_coordinator),
         )
+
+
+@pytest.mark.scrum_93
+def test_changing_an_arrangement_returns_200_with_the_changed_request(
+    call_route: CallRoute, mock_services: dict[str, MagicMock], coordinator_token: str
+) -> None:
+    response, status = call_route(
+        "venue.change_arrangement",
+        "PATCH",
+        f"{PATH}/11",
+        {"reference": REFERENCE, "arrangement_id": 11},
+        coordinator_token,
+    )
+
+    assert status == 200
+    assert response.get_json()["id"] == 11
+    mock_services["change_arrangement"].assert_called_once_with(
+        REFERENCE, 11, {}, coordinator_id=COORDINATOR_ID
+    )

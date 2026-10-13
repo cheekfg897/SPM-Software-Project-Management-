@@ -39,6 +39,34 @@ def raise_booking(
     return shown.request
 
 
+SECOND_PERIOD = {
+    "starts_at": "2026-11-01T13:00:00+08:00",
+    "ends_at": "2026-11-01T16:00:00+08:00",
+}
+
+
+def two_venues(make_venue: Callable[..., Venue], save: Callable[..., None]) -> tuple[Venue, Venue]:
+    """Save an auditorium and a breakout room."""
+    auditorium = make_venue(name="Auditorium")
+    breakout = make_venue(name="Breakout room")
+    save(auditorium)
+    save(breakout)
+    return auditorium, breakout
+
+
+def two_arrangements(
+    db_session: Session,
+    make_venue: Callable[..., Venue],
+    save: Callable[..., None],
+    event: EventRequest,
+) -> tuple[int, int]:
+    """Raise one arrangement at each of two venues, earlier period first; return ids."""
+    auditorium, breakout = two_venues(make_venue, save)
+    first = raise_booking(auditorium, event, db_session)
+    second = raise_booking(breakout, event, db_session, **SECOND_PERIOD)
+    return first.id, second.id
+
+
 def saved_requests(session: Session) -> list[VenueBookingRequest]:
     """Every booking request saved, to check what a call did or did not save."""
     return session.query(VenueBookingRequest).all()
