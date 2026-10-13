@@ -39,6 +39,11 @@ def raise_booking(
     return shown.request
 
 
+def saved_requests(session: Session) -> list[VenueBookingRequest]:
+    """Every booking request saved, to check what a call did or did not save."""
+    return session.query(VenueBookingRequest).all()
+
+
 @pytest.fixture()
 def reload_venue(db_session: Session) -> Callable[[int], Venue]:
     """Read a venue back from the database rather than from the session's cache."""
