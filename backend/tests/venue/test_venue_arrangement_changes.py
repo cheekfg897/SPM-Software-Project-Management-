@@ -117,6 +117,34 @@ def test_an_empty_payload_is_accepted_and_changes_nothing(
     assert _changed_entries(db_session) == []
 
 
+def test_sending_the_layout_as_null_clears_it_without_needing_a_justification(
+    db_session: Session, venue: Venue, saved_event: SavedEvent
+) -> None:
+    event = saved_event()
+    arrangement = raise_booking(venue, event, db_session, required_layout="theatre")
+
+    shown = _change(event, arrangement.id, db_session, required_layout=None)
+
+    assert shown.request.required_layout is None
+    entries = _changed_entries(db_session)
+    assert len(entries) == 1
+    assert entries[0].details["changes"] == {
+        "required_layout": {"previous": "theatre", "new": None}
+    }
+
+
+def test_sending_a_null_layout_when_there_is_none_changes_nothing(
+    db_session: Session, venue: Venue, saved_event: SavedEvent
+) -> None:
+    event = saved_event()
+    arrangement = raise_booking(venue, event, db_session)
+
+    shown = _change(event, arrangement.id, db_session, required_layout=None)
+
+    assert shown.request.required_layout is None
+    assert _changed_entries(db_session) == []
+
+
 def test_raising_the_occupancy_past_the_venues_capacity_needs_a_justification(
     db_session: Session, venue: Venue, saved_event: SavedEvent
 ) -> None:

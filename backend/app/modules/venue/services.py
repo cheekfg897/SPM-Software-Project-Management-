@@ -1092,8 +1092,9 @@ def change_arrangement(
 ) -> BookingRequestAsShown:
     """Change a pending arrangement's purpose, occupancy, layout or justification (AC6).
 
-    Only the fields sent change, and only while Venue Staff have yet to decide: changing
-    a decided arrangement would quietly void their decision. Suitability is re-checked
+    Only the fields sent change (the layout is cleared by sending it as ``null``), and
+    only while Venue Staff have yet to decide: changing a decided arrangement would
+    quietly void their decision. Suitability is re-checked
     against the merged values, so a change that outgrows the venue needs a justification
     just as raising one does. That check runs before anything is written, so a refused
     change leaves the arrangement exactly as it was. A change that alters nothing writes
