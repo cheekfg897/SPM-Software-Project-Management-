@@ -305,14 +305,14 @@ def remove_equipment(reference: str, line_id: int) -> tuple[Response, int]:
 
 
 @bp.post("/requests/<reference>/reassign")
-@requires_role(Role.EVENT_COORDINATOR)
+@requires_role(Role.EVENT_COORDINATOR_LEAD)
 def reassign_request(reference: str) -> tuple[Response, int]:
     """Move a request to the Event Coordinator named by ``coordinator_email``.
 
-    SCRUM-87, ADR-0021. Only the request's current coordinator may; the service
-    answers anyone else with the equipment routes' "not yours" 404. Returns ``200``
-    with the request and the new coordinator's name and email (AC6). The caller is
-    recorded as having done it (AC7).
+    SCRUM-87, ADR-0021; the Event Coordinator Lead's alone since SCRUM-96, so an Event
+    Coordinator is refused with ``403`` and the service is never reached. Returns
+    ``200`` with the request and the new coordinator's name and email (AC6). The
+    caller is recorded as having done it (AC7).
     """
     event_request, coordinator = reassign_coordinator(
         g.current_user_id, reference, request.get_json(silent=True)
