@@ -38,6 +38,7 @@ PATH = f"/api/venues/events/{REFERENCE}/booking-requests"
 ROUTES = [
     ("venue.raise_booking_request", "POST", "raise_booking_request"),
     ("venue.list_booking_requests", "GET", "list_booking_requests_for_event"),
+    ("venue.withdraw_arrangement", "POST", "withdraw_arrangement"),
 ]
 ROUTE_IDS = [route[0] for route in ROUTES]
 
@@ -73,7 +74,11 @@ def mock_services(
 ) -> dict[str, MagicMock]:
     return replace_services(
         services,
-        {"raise_booking_request": shown, "list_booking_requests_for_event": [shown]},
+        {
+            "raise_booking_request": shown,
+            "list_booking_requests_for_event": [shown],
+            "withdraw_arrangement": shown,
+        },
     )
 
 
@@ -156,6 +161,25 @@ def test_listing_requests_returns_200_with_each_request_and_the_events_details(
     assert body[0]["accessibility_needs"] == "Step-free entrance"
     mock_services["list_booking_requests_for_event"].assert_called_once_with(
         REFERENCE, coordinator_id=COORDINATOR_ID
+    )
+
+
+@pytest.mark.scrum_93
+def test_withdrawing_an_arrangement_returns_200_with_the_withdrawn_request(
+    call_route: CallRoute, mock_services: dict[str, MagicMock], coordinator_token: str
+) -> None:
+    response, status = call_route(
+        "venue.withdraw_arrangement",
+        "POST",
+        f"{PATH}/11/withdraw",
+        {"reference": REFERENCE, "arrangement_id": 11},
+        coordinator_token,
+    )
+
+    assert status == 200
+    assert response.get_json()["id"] == 11
+    mock_services["withdraw_arrangement"].assert_called_once_with(
+        REFERENCE, 11, coordinator_id=COORDINATOR_ID
     )
 
 

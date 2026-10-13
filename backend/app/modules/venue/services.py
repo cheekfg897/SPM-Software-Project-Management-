@@ -28,6 +28,7 @@ from app.modules.notifications.services import EventSummary, NotificationKind, n
 from app.modules.venue.models import (
     RETIRED_REQUEST_STATUSES,
     Booking,
+    BookingRequestStatus,
     BookingStatus,
     CalendarEntryKind,
     RequirementKind,
@@ -934,6 +935,10 @@ def list_booking_requests_for_event(
 # --------------------------------------------------------------------------
 
 
+ARRANGEMENT_NOT_FOUND_MESSAGE = "Venue arrangement not found."
+WITHDRAW_NOT_PENDING_MESSAGE = "Only a pending arrangement can be withdrawn; this one is {status}."
+
+
 def list_active_arrangements(
     event_id: int, *, session: Session | None = None
 ) -> list[VenueBookingRequest]:
@@ -956,3 +961,71 @@ def list_active_arrangements(
 def count_active_arrangements(event_id: int, *, session: Session | None = None) -> int:
     """How many venues the event still has arranged (SCRUM-75's multi-venue test)."""
     return len(list_active_arrangements(event_id, session=session))
+
+
+def _arrangement_of_event(
+    event_id: int, arrangement_id: int, session: Session
+) -> VenueBookingRequest:
+    """One of the event's own arrangements.
+
+    An id that belongs to another event is reported as missing, so arrangements of
+    events the caller cannot see are not discoverable (ADR-0035 §6).
+
+    Raises:
+        NotFoundError: 404 — the event has no arrangement with that id.
+    """
+    arrangement = session.get(VenueBookingRequest, arrangement_id)
+    if arrangement is None or arrangement.event_id != event_id:
+        raise NotFoundError(ARRANGEMENT_NOT_FOUND_MESSAGE)
+    return arrangement
+
+
+def _withdraw_and_record(
+    arrangement: VenueBookingRequest, coordinator_id: int, session: Session | None
+) -> None:
+    """Withdraw one arrangement and write its history entry, without committing.
+
+    Raises:
+        ConflictError: 409 — the arrangement is no longer pending.
+    """
+    from app.modules.events import services as event_services  # circular at import time
+
+    if arrangement.status is not BookingRequestStatus.PENDING:
+        raise ConflictError(WITHDRAW_NOT_PENDING_MESSAGE.format(status=arrangement.status.value))
+    arrangement.status = BookingRequestStatus.WITHDRAWN
+    event_services.record_venue_arrangement_withdrawn(
+        arrangement.event_id,
+        actor_id=coordinator_id,
+        details={
+            "venue_booking_request_id": arrangement.id,
+            "venue_id": arrangement.venue_id,
+        },
+        session=session,
+    )
+
+
+def withdraw_arrangement(
+    reference: str,
+    arrangement_id: int,
+    *,
+    coordinator_id: int,
+    session: Session | None = None,
+) -> BookingRequestAsShown:
+    """Retract one of an event's arrangements before Venue Staff decide it (AC6).
+
+    The event's other arrangements are untouched. The withdrawal and its history entry
+    are saved in one commit.
+
+    Raises:
+        NotFoundError: 404 — no such event among the coordinator's own, or no such
+            arrangement on it.
+        ConflictError: 409 — the arrangement is no longer pending.
+    """
+    from app.modules.events import services as event_services  # circular at import time
+
+    sess = resolve_session(session)
+    event = event_services.get_event_for_coordinator(reference, coordinator_id, session=session)
+    arrangement = _arrangement_of_event(event.id, arrangement_id, sess)
+    _withdraw_and_record(arrangement, coordinator_id, session)
+    sess.commit()
+    return show_booking_request(arrangement, event)
