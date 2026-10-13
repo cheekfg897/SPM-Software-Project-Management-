@@ -26,7 +26,7 @@ from app.modules.events.models import (
     EventHistoryKind,
     EventRequest,
 )
-from app.modules.events.schemas import EquipmentLineWithOutcomeSchema
+from app.modules.events.schemas import EquipmentLineWithOutcomeSchema, EventRequestDetailSchema
 from app.modules.notifications.models import NotificationKind
 
 pytestmark = pytest.mark.scrum_48
@@ -60,7 +60,7 @@ def test_a_new_line_has_no_recorded_outcome(
 
     assert line.provided_quantity is None
     assert services.lines_without_outcome(saved_event_request.id, session=db_session) == [line]
-    assert services.has_recorded_outcomes(saved_event_request.id, session=db_session) is False
+    assert services.all_outcomes_recorded(saved_event_request.id, session=db_session) is False
 
 
 def test_a_line_with_an_outcome_drops_out_of_the_no_outcome_list(
@@ -78,7 +78,7 @@ def test_a_line_with_an_outcome_drops_out_of_the_no_outcome_list(
     db_session.commit()
 
     assert services.lines_without_outcome(saved_event_request.id, session=db_session) == []
-    assert services.has_recorded_outcomes(saved_event_request.id, session=db_session) is True
+    assert services.all_outcomes_recorded(saved_event_request.id, session=db_session) is True
 
 
 def test_an_event_with_no_equipment_has_no_lines_awaiting_an_outcome(
@@ -86,7 +86,7 @@ def test_an_event_with_no_equipment_has_no_lines_awaiting_an_outcome(
 ) -> None:
     assert services.lines_without_outcome(saved_event_request.id, session=db_session) == []
     # Nothing is outstanding, so "every line has an outcome" holds vacuously.
-    assert services.has_recorded_outcomes(saved_event_request.id, session=db_session) is True
+    assert services.all_outcomes_recorded(saved_event_request.id, session=db_session) is True
 
 
 def test_the_organiser_never_sees_an_outcome_in_the_history(
@@ -301,6 +301,8 @@ def test_recording_writes_one_history_entry_with_the_outcome(
             REVIEWER_ID,
             {
                 "equipment_line_id": ten_requested.id,
+                "equipment_type_id": ten_requested.equipment_type_id,
+                "equipment_type_name": "Projector",
                 "quantity": 10,
                 "provided_quantity": 6,
                 "status": "partially_fulfilled",
@@ -457,3 +459,71 @@ def test_a_reviewer_who_no_longer_exists_shows_as_none(
 
     assert shown["reviewed_by"] is None
     assert shown["provided_quantity"] == 10
+
+
+def test_the_organiser_sees_the_line_status_but_none_of_the_outcome_detail(
+    record_outcome: Callable[..., EventEquipmentLine],
+    ten_requested: EventEquipmentLine,
+    saved_event_request: EventRequest,
+) -> None:
+    record_outcome(ten_requested, provided_quantity=6, note="Only six in stock")
+
+    event_record = EventRequestDetailSchema().dump(
+        services.get_event_request_for_organiser(
+            saved_event_request.organiser_id, saved_event_request.reference
+        )
+    )
+
+    assert set(event_record["equipment_lines"][0]) == {
+        "id",
+        "equipment_type_id",
+        "quantity",
+        "notes",
+        "status",
+    }
+    assert event_record["equipment_lines"][0]["status"] == "partially_fulfilled"
+
+
+def test_lowering_a_quantity_below_what_was_promised_is_refused(
+    record_outcome: Callable[..., EventEquipmentLine],
+    ten_requested: EventEquipmentLine,
+    saved_event_request: EventRequest,
+    db_session: Session,
+) -> None:
+    record_outcome(ten_requested, provided_quantity=6, note="Only six in stock")
+
+    with pytest.raises(ValidationError) as exc_info:
+        services.update_equipment_line(
+            COORDINATOR_ID,
+            saved_event_request.reference,
+            ten_requested.id,
+            {"quantity": 5},
+            session=db_session,
+        )
+
+    assert exc_info.value.details == {
+        "quantity": [
+            "Quantity cannot be below the 6 units Technical Support has said they will provide."
+        ]
+    }
+    db_session.expire_all()
+    assert ten_requested.quantity == 10
+
+
+def test_raising_a_quantity_after_an_outcome_is_still_allowed(
+    record_outcome: Callable[..., EventEquipmentLine],
+    ten_requested: EventEquipmentLine,
+    saved_event_request: EventRequest,
+    db_session: Session,
+) -> None:
+    record_outcome(ten_requested, provided_quantity=6, note="Only six in stock")
+
+    line = services.update_equipment_line(
+        COORDINATOR_ID,
+        saved_event_request.reference,
+        ten_requested.id,
+        {"quantity": 12},
+        session=db_session,
+    )
+
+    assert line.quantity == 12

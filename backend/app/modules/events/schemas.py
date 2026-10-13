@@ -596,12 +596,11 @@ class RecordEquipmentOutcomeSchema(Schema):
     """
 
     provided_quantity = WholeNumber(required=True, validate=validate.Range(min=0))
-    note = fields.String(allow_none=True, load_default=None)
+    note = _optional_text()
 
     @post_load
-    def _trim_note(self, data: dict[str, Any], **_: Any) -> dict[str, Any]:
-        if data["note"] is not None:
-            data["note"] = data["note"].strip() or None
+    def _blank_note_is_none(self, data: dict[str, Any], **_: Any) -> dict[str, Any]:
+        data["note"] = _blank_as_none(data["note"])
         return data
 
 
@@ -623,8 +622,8 @@ class EquipmentLineWithOutcomeSchema(EquipmentLineSchema):
     """An equipment line with its review outcome, for staff (SCRUM-48 AC4).
 
     Dumped from ``EquipmentLineAsShown``, so the reviewer is a name, never a user id.
-    The organiser's record keeps :class:`EquipmentLineSchema`: the outcome is not
-    shared with them yet.
+    The organiser's record keeps :class:`EquipmentLineSchema`: they see the line's
+    status, but not the provided quantity, shortfall, note, reviewer or time.
     """
 
     provided_quantity = fields.Integer(dump_only=True, allow_none=True)
