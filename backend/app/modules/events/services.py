@@ -320,6 +320,11 @@ def _warn_unassigned(event_request: EventRequest) -> None:
     logger.warning("event_request_unassigned reference=%s", event_request.reference)
 
 
+REASSIGNED_AWAY_DETAIL = (
+    "This event has been reassigned to another Event Coordinator and is no longer yours."
+)
+
+
 def _notify_about_assignment(
     event_request: EventRequest,
     coordinator_id: int,
@@ -332,10 +337,10 @@ def _notify_about_assignment(
     The coordinator hears the event is theirs (SCRUM-30 AC4, SCRUM-87 AC4, SCRUM-39
     AC4), and the organiser who submitted it hears a coordinator has been assigned
     (SCRUM-39 AC1, ADR-0030). On a reassignment the coordinator who held the request
-    hears it has moved on, with the same ``request_assigned`` notice the organiser
-    gets, because the Lead made the change, not them (SCRUM-96 AC5); a first assignment
-    has no ``previous_id``. They are separate writes, so losing one notice doesn't lose
-    the others (ADR-0015).
+    hears it has moved on (SCRUM-96 AC5, ADR-0041): the ``request_assigned`` kind's
+    default message is the organiser's, so their notice carries its own ``detail``
+    saying the event is no longer theirs. A first assignment has no ``previous_id``.
+    They are separate writes, so losing one notice doesn't lose the others (ADR-0015).
     """
     _raise_notifications(
         [coordinator_id], event_request, NotificationKind.COORDINATOR_ASSIGNED, session
@@ -345,7 +350,11 @@ def _notify_about_assignment(
     )
     if previous_id is not None:
         _raise_notifications(
-            [previous_id], event_request, NotificationKind.REQUEST_ASSIGNED, session
+            [previous_id],
+            event_request,
+            NotificationKind.REQUEST_ASSIGNED,
+            session,
+            detail=REASSIGNED_AWAY_DETAIL,
         )
 
 
@@ -1843,10 +1852,10 @@ def list_event_history(
     """An event's history, oldest first, with names resolved and no user ids (SCRUM-33).
 
     Internal staff may see any event's history, except an Event Coordinator, who may
-    see only the events assigned to them (SCRUM-96 AC6, SCRUM-24 AC10). An Event
-    Organiser sees only their client organisation's, and never a ``field_changed``
-    entry about ``internal_planning_notes`` (ADR-0025) or an ``equipment_reserved``
-    entry (SCRUM-46).
+    see only the events assigned to them (SCRUM-96 AC6, SCRUM-24 AC2/AC9, ADR-0034 and
+    ADR-0041). An Event Organiser sees only their client organisation's, and never a
+    ``field_changed`` entry about ``internal_planning_notes`` (ADR-0025) or an
+    ``equipment_reserved`` entry (SCRUM-46).
 
     Args:
         viewer_id: The caller's user id, taken from their token.
