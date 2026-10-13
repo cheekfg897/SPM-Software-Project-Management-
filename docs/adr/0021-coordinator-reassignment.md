@@ -1,6 +1,6 @@
 # ADR-0021: An event's own coordinator may hand it, while open or confirmed, to another coordinator named by email; the history keeps both coordinators' ids and names
 
-- **Status:** Accepted; reassigning a draft is `404`, not `409`, superseded by [ADR-0024](0024-draft-event-requests.md); `approved` added to the reassignable statuses by [ADR-0028](0028-review-and-decide.md); `awaiting_clarification` added by [ADR-0029](0029-clarification-requests.md); the organiser's notice added by [ADR-0030](0030-organiser-told-about-assignment.md); decision 6's first assignment taken up by [ADR-0036](0036-event-coordinator-lead.md)
+- **Status:** Accepted; reassigning a draft is `404`, not `409`, superseded by [ADR-0024](0024-draft-event-requests.md); `approved` added to the reassignable statuses by [ADR-0028](0028-review-and-decide.md); `awaiting_clarification` added by [ADR-0029](0029-clarification-requests.md); the organiser's notice added by [ADR-0030](0030-organiser-told-about-assignment.md); decision 6's first assignment taken up by [ADR-0036](0036-event-coordinator-lead.md); decision 1 (only the current coordinator reassigns) and decision 10's unnotified previous coordinator superseded by [ADR-0041](0041-lead-oversight-and-reassignment.md)
 - **Date:** 2026-09-26
 - **Story:** SCRUM-87 Reassign an event to a different coordinator
 - **Extends:** [ADR-0018](0018-least-loaded-coordinator-and-event-history.md): the coordinator column and the event history table
