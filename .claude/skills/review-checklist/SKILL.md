@@ -141,14 +141,17 @@ Build a traceability table: one row per AC.
 
 ## 5. Walk the checklist
 
-Read `docs/code-review-checklist.md` and go through sections 1–11 against the change. Use
-`backend/CONVENTIONS.md` (the § numbers) for the detail behind each item. For files under
-`frontend/`, also check them against `frontend/CLAUDE.md`, whose rules the checklist doesn't
-spell out: the backend is the source of truth (no client-side filtering, sorting or counting;
-filters in the URL; the backend's error messages shown, not rewritten), reuse of
-`components/ui` before a new component, no `any`, and in tests "mock the network, never the
-code". Section 1's AC items are already covered by step 4. Skip items that don't apply to this change — don't pad the
-report with them.
+Read `docs/code-review-checklist.md` and go through sections 1–13 against the change (12 is
+the frontend, 13 is git, branches and PRs). Use `backend/CONVENTIONS.md` (the § numbers) for
+the detail behind each item. For files under `frontend/`, section 12 lists the main rules of
+`frontend/CLAUDE.md`; read that file too for the detail behind them. Section 1's AC items are
+already covered by step 4. Skip items that don't apply to this change — don't pad the report
+with them.
+
+Section 10's mutation items are not optional for the key lines: break each one, run the tests,
+restore it, and report which test caught it. Include the "what was forgotten" mutations
+(dropping an allow-list member, adding a deny-list member, wrong types), since those find the
+gaps the author never thought of.
 
 Give **section 4 (readability)** a deliberate pass of its own, function by function. That
 includes the three structural rules:
