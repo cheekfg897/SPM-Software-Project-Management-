@@ -57,6 +57,7 @@ from app.modules.events.schemas import (
     EditEventRequestSchema,
     EventRequestSchema,
     ReassignCoordinatorSchema,
+    RecordEquipmentOutcomeSchema,
     RequestClarificationSchema,
     ResubmitEventRequestSchema,
     SaveDraftSchema,
@@ -2356,6 +2357,19 @@ def record_equipment_reserved(
     )
 
 
+def _notify_assigned_coordinator(
+    event_request: EventRequest, kind: NotificationKind, session: Session
+) -> None:
+    """Tell the event's assigned coordinator that ``kind`` happened, if there is one.
+
+    With nobody assigned, nobody is told, and that is logged.
+    """
+    if event_request.coordinator_id is None:
+        _warn_unassigned(event_request)
+        return
+    _raise_notifications([event_request.coordinator_id], event_request, kind, session)
+
+
 def notify_coordinator_equipment_reserved(event_id: int, *, session: Session | None = None) -> None:
     """Tell the event's assigned coordinator that equipment was reserved (SCRUM-46 AC5).
 
@@ -2369,12 +2383,7 @@ def notify_coordinator_equipment_reserved(event_id: int, *, session: Session | N
     """
     sess = resolve_session(session)
     event_request = sess.get(EventRequest, event_id)
-    if event_request.coordinator_id is None:
-        _warn_unassigned(event_request)
-        return
-    _raise_notifications(
-        [event_request.coordinator_id], event_request, NotificationKind.EQUIPMENT_RESERVED, sess
-    )
+    _notify_assigned_coordinator(event_request, NotificationKind.EQUIPMENT_RESERVED, sess)
 
 
 # --------------------------------------------------------------------------
@@ -2987,3 +2996,89 @@ def has_recorded_outcomes(event_id: int, *, session: Session | None = None) -> b
     ``True`` for an event with no equipment at all, because nothing is outstanding.
     """
     return not lines_without_outcome(event_id, session=session)
+
+
+OUTCOME_NOTE_REQUIRED_MESSAGE = "A note is required unless the whole request can be provided."
+PROVIDED_ABOVE_REQUESTED_MESSAGE = "Cannot provide more than was requested."
+EQUIPMENT_LINE_NOT_FOUND_MESSAGE = "Equipment line not found."
+
+
+def _check_outcome_is_possible(line: EventEquipmentLine, outcome: Mapping[str, Any]) -> None:
+    """Refuse an outcome that provides more than was asked, or a shortfall unexplained.
+
+    Raises:
+        ValidationError: 400 — on ``provided_quantity`` or on ``note``.
+    """
+    provided = outcome["provided_quantity"]
+    if provided > line.quantity:
+        raise ValidationError(
+            "Invalid request.", details={"provided_quantity": [PROVIDED_ABOVE_REQUESTED_MESSAGE]}
+        )
+    if provided < line.quantity and outcome["note"] is None:
+        raise ValidationError("Invalid request.", details={"note": [OUTCOME_NOTE_REQUIRED_MESSAGE]})
+
+
+def record_equipment_outcome(
+    reviewer_id: int | str,
+    reference: str,
+    line_id: int,
+    payload: Mapping[str, Any] | None,
+    *,
+    session: Session | None = None,
+    now: datetime | None = None,
+) -> EventEquipmentLine:
+    """Record, or revise, how much of an equipment line Technical Support will provide.
+
+    SCRUM-48 AC1-AC5. The status follows from the quantity provided; a shortfall needs
+    a note, and a line met in full keeps none. Every call adds a history entry, so a
+    revision leaves the earlier outcome on record. The history entry is saved with the
+    outcome; the event's coordinator is told afterwards (ADR-0015).
+
+    Args:
+        reviewer_id: The Technical Support user's id, taken from their token.
+        reference: The event request's ``EVR-…`` reference.
+        line_id: The equipment line the outcome is for.
+        payload: Decoded JSON body: ``provided_quantity`` and optional ``note``.
+        session: Database session; defaults to ``db.session``.
+        now: The current instant, timezone-aware; defaults to the real clock.
+
+    Returns:
+        The updated :class:`EventEquipmentLine`.
+
+    Raises:
+        ValidationError: 400 — invalid payload, more provided than requested, or a
+            shortfall with no note.
+        NotFoundError: 404 — no such request, or no such line on it.
+    """
+    outcome = load_or_raise(RecordEquipmentOutcomeSchema(), payload)
+    sess = resolve_session(session)
+    if now is None:
+        now = datetime.now(timezone.utc)
+    reviewer = int(reviewer_id)
+    event_request = _event_request_for_staff(reference, sess)
+    line = _line_of_event(event_request, line_id, sess)
+    _check_outcome_is_possible(line, outcome)
+
+    line.provided_quantity = outcome["provided_quantity"]
+    line.status = outcome_status_for(line.quantity, line.provided_quantity)
+    # A line met in full carries no note, so a revision never keeps a stale reason.
+    line.outcome_note = None if line.status is EquipmentLineStatus.FULFILLED else outcome["note"]
+    line.reviewed_by = reviewer
+    line.reviewed_at = now
+    record_event_history(
+        event_request,
+        EventHistoryKind.EQUIPMENT_OUTCOME_RECORDED,
+        actor_id=reviewer,
+        details={
+            "equipment_line_id": line.id,
+            "quantity": line.quantity,
+            "provided_quantity": line.provided_quantity,
+            "status": line.status.value,
+            "note": line.outcome_note,
+        },
+        session=sess,
+        now=now,
+    )
+    sess.commit()
+    _notify_assigned_coordinator(event_request, NotificationKind.EQUIPMENT_OUTCOME_RECORDED, sess)
+    return line
