@@ -11,6 +11,7 @@ import { SignUpPage } from '@/features/auth/pages/SignUpPage'
 import { StaffHomePage } from '@/features/auth/pages/StaffHomePage'
 import { StaffLoginPage } from '@/features/auth/pages/StaffLoginPage'
 import { CataloguePage } from '@/features/catalogue/pages/CataloguePage'
+import { MyEventRequests } from '@/features/eventRequests/components/MyEventRequests'
 import { LandingPage } from '@/features/landing/pages/LandingPage'
 
 import { NotFoundPage } from './NotFoundPage'
@@ -31,7 +32,9 @@ export const appRoutes: RouteObject[] = [
         path: ROUTES.ORGANISER_HOME,
         element: (
           <RequireRole allowedRoles={ORGANISER_ROLES} loginRoute={ROUTES.LOGIN}>
-            <OrganiserHomePage />
+            <OrganiserHomePage>
+              <MyEventRequests />
+            </OrganiserHomePage>
           </RequireRole>
         ),
       },

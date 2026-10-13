@@ -1,15 +1,9 @@
+import { EventArt } from '@/components/ui'
+
 import type { CatalogueEvent } from '../api'
 import { formatTimeRange } from '../formatDate'
 
 import { RegisterAction } from './RegisterAction'
-
-/** Decorative artwork, one of these picked by the event's id so a card always looks the same. */
-const ART_GRADIENTS = [
-  'from-corona via-flare to-ember',
-  'from-flare via-ember to-nebula',
-  'from-nebula via-ember to-flare',
-  'from-corona via-nebula to-void',
-] as const
 
 function PinIcon() {
   return (
@@ -21,19 +15,6 @@ function PinIcon() {
       />
       <circle cx="10" cy="8.5" r="1.8" stroke="currentColor" strokeWidth="1.5" />
     </svg>
-  )
-}
-
-/** A small black hole: a glowing ring around a dark core. */
-function EventArt({ eventId }: { eventId: number }) {
-  const gradient = ART_GRADIENTS[eventId % ART_GRADIENTS.length]
-  return (
-    <div
-      aria-hidden="true"
-      className={`relative hidden size-24 shrink-0 overflow-hidden rounded-xl bg-gradient-to-br sm:block ${gradient}`}
-    >
-      <div className="bg-void absolute inset-[22%] rounded-full shadow-[0_0_18px_6px_rgb(6_5_11/0.6)]" />
-    </div>
   )
 }
 
@@ -73,7 +54,7 @@ export function EventCard({ event }: { event: CatalogueEvent }) {
           <RegisterAction event={event} />
         </div>
       </div>
-      <EventArt eventId={event.id} />
+      <EventArt seed={event.id} />
     </article>
   )
 }

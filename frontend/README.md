@@ -33,6 +33,15 @@ npm run test:e2e           # Playwright, desktop and mobile (first time: npx pla
 BACKEND_URL=http://localhost:5055 npm run test:integration   # against a running backend
 ```
 
+Some integration tests record client organisations, which only staff may do, so they sign in as a
+staff account. Make one on that backend once, then pass it in (CI makes its own for each run):
+
+```bash
+cd backend && flask create-staff-user --email you@connectsphere.test --full-name "Your Name" --role event_coordinator
+INTEGRATION_STAFF_EMAIL=you@connectsphere.test INTEGRATION_STAFF_PASSWORD=<its password> \
+  BACKEND_URL=http://localhost:5055 npm run test:integration
+```
+
 ## Accounts
 
 - **Event Organisers and Attendees** sign up at `/signup`. An Organiser needs the organisation

@@ -1,11 +1,9 @@
-import { BUSINESS_TIME_ZONE } from '@/config/time'
+import { BUSINESS_TIME_ZONE, DISPLAY_LOCALE } from '@/config/time'
 
 /**
  * Display formats for the backend's date-times, always in business time so a visitor abroad
  * sees the times the event is actually on.
  */
-
-const LOCALE = 'en-SG'
 
 // en-CA writes dates as YYYY-MM-DD, which sorts and compares as text.
 const DATE_KEY_FORMAT = new Intl.DateTimeFormat('en-CA', {
@@ -14,20 +12,20 @@ const DATE_KEY_FORMAT = new Intl.DateTimeFormat('en-CA', {
   month: '2-digit',
   day: '2-digit',
 })
-const WEEKDAY_FORMAT = new Intl.DateTimeFormat(LOCALE, {
+const WEEKDAY_FORMAT = new Intl.DateTimeFormat(DISPLAY_LOCALE, {
   timeZone: BUSINESS_TIME_ZONE,
   weekday: 'long',
 })
-const SHORT_WEEKDAY_FORMAT = new Intl.DateTimeFormat(LOCALE, {
+const SHORT_WEEKDAY_FORMAT = new Intl.DateTimeFormat(DISPLAY_LOCALE, {
   timeZone: BUSINESS_TIME_ZONE,
   weekday: 'short',
 })
-const SHORT_DATE_FORMAT = new Intl.DateTimeFormat(LOCALE, {
+const SHORT_DATE_FORMAT = new Intl.DateTimeFormat(DISPLAY_LOCALE, {
   timeZone: BUSINESS_TIME_ZONE,
   day: 'numeric',
   month: 'short',
 })
-const TIME_FORMAT = new Intl.DateTimeFormat(LOCALE, {
+const TIME_FORMAT = new Intl.DateTimeFormat(DISPLAY_LOCALE, {
   timeZone: BUSINESS_TIME_ZONE,
   hour: 'numeric',
   minute: '2-digit',
