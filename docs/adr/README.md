@@ -50,6 +50,7 @@ To change a decision, don't rewrite history. Add a new ADR that **supersedes** t
 | [0035](0035-venue-booking-requests.md) | An assigned coordinator raises a Pending venue booking request for an approved event; every Venue Staff user is told | Accepted | SCRUM-42 |
 | [0036](0036-event-coordinator-lead.md) | A submitted request waits unassigned in the Event Coordinator Lead's queue, and only the Lead gives it to one coordinator, named by email | Accepted | SCRUM-95 |
 | [0037](0037-equipment-availability-and-reservation.md) | Equipment availability is calculated per event period; Technical Support reserve up to it under a row lock; out-of-service units are a read-only seam for SCRUM-47 | Accepted | SCRUM-45, SCRUM-46 |
+| [0039](0039-venue-arrangements.md) | A venue arrangement is a venue booking request; a coordinator can change, withdraw or retire all of an event's arrangements, and retired ones stay on record | Accepted | SCRUM-93 |
 | [0041](0041-lead-oversight-and-reassignment.md) | The Event Coordinator Lead alone reassigns, sees every active event and each coordinator's workload; a coordinator reads only their own event's history | Accepted | SCRUM-96 |
 
 ## Template
