@@ -1177,6 +1177,11 @@ def _event_request_with_editable_equipment(
     return event_request
 
 
+QUANTITY_BELOW_OUTCOME_MESSAGE = (
+    "Quantity cannot be below the {provided} units Technical Support has said they will provide."
+)
+
+
 def _check_equipment_type(equipment_type_id: int, session: Session) -> None:
     """Reject an equipment type that isn't in the catalogue, as a 400 on its field."""
     try:
@@ -1187,10 +1192,23 @@ def _check_equipment_type(equipment_type_id: int, session: Session) -> None:
         ) from exc
 
 
+def _check_quantity_covers_outcome(line: EventEquipmentLine, quantity: int) -> None:
+    """Refuse a quantity below what Technical Support has said they will provide.
+
+    Raises:
+        ValidationError: 400 — on ``quantity``.
+    """
+    provided = line.provided_quantity
+    if provided is not None and quantity < provided:
+        message = QUANTITY_BELOW_OUTCOME_MESSAGE.format(provided=provided)
+        raise ValidationError("Invalid request.", details={"quantity": [message]})
+
+
 def _commit_line_or_conflict(session: Session) -> None:
     """Commit; a second line for an equipment type on one event is a 409 (ADR-0019)."""
-    # The schema has enforced every other rule and the type has been checked, so the
-    # only integrity error left here is the unique (event, equipment type) pair.
+    # The schema has enforced every other rule, the type has been checked and a
+    # quantity below a recorded outcome is refused beforehand, so the only integrity
+    # error left here is the unique (event, equipment type) pair.
     try:
         session.commit()
     except IntegrityError as exc:
@@ -1387,6 +1405,9 @@ def update_equipment_line(
     line = _line_of_event(event_request, line_id, sess)
     if "equipment_type_id" in data:
         _check_equipment_type(data["equipment_type_id"], sess)
+
+    if "quantity" in data:
+        _check_quantity_covers_outcome(line, data["quantity"])
 
     for key, value in data.items():
         setattr(line, key, value)
@@ -3006,15 +3027,6 @@ def resubmit_event_request(
 # SCRUM-48 — record the outcome of an equipment review
 # --------------------------------------------------------------------------
 
-#: The statuses that mean an outcome has been recorded (SCRUM-48).
-OUTCOME_STATUSES = frozenset(
-    {
-        EquipmentLineStatus.FULFILLED,
-        EquipmentLineStatus.PARTIALLY_FULFILLED,
-        EquipmentLineStatus.UNAVAILABLE,
-    }
-)
-
 
 def outcome_status_for(quantity: int, provided: int) -> EquipmentLineStatus:
     """Which outcome ``provided`` units against a request for ``quantity`` is.
@@ -3048,7 +3060,7 @@ def lines_without_outcome(
     return list(resolve_session(session).scalars(query).all())
 
 
-def has_recorded_outcomes(event_id: int, *, session: Session | None = None) -> bool:
+def all_outcomes_recorded(event_id: int, *, session: Session | None = None) -> bool:
     """Whether every one of the event's equipment lines has an outcome (SCRUM-48).
 
     ``True`` for an event with no equipment at all, because nothing is outstanding.
@@ -3115,6 +3127,7 @@ def record_equipment_outcome(
     event_request = _event_request_for_staff(reference, sess)
     line = _line_of_event(event_request, line_id, sess)
     _check_outcome_is_possible(line, outcome)
+    equipment_type = equipment_services.get_equipment_type(line.equipment_type_id, session=sess)
 
     line.provided_quantity = outcome["provided_quantity"]
     line.status = outcome_status_for(line.quantity, line.provided_quantity)
@@ -3128,6 +3141,8 @@ def record_equipment_outcome(
         actor_id=reviewer,
         details={
             "equipment_line_id": line.id,
+            "equipment_type_id": line.equipment_type_id,
+            "equipment_type_name": equipment_type.name,
             "quantity": line.quantity,
             "provided_quantity": line.provided_quantity,
             "status": line.status.value,
