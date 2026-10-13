@@ -479,10 +479,11 @@ def event_needing(
         reference: str = "EVR-AAAAAAAA",
         *,
         proposed_date: date = date(2026, 10, 15),
+        start_time: time = time(9, 0),
         status: EventRequestStatus = EventRequestStatus.SUBMITTED,
     ) -> EventRequest:
         event_request = make_event_request(
-            reference=reference, proposed_date=proposed_date, status=status
+            reference=reference, proposed_date=proposed_date, start_time=start_time, status=status
         )
         save(event_request)
         save(make_equipment_line(event_request, equipment_type))

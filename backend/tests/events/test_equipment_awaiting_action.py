@@ -178,8 +178,9 @@ def test_today_defaults_to_the_business_date(
 
 
 def test_events_are_listed_soonest_first(event_needing: EventNeeding, today: date) -> None:
-    event_needing("EVR-AAAAAAAA", proposed_date=date(2026, 11, 1))
-    event_needing("EVR-BBBBBBBB", proposed_date=date(2026, 9, 20))
+    """The latest event starts earliest in its day, so only date order lists it last."""
+    event_needing("EVR-AAAAAAAA", proposed_date=date(2026, 11, 1), start_time=time(8, 0))
+    event_needing("EVR-BBBBBBBB", proposed_date=date(2026, 9, 20), start_time=time(18, 0))
     event_needing("EVR-CCCCCCCC", proposed_date=date(2026, 10, 1))
 
     awaiting = list_equipment_requests_awaiting_action(today=today)
