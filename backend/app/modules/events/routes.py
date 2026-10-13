@@ -407,8 +407,9 @@ def update_request(reference: str) -> tuple[Response, int]:
 def list_history(reference: str) -> tuple[Response, int]:
     """An event's history, oldest first (SCRUM-33).
 
-    Internal staff may open any event's history; an Event Organiser only their own
-    client organisation's, and never a ``field_changed`` entry about
+    Internal staff may open any event's history, except an Event Coordinator, who sees
+    only events assigned to them; an Event Organiser only their own client
+    organisation's, and never a ``field_changed`` entry about
     ``internal_planning_notes``.
     """
     history = list_event_history(

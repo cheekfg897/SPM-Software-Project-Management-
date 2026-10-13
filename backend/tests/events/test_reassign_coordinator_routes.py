@@ -21,10 +21,11 @@ import pytest
 from flask import Flask
 
 from app.common.errors import AuthenticationError, AuthorizationError
-from app.modules.auth.permissions import ALL_ROLES, Role
+from app.modules.auth.permissions import Role
 from app.modules.events import routes
 from app.modules.events.models import EventRequest
 from app.modules.events.services import CoordinatorContact
+from tests.events.conftest import NON_LEAD_ROLES
 
 pytestmark = pytest.mark.scrum_87
 
@@ -35,9 +36,6 @@ REFERENCE = "EVR-AAAAAAAA"
 ENDPOINT = "events.reassign_request"
 PATH = f"/api/events/requests/{REFERENCE}/reassign"
 VIEW_KWARGS = {"reference": REFERENCE}
-
-#: Every role but the Lead, so a role added later is refused unless a test says not.
-NON_LEAD_ROLES = sorted(ALL_ROLES - {Role.EVENT_COORDINATOR_LEAD}, key=lambda role: role.value)
 
 
 @pytest.fixture()
