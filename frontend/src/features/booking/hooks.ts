@@ -1,7 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { bookingKeys, fetchBookingRequests, raiseBookingRequest } from './api'
-import type { RaiseBookingRequest } from './api'
+import {
+  bookingKeys,
+  decideBookingRequest,
+  fetchBookingRequests,
+  fetchPendingBookingRequests,
+  raiseBookingRequest,
+} from './api'
+import type { BookingDecision, RaiseBookingRequest } from './api'
 
 /** The booking requests raised for one of the coordinator's events. */
 export function useBookingRequests(reference: string) {
@@ -17,5 +23,22 @@ export function useRaiseBookingRequest(reference: string) {
   return useMutation({
     mutationFn: (payload: RaiseBookingRequest) => raiseBookingRequest(reference, payload),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: bookingKeys.forEvent(reference) }),
+  })
+}
+
+/** The requests waiting for Venue Staff to decide, earliest event first (SCRUM-43). */
+export function usePendingBookingRequests() {
+  return useQuery({ queryKey: bookingKeys.pending(), queryFn: fetchPendingBookingRequests })
+}
+
+/**
+ * Approve or reject one request. Afterwards the queue is read again, so the request leaves
+ * it because the backend says so rather than because the cache was edited here.
+ */
+export function useDecideBookingRequest(requestId: number) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (decision: BookingDecision) => decideBookingRequest(requestId, decision),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: bookingKeys.pending() }),
   })
 }

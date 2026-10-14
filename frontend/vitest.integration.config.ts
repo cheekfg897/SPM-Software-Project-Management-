@@ -25,6 +25,9 @@ export default defineConfig({
       // A staff account made with `flask create-staff-user`; CI makes one for each run.
       INTEGRATION_STAFF_EMAIL: process.env.INTEGRATION_STAFF_EMAIL ?? '',
       INTEGRATION_STAFF_PASSWORD: process.env.INTEGRATION_STAFF_PASSWORD ?? '',
+      // Optional Venue Staff account for the SCRUM-43 decision checks; they skip without it.
+      INTEGRATION_VENUE_STAFF_EMAIL: process.env.INTEGRATION_VENUE_STAFF_EMAIL ?? '',
+      INTEGRATION_VENUE_STAFF_PASSWORD: process.env.INTEGRATION_VENUE_STAFF_PASSWORD ?? '',
     },
     // One backend, one database: run the files one after another.
     fileParallelism: false,

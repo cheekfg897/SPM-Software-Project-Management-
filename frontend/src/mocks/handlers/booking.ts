@@ -14,7 +14,7 @@ import {
 } from '../responses'
 
 import { accountForRequest } from './auth'
-import { MOCK_BOOKING_EVENTS, MOCK_BOOKING_VENUES } from './bookingFixtures'
+import { MOCK_BOOKING_EVENTS, MOCK_BOOKING_VENUES, MOCK_PENDING_DECISIONS } from './bookingFixtures'
 import type { MockBookingEvent } from './bookingFixtures'
 
 /**
@@ -23,6 +23,8 @@ import type { MockBookingEvent } from './bookingFixtures'
  */
 
 const BOOKING_PATH = '/api/venues/events/:reference/booking-requests'
+const PENDING_PATH = '/api/venues/booking-requests'
+const DECISION_PATH = `${PENDING_PATH}/:requestId/decision`
 const REQUIRED_FIELDS = ['venue_id', 'starts_at', 'ends_at', 'purpose'] as const
 /** The backend's EVENT_REQUEST_NOT_FOUND_MESSAGE (events/services.py), also sent for another coordinator's event. */
 const EVENT_NOT_FOUND_MESSAGE = 'Event request not found.'
@@ -30,14 +32,44 @@ const JUSTIFICATION_REQUIRED_MESSAGE =
   'A justification is required because the venue is not suitable.'
 const DUPLICATE_REQUEST_MESSAGE =
   'A pending request for this event, venue and period already exists.'
+/** The backend's messages for deciding a request (venue/services.py, SCRUM-43). */
+const BOOKING_REQUEST_NOT_FOUND_MESSAGE = 'Booking request not found.'
+export const REJECTION_REASON_REQUIRED_MESSAGE = 'A reason is required to reject a booking request.'
+const OUTCOME_ERROR_MESSAGE = 'Outcome must be approved or rejected.'
 
 const events: MockBookingEvent[] = Object.values(MOCK_BOOKING_EVENTS)
 const venues = Object.values(MOCK_BOOKING_VENUES)
-const requests: BookingRequest[] = []
+let requests: BookingRequest[] = []
 
-/** Forget the requests raised since. Runs after every test. */
+/** Forget the requests raised since, and put the waiting ones back. Runs after every test. */
 export function resetMockBooking(): void {
-  requests.length = 0
+  requests = MOCK_PENDING_DECISIONS.map((waiting) => ({ ...waiting }))
+}
+
+resetMockBooking()
+
+/** Whether the caller is Venue Staff, who decide requests; otherwise the response to send. */
+function checkVenueStaff(request: Request) {
+  const user = accountForRequest(request)
+  if (user === undefined) {
+    return notAuthenticated()
+  }
+  if (user.role !== ROLE.VENUE_STAFF) {
+    return notAllowed()
+  }
+  return null
+}
+
+/** The queue's order, as the backend sorts it: event date, then event start, then id. */
+function waitingForDecision(): BookingRequest[] {
+  return requests
+    .filter((existing) => existing.status === 'pending')
+    .sort(
+      (left, right) =>
+        left.event_proposed_date.localeCompare(right.event_proposed_date) ||
+        left.event_start_time.localeCompare(right.event_start_time) ||
+        left.id - right.id,
+    )
 }
 
 function missingFieldErrors(body: Record<string, unknown>): FieldErrors {
@@ -148,5 +180,41 @@ export const bookingHandlers: RequestHandler[] = [
 
     requests.push(created)
     return HttpResponse.json(created, { status: 201 })
+  }),
+
+  http.get(PENDING_PATH, ({ request }) => {
+    const refusal = checkVenueStaff(request)
+    return refusal ?? HttpResponse.json(waitingForDecision())
+  }),
+
+  http.post(DECISION_PATH, async ({ request, params }) => {
+    const refusal = checkVenueStaff(request)
+    if (refusal !== null) {
+      return refusal
+    }
+    const waiting = requests.find((existing) => existing.id === Number(params.requestId))
+    if (waiting === undefined) {
+      return errorResponse(404, 'not_found', BOOKING_REQUEST_NOT_FOUND_MESSAGE)
+    }
+    if (waiting.status !== 'pending') {
+      return errorResponse(
+        409,
+        'conflict',
+        `Only a pending request can be decided; this one is ${waiting.status}.`,
+      )
+    }
+
+    const body = await readBody(request)
+    if (body.outcome !== 'approved' && body.outcome !== 'rejected') {
+      return validationError({ outcome: [OUTCOME_ERROR_MESSAGE] })
+    }
+    const reason = typeof body.reason === 'string' ? body.reason : null
+    if (body.outcome === 'rejected' && reason === null) {
+      return validationError({ reason: [REJECTION_REASON_REQUIRED_MESSAGE] })
+    }
+
+    waiting.status = body.outcome
+    waiting.decision_reason = reason
+    return HttpResponse.json(waiting)
   }),
 ]

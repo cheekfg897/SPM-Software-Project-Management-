@@ -10,6 +10,7 @@ import { OrganiserHomePage } from '@/features/auth/pages/OrganiserHomePage'
 import { SignUpPage } from '@/features/auth/pages/SignUpPage'
 import { StaffHomePage } from '@/features/auth/pages/StaffHomePage'
 import { StaffLoginPage } from '@/features/auth/pages/StaffLoginPage'
+import { BookingDecisionsPage } from '@/features/booking/pages/BookingDecisionsPage'
 import { VenueRequestsPage } from '@/features/booking/pages/VenueRequestsPage'
 import { CataloguePage } from '@/features/catalogue/pages/CataloguePage'
 import { EventEquipmentPage } from '@/features/equipment/pages/EventEquipmentPage'
@@ -22,6 +23,7 @@ import { NotFoundPage } from './NotFoundPage'
 
 const ORGANISER_ROLES: readonly Role[] = [ROLE.EVENT_ORGANISER]
 const COORDINATOR_ROLES: readonly Role[] = [ROLE.EVENT_COORDINATOR]
+const VENUE_STAFF_ROLES: readonly Role[] = [ROLE.VENUE_STAFF]
 const LEAD_ROLES: readonly Role[] = [ROLE.EVENT_COORDINATOR_LEAD]
 
 /** The page tree. The browser router (App) and the test router (renderApp) both use it. */
@@ -57,6 +59,14 @@ export const appRoutes: RouteObject[] = [
         element: (
           <RequireRole loginRoute={ROUTES.LOGIN}>
             <NotificationsPage />
+          </RequireRole>
+        ),
+      },
+      {
+        path: ROUTES.BOOKING_DECISIONS,
+        element: (
+          <RequireRole allowedRoles={VENUE_STAFF_ROLES} loginRoute={ROUTES.STAFF_LOGIN}>
+            <BookingDecisionsPage />
           </RequireRole>
         ),
       },

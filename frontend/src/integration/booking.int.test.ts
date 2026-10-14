@@ -1,5 +1,10 @@
 import { ROLE } from '@/config/roles'
-import { fetchBookingRequests, raiseBookingRequest } from '@/features/booking/api'
+import {
+  decideBookingRequest,
+  fetchBookingRequests,
+  fetchPendingBookingRequests,
+  raiseBookingRequest,
+} from '@/features/booking/api'
 import { logIn, register } from '@/features/auth/api'
 import { ApiError } from '@/lib/api'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
@@ -9,6 +14,15 @@ import { staffAccount, uniqueEmail, VALID_PASSWORD } from './backend'
 /** A well-formed reference no database has, so the lookup finds nothing. */
 const UNKNOWN_EVENT_REFERENCE = 'EVR-NOSUCH00'
 const NOT_FOUND_MESSAGE = 'Event request not found.'
+
+/**
+ * Venue Staff are made the same way as the staff account (`flask create-staff-user`), but CI does
+ * not seed one, so the checks that need one read it from these variables and skip without them:
+ * INTEGRATION_VENUE_STAFF_EMAIL=... INTEGRATION_VENUE_STAFF_PASSWORD=... npm run test:integration
+ */
+const VENUE_STAFF_EMAIL = import.meta.env.INTEGRATION_VENUE_STAFF_EMAIL
+const VENUE_STAFF_PASSWORD = import.meta.env.INTEGRATION_VENUE_STAFF_PASSWORD
+const hasVenueStaff = Boolean(VENUE_STAFF_EMAIL) && Boolean(VENUE_STAFF_PASSWORD)
 
 /** The ApiError a call was refused with. Fails the test if it succeeded or failed another way. */
 async function refusal(call: Promise<unknown>): Promise<ApiError> {
@@ -32,6 +46,14 @@ async function signInAsAttendee() {
 /** Sign in as the staff account, which is an Event Coordinator (see staffAccount). */
 async function signInAsCoordinator() {
   const session = await logIn(staffAccount())
+  sendRequestsAs(session.access_token)
+}
+
+async function signInAsVenueStaff() {
+  const session = await logIn({
+    email: VENUE_STAFF_EMAIL ?? '',
+    password: VENUE_STAFF_PASSWORD ?? '',
+  })
   sendRequestsAs(session.access_token)
 }
 
@@ -79,4 +101,64 @@ describe('SCRUM-42 venue booking requests against the backend', () => {
 
   it.todo('raises a request for an approved event and lists it (needs a seeded approved event)')
   it.todo('refuses a second Pending request for the same venue and period (409)')
+})
+
+describe('SCRUM-43 venue booking decisions against the backend', () => {
+  /** An id no database has, so the lookup finds nothing. */
+  const UNKNOWN_REQUEST_ID = 99_999_999
+
+  it('refuses the queue without a token (401)', async () => {
+    const error = await refusal(fetchPendingBookingRequests())
+
+    expect(error).toMatchObject({ status: 401, code: 'authentication_error' })
+  })
+
+  it('refuses a role other than Venue Staff (403)', async () => {
+    await signInAsAttendee()
+
+    const error = await refusal(fetchPendingBookingRequests())
+
+    expect(error).toMatchObject({ status: 403, code: 'authorization_error' })
+  })
+
+  it('refuses a decision without a token (401)', async () => {
+    const error = await refusal(decideBookingRequest(UNKNOWN_REQUEST_ID, { outcome: 'approved' }))
+
+    expect(error).toMatchObject({ status: 401, code: 'authentication_error' })
+  })
+
+  it('refuses a coordinator deciding a request (403)', async () => {
+    await signInAsCoordinator()
+
+    const error = await refusal(decideBookingRequest(UNKNOWN_REQUEST_ID, { outcome: 'approved' }))
+
+    expect(error).toMatchObject({ status: 403, code: 'authorization_error' })
+  })
+
+  it.skipIf(!hasVenueStaff)('answers the queue with a list Venue Staff can read', async () => {
+    await signInAsVenueStaff()
+
+    const queue = await fetchPendingBookingRequests()
+
+    expect(Array.isArray(queue)).toBe(true)
+    for (const waiting of queue) {
+      expect(waiting.status).toBe('pending')
+      expect(typeof waiting.event_proposed_date).toBe('string')
+    }
+  })
+
+  it.skipIf(!hasVenueStaff)('answers 404 for a request that does not exist', async () => {
+    await signInAsVenueStaff()
+
+    const error = await refusal(decideBookingRequest(UNKNOWN_REQUEST_ID, { outcome: 'approved' }))
+
+    expect(error).toMatchObject({
+      status: 404,
+      code: 'not_found',
+      message: 'Booking request not found.',
+    })
+  })
+
+  it.todo('approves a Pending request and books the venue (needs a seeded pending request)')
+  it.todo('refuses a rejection with no reason (400 on `reason`)')
 })
