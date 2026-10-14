@@ -1,10 +1,10 @@
 import { ROLE } from '@/config/roles'
-import { logIn, register } from '@/features/auth/api'
+import { register } from '@/features/auth/api'
 import { fetchMyEventRequests } from '@/features/eventRequests/api'
 import { apiRequest } from '@/lib/api'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
 
-import { staffAccount, uniqueEmail, VALID_PASSWORD } from './backend'
+import { signInAs, staffAccount, uniqueEmail, VALID_PASSWORD } from './backend'
 import type { Credentials } from './backend'
 
 /**
@@ -45,12 +45,6 @@ const SUBMITTED = {
   start_time: '09:00',
   end_time: '17:00',
   expected_attendance: 120,
-}
-
-/** Log in, and send that user's token with every request from now on. */
-async function signInAs(credentials: Credentials): Promise<void> {
-  const session = await logIn(credentials)
-  sendRequestsAs(session.access_token)
 }
 
 /** A client organisation recorded by staff, under a name no earlier run has used. */
