@@ -1,0 +1,30 @@
+"""Fixtures for the registration module tests (SCRUM-52)."""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from datetime import datetime
+
+import pytest
+
+from app.modules.events.models import EventRequest
+from app.modules.registration.models import Registration, RegistrationStatus
+
+
+@pytest.fixture()
+def make_registration(save: Callable[..., None], now: datetime) -> Callable[..., Registration]:
+    """Factory for saved registrations; ``registered_at`` defaults to ``now``."""
+
+    def _make(
+        event: EventRequest, attendee_id: int, *, registered_at: datetime | None = None
+    ) -> Registration:
+        registration = Registration(
+            event_request_id=event.id,
+            attendee_id=attendee_id,
+            status=RegistrationStatus.REGISTERED,
+            registered_at=registered_at if registered_at is not None else now,
+        )
+        save(registration)
+        return registration
+
+    return _make
