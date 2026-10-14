@@ -24,11 +24,7 @@ from app.common.errors import NotFoundError
 from app.modules.auth.models import User
 from app.modules.auth.permissions import Role
 from app.modules.events.models import EventHistoryKind, EventRequest, EventRequestStatus
-from app.modules.events.services import (
-    EVENT_REQUEST_NOT_FOUND_MESSAGE,
-    list_event_history,
-    record_event_history,
-)
+from app.modules.events.services import list_event_history, record_event_history
 
 pytestmark = pytest.mark.scrum_33
 
@@ -195,7 +191,7 @@ def test_a_coordinator_cannot_read_the_history_of_an_event_assigned_to_someone_e
         list_event_history(9, "EVR-ZZZZZZZZ", viewer_role=Role.EVENT_COORDINATOR)
 
     assert unassigned_error.value.status_code == 404
-    assert unassigned_error.value.message == EVENT_REQUEST_NOT_FOUND_MESSAGE
+    assert unassigned_error.value.message == "Event request not found."
     assert unassigned_error.value.message == unknown_error.value.message
 
 
@@ -210,7 +206,7 @@ def test_a_coordinator_cannot_read_the_history_of_an_unassigned_event(
     with pytest.raises(NotFoundError) as exc_info:
         list_event_history(3, "EVR-CCCCCCCC", viewer_role=Role.EVENT_COORDINATOR)
 
-    assert exc_info.value.message == EVENT_REQUEST_NOT_FOUND_MESSAGE
+    assert exc_info.value.message == "Event request not found."
 
 
 def test_an_unknown_reference_is_404(saved_users: list[User]) -> None:
