@@ -6,8 +6,9 @@ needs a capacity. AC4: enabling needs a confirmed event. AC6: a change records w
 it and when, in the event history. A capacity outside 1 to the largest Postgres integer
 is refused, and only the event's own coordinator may change the settings.
 
-AC3 (capacity within the booked venue's) and AC5 (capacity not below the number
-registered) are deferred, so nothing here tests them (ADR-0043).
+AC5: the capacity cannot drop below the number already registered (SCRUM-52 adds the
+registrations it counts, ADR-0043). AC3 (capacity within the booked venue's) is
+deferred, so nothing here tests it (ADR-0043).
 
 Runs against ``db_session`` with ``saved_users`` and ``saved_event_request``
 (``EVR-AAAAAAAA``, ``submitted``, assigned to Event Coordinator 3), so lookups are real
@@ -44,6 +45,7 @@ from app.modules.events.services import (
     list_event_history,
     update_registration_settings,
 )
+from app.modules.registration.models import Registration, RegistrationStatus
 from tests.events.cases import NOT_CONFIRMED_STATUSES
 
 pytestmark = pytest.mark.scrum_69
@@ -119,6 +121,27 @@ def settings_of(
         return reloaded.registration_enabled, reloaded.registration_capacity
 
     return _settings
+
+
+@pytest.fixture()
+def register_attendees(
+    saved_event_request: EventRequest, save: Callable[..., None]
+) -> Callable[..., None]:
+    """Register ``count`` attendees for an event, ``saved_event_request`` by default."""
+
+    def _register(count: int, event: EventRequest | None = None) -> None:
+        target = event if event is not None else saved_event_request
+        for attendee_id in range(1, count + 1):
+            save(
+                Registration(
+                    event_request_id=target.id,
+                    attendee_id=attendee_id,
+                    status=RegistrationStatus.REGISTERED,
+                    registered_at=NOW,
+                )
+            )
+
+    return _register
 
 
 def _assert_capacity_required(refused: ValidationError) -> None:
@@ -357,6 +380,101 @@ def test_registration_can_be_disabled_whatever_the_status(
 
 
 # --------------------------------------------------------------------------
+# AC5 — the capacity cannot drop below the number already registered
+# --------------------------------------------------------------------------
+
+
+def test_a_capacity_below_the_number_registered_is_refused(
+    update: Update,
+    confirmed_event_request: EventRequest,
+    register_attendees: Callable[..., None],
+    settings_of: SettingsOf,
+) -> None:
+    update(COORDINATOR_ID, ENABLE_WITH_100)
+    register_attendees(5)
+
+    with pytest.raises(ValidationError) as exc_info:
+        update(COORDINATOR_ID, {"registration_capacity": 4})
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.details == {
+        "registration_capacity": ["Capacity cannot be lower than the 5 places already taken."]
+    }
+    assert settings_of() == (True, 100)
+
+
+def test_a_capacity_equal_to_the_number_registered_is_accepted(
+    update: Update,
+    confirmed_event_request: EventRequest,
+    register_attendees: Callable[..., None],
+    settings_of: SettingsOf,
+) -> None:
+    update(COORDINATOR_ID, ENABLE_WITH_100)
+    register_attendees(5)
+
+    update(COORDINATOR_ID, {"registration_capacity": 5})
+
+    assert settings_of() == (True, 5)
+
+
+def test_a_capacity_below_the_number_registered_is_refused_while_registration_is_off(
+    update: Update,
+    confirmed_event_request: EventRequest,
+    register_attendees: Callable[..., None],
+    settings_of: SettingsOf,
+) -> None:
+    update(COORDINATOR_ID, ENABLE_WITH_100)
+    register_attendees(5)
+
+    with pytest.raises(ValidationError) as exc_info:
+        update(COORDINATOR_ID, {"registration_enabled": False, "registration_capacity": 4})
+
+    assert exc_info.value.details == {
+        "registration_capacity": ["Capacity cannot be lower than the 5 places already taken."]
+    }
+    assert settings_of() == (True, 100)
+
+
+def test_registration_can_be_turned_off_while_attendees_are_registered(
+    update: Update,
+    confirmed_event_request: EventRequest,
+    register_attendees: Callable[..., None],
+    settings_of: SettingsOf,
+) -> None:
+    update(COORDINATOR_ID, ENABLE_WITH_100)
+    register_attendees(5)
+
+    update(COORDINATOR_ID, {"registration_enabled": False})
+
+    assert settings_of() == (False, 100)
+
+
+def test_an_event_with_no_capacity_has_no_registrations_to_check_against(
+    update: Update, confirmed_event_request: EventRequest, settings_of: SettingsOf
+) -> None:
+    update(COORDINATOR_ID, {"registration_enabled": False})
+
+    assert settings_of() == (False, None)
+
+
+def test_registrations_for_another_event_are_not_counted(
+    update: Update,
+    confirmed_event_request: EventRequest,
+    register_attendees: Callable[..., None],
+    make_event_request: Callable[..., EventRequest],
+    save: Callable[..., None],
+    settings_of: SettingsOf,
+) -> None:
+    other_event = make_event_request(reference="EVR-BBBBBBBB", coordinator_id=3)
+    save(other_event)
+    register_attendees(5, other_event)
+
+    update(COORDINATOR_ID, {"registration_enabled": True, "registration_capacity": 2})
+
+    assert settings_of() == (True, 2)
+
+
+# --------------------------------------------------------------------------
 # ADR-0043 — only the event's own coordinator, and the order of the checks
 # --------------------------------------------------------------------------
 
@@ -482,7 +600,8 @@ def test_the_settings_and_their_history_are_saved_in_one_commit(
     event_request = make_event_request(
         status=EventRequestStatus.CONFIRMED, coordinator_id=COORDINATOR_ID
     )
-    mock_session.scalar.return_value = event_request
+    # The event, then the number registered, which the capacity is checked against.
+    mock_session.scalar.side_effect = [event_request, 0]
     seen_at_commit: list[tuple[bool, int | None, list[EventHistoryKind]]] = []
 
     def note_what_is_saved() -> None:
@@ -508,7 +627,7 @@ def test_a_call_that_changes_nothing_saves_nothing(
     )
     event_request.registration_enabled = True
     event_request.registration_capacity = 100
-    mock_session.scalar.return_value = event_request
+    mock_session.scalar.side_effect = [event_request, 0]
 
     update_registration_settings(
         COORDINATOR_ID, REFERENCE, ENABLE_WITH_100, session=mock_session, now=NOW
