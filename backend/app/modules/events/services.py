@@ -1092,8 +1092,6 @@ def get_events_for_booking(
     with no event is left out rather than raising, so one deleted event cannot hide
     the whole queue.
     """
-    if not event_ids:
-        return {}
     requests = resolve_session(session).scalars(
         select(EventRequest).where(EventRequest.id.in_(event_ids))
     )
