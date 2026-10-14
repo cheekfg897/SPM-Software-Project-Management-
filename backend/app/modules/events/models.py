@@ -184,6 +184,14 @@ class EventRequest(db.Model):  # type: ignore[name-defined]
             ")",
             name="ck_event_requests_details_unless_draft",
         ),
+        # NULL passes a CHECK, so a capacity that was never set is untouched.
+        CheckConstraint(
+            "registration_capacity >= 1", name="ck_event_requests_registration_capacity_min"
+        ),
+        CheckConstraint(
+            "NOT registration_enabled OR registration_capacity IS NOT NULL",
+            name="ck_event_requests_enabled_registration_has_capacity",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -235,6 +243,14 @@ class EventRequest(db.Model):  # type: ignore[name-defined]
     registration_required: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=false()
     )
+    #: Whether Attendees may register, set by the assigned coordinator (SCRUM-69 AC1,
+    #: ADR-0043). ``registration_required`` is only what the organiser asked for.
+    registration_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=false()
+    )
+    #: How many places there are; NULL until the coordinator sets it, and always set
+    #: while registration is enabled (SCRUM-69 AC2, ADR-0043).
+    registration_capacity: Mapped[int | None] = mapped_column(Integer, nullable=True)
     status: Mapped[EventRequestStatus] = mapped_column(
         Enum(
             EventRequestStatus,
