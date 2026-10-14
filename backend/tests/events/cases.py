@@ -45,6 +45,13 @@ NON_DRAFT_STATUSES = [
     status for status in EventRequestStatus if status is not EventRequestStatus.DRAFT
 ]
 
+#: Every status but draft and confirmed: the ones a confirmed-only rule refuses
+#: (SCRUM-68 completing, SCRUM-69 enabling registration). A draft is not found at
+#: all (ADR-0024).
+NOT_CONFIRMED_STATUSES = [
+    status for status in NON_DRAFT_STATUSES if status is not EventRequestStatus.CONFIRMED
+]
+
 #: One field at a time, each with a value its own rule refuses, whether the field
 #: is sent on a save or on an edit: the per-field rule does not care which (SCRUM-20).
 FIELD_REJECTED_CASES = [

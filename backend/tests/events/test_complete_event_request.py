@@ -49,7 +49,7 @@ from app.modules.events.services import (
     list_event_history,
     update_event_request,
 )
-from tests.events.cases import NON_DRAFT_STATUSES
+from tests.events.cases import NOT_CONFIRMED_STATUSES
 
 pytestmark = pytest.mark.scrum_68
 
@@ -69,10 +69,6 @@ SINGAPORE = ZoneInfo("Asia/Singapore")
 ENDS_AT = datetime(2026, 10, 15, 17, 0, tzinfo=SINGAPORE)
 JUST_BEFORE_THE_END = ENDS_AT - timedelta(seconds=1)
 AFTER_THE_END = ENDS_AT + timedelta(hours=1)
-
-NOT_CONFIRMED_STATUSES = [
-    status for status in NON_DRAFT_STATUSES if status is not EventRequestStatus.CONFIRMED
-]
 
 
 def _assert_not_completable(refused: RequestNotCompletableError, message: str) -> None:
