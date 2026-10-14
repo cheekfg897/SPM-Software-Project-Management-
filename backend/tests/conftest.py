@@ -9,13 +9,18 @@ pushed because JWT creation and several rules read from ``app.config``.
 
 from __future__ import annotations
 
+import importlib.util
+import io
 from collections.abc import Callable, Iterator
 from datetime import date, time
+from pathlib import Path
 from types import ModuleType
 from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+from alembic.operations import Operations
+from alembic.runtime.migration import MigrationContext
 from flask import Flask
 from flask_jwt_extended import create_access_token
 from sqlalchemy.orm import Session
@@ -34,6 +39,8 @@ from app.modules.events.models import (
 )
 from app.modules.notifications.services import list_notifications_for_recipient
 from app.modules.venue.models import Venue, VenueOpeningPeriod, Weekday
+
+MIGRATIONS_DIR = Path(__file__).resolve().parents[1] / "migrations" / "versions"
 
 
 @pytest.fixture(scope="session")
@@ -465,3 +472,53 @@ def notifications_of() -> Callable[[int], list[tuple[Any, ...]]]:
         return rows
 
     return _notifications_of
+
+
+@pytest.fixture()
+def load_migration() -> Callable[[str], ModuleType]:
+    """Import a migration file from ``migrations/versions`` by its file name."""
+
+    def _load(file_name: str) -> ModuleType:
+        spec = importlib.util.spec_from_file_location(
+            f"migration_{file_name[:4]}", MIGRATIONS_DIR / file_name
+        )
+        assert spec is not None
+        assert spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    return _load
+
+
+@pytest.fixture()
+def render_migration_sql() -> Callable[[Callable[[], None]], str]:
+    """Render the SQL Alembic would run on Postgres for a migration step, offline.
+
+    ``flask db check`` doesn't compare enum members, and the unit suite has no
+    Postgres, so migration tests read the SQL instead.
+    """
+
+    def _render(operation: Callable[[], None]) -> str:
+        buffer = io.StringIO()
+        context = MigrationContext.configure(
+            dialect_name="postgresql",
+            opts={"as_sql": True, "output_buffer": buffer, "literal_binds": True},
+        )
+        with Operations.context(context):
+            operation()
+        return buffer.getvalue()
+
+    return _render
+
+
+@pytest.fixture()
+def assert_in_order() -> Callable[[str, list[str]], None]:
+    """Check that every statement appears in rendered SQL, in the given order."""
+
+    def _assert(sql: str, expected_in_order: list[str]) -> None:
+        positions = [sql.find(statement) for statement in expected_in_order]
+        assert -1 not in positions
+        assert positions == sorted(positions)
+
+    return _assert
