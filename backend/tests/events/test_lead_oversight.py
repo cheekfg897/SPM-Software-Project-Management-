@@ -1,11 +1,12 @@
 """Unit tests for SCRUM-96 "Lead reassigns events and oversees coordinator assignments".
 
-Task 1, AC3 and AC4: only the Event Coordinator Lead may reassign an event, whichever
-coordinator holds it, and the reassignment is still audited with the Lead as its actor.
-The refusals SCRUM-87 built stay as they were: an event with no coordinator, an event
-that is over, and a move to the coordinator who already holds it.
+AC3 and AC4: only the Event Coordinator Lead may reassign an event, whichever
+coordinator holds it, and the reassignment is still audited with the Lead as its
+actor. The coordinator who loses the event loses its history too. The refusals
+SCRUM-87 built stay as they were: an event with no coordinator, an event that is
+over, and a move to the coordinator who already holds it.
 
-Task 2, AC5: the coordinator who loses the event is told, as well as the new coordinator
+AC5: the coordinator who loses the event is told, as well as the new coordinator
 and the organiser. AC1 and AC2: the Lead's two lists, every active event and each
 coordinator's active events.
 
@@ -24,7 +25,7 @@ from sqlalchemy.orm import Session
 
 from app.common.errors import NotFoundError
 from app.modules.auth.permissions import Role
-from app.modules.events.models import EventHistoryKind, EventRequest, EventRequestStatus
+from app.modules.events.models import EventRequest, EventRequestStatus
 from app.modules.events.services import (
     ACTIVE_STATUSES,
     list_active_requests,
@@ -37,9 +38,7 @@ from app.modules.notifications.services import NotificationKind
 pytestmark = pytest.mark.scrum_96
 
 Reassign = Callable[[str], Any]
-CoordinatorOf = Callable[[int], int | None]
 NotificationsOf = Callable[[int], list[tuple[Any, ...]]]
-HistoryOf = Callable[[int], list[tuple[EventHistoryKind, int | None, dict[str, Any] | None]]]
 
 NINE = "coordinator9@example.com"
 PREVIOUS_COORDINATOR_DETAIL = (
