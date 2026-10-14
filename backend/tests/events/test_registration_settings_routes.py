@@ -78,13 +78,15 @@ def test_changing_the_settings_without_a_token_is_401(
 def test_registration_route_returns_the_settings(
     call_route: CallRoute, token_for: Callable[..., str], update_service: MagicMock
 ) -> None:
+    body = {"registration_enabled": True, "registration_capacity": 100}
+
     response, status = call_route(
-        ENDPOINT, "PATCH", PATH, VIEW_KWARGS, token_for(role=Role.EVENT_COORDINATOR)
+        ENDPOINT, "PATCH", PATH, VIEW_KWARGS, token_for(role=Role.EVENT_COORDINATOR), body=body
     )
 
     assert status == 200
     # The caller is the actor, taken from their token; the body is passed on as sent.
-    update_service.assert_called_once_with("999", REFERENCE, {})
+    update_service.assert_called_once_with("999", REFERENCE, body)
     assert response.get_json() == {
         "reference": REFERENCE,
         "registration_required": False,
