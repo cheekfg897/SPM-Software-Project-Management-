@@ -62,6 +62,7 @@ from app.modules.events.schemas import (
     ResubmitEventRequestSchema,
     SaveDraftSchema,
     SubmitEventRequestSchema,
+    UpdateRegistrationSettingsSchema,
 )
 from app.modules.notifications.services import EventSummary, NotificationKind, notify_users
 
@@ -3206,3 +3207,112 @@ def record_equipment_outcome(
     sess.commit()
     _notify_assigned_coordinator(event_request, NotificationKind.EQUIPMENT_OUTCOME_RECORDED, sess)
     return line
+
+
+# --------------------------------------------------------------------------
+# SCRUM-69 — enable registration for an event and set its capacity
+# --------------------------------------------------------------------------
+
+CAPACITY_REQUIRED_MESSAGE = "A capacity is required to enable registration."
+REGISTRATION_NOT_CONFIRMED_MESSAGE = "Registration can be enabled only for a confirmed event."
+
+
+class RegistrationNotEnablableError(AppError):
+    """Registration can't be enabled while the event is not confirmed (409)."""
+
+    status_code = 409
+    error_code = "registration_not_enablable"
+
+
+def _settings_after(event_request: EventRequest, data: Mapping[str, Any]) -> dict[str, Any]:
+    """The registration settings the event will have once ``data`` is applied.
+
+    A setting left out of ``data`` keeps its current value, except ``enabled`` on an
+    event that has never had a capacity: that follows what the organiser asked for
+    (SCRUM-69 AC1, ADR-0043).
+    """
+    capacity = data.get("registration_capacity", event_request.registration_capacity)
+    if "registration_enabled" in data:
+        enabled = data["registration_enabled"]
+    elif event_request.registration_capacity is None:
+        enabled = event_request.registration_required
+    else:
+        enabled = event_request.registration_enabled
+    return {"registration_enabled": enabled, "registration_capacity": capacity}
+
+
+def _check_registration_may_be_enabled(
+    event_request: EventRequest, settings: Mapping[str, Any]
+) -> None:
+    """Refuse settings that enable registration without a capacity or before confirming.
+
+    Disabled settings are always allowed (SCRUM-69 AC2, AC4, ADR-0043).
+
+    Raises:
+        ValidationError: 400 — enabled with no capacity.
+        RegistrationNotEnablableError: 409 — enabled while the event isn't confirmed.
+    """
+    if not settings["registration_enabled"]:
+        return
+    if settings["registration_capacity"] is None:
+        raise ValidationError(
+            "Invalid request.", details={"registration_capacity": [CAPACITY_REQUIRED_MESSAGE]}
+        )
+    if event_request.status is not EventRequestStatus.CONFIRMED:
+        raise RegistrationNotEnablableError(REGISTRATION_NOT_CONFIRMED_MESSAGE)
+
+
+def update_registration_settings(
+    coordinator_id: int | str,
+    reference: str,
+    payload: Mapping[str, Any] | None,
+    *,
+    session: Session | None = None,
+    now: datetime | None = None,
+) -> EventRequest:
+    """Enable or disable registration for an event, and set its capacity (SCRUM-69).
+
+    Only the request's assigned coordinator may (ADR-0043). Only what is sent changes;
+    when ``registration_enabled`` is left out of an event that has never had a capacity,
+    it follows the organiser's ``registration_required`` (AC1). Enabling needs a
+    capacity (AC2) and a confirmed event (AC4). Each setting that changes is written to
+    the event history as a ``field_changed`` entry naming the caller, sharing one
+    ``occurred_at``, in the same commit as the change (AC6). A call that changes
+    nothing writes and commits nothing.
+
+    Args:
+        coordinator_id: The caller's user id, taken from their token.
+        reference: The ``EVR-…`` reference; case and surrounding spaces are ignored.
+        payload: Decoded JSON body: ``registration_enabled``, ``registration_capacity``
+            or both.
+        session: Database session; defaults to ``db.session``.
+        now: The current instant, timezone-aware; defaults to the real clock.
+
+    Returns:
+        The request, with its settings as they now are.
+
+    Raises:
+        NotFoundError: 404 — no such request, a draft, or not the caller's.
+        ValidationError: 400 — payload invalid, or registration enabled with no
+            capacity (details per field).
+        RegistrationNotEnablableError: 409 — registration enabled while the event isn't
+            confirmed.
+    """
+    sess = resolve_session(session)
+    event_request = _event_request_assigned_to(coordinator_id, reference, sess)
+    data = load_or_raise(UpdateRegistrationSettingsSchema(), payload)
+    settings = _settings_after(event_request, data)
+    _check_registration_may_be_enabled(event_request, settings)
+    # TODO: AC3 (capacity within the booked venue's) once SCRUM-42 and SCRUM-43 let the
+    # events module find the venue through the venue service, and AC5 (capacity not
+    # below the number registered) once SCRUM-52 has registrations: check ``settings``
+    # here (ADR-0043).
+    if now is None:
+        now = datetime.now(timezone.utc)
+
+    changes = _record_field_changes(
+        event_request, int(coordinator_id), settings, session=sess, now=now
+    )
+    if changes:
+        sess.commit()
+    return event_request
