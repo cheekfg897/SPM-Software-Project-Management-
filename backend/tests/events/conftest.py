@@ -2,18 +2,13 @@
 
 from __future__ import annotations
 
-import importlib.util
-import io
 from collections.abc import Callable
 from datetime import UTC, date, datetime, time
-from pathlib import Path
 from types import ModuleType
 from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
-from alembic.operations import Operations
-from alembic.runtime.migration import MigrationContext
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -53,9 +48,6 @@ from app.modules.notifications.services import (
     list_notifications_for_recipient,
 )
 from tests.events.cases import DRAFT_REFERENCE, LEAD_ID
-
-MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "migrations" / "versions"
-
 
 #: Every role but the Lead, so a role added later is refused unless a test says not.
 NON_LEAD_ROLES = sorted(ALL_ROLES - {Role.EVENT_COORDINATOR_LEAD}, key=lambda role: role.value)
@@ -264,56 +256,6 @@ def organiser_is_found(mock_session: MagicMock, make_user: Callable[..., User]) 
     mock_session.get.return_value = make_user(
         role=Role.EVENT_ORGANISER, user_id=7, organisation_id=3
     )
-
-
-@pytest.fixture()
-def load_migration() -> Callable[[str], ModuleType]:
-    """Import a migration file from ``migrations/versions`` by its file name."""
-
-    def _load(file_name: str) -> ModuleType:
-        spec = importlib.util.spec_from_file_location(
-            f"migration_{file_name[:4]}", MIGRATIONS_DIR / file_name
-        )
-        assert spec is not None
-        assert spec.loader is not None
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        return module
-
-    return _load
-
-
-@pytest.fixture()
-def render_migration_sql() -> Callable[[Callable[[], None]], str]:
-    """Render the SQL Alembic would run on Postgres for a migration step, offline.
-
-    ``flask db check`` doesn't compare enum members, and the unit suite has no
-    Postgres, so migration tests read the SQL instead.
-    """
-
-    def _render(operation: Callable[[], None]) -> str:
-        buffer = io.StringIO()
-        context = MigrationContext.configure(
-            dialect_name="postgresql",
-            opts={"as_sql": True, "output_buffer": buffer, "literal_binds": True},
-        )
-        with Operations.context(context):
-            operation()
-        return buffer.getvalue()
-
-    return _render
-
-
-@pytest.fixture()
-def assert_in_order() -> Callable[[str, list[str]], None]:
-    """Check that every statement appears in rendered SQL, in the given order."""
-
-    def _assert(sql: str, expected_in_order: list[str]) -> None:
-        positions = [sql.find(statement) for statement in expected_in_order]
-        assert -1 not in positions
-        assert positions == sorted(positions)
-
-    return _assert
 
 
 @pytest.fixture()
