@@ -57,18 +57,24 @@ def make_reservation() -> MakeReservation:
 
 @pytest.fixture()
 def make_out_of_service() -> MakeOutOfService:
-    """Factory for unsaved damaged units of a type, recorded by user 3 on 1 Oct 2026.
+    """Factory for unsaved out-of-service units, recorded by user 3 on 1 Oct 2026.
+
+    The units are damaged unless ``reason`` says otherwise.
 
     Nothing in SCRUM-45/46 writes these rows (SCRUM-47 will), so tests build them here.
     """
 
     def _make(
-        equipment_type: EquipmentType, quantity: int, *, resolved_at: datetime | None = None
+        equipment_type: EquipmentType,
+        quantity: int,
+        *,
+        reason: OutOfServiceReason = OutOfServiceReason.DAMAGED,
+        resolved_at: datetime | None = None,
     ) -> EquipmentOutOfService:
         return EquipmentOutOfService(
             equipment_type_id=equipment_type.id,
             quantity=quantity,
-            reason=OutOfServiceReason.DAMAGED,
+            reason=reason,
             recorded_by=3,
             recorded_at=datetime(2026, 10, 1, 8, 0, tzinfo=timezone.utc),
             resolved_at=resolved_at,
