@@ -1,12 +1,13 @@
 """Route protection decorators — the single place authorization is *enforced*.
 
-Two decorators cover every case the system needs:
+Three decorators cover every case the system needs:
 
 * :func:`requires_auth` — the caller must present a valid, unexpired JWT.
 * :func:`requires_role` — as above, **and** the ``role`` claim in the token
   must be one of the allowed roles.
+* :func:`optional_auth` — for a public route that still wants to know who is asking.
 
-Both produce the same JSON error shape via :mod:`app.common.errors`:
+The first two produce the same JSON error shape via :mod:`app.common.errors`:
 ``401`` for missing/invalid/expired tokens, ``403`` for a valid token whose
 role is not allowed. Failed attempts are logged with the role attempted, the
 endpoint, and a timestamp (groundwork for the Auditability requirement).
@@ -19,7 +20,7 @@ Division of responsibility:
   exist and which groups they form (``INTERNAL_ROLES`` etc.).
 
 ``common`` never imports from ``app.modules``; feature modules import these
-two decorators plus the role constants they need from ``auth.permissions``.
+decorators plus the role constants they need from ``auth.permissions``.
 """
 
 from __future__ import annotations
@@ -156,3 +157,37 @@ def requires_role(*roles: Any) -> Callable[[F], F]:
         return wrapper  # type: ignore[return-value]
 
     return decorator
+
+
+def _claims_of_an_optional_token() -> dict[str, Any]:
+    """The claims of the request's token, or none for a visitor or an invalid token."""
+    try:
+        verify_jwt_in_request()
+    except (JWTExtendedException, PyJWTError):
+        return {}
+    return dict(get_jwt())
+
+
+def optional_auth(func: F) -> F:
+    """Let a route be reached with or without a token, and say who is asking.
+
+    ``g.current_user_id`` and ``g.current_user_role`` hold the caller's, or ``None`` for
+    a visitor. A token that is expired or invalid is read as a visitor, not refused, and
+    isn't logged: the page is public, so there is nothing it failed to protect.
+
+    Example::
+
+        @bp.get("/catalogue")
+        @optional_auth
+        def catalogue():
+            ...
+    """
+
+    @functools.wraps(func)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        claims = _claims_of_an_optional_token()
+        g.current_user_id = claims.get("sub")
+        g.current_user_role = claims.get(ROLE_CLAIM)
+        return func(*args, **kwargs)
+
+    return wrapper  # type: ignore[return-value]
