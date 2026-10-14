@@ -54,6 +54,7 @@ To change a decision, don't rewrite history. Add a new ADR that **supersedes** t
 | [0040](0040-equipment-review-outcome.md) | Technical Support records how much of an equipment request can be met; the status is derived from the quantity provided | Accepted | SCRUM-48 |
 | [0041](0041-lead-oversight-and-reassignment.md) | The Event Coordinator Lead alone reassigns, sees every active event and each coordinator's workload; a coordinator reads only their own event's history | Accepted | SCRUM-96 |
 | [0042](0042-venue-booking-decisions.md) | Venue Staff decide any Pending request from one queue ordered by event date; approving books the venue, rejecting needs a reason, and the coordinator is told either way | Accepted | SCRUM-43 |
+| [0043](0043-registration-settings-set-by-the-assigned-coordinator.md) | The assigned Event Coordinator enables registration and sets its capacity, as two columns on the event; the venue-capacity and registered-count rules wait for the venue stack and SCRUM-52 | Accepted; the role is a default to review with the Product Owner | SCRUM-69 |
 
 ## Template
 
