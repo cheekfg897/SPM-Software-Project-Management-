@@ -29,6 +29,16 @@ const CATALOGUE_PATH = '/api/events/catalogue'
 const DEFAULT_PAGE_SIZE = 12
 const MAX_PAGE_SIZE = 50
 const KNOWN_WHEN: readonly string[] = Object.values(WHEN)
+/** Every query parameter the backend reads; any other is refused as an unknown field. */
+const KNOWN_PARAMS: readonly string[] = [
+  'q',
+  'when',
+  'starts_from',
+  'starts_to',
+  'page',
+  'page_size',
+]
+const NOT_AN_INTEGER_MESSAGE = 'Not a valid integer.'
 /** A date-time as the browser's datetime-local input sends it, with optional seconds and offset. */
 const DATE_TIME_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(Z|[+-]\d{2}:\d{2})?$/
 const OFFSET_PATTERN = /(Z|[+-]\d{2}:\d{2})$/
@@ -53,6 +63,14 @@ function toBusinessMinute(value: string): string {
 
 function readWholeNumber(value: string | null, fallback: number): number {
   return value === null ? fallback : Number(value)
+}
+
+/** The backend's message for a query number that isn't a whole number, or is out of range. */
+function integerErrors(value: number, isInRange: boolean, rangeMessage: string): string[] | null {
+  if (!Number.isInteger(value)) {
+    return [NOT_AN_INTEGER_MESSAGE]
+  }
+  return isInRange ? null : [rangeMessage]
 }
 
 function readQuery(url: URL): { query: CatalogueQuery; errors: FieldErrors } {
@@ -89,11 +107,22 @@ function readQuery(url: URL): { query: CatalogueQuery; errors: FieldErrors } {
   ) {
     errors.starts_to = ['Must be after starts_from.']
   }
-  if (!Number.isInteger(query.page) || query.page < 1) {
-    errors.page = ['Must be at least 1.']
+  const pageErrors = integerErrors(query.page, query.page >= 1, 'Must be at least 1.')
+  if (pageErrors !== null) {
+    errors.page = pageErrors
   }
-  if (!Number.isInteger(query.pageSize) || query.pageSize < 1 || query.pageSize > MAX_PAGE_SIZE) {
-    errors.page_size = [`Must be between 1 and ${MAX_PAGE_SIZE}.`]
+  const pageSizeErrors = integerErrors(
+    query.pageSize,
+    query.pageSize >= 1 && query.pageSize <= MAX_PAGE_SIZE,
+    `Must be between 1 and ${MAX_PAGE_SIZE}.`,
+  )
+  if (pageSizeErrors !== null) {
+    errors.page_size = pageSizeErrors
+  }
+  for (const name of params.keys()) {
+    if (!KNOWN_PARAMS.includes(name)) {
+      errors[name] = ['Unknown field.']
+    }
   }
   return { query, errors }
 }

@@ -109,6 +109,20 @@ describe('SCRUM-52 catalogue mock: listing', () => {
   })
 })
 
+describe('SCRUM-52 catalogue mock: refusals worded as the backend words them', () => {
+  it.each([
+    [{ page: 'two' }, { page: ['Not a valid integer.'] }],
+    [{ page_size: 'many' }, { page_size: ['Not a valid integer.'] }],
+    [{ page: '0' }, { page: ['Must be at least 1.'] }],
+    [{ page_size: '51' }, { page_size: ['Must be between 1 and 50.'] }],
+    [{ colour: 'red' }, { colour: ['Unknown field.'] }],
+  ])('refuses %j with %j', async (query, fieldErrors) => {
+    const error = await fetchPage(query).catch((caught: unknown) => caught)
+
+    expect(error).toMatchObject({ status: 400, code: 'validation_error', fieldErrors })
+  })
+})
+
 describe('SCRUM-52 catalogue mock: registering', () => {
   async function firstOpenEventId(): Promise<number> {
     const page = await fetchPage()
