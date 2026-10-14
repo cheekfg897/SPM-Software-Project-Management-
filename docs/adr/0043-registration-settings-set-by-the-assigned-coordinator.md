@@ -24,12 +24,14 @@ Several things are left open:
 6. **A change is recorded in the event history as `field_changed` entries** (ADR-0025), one per field that actually changed, with the previous and new value, the caller as the actor and one shared `occurred_at`. This is AC6, and it also records enabling and disabling. No new history kind, so no enum migration. A call that changes nothing writes and commits nothing. The route answers `200` with `reference`, `registration_required`, `registration_enabled` and `registration_capacity`.
 7. **Registrations themselves, and the catalogue that lists events "with registration enabled" (ADR-0032), are SCRUM-52's.** It should treat registration as open when `registration_enabled` is true and the event is Confirmed.
 
+## Done by SCRUM-52
+- **AC5, capacity not below the number registered:** there was no registrations table until SCRUM-52, which adds the rule to `update_registration_settings` with the table it counts (ADR-0032). A capacity under the number registered is `400` on `registration_capacity`; equal is allowed; it applies whether or not registration is enabled.
+
 ## Deferred
-- **AC5, capacity not below the number registered:** there is no registrations table until SCRUM-52. No placeholder check or column is added now; SCRUM-52 adds the rule to `update_registration_settings` with the table it counts.
 - **AC3, capacity not above the booked venue's:** `main` has no way to find an event's booked venue through the venue module's public services, and the events module must not read the venue module's models (module boundary). Booking requests and decisions (SCRUM-42, SCRUM-43) are in the open stack of pull requests. When they merge, `update_registration_settings` gains one call to a venue service and one rule, following whatever the team decides on SCRUM-54 for several venues. A `# TODO` in the service marks the place.
 
 ## Consequences
-- AC3 and AC5 of SCRUM-69 are not met by this change (see *Deferred*), so the story is not Done when this merges. They are listed under *Tickets to open* on the pull request.
+- AC3 and AC5 of SCRUM-69 are not met by this change (see *Deferred* and *Done by SCRUM-52*): AC5 lands with SCRUM-52, and AC3 is still deferred, so the story is not Done until the venue stack merges. AC3 is listed under *Tickets to open* on the pull request.
 - Until AC3 lands, a coordinator can set a capacity larger than the venue holds. SCRUM-54's "never admit more attendees than the booked venue can hold" is not guaranteed yet.
 - The migration adds columns to `event_requests`. Existing rows become disabled with no capacity, whatever their `registration_required`, because nothing can have been Confirmed with registration before this story.
 - If the Product Owner rules for the Organiser, the change is the route's role and the service's one lookup, which becomes the organisation-scoped lookup an organiser needs (ADR-0020).
@@ -38,4 +40,4 @@ Several things are left open:
 ## Revisit when
 - The Product Owner answers SCRUM-69's open question and SCRUM-54 AC5's wording: who sets registration capacity, whether it may be lower than the venue's, and whether it may change after registration opens.
 - SCRUM-42 and SCRUM-43 merge: add the venue-capacity rule (AC3), after the team settles several venues on SCRUM-54.
-- SCRUM-52 merges: add the registered-count rule (AC5).
+- SCRUM-52 merges: the registered-count rule (AC5) is added there; nothing further.

@@ -44,7 +44,7 @@ To change a decision, don't rewrite history. Add a new ADR that **supersedes** t
 | [0029](0029-clarification-requests.md) | The assigned coordinator asks the organiser for clarification; `awaiting_clarification` is a ninth status; any organiser of the organisation answers and resubmits with amendments; approval waits for the answer | Accepted | SCRUM-32 |
 | [0030](0030-organiser-told-about-assignment.md) | The organiser who submitted a request is told whenever a coordinator is assigned to it, on submission and on reassignment, with its own `request_assigned` kind | Accepted; AC5 unblocked, and decision 8's test names superseded, by [0036](0036-event-coordinator-lead.md) | SCRUM-39 |
 | [0031](0031-end-to-end-journey-through-the-test-client.md) | The request-to-approval journey is one end-to-end test, driven through Flask's test client on the in-memory database; the test client stays in `tests/e2e` | Accepted | SCRUM-41 |
-| [0032](0032-event-catalogue-contract.md) | The event catalogue API, proposed by the frontend ahead of SCRUM-52 | Proposed | SCRUM-52 |
+| [0032](0032-event-catalogue-contract.md) | The event catalogue API, and registering for an event: the account is the registration, a full event stays listed, the event row is locked for the last place, and an attendee lists their own registrations | Accepted | SCRUM-52 |
 | [0033](0033-buffer-change-reports-bookings-in-blocks.md) | A buffer change also reports confirmed bookings that now run into a block | Accepted | SCRUM-67 |
 | [0034](0034-coordinators-see-only-their-own-events.md) | Event Coordinators see and open only the events assigned to them; the unassigned queue waits for the Lead | Accepted; the Lead's queue taken up by [0036](0036-event-coordinator-lead.md); history access closed by [0041](0041-lead-oversight-and-reassignment.md) | SCRUM-24 |
 | [0035](0035-venue-booking-requests.md) | An assigned coordinator raises a Pending venue booking request for an approved event; every Venue Staff user is told | Accepted | SCRUM-42 |
@@ -54,7 +54,7 @@ To change a decision, don't rewrite history. Add a new ADR that **supersedes** t
 | [0040](0040-equipment-review-outcome.md) | Technical Support records how much of an equipment request can be met; the status is derived from the quantity provided | Accepted | SCRUM-48 |
 | [0041](0041-lead-oversight-and-reassignment.md) | The Event Coordinator Lead alone reassigns, sees every active event and each coordinator's workload; a coordinator reads only their own event's history | Accepted | SCRUM-96 |
 | [0042](0042-venue-booking-decisions.md) | Venue Staff decide any Pending request from one queue ordered by event date; approving books the venue, rejecting needs a reason, and the coordinator is told either way | Accepted | SCRUM-43 |
-| [0043](0043-registration-settings-set-by-the-assigned-coordinator.md) | The assigned Event Coordinator enables registration and sets its capacity, as two columns on the event; the venue-capacity and registered-count rules wait for the venue stack and SCRUM-52 | Accepted; the role is a default to review with the Product Owner | SCRUM-69 |
+| [0043](0043-registration-settings-set-by-the-assigned-coordinator.md) | The assigned Event Coordinator enables registration and sets its capacity, as two columns on the event; the venue-capacity rule waits for the venue stack, and the registered-count rule arrived with SCRUM-52 | Accepted; the role is a default to review with the Product Owner | SCRUM-69 |
 
 ## Template
 
