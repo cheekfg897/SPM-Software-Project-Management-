@@ -12,13 +12,14 @@ backend/            Flask application (see below)
     __init__.py     app factory: create_app()
     config.py       Dev / Test / Prod config, loaded from environment
     extensions.py   db, migrate, jwt instances
-    common/         cross-cutting: error handlers, requires_auth / requires_role
+    common/         cross-cutting: error handlers, requires_auth / requires_role / optional_auth
     modules/auth/   models, routes, schemas, services, permissions
     modules/events/ event requests (SCRUM-19), event status model (SCRUM-22), filed under the organiser's organisation (SCRUM-66) and seen by its organisers (SCRUM-7), coordinator assignment and event history (SCRUM-30), equipment lines (SCRUM-37), equipment awaiting Technical Support (SCRUM-38), save and resume a draft (SCRUM-20), editing an event and its history (SCRUM-33), each role's event lists and the coordinator's event record (SCRUM-24), reviewing and deciding a request (SCRUM-31), asking the organiser for clarification (SCRUM-32)
     modules/organisations/ client organisations that Event Organisers belong to (SCRUM-66)
     modules/notifications/ in-app notifications about events (SCRUM-28), with an optional detail such as a decision's reason (SCRUM-31) or a clarification's question or answer (SCRUM-32)
     modules/venue/  venue catalogue (SCRUM-25), availability calendar (SCRUM-26), search (SCRUM-35), suitability check (SCRUM-36), setup/turnaround (SCRUM-67), blocks (SCRUM-34)
     modules/equipment/ equipment catalogue (SCRUM-27)
+    modules/registration/ the event catalogue, registering for a confirmed event and an attendee's own registrations (SCRUM-52)
   tests/            unit tests (pytest), one marker per story
   migrations/       Alembic migrations (Flask-Migrate)
 docs/adr/           Architecture Decision Records: choices made where requirements were silent
@@ -147,6 +148,9 @@ curl http://localhost:5000/api/auth/internal-only -H "Authorization: Bearer <tok
 | `POST /api/events/requests/<reference>/request-clarification` | `event_coordinator` — on a request assigned to you and under review, ask the organiser `{"message"}`; the request becomes awaiting clarification, the question is recorded in its history, and the submitting organiser is notified with it (`409` for any other status, including a question already outstanding). Returns the request |
 | `POST /api/events/requests/<reference>/resubmit` | `event_organiser` — on one of your client organisation's requests awaiting clarification, answer with `{"response"}` and optionally amend any submission field, each checked as on submission; the request goes back to under review, each amendment and the answer are recorded in its history, and its current coordinator is notified with the answer (`409` for any other status; `403` if your account has no organisation). Returns the request |
 | `PATCH /api/events/requests/<reference>/registration` | `event_coordinator` — on a request assigned to you, enable or disable registration and set its capacity, sending `registration_enabled`, `registration_capacity` or both; a missing `registration_enabled` follows the organiser's `registration_required` until the event has a capacity. Enabling needs a capacity (`400`) and a confirmed event (`409 registration_not_enablable`); each change is recorded in its history with who made it and when. Returns `reference`, `registration_required`, `registration_enabled` and `registration_capacity`. The venue-capacity and registered-count limits wait for the venue stack and SCRUM-52 (ADR-0043) |
+| `GET  /api/events/catalogue`   | public (a valid token only decides `is_registered`) — the confirmed events with registration enabled that haven't ended, soonest first, one page at a time: `q` (name and description), `when` (`upcoming`, `today`, `this_week`, `this_weekend`) or a `starts_from`/`starts_to` range, `page`, `page_size`. Each event shows its capacity, `places_left`, `is_full` and `is_registered`; a full event stays listed; `venue` is `null` until the venue stack merges ([ADR-0032](docs/adr/0032-event-catalogue-contract.md)) |
+| `POST /api/events/catalogue/<id>/registrations` | `attendee` — register for the event; no body, the account is the registration. `201` with the registration (`404` if the event isn't confirmed with registration enabled; `409 already_registered`; `409 event_full`; of two attendees asking for the last place exactly one succeeds) |
+| `GET  /api/events/registrations` | `attendee` — your own registrations, newest first: the event's id, name and start, the registration's status and when it was made |
 | `POST /api/organisations`      | internal roles — record a client organisation                   |
 | `GET  /api/organisations`      | internal roles — list client organisations, by name             |
 | `POST /api/venues`             | `venue_staff` — add a venue                                     |

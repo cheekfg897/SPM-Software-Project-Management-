@@ -1,0 +1,393 @@
+"""Business logic for the registration module (SCRUM-52).
+
+These functions are the module's public API: routes call them, tests call them
+directly, and the events module calls :func:`count_registered`.
+
+Facts about events come from :mod:`app.modules.events.services`, never from the events
+table (module boundary). Every function takes an optional ``session`` so unit tests can
+pass their own database session; in production the default ``db.session`` is used.
+"""
+
+from __future__ import annotations
+
+import math
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
+from datetime import date, datetime, time, timedelta, timezone
+from typing import Any
+
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from app.common.clock import as_utc, local_today
+from app.common.database import resolve_session
+from app.common.errors import AppError
+from app.common.validation import load_or_raise
+from app.modules.events.services import (
+    EventHeading,
+    RegistrableEvent,
+    get_registrable_event_for_update,
+    list_event_headings,
+    list_registrable_events,
+)
+from app.modules.registration.models import Registration, RegistrationStatus
+from app.modules.registration.schemas import CatalogueQuerySchema, CatalogueWindow
+
+ALREADY_REGISTERED_MESSAGE = "You are already registered for this event."
+EVENT_FULL_MESSAGE = "This event is full."
+
+#: Monday is 0 and Sunday is 6, as :meth:`datetime.date.weekday` counts.
+SATURDAY = 5
+SUNDAY = 6
+
+
+class AlreadyRegisteredError(AppError):
+    """The Attendee already holds a place at this event (409)."""
+
+    status_code = 409
+    error_code = "already_registered"
+
+
+class EventFullError(AppError):
+    """The event has no places left (409)."""
+
+    status_code = 409
+    error_code = "event_full"
+
+
+@dataclass(frozen=True)
+class CatalogueEntry:
+    """One event in the catalogue, with its places counted (ADR-0032)."""
+
+    id: int
+    reference: str
+    name: str
+    description: str
+    starts_at: datetime
+    ends_at: datetime
+    capacity: int
+    places_left: int
+    is_full: bool
+    is_registered: bool
+
+
+@dataclass(frozen=True)
+class CataloguePage:
+    """One page of the catalogue and the totals behind it (ADR-0032)."""
+
+    items: list[CatalogueEntry]
+    page: int
+    page_size: int
+    total: int
+    total_pages: int
+
+
+@dataclass(frozen=True)
+class MyRegistration:
+    """One of an attendee's registrations, with the event it is for."""
+
+    event_id: int
+    name: str
+    starts_at: datetime
+    status: RegistrationStatus
+    registered_at: datetime
+
+
+# --------------------------------------------------------------------------
+# Counting places
+# --------------------------------------------------------------------------
+
+
+def count_registered(event_id: int, *, session: Session | None = None) -> int:
+    """How many places are taken at an event.
+
+    The events module calls this to keep a capacity from dropping below it
+    (SCRUM-69 AC5, ADR-0043).
+    """
+    stmt = select(func.count(Registration.id)).where(
+        Registration.event_request_id == event_id,
+        Registration.status == RegistrationStatus.REGISTERED,
+    )
+    return resolve_session(session).scalar(stmt)
+
+
+def _registered_counts(event_ids: list[int], session: Session) -> dict[int, int]:
+    """How many places are taken at each event; an event nobody joined is absent."""
+    stmt = (
+        select(Registration.event_request_id, func.count(Registration.id))
+        .where(
+            Registration.event_request_id.in_(event_ids),
+            Registration.status == RegistrationStatus.REGISTERED,
+        )
+        .group_by(Registration.event_request_id)
+    )
+    counts = {}
+    for event_id, taken in session.execute(stmt):
+        counts[event_id] = taken
+    return counts
+
+
+def _events_held_by(
+    attendee_id: int | str | None, event_ids: list[int], session: Session
+) -> set[int]:
+    """The ids among ``event_ids`` the attendee holds a place at; none for a visitor."""
+    if attendee_id is None:
+        return set()
+    stmt = select(Registration.event_request_id).where(
+        Registration.attendee_id == int(attendee_id),
+        Registration.event_request_id.in_(event_ids),
+        Registration.status == RegistrationStatus.REGISTERED,
+    )
+    return set(session.scalars(stmt))
+
+
+# --------------------------------------------------------------------------
+# The catalogue (SCRUM-52 AC1)
+# --------------------------------------------------------------------------
+
+
+def _window_dates(window: CatalogueWindow, today: date) -> tuple[date, date] | None:
+    """The first and last business dates a preset covers, or ``None`` for no limit."""
+    if window is CatalogueWindow.UPCOMING:
+        return None
+    if window is CatalogueWindow.TODAY:
+        return today, today
+    sunday = today + timedelta(days=SUNDAY - today.weekday())
+    if window is CatalogueWindow.THIS_WEEK:
+        return today, sunday
+    # This weekend: the coming Saturday, or today if the weekend has started.
+    days_to_saturday = max(SATURDAY - today.weekday(), 0)
+    return today + timedelta(days=days_to_saturday), sunday
+
+
+def _starts_between(
+    query: Mapping[str, Any], today: date
+) -> tuple[datetime | None, datetime | None]:
+    """The earliest and latest start the query allows, as UTC instants (ADR-0032).
+
+    A custom range replaces the preset; a time sent without an offset is business time.
+    """
+    if "starts_from" in query or "starts_to" in query:
+        starts_from = query.get("starts_from")
+        starts_to = query.get("starts_to")
+        return (
+            as_utc(starts_from) if starts_from is not None else None,
+            as_utc(starts_to) if starts_to is not None else None,
+        )
+
+    dates = _window_dates(query.get("when", CatalogueWindow.UPCOMING), today)
+    if dates is None:
+        return None, None
+    first_date, last_date = dates
+    return (
+        as_utc(datetime.combine(first_date, time.min)),
+        as_utc(datetime.combine(last_date, time.max)),
+    )
+
+
+def _as_entry(event: RegistrableEvent, taken: int, is_registered: bool) -> CatalogueEntry:
+    """The event with its places counted: a full event has none left, never fewer."""
+    places_left = max(event.capacity - taken, 0)
+    return CatalogueEntry(
+        id=event.id,
+        reference=event.reference,
+        name=event.name,
+        description=event.description,
+        starts_at=event.starts_at,
+        ends_at=event.ends_at,
+        capacity=event.capacity,
+        places_left=places_left,
+        is_full=places_left == 0,
+        is_registered=is_registered,
+    )
+
+
+def list_catalogue(
+    params: Mapping[str, Any],
+    viewer_id: int | str | None,
+    *,
+    session: Session | None = None,
+    now: datetime | None = None,
+) -> CataloguePage:
+    """One page of the events an attendee may register for, soonest first (SCRUM-52).
+
+    Only confirmed events with registration enabled that haven't ended are listed. A
+    full event stays listed, shown as full, so a place freed by a withdrawal can be
+    taken (ADR-0032). The searching, the date windows, the paging and every count are
+    done here, never by the client.
+
+    Args:
+        params: The query string: ``q``, ``when``, ``starts_from``, ``starts_to``,
+            ``page`` and ``page_size``, all optional.
+        viewer_id: Who is asking, from their token; ``None`` for a visitor.
+        session: Database session; defaults to ``db.session``.
+        now: The current instant, timezone-aware; defaults to the real clock.
+
+    Returns:
+        The page, with the totals for the whole catalogue.
+
+    Raises:
+        ValidationError: 400 — a parameter is invalid (details per parameter).
+    """
+    sess = resolve_session(session)
+    if now is None:
+        now = datetime.now(timezone.utc)
+    query = load_or_raise(CatalogueQuerySchema(), params)
+    starts_from, starts_to = _starts_between(query, local_today(now))
+
+    events = list_registrable_events(
+        search=query.get("q", ""),
+        starts_from=starts_from,
+        starts_to=starts_to,
+        session=sess,
+        now=now,
+    )
+
+    page = query["page"]
+    page_size = query["page_size"]
+    first = (page - 1) * page_size
+    on_page = events[first : first + page_size]
+    event_ids = [event.id for event in on_page]
+    taken = _registered_counts(event_ids, sess)
+    held = _events_held_by(viewer_id, event_ids, sess)
+
+    items = []
+    for event in on_page:
+        items.append(_as_entry(event, taken.get(event.id, 0), event.id in held))
+    return CataloguePage(
+        items=items,
+        page=page,
+        page_size=page_size,
+        total=len(events),
+        total_pages=math.ceil(len(events) / page_size),
+    )
+
+
+# --------------------------------------------------------------------------
+# Registering (SCRUM-52 AC2, AC3, AC4; SCRUM-54 AC1, AC2, AC4)
+# --------------------------------------------------------------------------
+
+
+def _check_not_registered(attendee_id: int, event_id: int, session: Session) -> None:
+    """Refuse an attendee who already holds a place at the event (SCRUM-52 AC3).
+
+    Raises:
+        AlreadyRegisteredError: 409 — they do.
+    """
+    if event_id in _events_held_by(attendee_id, [event_id], session):
+        raise AlreadyRegisteredError(ALREADY_REGISTERED_MESSAGE)
+
+
+def _commit_or_already_registered(session: Session) -> None:
+    """Commit; a second registration the check missed is a 409 too (SCRUM-52 AC3)."""
+    # The event is locked and the attendee has just been checked, so the only integrity
+    # error left here is the unique (event, attendee) pair.
+    try:
+        session.commit()
+    except IntegrityError as exc:
+        session.rollback()
+        raise AlreadyRegisteredError(ALREADY_REGISTERED_MESSAGE) from exc
+
+
+def register_for_event(
+    attendee_id: int | str,
+    event_id: int,
+    *,
+    session: Session | None = None,
+    now: datetime | None = None,
+) -> Registration:
+    """Register an attendee for an event that is open for registration (SCRUM-52).
+
+    The account is the registration information (ADR-0032). The event's row is locked
+    from the first read to the commit, so of two attendees asking for the last place
+    one waits, then finds it taken (SCRUM-54 AC4). Someone who already holds a place is
+    told so even if the event is also full.
+
+    Args:
+        attendee_id: The caller's user id, taken from their token.
+        event_id: The event to register for.
+        session: Database session; defaults to ``db.session``.
+        now: The current instant, timezone-aware; defaults to the real clock.
+
+    Returns:
+        The saved :class:`Registration`.
+
+    Raises:
+        NotFoundError: 404 — no such event, it isn't confirmed with registration
+            enabled, or it has already ended (AC4).
+        AlreadyRegisteredError: 409 — the attendee already holds a place (AC3).
+        EventFullError: 409 — no places are left (SCRUM-54 AC2).
+    """
+    sess = resolve_session(session)
+    if now is None:
+        now = datetime.now(timezone.utc)
+
+    event = get_registrable_event_for_update(event_id, session=sess, now=now)
+    _check_not_registered(int(attendee_id), event.id, sess)
+    if count_registered(event.id, session=sess) >= event.capacity:
+        raise EventFullError(EVENT_FULL_MESSAGE)
+
+    registration = Registration(
+        event_request_id=event.id,
+        attendee_id=int(attendee_id),
+        status=RegistrationStatus.REGISTERED,
+        registered_at=now,
+    )
+    sess.add(registration)
+    _commit_or_already_registered(sess)
+    return registration
+
+
+# --------------------------------------------------------------------------
+# An attendee's own registrations (SCRUM-52 AC5)
+# --------------------------------------------------------------------------
+
+
+def _headings_by_id(
+    registrations: Iterable[Registration], session: Session
+) -> dict[int, EventHeading]:
+    """The name and start of each event the registrations are for, by event id."""
+    event_ids = [registration.event_request_id for registration in registrations]
+    headings = {}
+    for heading in list_event_headings(event_ids, session=session):
+        headings[heading.id] = heading
+    return headings
+
+
+def list_my_registrations(
+    attendee_id: int | str, *, session: Session | None = None
+) -> list[MyRegistration]:
+    """List an attendee's own registrations, newest first (SCRUM-52 AC5).
+
+    SCRUM-53 reads the same list to show each registration with its status.
+
+    Args:
+        attendee_id: The caller's user id, taken from their token.
+        session: Database session; defaults to ``db.session``.
+
+    Returns:
+        One :class:`MyRegistration` per registration, with its event's name and start.
+    """
+    sess = resolve_session(session)
+    stmt = (
+        select(Registration)
+        .where(Registration.attendee_id == int(attendee_id))
+        .order_by(Registration.registered_at.desc(), Registration.id.desc())
+    )
+    registrations = list(sess.scalars(stmt))
+    headings = _headings_by_id(registrations, sess)
+
+    rows = []
+    for registration in registrations:
+        heading = headings[registration.event_request_id]
+        rows.append(
+            MyRegistration(
+                event_id=heading.id,
+                name=heading.name,
+                starts_at=heading.starts_at,
+                status=registration.status,
+                registered_at=registration.registered_at,
+            )
+        )
+    return rows

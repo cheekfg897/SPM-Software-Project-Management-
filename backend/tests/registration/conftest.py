@@ -7,8 +7,18 @@ from datetime import datetime
 
 import pytest
 
+from app.modules.auth.permissions import ALL_ROLES, Role
 from app.modules.events.models import EventRequest
 from app.modules.registration.models import Registration, RegistrationStatus
+
+#: Every role but Attendee, in a fixed order so test ids are stable.
+NON_ATTENDEE_ROLES = sorted(ALL_ROLES - {Role.ATTENDEE}, key=lambda role: role.value)
+
+
+@pytest.fixture(params=NON_ATTENDEE_ROLES, ids=lambda role: role.value)
+def non_attendee_role(request: pytest.FixtureRequest) -> Role:
+    """Each role but Attendee in turn, for routes only attendees call."""
+    return request.param
 
 
 @pytest.fixture()
