@@ -64,6 +64,22 @@ describe('SCRUM-28 notifications hooks', () => {
 
     expect(result.current.data?.length).toBeGreaterThan(0)
   })
+
+  it('asks for the next viewer unread count on the same query client', async () => {
+    sendRequestsAs(attendee.accessToken)
+    const { result, store } = renderHookWithProviders(() => useUnreadCount(), {
+      session: attendee,
+    })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    // Every mock account has two unread, so the count alone can't show whose it is.
+    const requests = recordRequests()
+
+    sendRequestsAs(coordinator.accessToken)
+    store.dispatch(signedIn(coordinator))
+
+    await waitFor(() => expect(requests).toHaveLength(1))
+    expect(new URL(requests[0]?.url ?? '').pathname).toBe('/api/notifications/unread-count')
+  })
 })
 
 describe('SCRUM-28 marking read from a hook', () => {
