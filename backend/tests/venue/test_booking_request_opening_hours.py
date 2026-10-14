@@ -173,18 +173,28 @@ def test_a_request_after_the_venue_closes_is_refused(
     assert saved_requests(db_session) == []
 
 
+@pytest.mark.parametrize(
+    "hours",
+    [(MON, "09:00", MON, "18:00"), (SAT, "18:00", SUN, "00:00")],
+    ids=["open-only-on-monday", "saturday-closes-as-sunday-begins"],
+)
 def test_a_request_on_a_day_the_venue_is_closed_says_so(
     db_session: Session,
     make_venue: Callable[..., Venue],
     save: Callable[..., None],
     saved_event: SavedEvent,
+    hours: tuple[Weekday, str, Weekday, str],
 ) -> None:
-    """The event's Sunday is closed, although the venue opens on the Monday."""
-    weekdays_only = make_venue(opening_periods=[_row(MON, "09:00", MON, "18:00")])
-    save(weekdays_only)
+    """The event's Sunday is closed.
+
+    The venue opens only on another day, or its hours end at Sunday's midnight, which
+    leaves none of Sunday open.
+    """
+    closed_on_sunday = make_venue(opening_periods=[_row(*hours)])
+    save(closed_on_sunday)
 
     with pytest.raises(ValidationError) as caught:
-        raise_booking(weekdays_only, saved_event(), db_session)
+        raise_booking(closed_on_sunday, saved_event(), db_session)
 
     assert caught.value.details == {
         "starts_at": [f"{OUTSIDE_HOURS} The venue is closed on Sunday."]
@@ -244,6 +254,32 @@ def test_an_opening_that_runs_into_the_next_day_is_reported_up_to_midnight(
 
     assert caught.value.details == {
         "starts_at": [f"{OUTSIDE_HOURS} The venue is open 20:00-00:00 on Sunday."]
+    }
+
+
+def test_a_refused_overnight_request_names_the_hours_of_the_day_it_starts(
+    db_session: Session,
+    make_venue: Callable[..., Venue],
+    save: Callable[..., None],
+    saved_event: SavedEvent,
+) -> None:
+    """Saturday 22:00 to Sunday 02:00 starts on Saturday, so Saturday's hours count."""
+    two_days = make_venue(
+        opening_periods=[_row(SAT, "09:00", SAT, "17:00"), _row(SUN, "10:00", SUN, "18:00")]
+    )
+    save(two_days)
+
+    with pytest.raises(ValidationError) as caught:
+        raise_booking(
+            two_days,
+            saved_event(),
+            db_session,
+            starts_at="2026-10-31T22:00:00+08:00",
+            ends_at="2026-11-01T02:00:00+08:00",
+        )
+
+    assert caught.value.details == {
+        "starts_at": [f"{OUTSIDE_HOURS} The venue is open 09:00-17:00 on Saturday."]
     }
 
 
