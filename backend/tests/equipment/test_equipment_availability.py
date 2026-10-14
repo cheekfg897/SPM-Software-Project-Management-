@@ -22,6 +22,7 @@ from app.modules.equipment.models import (
     EquipmentOutOfService,
     EquipmentReservation,
     EquipmentType,
+    OutOfServiceReason,
 )
 from app.modules.equipment.schemas import EquipmentAvailabilitySchema
 from app.modules.events.models import EventEquipmentLine, EventRequest, EventRequestStatus
@@ -144,16 +145,36 @@ def test_available_quantity_ignores_reservations_of_other_equipment_types(
     assert services.available_quantity(equipment_type.id, _at(10), _at(12)) == 10
 
 
+@pytest.mark.parametrize(
+    "reason",
+    [OutOfServiceReason.DAMAGED, OutOfServiceReason.UNDER_MAINTENANCE],
+    ids=["damaged", "under maintenance"],
+)
 def test_available_quantity_subtracts_unresolved_out_of_service_units(
     db_session: Session,
     equipment_type: EquipmentType,
     save: Save,
     make_out_of_service: MakeOutOfService,
+    reason: OutOfServiceReason,
 ) -> None:
-    # AC2: two damaged units are two fewer, whatever the period asked about.
-    save(make_out_of_service(equipment_type, 2))
+    # AC2: two units damaged or under maintenance are two fewer, whatever the period.
+    save(make_out_of_service(equipment_type, 2, reason=reason))
 
     assert services.available_quantity(equipment_type.id, _at(10), _at(12)) == 8
+
+
+def test_available_quantity_ignores_out_of_service_units_of_other_equipment_types(
+    db_session: Session,
+    equipment_type: EquipmentType,
+    make_equipment_type: Callable[..., EquipmentType],
+    save: Save,
+    make_out_of_service: MakeOutOfService,
+) -> None:
+    other_type = make_equipment_type(name="Microphone")
+    save(other_type)
+    save(make_out_of_service(other_type, 2))
+
+    assert services.available_quantity(equipment_type.id, _at(10), _at(12)) == 10
 
 
 def test_available_quantity_ignores_resolved_out_of_service_units(
