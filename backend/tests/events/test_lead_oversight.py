@@ -22,10 +22,13 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.common.errors import NotFoundError
+from app.modules.auth.permissions import Role
 from app.modules.events.models import EventHistoryKind, EventRequest, EventRequestStatus
 from app.modules.events.services import (
     ACTIVE_STATUSES,
     list_active_requests,
+    list_event_history,
     list_requests_for_each_coordinator,
 )
 from app.modules.notifications.models import Notification
@@ -70,6 +73,23 @@ def test_a_reassignment_tells_exactly_the_new_coordinator_the_organiser_and_the_
         (7, "request_assigned"),
         (9, "coordinator_assigned"),
     ]
+
+
+# --------------------------------------------------------------------------
+# AC4 — the previous coordinator loses access to the event's history too
+# --------------------------------------------------------------------------
+
+
+def test_the_previous_coordinator_can_no_longer_read_the_events_history(
+    reassign: Reassign,
+) -> None:
+    reassign(NINE)
+
+    with pytest.raises(NotFoundError) as exc_info:
+        list_event_history(3, "EVR-AAAAAAAA", viewer_role=Role.EVENT_COORDINATOR)
+
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.message == "Event request not found."
 
 
 # --------------------------------------------------------------------------
