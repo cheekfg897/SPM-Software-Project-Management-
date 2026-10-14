@@ -3225,6 +3225,9 @@ def record_equipment_outcome(
 
 CAPACITY_REQUIRED_MESSAGE = "A capacity is required to enable registration."
 REGISTRATION_NOT_CONFIRMED_MESSAGE = "Registration can be enabled only for a confirmed event."
+CAPACITY_BELOW_REGISTERED_MESSAGE = (
+    "Capacity cannot be lower than the {registered} places already taken."
+)
 
 
 class RegistrationNotEnablableError(AppError):
@@ -3272,6 +3275,29 @@ def _check_registration_may_be_enabled(
         raise RegistrationNotEnablableError(REGISTRATION_NOT_CONFIRMED_MESSAGE)
 
 
+def _check_capacity_covers_registrations(
+    event_request: EventRequest, settings: Mapping[str, Any], session: Session
+) -> None:
+    """Refuse a capacity below the number already registered (SCRUM-69 AC5, ADR-0043).
+
+    The check applies whether or not registration is enabled: a capacity is kept and
+    used again when it is. A capacity of exactly the number registered is allowed.
+
+    Raises:
+        ValidationError: 400 — the capacity is lower than the places already taken.
+    """
+    capacity = settings["registration_capacity"]
+    if capacity is None:
+        return
+    # Imported here because the registration module imports this one for event facts.
+    from app.modules.registration.services import count_registered
+
+    registered = count_registered(event_request.id, session=session)
+    if capacity < registered:
+        message = CAPACITY_BELOW_REGISTERED_MESSAGE.format(registered=registered)
+        raise ValidationError("Invalid request.", details={"registration_capacity": [message]})
+
+
 def update_registration_settings(
     coordinator_id: int | str,
     reference: str,
@@ -3285,7 +3311,8 @@ def update_registration_settings(
     Only the request's assigned coordinator may (ADR-0043). Only what is sent changes;
     when ``registration_enabled`` is left out of an event that has never had a capacity,
     it follows the organiser's ``registration_required`` (AC1). Enabling needs a
-    capacity (AC2) and a confirmed event (AC4). Each setting that changes is written to
+    capacity (AC2) and a confirmed event (AC4), and a capacity can't be lower than the
+    number already registered (AC5). Each setting that changes is written to
     the event history as a ``field_changed`` entry naming the caller, sharing one
     ``occurred_at``, in the same commit as the change (AC6). A call that changes
     nothing writes and commits nothing.
@@ -3303,8 +3330,8 @@ def update_registration_settings(
 
     Raises:
         NotFoundError: 404 — no such request, a draft, or not the caller's.
-        ValidationError: 400 — payload invalid, or registration enabled with no
-            capacity (details per field).
+        ValidationError: 400 — payload invalid, registration enabled with no capacity,
+            or a capacity below the number registered (details per field).
         RegistrationNotEnablableError: 409 — registration enabled while the event isn't
             confirmed.
     """
@@ -3313,10 +3340,10 @@ def update_registration_settings(
     data = load_or_raise(UpdateRegistrationSettingsSchema(), payload)
     settings = _settings_after(event_request, data)
     _check_registration_may_be_enabled(event_request, settings)
+    _check_capacity_covers_registrations(event_request, settings, sess)
     # TODO: AC3 (capacity within the booked venue's) once SCRUM-42 and SCRUM-43 let the
-    # events module find the venue through the venue service, and AC5 (capacity not
-    # below the number registered) once SCRUM-52 has registrations: check ``settings``
-    # here (ADR-0043).
+    # events module find the venue through the venue service: check ``settings`` here
+    # (ADR-0043).
     if now is None:
         now = datetime.now(timezone.utc)
 
