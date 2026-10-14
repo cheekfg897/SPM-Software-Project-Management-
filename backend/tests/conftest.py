@@ -12,7 +12,7 @@ from __future__ import annotations
 import importlib.util
 import io
 from collections.abc import Callable, Iterator
-from datetime import date, time
+from datetime import date, datetime, time, timezone
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -168,6 +168,60 @@ def make_user() -> Callable[..., User]:
         return user
 
     return _make
+
+
+@pytest.fixture()
+def now() -> datetime:
+    """Wednesday 14 October 2026, 12:00 in Singapore, the registration tests' "now"."""
+    return datetime(2026, 10, 14, 4, 0, tzinfo=timezone.utc)
+
+
+@pytest.fixture()
+def make_open_event(
+    make_event_request: Callable[..., EventRequest], save: Callable[..., None]
+) -> Callable[..., EventRequest]:
+    """Factory for saved events that are open for registration unless told otherwise.
+
+    By default the event is confirmed, has registration enabled for 100 places, and runs
+    on Tuesday 20 October 2026 from 19:30 to 22:00 (business time), after ``now``. Each
+    one gets its own reference, so a test can save several.
+    """
+    counter = {"made": 0}
+
+    def _make(
+        *,
+        name: str = "Jazz by the Bay",
+        description: str = "An evening of music.",
+        status: EventRequestStatus = EventRequestStatus.CONFIRMED,
+        enabled: bool = True,
+        capacity: int = 100,
+        day: date = date(2026, 10, 20),
+        start: time = time(19, 30),
+        end: time = time(22, 0),
+    ) -> EventRequest:
+        counter["made"] += 1
+        event = make_event_request(
+            reference=f"EVR-OPEN{counter['made']:04d}",
+            status=status,
+            coordinator_id=3,
+            proposed_date=day,
+            start_time=start,
+        )
+        event.name = name
+        event.description = description
+        event.end_time = end
+        event.registration_enabled = enabled
+        event.registration_capacity = capacity
+        save(event)
+        return event
+
+    return _make
+
+
+@pytest.fixture()
+def open_event(make_open_event: Callable[..., EventRequest]) -> EventRequest:
+    """One saved event open for 100 places."""
+    return make_open_event()
 
 
 @pytest.fixture()
