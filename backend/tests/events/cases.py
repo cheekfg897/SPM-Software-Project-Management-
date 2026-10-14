@@ -52,6 +52,13 @@ NOT_CONFIRMED_STATUSES = [
     status for status in NON_DRAFT_STATUSES if status is not EventRequestStatus.CONFIRMED
 ]
 
+#: Every status but confirmed, draft included: the ones an event open for registration
+#: (SCRUM-52) must not have. A draft can't reach a confirmed-only rule through the
+#: routes, but a row can be written with it, so it is tested too.
+UNCONFIRMED_STATUSES = [
+    status for status in EventRequestStatus if status is not EventRequestStatus.CONFIRMED
+]
+
 #: One field at a time, each with a value its own rule refuses, whether the field
 #: is sent on a save or on an edit: the per-field rule does not care which (SCRUM-20).
 FIELD_REJECTED_CASES = [

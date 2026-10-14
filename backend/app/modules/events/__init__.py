@@ -23,6 +23,9 @@ Public surface for other modules (import from here, not from sub-files):
 * :func:`app.modules.events.services.get_event_equipment_need_for_viewer`
 * :func:`app.modules.events.services.record_equipment_reserved`
 * :func:`app.modules.events.services.notify_coordinator_equipment_reserved`
+* :func:`app.modules.events.services.list_registrable_events`
+* :func:`app.modules.events.services.get_registrable_event_for_update`
+* :func:`app.modules.events.services.list_event_headings`
 """
 
 from __future__ import annotations

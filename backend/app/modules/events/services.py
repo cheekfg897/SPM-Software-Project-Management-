@@ -2533,13 +2533,23 @@ class RequestNotCompletableError(AppError):
     error_code = "request_not_completable"
 
 
-def _has_ended(event_request: EventRequest, now: datetime) -> bool:
-    """Whether ``now`` is at or after the event's end (SCRUM-68 AC2, ADR-0027).
+def _starts_at(event_request: EventRequest) -> datetime:
+    """When the event starts, as a UTC instant (ADR-0009).
 
-    The end is ``end_date`` + ``end_time``, a wall-clock time in business time.
+    The start is ``proposed_date`` and ``start_time``, a wall-clock time in business
+    time (ADR-0002).
     """
-    # A draft may leave both empty, but a draft never reaches this check (ADR-0024).
-    return now >= _business_instant(event_request.end_date, event_request.end_time)
+    return _business_instant(event_request.proposed_date, event_request.start_time)
+
+
+def _ends_at(event_request: EventRequest) -> datetime:
+    """When the event ends, as a UTC instant: ``end_date`` and ``end_time`` likewise."""
+    return _business_instant(event_request.end_date, event_request.end_time)
+
+
+def _has_ended(event_request: EventRequest, now: datetime) -> bool:
+    """Whether ``now`` is at or after the event's end (SCRUM-68 AC2, ADR-0027)."""
+    return now >= _ends_at(event_request)
 
 
 def complete_event_request(
@@ -3316,3 +3326,162 @@ def update_registration_settings(
     if changes:
         sess.commit()
     return event_request
+
+
+# --------------------------------------------------------------------------
+# SCRUM-52 — the event facts the registration module asks for
+# --------------------------------------------------------------------------
+
+REGISTRABLE_EVENT_NOT_FOUND_MESSAGE = "Event not found."
+
+
+@dataclass(frozen=True)
+class RegistrableEvent:
+    """An event Attendees may register for, as the registration module sees it.
+
+    ``starts_at`` and ``ends_at`` are aware UTC instants (ADR-0009); ``description`` is
+    empty rather than ``None``, since the catalogue always shows some text.
+    """
+
+    id: int
+    reference: str
+    name: str
+    description: str
+    starts_at: datetime
+    ends_at: datetime
+    capacity: int
+
+
+@dataclass(frozen=True)
+class EventHeading:
+    """The name and start of any event, for a list that mentions it."""
+
+    id: int
+    name: str
+    starts_at: datetime
+
+
+def _is_open_for_registration() -> ColumnElement[bool]:
+    """The condition for a confirmed event with registration on (SCRUM-52 AC1, AC4)."""
+    return and_(
+        EventRequest.status == EventRequestStatus.CONFIRMED,
+        EventRequest.registration_enabled.is_(True),
+    )
+
+
+def _as_registrable_event(event_request: EventRequest) -> RegistrableEvent:
+    """The facts about an event that is open for registration."""
+    return RegistrableEvent(
+        id=event_request.id,
+        reference=event_request.reference,
+        name=event_request.name,
+        description=event_request.description or "",
+        starts_at=_starts_at(event_request),
+        ends_at=_ends_at(event_request),
+        # A check constraint gives every enabled event a capacity (ADR-0043).
+        capacity=event_request.registration_capacity,  # type: ignore[arg-type]
+    )
+
+
+def _mentions(event: RegistrableEvent, search: str) -> bool:
+    """Whether the event's name or description contains ``search``, ignoring case.
+
+    A blank search is contained in every text, so it matches every event.
+    """
+    text = f"{event.name} {event.description}"
+    return search.lower() in text.lower()
+
+
+def list_registrable_events(
+    *,
+    search: str = "",
+    starts_from: datetime | None = None,
+    starts_to: datetime | None = None,
+    session: Session | None = None,
+    now: datetime | None = None,
+) -> list[RegistrableEvent]:
+    """List the confirmed events open for registration, soonest first (SCRUM-52 AC1).
+
+    Leaves out an event that has already ended (ADR-0032). The start, held as a date and
+    a time, is worked out here rather than in SQL, so the filters on it read plainly.
+
+    Args:
+        search: Text the event's name or description must contain, ignoring case.
+        starts_from: The earliest start, inclusive; ``None`` for no limit.
+        starts_to: The latest start, inclusive; ``None`` for no limit.
+        session: Database session; defaults to ``db.session``.
+        now: The current instant, timezone-aware; defaults to the real clock.
+
+    Returns:
+        The events that match, as :class:`RegistrableEvent` facts.
+    """
+    sess = resolve_session(session)
+    if now is None:
+        now = datetime.now(timezone.utc)
+
+    stmt = select(EventRequest).where(_is_open_for_registration())
+    events = []
+    for event_request in sess.scalars(stmt):
+        event = _as_registrable_event(event_request)
+        if event.ends_at <= now or not _mentions(event, search):
+            continue
+        if starts_from is not None and event.starts_at < starts_from:
+            continue
+        if starts_to is not None and event.starts_at > starts_to:
+            continue
+        events.append(event)
+    return sorted(events, key=lambda event: (event.starts_at, event.id))
+
+
+def get_registrable_event_for_update(
+    event_id: int, *, session: Session | None = None, now: datetime | None = None
+) -> RegistrableEvent:
+    """Find an event Attendees may register for, and lock its row until the commit.
+
+    The lock makes two Attendees asking for the last place take turns: the second
+    counts the registrations only after the first has committed (SCRUM-54 AC4).
+
+    Args:
+        event_id: The event's id.
+        session: Database session; defaults to ``db.session``.
+        now: The current instant, timezone-aware; defaults to the real clock.
+
+    Returns:
+        The event's :class:`RegistrableEvent` facts.
+
+    Raises:
+        NotFoundError: 404 — no such event, it isn't confirmed with registration
+            enabled, or it has already ended (SCRUM-52 AC4, ADR-0032).
+    """
+    sess = resolve_session(session)
+    if now is None:
+        now = datetime.now(timezone.utc)
+    stmt = (
+        select(EventRequest)
+        .where(EventRequest.id == event_id, _is_open_for_registration())
+        .with_for_update()
+    )
+    event_request = sess.scalar(stmt)
+    if event_request is None or _has_ended(event_request, now):
+        raise NotFoundError(REGISTRABLE_EVENT_NOT_FOUND_MESSAGE)
+    return _as_registrable_event(event_request)
+
+
+def list_event_headings(
+    event_ids: Iterable[int], *, session: Session | None = None
+) -> list[EventHeading]:
+    """The name and start of each event in ``event_ids``, whatever its status.
+
+    Args:
+        event_ids: The events' ids; one that doesn't exist is left out.
+        session: Database session; defaults to ``db.session``.
+
+    Returns:
+        One :class:`EventHeading` per event found, in no particular order.
+    """
+    sess = resolve_session(session)
+    stmt = select(EventRequest).where(EventRequest.id.in_(list(event_ids)))
+    return [
+        EventHeading(id=row.id, name=row.name, starts_at=_starts_at(row))
+        for row in sess.scalars(stmt)
+    ]
