@@ -54,15 +54,23 @@ def call_route(app: Flask) -> Callable[..., Any]:
     """Call a registered view function as Flask would for one request.
 
     The route's real decorators run, so permission tests check the actual wiring.
-    ``token`` of ``None`` sends no ``Authorization`` header. The body is always ``{}``:
-    tests that call routes replace the services, so its contents don't matter.
+    ``token`` of ``None`` sends no ``Authorization`` header. The body is ``{}`` unless
+    ``body`` is given, for a test that checks the route passes it on as sent.
     """
 
     def _call(
-        endpoint: str, method: str, path: str, view_kwargs: dict[str, Any], token: str | None
+        endpoint: str,
+        method: str,
+        path: str,
+        view_kwargs: dict[str, Any],
+        token: str | None,
+        *,
+        body: dict[str, Any] | None = None,
     ) -> Any:
         headers = {"Authorization": f"Bearer {token}"} if token is not None else {}
-        with app.test_request_context(path, method=method, headers=headers, json={}):
+        if body is None:
+            body = {}
+        with app.test_request_context(path, method=method, headers=headers, json=body):
             return app.view_functions[endpoint](**view_kwargs)
 
     return _call
