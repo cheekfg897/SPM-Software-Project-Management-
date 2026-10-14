@@ -41,7 +41,15 @@ def _register_modules(app: Flask) -> None:
     New modules are added here in later sprints by importing their ``register``
     function. Nothing else in the app needs to change.
     """
-    from app.modules import auth, equipment, events, notifications, organisations, venue
+    from app.modules import (
+        auth,
+        equipment,
+        events,
+        notifications,
+        organisations,
+        registration,
+        venue,
+    )
 
     auth.register(app)
     events.register(app)
@@ -49,6 +57,7 @@ def _register_modules(app: Flask) -> None:
     organisations.register(app)
     venue.register(app)
     equipment.register(app)
+    registration.register(app)
 
 
 def create_app(config_name: str | None = None) -> Flask:
