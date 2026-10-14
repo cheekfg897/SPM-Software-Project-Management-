@@ -29,11 +29,7 @@ export function notAuthenticated() {
 
 /** The 403 for a signed-in user whose role may not do this. */
 export function notAllowed() {
-  return errorResponse(
-    403,
-    'authorization_error',
-    'You do not have permission to perform this action.',
-  )
+  return errorResponse(403, 'authorization_error', NOT_PERMITTED_MESSAGE)
 }
 
 /** A request's JSON body as an object; anything else (no body, bad JSON) reads as empty. */
