@@ -1208,12 +1208,25 @@ def list_pending_booking_requests(*, session: Session | None = None) -> list[Boo
 def _request_to_decide(request_id: int, session: Session | None) -> VenueBookingRequest:
     """The request ``request_id`` names, if it is still waiting for a decision.
 
+    The row is locked while it is read, as the equipment type is before a reservation is
+    counted (ADR-0037): two Venue Staff deciding the same request at the same moment
+    would otherwise both see it Pending and both book the venue. ``populate_existing``
+    is needed with it, because a copy the session loaded earlier may predate the other
+    decision's commit, and the locked row has to overwrite it rather than be skipped as
+    already known.
+
     Raises:
         NotFoundError: 404 — no such request.
         ConflictError: 409 — it was decided or withdrawn already; the message names
             the status it is in.
     """
-    request = resolve_session(session).get(VenueBookingRequest, request_id)
+    locked = (
+        select(VenueBookingRequest)
+        .where(VenueBookingRequest.id == request_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    request = resolve_session(session).scalar(locked)
     if request is None:
         raise NotFoundError(BOOKING_REQUEST_NOT_FOUND_MESSAGE)
     if request.status is not BookingRequestStatus.PENDING:

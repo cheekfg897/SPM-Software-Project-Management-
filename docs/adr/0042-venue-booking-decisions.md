@@ -55,10 +55,15 @@ were unstarted when this story was built, so this ADR records where each seam si
    reference, because Venue Staff work across events and a request is what they decide; ADR-0004's
    reference is for routes a coordinator or organiser reaches through their event.
 
-7. **Only a Pending request can be decided.** Anything else is a `409` naming the status it is in
-   (the shape SCRUM-93 uses to refuse withdrawing a decided arrangement), and an unknown id is a
-   `404`. Changing a decision is not in the ACs, unlike an event request's (ADR-0028): a booking
-   has been made, and un-making it is SCRUM-61's and SCRUM-92's ground.
+7. **Only a Pending request can be decided, and the row is locked while it is read.** Anything
+   else is a `409` naming the status it is in (the shape SCRUM-93 uses to refuse withdrawing a
+   decided arrangement), and an unknown id is a `404`. The status check is a read followed by a
+   write, so without a lock two Venue Staff deciding the same request at the same moment would
+   both see it Pending and both book the venue. The read takes `with_for_update()` and
+   `populate_existing=True`, the seam [ADR-0037](0037-equipment-availability-and-reservation.md)
+   established for counting free equipment, so the second decision waits and then sees the first.
+   Changing a decision is not in the ACs, unlike an event request's (ADR-0028): a booking has
+   been made, and un-making it is SCRUM-61's and SCRUM-92's ground.
 
 8. **Who decided and when live in the event's history, not on the request.** The request gains one
    column, `decision_reason`, because AC6 asks for the reason to be visible. The history entry

@@ -13,7 +13,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.common.errors import ConflictError, NotFoundError, ValidationError
@@ -26,6 +26,7 @@ from app.modules.venue.models import (
     BookingStatus,
     CalendarEntryKind,
     Venue,
+    VenueBookingRequest,
 )
 from tests.venue.conftest import (
     SECOND_PERIOD,
@@ -228,6 +229,31 @@ def test_a_request_that_was_already_decided_cannot_be_decided_again(
 
     assert refusal.value.message == services.DECISION_NOT_PENDING_MESSAGE.format(status="approved")
     assert len(_bookings(db_session)) == 1
+
+
+def test_the_locked_read_replaces_what_the_session_already_holds(
+    db_session: Session, venue: Venue, saved_event: SavedEvent, saved_users: list[object]
+) -> None:
+    """Two Venue Staff deciding at once: the second must see the first's decision.
+
+    A copy the session loaded before the lock was taken may be stale, so the locked read
+    has to return the row as it is now (ADR-0037's seam, ADR-0042 decision 7).
+    """
+    request = raise_booking(venue, saved_event(), db_session)
+    assert request.status is BookingRequestStatus.PENDING
+    # synchronize_session=False leaves the session's copy Pending, as a stale copy is.
+    decided_elsewhere = (
+        update(VenueBookingRequest)
+        .where(VenueBookingRequest.id == request.id)
+        .values(status=BookingRequestStatus.APPROVED)
+    )
+    db_session.execute(decided_elsewhere, execution_options={"synchronize_session": False})
+    assert request.status is BookingRequestStatus.PENDING
+
+    with pytest.raises(ConflictError) as refusal:
+        decide(request.id, "rejected", db_session, reason="Too late")
+
+    assert refusal.value.message == services.DECISION_NOT_PENDING_MESSAGE.format(status="approved")
 
 
 def test_a_request_that_does_not_exist_is_not_found(db_session: Session) -> None:
