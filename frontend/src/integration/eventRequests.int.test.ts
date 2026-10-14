@@ -4,7 +4,8 @@ import { fetchMyEventRequests } from '@/features/eventRequests/api'
 import { apiRequest } from '@/lib/api'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
 
-import { uniqueEmail, VALID_PASSWORD } from './backend'
+import { staffAccount, uniqueEmail, VALID_PASSWORD } from './backend'
+import type { Credentials } from './backend'
 
 /**
  * GET /api/events/requests against the running backend (SCRUM-7, SCRUM-20 AC4, SCRUM-24 AC10).
@@ -12,14 +13,6 @@ import { uniqueEmail, VALID_PASSWORD } from './backend'
  * tests sign in as the staff account INTEGRATION_STAFF_EMAIL / INTEGRATION_STAFF_PASSWORD.
  */
 
-interface Credentials {
-  email: string
-  password: string
-}
-
-const MISSING_STAFF_ACCOUNT =
-  'Set INTEGRATION_STAFF_EMAIL and INTEGRATION_STAFF_PASSWORD to a staff account on the ' +
-  'backend, made with `flask create-staff-user` (frontend/README.md).'
 const NO_REQUESTS_MESSAGE = 'Your organisation has no event requests yet.'
 const NOT_PERMITTED_MESSAGE = 'You do not have permission to perform this action.'
 
@@ -52,15 +45,6 @@ const SUBMITTED = {
   start_time: '09:00',
   end_time: '17:00',
   expected_attendance: 120,
-}
-
-function staffAccount(): Credentials {
-  const email = import.meta.env.INTEGRATION_STAFF_EMAIL ?? ''
-  const password = import.meta.env.INTEGRATION_STAFF_PASSWORD ?? ''
-  if (email === '' || password === '') {
-    throw new Error(MISSING_STAFF_ACCOUNT)
-  }
-  return { email, password }
 }
 
 /** Log in, and send that user's token with every request from now on. */
