@@ -114,6 +114,7 @@ INTERNAL_VIEWERS = [
 INTERNAL_VIEWER_IDS = ["assigned-coordinator", "lead", "venue-staff", "technical-support"]
 
 
+@pytest.mark.scrum_96
 @pytest.mark.parametrize(
     ("viewer_id", "role"),
     INTERNAL_VIEWERS,
