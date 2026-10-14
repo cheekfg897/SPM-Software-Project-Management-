@@ -28,6 +28,7 @@ from app.modules.events.schemas import (
     EventRequestDetailSchema,
     EventRequestSchema,
     FieldChangeSchema,
+    RegistrationSettingsSchema,
     UnassignedRequestSchema,
 )
 from app.modules.events.services import (
@@ -60,6 +61,7 @@ from app.modules.events.services import (
     update_draft_event_request,
     update_equipment_line,
     update_event_request,
+    update_registration_settings,
 )
 
 bp = Blueprint("events", __name__, url_prefix="/api/events")
@@ -78,6 +80,7 @@ _field_change_schema = FieldChangeSchema()
 _event_history_entry_schema = EventHistoryEntrySchema()
 _event_list_row_schema = EventRequestSchema(only=EVENT_LIST_FIELDS)
 _unassigned_request_schema = UnassignedRequestSchema()
+_registration_settings_schema = RegistrationSettingsSchema()
 
 #: What each role's event list says when it is empty (SCRUM-24 AC10, ADR-0026).
 NO_ORGANISATION_REQUESTS_MESSAGE = "Your organisation has no event requests yet."
@@ -516,3 +519,24 @@ def resubmit_request(reference: str) -> tuple[Response, int]:
         g.current_user_id, reference, request.get_json(silent=True)
     )
     return jsonify(_event_request_schema.dump(event_request)), 200
+
+
+# --------------------------------------------------------------------------
+# SCRUM-69 — enable registration for an event and set its capacity
+# --------------------------------------------------------------------------
+
+
+@bp.patch("/requests/<reference>/registration")
+@requires_role(Role.EVENT_COORDINATOR)
+def update_registration(reference: str) -> tuple[Response, int]:
+    """Enable or disable registration for the caller's request, and set its capacity.
+
+    SCRUM-69, ADR-0043. Only the request's assigned coordinator may; the service
+    answers anyone else with the equipment routes' "not yours" 404. Returns ``200``
+    with the registration settings. The caller is recorded in the event history as
+    having changed them (AC6).
+    """
+    event_request = update_registration_settings(
+        g.current_user_id, reference, request.get_json(silent=True)
+    )
+    return jsonify(_registration_settings_schema.dump(event_request)), 200

@@ -566,6 +566,43 @@ class RequestClarificationSchema(Schema):
         return data
 
 
+#: The largest value a Postgres ``INTEGER`` column holds. SQLite doesn't enforce it,
+#: so without this a larger capacity would pass the tests and 500 in production.
+_INTEGER_COLUMN_MAX = 2_147_483_647
+
+
+class UpdateRegistrationSettingsSchema(Schema):
+    """Payload for ``PATCH /api/events/requests/<reference>/registration`` (SCRUM-69).
+
+    Both fields are optional: only what is sent changes, and what a missing
+    ``registration_enabled`` means depends on the event, so the service decides
+    (ADR-0043). Neither may be ``null``: to stop registration, send
+    ``registration_enabled`` as ``false``.
+    """
+
+    registration_enabled = fields.Boolean(truthy={True}, falsy={False})
+    registration_capacity = WholeNumber(
+        validate=validate.Range(
+            min=1,
+            max=_INTEGER_COLUMN_MAX,
+            error=f"Capacity must be between 1 and {_INTEGER_COLUMN_MAX}.",
+        )
+    )
+
+
+class RegistrationSettingsSchema(Schema):
+    """An event's registration settings as the API shows them (SCRUM-69, ADR-0043).
+
+    ``registration_required`` is what the organiser asked for, shown beside what the
+    coordinator has set.
+    """
+
+    reference = fields.String(dump_only=True)
+    registration_required = fields.Boolean(dump_only=True)
+    registration_enabled = fields.Boolean(dump_only=True)
+    registration_capacity = fields.Integer(dump_only=True, allow_none=True)
+
+
 class EditEquipmentLineSchema(Schema):
     """Payload for adding (``POST``) or editing (``PATCH``) an equipment line.
 
