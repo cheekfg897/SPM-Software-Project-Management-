@@ -1,9 +1,8 @@
 import { INTERNAL_ROLES, ROLE } from '@/config/roles'
 import { fetchCurrentUser, logIn, register } from '@/features/auth/api'
-import { ApiError } from '@/lib/api'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
 
-import { uniqueEmail, VALID_PASSWORD } from './backend'
+import { refusal, uniqueEmail, VALID_PASSWORD } from './backend'
 
 const INVALID_CREDENTIALS_MESSAGE = 'Invalid email or password.'
 /** What the backend says when sign-up names a staff role (SCRUM-88), as the mock says it too. */
@@ -16,18 +15,6 @@ function newAttendee() {
     password: VALID_PASSWORD,
     role: ROLE.ATTENDEE,
   }
-}
-
-/** The ApiError a call was refused with. Fails the test if it succeeded or failed another way. */
-async function refusal(call: Promise<unknown>): Promise<ApiError> {
-  const error = await call.then(
-    () => expect.fail('Expected the backend to refuse the request.'),
-    (caught: unknown) => caught,
-  )
-  if (!(error instanceof ApiError)) {
-    throw new Error(`Expected an ApiError, got ${String(error)}`)
-  }
-  return error
 }
 
 afterEach(() => sendRequestsAs(null))
