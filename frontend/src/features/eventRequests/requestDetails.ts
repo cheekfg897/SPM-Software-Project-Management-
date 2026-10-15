@@ -40,3 +40,24 @@ export function detailsFromForm(
   }
   return details
 }
+
+/**
+ * What the organiser changed on a draft, as the backend wants it (SCRUM-20 AC3). Every field is
+ * sent, and an emptied one as null, so the draft forgets what it held (ADR-0024).
+ */
+export function changesFromForm(
+  form: FormData,
+  registrationRequired: boolean,
+): EventRequestDetails {
+  const changes: EventRequestDetails = {
+    name: formText(form, 'name'),
+    registration_required: registrationRequired,
+  }
+  for (const field of TEXT_FIELDS) {
+    const value = formText(form, field)
+    changes[field] = value === '' ? null : value
+  }
+  const attendance = formText(form, 'expected_attendance')
+  changes.expected_attendance = attendance === '' ? null : Number(attendance)
+  return changes
+}

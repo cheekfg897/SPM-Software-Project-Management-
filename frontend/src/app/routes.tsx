@@ -16,6 +16,7 @@ import { CataloguePage } from '@/features/catalogue/pages/CataloguePage'
 import { MyEventsPage } from '@/features/catalogue/pages/MyEventsPage'
 import { EventEquipmentPage } from '@/features/equipment/pages/EventEquipmentPage'
 import { MyEventRequests } from '@/features/eventRequests/components/MyEventRequests'
+import { EditDraftPage } from '@/features/eventRequests/pages/EditDraftPage'
 import { NewEventRequestPage } from '@/features/eventRequests/pages/NewEventRequestPage'
 import { LandingPage } from '@/features/landing/pages/LandingPage'
 import { NotificationsPage } from '@/features/notifications/pages/NotificationsPage'
@@ -62,6 +63,14 @@ export const appRoutes: RouteObject[] = [
         element: (
           <RequireRole allowedRoles={ORGANISER_ROLES} loginRoute={ROUTES.LOGIN}>
             <NewEventRequestPage />
+          </RequireRole>
+        ),
+      },
+      {
+        path: ROUTES.EDIT_DRAFT,
+        element: (
+          <RequireRole allowedRoles={ORGANISER_ROLES} loginRoute={ROUTES.LOGIN}>
+            <EditDraftPage />
           </RequireRole>
         ),
       },
