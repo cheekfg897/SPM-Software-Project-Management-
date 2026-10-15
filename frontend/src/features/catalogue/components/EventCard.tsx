@@ -52,25 +52,28 @@ function PlacesStatus({ event }: { event: CatalogueEvent }) {
 
 export function EventCard({ event }: { event: CatalogueEvent }) {
   return (
-    <article className="border-line/70 bg-surface/70 hover:border-flare/40 hover:bg-surface-raised flex gap-5 rounded-2xl border p-5 transition">
-      <div className="min-w-0 flex-1">
-        <p className="text-flare text-sm font-medium">
-          {formatTimeRange(event.starts_at, event.ends_at)}
-        </p>
-        <h3 className="font-display text-ink mt-1 text-xl font-semibold tracking-tight">
-          {event.name}
-        </h3>
-        <p className="text-ink-muted mt-1.5 flex items-center gap-1.5 text-sm">
-          <PinIcon />
-          <span className="truncate">{event.venue?.name ?? 'Venue to be announced'}</span>
-        </p>
-        <p className="text-ink-faint mt-2 line-clamp-2 text-sm">{event.description}</p>
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-          <PlacesStatus event={event} />
-          <RegisterAction event={event} />
+    <article className="border-line/70 bg-surface/70 hover:border-flare/40 hover:bg-surface-raised rounded-2xl border p-5 transition">
+      <div className="flex gap-5">
+        <div className="min-w-0 flex-1">
+          <p className="text-flare text-sm font-medium">
+            {formatTimeRange(event.starts_at, event.ends_at)}
+          </p>
+          <h3 className="font-display text-ink mt-1 text-xl font-semibold tracking-tight">
+            {event.name}
+          </h3>
+          <p className="text-ink-muted mt-1.5 flex items-center gap-1.5 text-sm">
+            <PinIcon />
+            <span className="truncate">{event.venue?.name ?? 'Venue to be announced'}</span>
+          </p>
+          <p className="text-ink-faint mt-2 line-clamp-2 text-sm">{event.description}</p>
         </div>
+        <EventArt seed={event.id} />
       </div>
-      <EventArt seed={event.id} />
+      {/* Across the whole card, so Register lines up with the artwork's edge. */}
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+        <PlacesStatus event={event} />
+        <RegisterAction event={event} />
+      </div>
     </article>
   )
 }
