@@ -200,7 +200,7 @@ describe('SCRUM-42 venue requests page', () => {
     })
 
     await screen.findByRole('heading', { level: 1 })
-    expect(router.state.location.pathname).toBe(ROUTES.EVENTS)
+    expect(router.state.location.pathname).toBe(ROUTES.MY_EVENTS)
     expect(screen.queryByLabelText('Venue ID')).not.toBeInTheDocument()
   })
 

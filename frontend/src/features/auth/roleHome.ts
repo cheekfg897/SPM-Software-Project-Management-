@@ -3,9 +3,12 @@ import type { Role } from '@/config/roles'
 import { ROUTES } from '@/config/routes'
 import type { RoutePath } from '@/config/routes'
 
-/** Where each role lands after logging in (SCRUM-6 AC3). */
+/**
+ * Where each role lands after logging in (SCRUM-6 AC3). An Attendee opens on their own events,
+ * as Luma does; the catalogue is one click away (docs/adr/0044).
+ */
 const ROLE_HOME: Record<Role, RoutePath> = {
-  [ROLE.ATTENDEE]: ROUTES.EVENTS,
+  [ROLE.ATTENDEE]: ROUTES.MY_EVENTS,
   [ROLE.EVENT_ORGANISER]: ROUTES.ORGANISER_HOME,
   [ROLE.EVENT_COORDINATOR]: ROUTES.STAFF_HOME,
   [ROLE.EVENT_COORDINATOR_LEAD]: ROUTES.LEAD_QUEUE,

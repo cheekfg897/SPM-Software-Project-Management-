@@ -30,13 +30,13 @@ async function registrationBodies(requests: Request[]): Promise<unknown[]> {
 }
 
 describe('SCRUM-65 sign up', () => {
-  it('creates an attendee account, signs them in and takes them to the events', async () => {
+  it('creates an attendee account, signs them in and takes them to their own events', async () => {
     const app = renderApp(ROUTES.SIGN_UP)
 
     await fillIn(app, NEW_ATTENDEE)
     await submit(app)
 
-    await waitFor(() => expect(app.router.state.location.pathname).toBe(ROUTES.EVENTS))
+    await waitFor(() => expect(app.router.state.location.pathname).toBe(ROUTES.MY_EVENTS))
     expect(app.store.getState().session.user?.full_name).toBe(NEW_ATTENDEE.full_name)
   })
 
@@ -48,7 +48,7 @@ describe('SCRUM-65 sign up', () => {
     await fillIn(app, NEW_ATTENDEE)
     await submit(app)
 
-    await waitFor(() => expect(app.router.state.location.pathname).toBe(ROUTES.EVENTS))
+    await waitFor(() => expect(app.router.state.location.pathname).toBe(ROUTES.MY_EVENTS))
     expect(await registrationBodies(requests)).toEqual([{ ...NEW_ATTENDEE, role: 'attendee' }])
   })
 

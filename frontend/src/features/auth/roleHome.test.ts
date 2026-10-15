@@ -5,7 +5,7 @@ import { destinationAfterSignIn, homeFor } from './roleHome'
 
 describe('SCRUM-6 landing view for each role', () => {
   it.each([
-    [ROLE.ATTENDEE, ROUTES.EVENTS],
+    [ROLE.ATTENDEE, ROUTES.MY_EVENTS],
     [ROLE.EVENT_ORGANISER, ROUTES.ORGANISER_HOME],
     [ROLE.EVENT_COORDINATOR, ROUTES.STAFF_HOME],
     [ROLE.EVENT_COORDINATOR_LEAD, ROUTES.LEAD_QUEUE],

@@ -9,13 +9,13 @@ import { renderApp } from '@/test/render'
 import { logInThroughForm } from '../test/logInThroughForm'
 
 describe('SCRUM-6 log in (organisers and attendees)', () => {
-  it('logs an attendee in and takes them to the events', async () => {
+  it('logs an attendee in and takes them to their own events', async () => {
     const app = renderApp(ROUTES.LOGIN)
     const { attendee } = MOCK_ACCOUNTS
 
     await logInThroughForm(app.user, attendee)
 
-    await waitFor(() => expect(app.router.state.location.pathname).toBe(ROUTES.EVENTS))
+    await waitFor(() => expect(app.router.state.location.pathname).toBe(ROUTES.MY_EVENTS))
     expect(app.store.getState().session.user).toEqual(mockSessionFor(attendee).user)
   })
 
@@ -83,6 +83,6 @@ describe('SCRUM-6 log in (organisers and attendees)', () => {
   it('sends someone already signed in to their landing view', async () => {
     const { router } = renderApp(ROUTES.LOGIN, { session: mockSessionFor(MOCK_ACCOUNTS.attendee) })
 
-    await waitFor(() => expect(router.state.location.pathname).toBe(ROUTES.EVENTS))
+    await waitFor(() => expect(router.state.location.pathname).toBe(ROUTES.MY_EVENTS))
   })
 })

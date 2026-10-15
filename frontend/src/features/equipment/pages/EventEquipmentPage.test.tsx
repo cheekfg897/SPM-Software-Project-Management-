@@ -165,7 +165,7 @@ describe('SCRUM-45 equipment page: who may open it', () => {
   it('sends an attendee to their own home', () => {
     const { router } = renderApp(OPEN_PAGE, { session: mockSessionFor(MOCK_ACCOUNTS.attendee) })
 
-    expect(router.state.location.pathname).toBe(ROUTES.EVENTS)
+    expect(router.state.location.pathname).toBe(ROUTES.MY_EVENTS)
   })
 
   it('sends Venue Staff to the staff home: equipment is for Technical Support and coordinators', () => {

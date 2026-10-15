@@ -14,18 +14,14 @@ function card(page: Page, eventName: string) {
   return page.getByRole('article').filter({ has: page.getByRole('heading', { name: eventName }) })
 }
 
-test('a new attendee signs up, registers, and finds the event in My events', async ({ page }) => {
+test('a new attendee signs up, lands on My events, registers, and finds the event there', async ({
+  page,
+}) => {
   await page.goto('/signup')
   await page.getByLabel('Full name').fill('Priya Nair')
   await page.getByLabel('Email').fill('priya.events@example.com')
   await page.getByLabel('Password').fill('Password123')
   await page.getByRole('button', { name: 'Create account' }).click()
-  await expect(page).toHaveURL('/events')
-
-  await page
-    .getByRole('navigation', { name: 'Main' })
-    .getByRole('link', { name: 'My events' })
-    .click()
   await expect(page).toHaveURL('/my-events')
   await expect(page.getByText('You have no upcoming events.')).toBeVisible()
 
