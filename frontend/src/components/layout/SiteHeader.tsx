@@ -30,10 +30,12 @@ function SessionActions() {
   }
 
   // Logging out only forgets the token on this device; the backend can't revoke it yet (SCRUM-89).
-  function logOut() {
+  // Leave first: a page only signed-in users may see would otherwise send them to log in the
+  // moment the session goes.
+  async function logOut() {
+    await navigate(ROUTES.HOME, { flushSync: true })
     dispatch(signedOut())
     queryClient.clear()
-    void navigate(ROUTES.HOME)
   }
 
   return (
@@ -42,7 +44,7 @@ function SessionActions() {
       <span className="text-ink-muted hidden max-w-40 truncate text-sm sm:inline">
         {user.full_name}
       </span>
-      <Button variant="secondary" onClick={logOut}>
+      <Button variant="secondary" onClick={() => void logOut()}>
         Log out
       </Button>
     </>
