@@ -23,6 +23,10 @@ from tests.venue.conftest import COORDINATOR_ID, SavedEvent, raise_booking, two_
 pytestmark = pytest.mark.scrum_93
 
 UNSUITABLE_MESSAGE = "A justification is required because the venue is not suitable."
+THIRD_PERIOD = {
+    "starts_at": "2026-11-01T10:00:00+08:00",
+    "ends_at": "2026-11-01T11:00:00+08:00",
+}
 
 
 def _change(
@@ -45,6 +49,21 @@ def _changed_entries(session: Session) -> list[EventHistoryEntry]:
     ]
 
 
+def _snapshots(session: Session, arrangement_ids: list[int]) -> dict[int, tuple[Any, ...]]:
+    """What each arrangement currently says, to compare before and after a change."""
+    snapshots = {}
+    for arrangement_id in arrangement_ids:
+        arrangement = session.get(services.VenueBookingRequest, arrangement_id)
+        assert arrangement is not None
+        snapshots[arrangement_id] = (
+            arrangement.purpose,
+            arrangement.expected_occupancy,
+            arrangement.required_layout,
+            arrangement.status,
+        )
+    return snapshots
+
+
 def test_changing_the_purpose_keeps_everything_else(
     db_session: Session, venue: Venue, saved_event: SavedEvent
 ) -> None:
@@ -59,21 +78,25 @@ def test_changing_the_purpose_keeps_everything_else(
     assert shown.request.status is BookingRequestStatus.PENDING
 
 
-def test_changing_one_arrangement_leaves_the_others_untouched(
+def test_changing_one_of_three_arrangements_leaves_the_other_two_untouched(
     db_session: Session,
     make_venue: Callable[..., Venue],
     save: Callable[..., None],
+    venue: Venue,
     saved_event: SavedEvent,
 ) -> None:
     """AC6's core promise for a multi-venue event."""
     event = saved_event()
-    first_id, second_id = two_arrangements(db_session, make_venue, save, event)
+    changed_id, second_id = two_arrangements(db_session, make_venue, save, event)
+    third_id = raise_booking(venue, event, db_session, **THIRD_PERIOD).id
+    others_before = _snapshots(db_session, [second_id, third_id])
 
-    _change(event, first_id, db_session, purpose="Breakout session")
+    _change(event, changed_id, db_session, purpose="Breakout session", expected_occupancy=20)
 
-    untouched = db_session.get(services.VenueBookingRequest, second_id)
-    assert untouched is not None
-    assert untouched.purpose == "Main hall"
+    assert _snapshots(db_session, [second_id, third_id]) == others_before
+    changed_entries = _changed_entries(db_session)
+    assert len(changed_entries) == 1
+    assert changed_entries[0].details["venue_booking_request_id"] == changed_id
 
 
 def test_changing_writes_the_previous_and_new_value_to_history(
