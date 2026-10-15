@@ -18,9 +18,8 @@ Full reasoning lives in [ADR-0039](adr/0039-venue-arrangements.md),
 [ADR-0040](adr/0040-equipment-review-outcome.md) and
 [ADR-0041](adr/0041-lead-oversight-and-reassignment.md).
 
-> **Those three ADRs are not on `main` yet** — each arrives with its own story's pull request
-> (ADR-0039 with #66, ADR-0040 with #65, ADR-0041 with #67), so the links above only resolve
-> once those merge. This file is deliberately readable without them.
+All three stories are merged, so those links resolve. SCRUM-43 (#71, [ADR-0042](adr/0042-venue-booking-decisions.md))
+landed afterwards and has already settled one entry below, §1.1.
 
 ---
 
@@ -28,7 +27,8 @@ Full reasoning lives in [ADR-0039](adr/0039-venue-arrangements.md),
 
 ### 1.1 Does a rejected venue arrangement block event confirmation? — **the sharpest one**
 
-**Status: genuinely undecided. SCRUM-43 and SCRUM-49 must agree before either ships.**
+**Status: SCRUM-43 shipped it as "blocks" (ADR-0042 decision 16). SCRUM-49 has not shipped, so
+it still has to agree.**
 
 SCRUM-49 refuses confirmation until *"every active arrangement is approved"*, and SCRUM-97
 gates Safety Review on the same. SCRUM-75, SCRUM-49 and SCRUM-97 each say only *"withdrawn and
@@ -38,12 +38,14 @@ SCRUM-93 shipped a code comment telling SCRUM-43's implementer to retire `reject
 `cancelled`. That was removed during review, because if it were followed an event with one
 approved and one rejected venue would pass **both** gates — contradicting SCRUM-49's own
 *"unfulfillable arrangements move the event to Rejected"* and SCRUM-43's *"rejecting it releases
-the venue immediately"*. Today `rejected` is **not** retired, so a rejected arrangement still
-counts as active and still blocks confirmation.
+the venue immediately"*. `rejected` is **not** retired, so a rejected arrangement still counts as
+active and still blocks confirmation. SCRUM-43 built on that: its AC says the event cannot enter
+Safety Review or be confirmed until the coordinator withdraws the rejected arrangement, and
+`withdraw` now accepts Pending **or** Rejected so that is possible.
 
 **Cost if wrong:** if the team wants a rejected arrangement to be ignorable, SCRUM-43 and
-SCRUM-49 will both need changing, and an event whose venue was rejected can currently never be
-confirmed without the coordinator withdrawing that arrangement first.
+SCRUM-49 will both need changing. Today an event whose venue was rejected can only be confirmed
+after the coordinator withdraws that arrangement.
 
 ### 1.2 Can an equipment outcome be recorded on a dead event?
 
@@ -177,7 +179,7 @@ These are defensible and already in the ADRs; they are listed so a reviewer is n
 | 2.1 | Migration `0023`'s downgrade **deletes** withdrawn arrangements rather than reverting them to `pending`, and says so — reverting would resurrect retired work as live Pending requests and can violate the partial unique index. | A downgrade loses withdrawn arrangements. Downgrade is already lossy elsewhere. |
 | 2.2 | That downgrade **drops and re-creates** `uq_venue_booking_requests_pending` around the enum rebuild, because its `WHERE status = 'pending'` predicate is otherwise deparsed against the renamed type. Found by replaying on a real Postgres cluster, not by reading. | None — reproduced and verified twice independently. Anyone adding a value to this enum later hits the same trap. |
 | 2.3 | Migration `0024`'s revision id is **`0024_add_equipment_outcome`**, not its file name — `alembic_version.version_num` is `VARCHAR(32)` and the longer id fails on a real database. | Later migrations must chain on the short id. SCRUM-97/49 rebases must use it. |
-| 2.4 | `cancel_all_arrangements`'s single-commit rollback path is **unreachable today**, because only `pending` arrangements are ever active. It becomes reachable when SCRUM-43 adds `approved`. | A rollback path ships untested until SCRUM-43. The guard itself is covered through `withdraw_arrangement`. |
+| 2.4 | `cancel_all_arrangements`'s single-commit rollback path was **unreachable** when SCRUM-93 shipped, because only `pending` arrangements were active. SCRUM-43 added `approved` and `rejected`, but the call is refused outright while an arrangement is approved (ADR-0042 decision 16), so it only ever withdraws Pending or Rejected ones. | A rollback path that no input reaches. Worth re-checking when a story lets an approved booking be cancelled. |
 | 2.5 | The migration/model enum drift test was loosened from `==` to `<=` for `booking_request_status`, matching the two assertions above it in the same file. | A model status with no migration behind it would pass. Pre-existing for two other enums; the `PREVIOUS_*_VALUES` tuples are now the only thing pinning all three. |
 | 2.6 | The Lead's active-events list returns a small `ActiveRequest` wrapper rather than bare event rows, because AC1 needs the coordinator's name and modules may not cross-join ORM relationships. | A later story reading the plan's signature must adapt to the wrapper. |
 | 2.7 | `.superpowers/` was added to this clone's `.git/info/exclude`. Local to one machine, nothing committed, but it affects every worktree there. | None to the repository. |
@@ -202,11 +204,10 @@ Already listed under **"Tickets to open"** in the three PRs; repeated here so no
   inherited from SCRUM-95.
 - **ADR-0021 still mentions `REASSIGNABLE_STATUSES`** and has an unmarked "Revisit when" clause
   about who may reassign.
-- **ADR numbers 0033 and 0038 are unclaimed holes** in the index. 0038 is reserved for SCRUM-75;
-  confirm nobody holds 0033.
-- **Does `docs/superpowers/` belong in the repository?** PRs #65, #66 and #67 each commit agent
-  planning documents there. The directory is not tracked on `main`, not in `.gitignore`, and not
-  described in `README.md` or `CLAUDE.md`. One decision either way.
+- **ADR number 0038 is an unclaimed hole** in the index. It is reserved for SCRUM-75.
+- **Does `docs/superpowers/` belong in the repository?** PRs #65, #66 and #67 each committed agent
+  planning documents there, so it is now tracked on `main`, yet it is not described in
+  `README.md` or `CLAUDE.md`. One decision either way.
 
 ---
 
