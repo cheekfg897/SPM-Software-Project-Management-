@@ -1,6 +1,6 @@
 # ADR-0032: The event catalogue API, and registering for an event
 
-- **Status:** Accepted. Proposed by the frontend on 2026-09-29; implemented by SCRUM-52 on 2026-10-14. The items marked *default to review* are the team's to confirm.
+- **Status:** Accepted. Proposed by the frontend on 2026-09-29; implemented by SCRUM-52 on 2026-10-14. The items marked *default to review* are the team's to confirm. The attendee's own list (`GET /api/events/registrations`) is extended by [ADR-0044](0044-attendee-events-list.md): upcoming and past, the event's status, and a message when empty.
 - **Date:** 2026-09-29
 - **Story:** SCRUM-52 Register for a confirmed event (with SCRUM-54 and SCRUM-69 for capacity)
 
@@ -109,6 +109,8 @@ only after the first has committed. A unique constraint on (event, attendee) is 
 one attendee's duplicate: if it ever fires, the answer is still `409 already_registered`.
 
 ### `GET /api/events/registrations`
+*Extended by [ADR-0044](0044-attendee-events-list.md), which splits it into upcoming and past, orders it by the event's start, and adds `event_status`, `ends_at` and an empty-list `message`.*
+
 The Attendee's **own** registrations, newest first. **Attendees only** (`401`, `403` as above).
 This is SCRUM-52 AC5, "the event appears in their list of registrations", and SCRUM-53 reads the
 same list. `200` body:
