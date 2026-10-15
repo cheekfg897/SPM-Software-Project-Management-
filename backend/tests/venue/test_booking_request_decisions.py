@@ -10,7 +10,7 @@ decision rides in one commit with the event's history entry, as raising one does
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time
 
 import pytest
 from sqlalchemy import select, update
@@ -91,6 +91,30 @@ def test_the_queue_is_ordered_by_the_events_date_not_the_requests_period(
     for_earlier = raise_booking(breakout, earlier_event, db_session, **SECOND_PERIOD)
 
     assert _queue_ids(db_session) == [for_earlier.id, for_later.id]
+
+
+def test_events_on_the_same_day_are_ordered_by_start_time(
+    db_session: Session,
+    make_venue: Callable[..., Venue],
+    save: Callable[..., None],
+    saved_event: SavedEvent,
+) -> None:
+    """AC1. The date decides first; the start time only breaks a tie on the date.
+
+    The requests are raised in an order that matches neither sort key, so the queue can
+    only come out right if it sorts by date and then by start time.
+    """
+    auditorium, breakout = two_venues(make_venue, save)
+    afternoon_event = saved_event(start_time=time(14, 0))
+    next_day_event = saved_event(proposed_date=datetime(2026, 11, 2, tzinfo=UTC).date())
+    morning_event = saved_event(start_time=time(8, 0))
+    # No two share a venue and period, so none is refused as a second Pending request.
+    afternoon = raise_booking(auditorium, afternoon_event, db_session)
+    next_day = raise_booking(breakout, next_day_event, db_session)
+    morning = raise_booking(auditorium, morning_event, db_session, **SECOND_PERIOD)
+
+    # With the date alone the raising order would survive: afternoon, morning, next day.
+    assert _queue_ids(db_session) == [morning.id, afternoon.id, next_day.id]
 
 
 def test_the_queue_leaves_out_requests_that_are_no_longer_pending(
