@@ -211,7 +211,7 @@ def test_the_event_row_is_locked_while_an_attendee_registers(
 # --------------------------------------------------------------------------
 
 
-def test_event_headings_give_each_event_its_name_start_and_end(
+def test_event_headings_give_each_event_its_name_times_and_status(
     db_session: Session, make_open_event: MakeOpenEvent
 ) -> None:
     jazz = make_open_event(name="Jazz")
@@ -221,12 +221,15 @@ def test_event_headings_give_each_event_its_name_start_and_end(
     headings = list_event_headings([jazz.id, poetry.id], session=db_session)
 
     assert sorted(headings, key=lambda heading: heading.id) == [
-        EventHeading(id=jazz.id, name="Jazz", starts_at=STARTS_AT, ends_at=ENDS_AT),
+        EventHeading(
+            id=jazz.id, name="Jazz", starts_at=STARTS_AT, ends_at=ENDS_AT, status="confirmed"
+        ),
         EventHeading(
             id=poetry.id,
             name="Poetry",
             starts_at=datetime(2026, 10, 21, 11, 30, tzinfo=timezone.utc),
             ends_at=datetime(2026, 10, 21, 14, 0, tzinfo=timezone.utc),
+            status="confirmed",
         ),
     ]
 
@@ -238,4 +241,4 @@ def test_event_headings_include_an_event_that_is_no_longer_open(
 
     headings = list_event_headings([event.id], session=db_session)
 
-    assert [heading.name for heading in headings] == ["Done"]
+    assert [(heading.name, heading.status) for heading in headings] == [("Done", "completed")]

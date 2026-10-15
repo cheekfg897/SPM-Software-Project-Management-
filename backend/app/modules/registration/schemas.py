@@ -138,5 +138,6 @@ class MyRegistrationSchema(Schema):
     name = fields.String(dump_only=True)
     starts_at = BusinessDateTime(dump_only=True)
     ends_at = BusinessDateTime(dump_only=True)
+    event_status = fields.String(dump_only=True)
     status = fields.Enum(RegistrationStatus, by_value=True, dump_only=True)
     registered_at = BusinessDateTime(dump_only=True)

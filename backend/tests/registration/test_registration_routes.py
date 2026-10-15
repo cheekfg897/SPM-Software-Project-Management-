@@ -26,10 +26,12 @@ from app.modules.auth.models import User
 from app.modules.auth.permissions import Role
 from app.modules.registration import routes
 from app.modules.registration.models import Registration, RegistrationStatus
+from app.modules.registration.schemas import MyEventsWindow
 from app.modules.registration.services import (
     CatalogueEntry,
     CataloguePage,
     MyRegistration,
+    MyRegistrationList,
 )
 
 pytestmark = pytest.mark.scrum_52
@@ -95,10 +97,12 @@ def my_registrations_service(replace_services: ReplaceServices, now: datetime) -
         name="Jazz by the Bay",
         starts_at=STARTS_AT,
         ends_at=ENDS_AT,
+        event_status="confirmed",
         status=RegistrationStatus.REGISTERED,
         registered_at=now,
     )
-    return replace_services(routes, {"list_my_registrations": [row]})["list_my_registrations"]
+    listing = MyRegistrationList(when=MyEventsWindow.UPCOMING, registrations=[row])
+    return replace_services(routes, {"list_my_registrations": listing})["list_my_registrations"]
 
 
 # --------------------------------------------------------------------------
@@ -254,6 +258,7 @@ def test_my_registrations_are_listed_with_the_event_and_status(
                 "name": "Jazz by the Bay",
                 "starts_at": "2026-10-20T19:30:00+08:00",
                 "ends_at": "2026-10-20T22:00:00+08:00",
+                "event_status": "confirmed",
                 "status": "registered",
                 "registered_at": "2026-10-14T12:00:00+08:00",
             }
@@ -276,6 +281,30 @@ def test_my_registrations_query_string_is_handed_to_the_service(
     call_route(MINE_ENDPOINT, "GET", f"{MINE_PATH}?when=past", {}, attendee_token)
 
     my_registrations_service.assert_called_once_with("21", {"when": "past"})
+
+
+@pytest.mark.scrum_24
+@pytest.mark.parametrize(
+    ("window", "message"),
+    [
+        (MyEventsWindow.UPCOMING, "You have no upcoming events."),
+        (MyEventsWindow.PAST, "You have no past events."),
+    ],
+    ids=["upcoming", "past"],
+)
+def test_an_empty_list_says_there_are_none(
+    call_route: CallRoute,
+    replace_services: ReplaceServices,
+    attendee_token: str,
+    window: MyEventsWindow,
+    message: str,
+) -> None:
+    listing = MyRegistrationList(when=window, registrations=[])
+    replace_services(routes, {"list_my_registrations": listing})
+
+    response = call_route(MINE_ENDPOINT, "GET", MINE_PATH, {}, attendee_token)
+
+    assert response.get_json() == {"registrations": [], "message": message}
 
 
 def test_other_roles_cannot_list_registrations(
