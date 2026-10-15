@@ -94,6 +94,7 @@ def my_registrations_service(replace_services: ReplaceServices, now: datetime) -
         event_id=41,
         name="Jazz by the Bay",
         starts_at=STARTS_AT,
+        ends_at=ENDS_AT,
         status=RegistrationStatus.REGISTERED,
         registered_at=now,
     )
@@ -252,6 +253,7 @@ def test_my_registrations_are_listed_with_the_event_and_status(
                 "event_id": 41,
                 "name": "Jazz by the Bay",
                 "starts_at": "2026-10-20T19:30:00+08:00",
+                "ends_at": "2026-10-20T22:00:00+08:00",
                 "status": "registered",
                 "registered_at": "2026-10-14T12:00:00+08:00",
             }
@@ -264,7 +266,16 @@ def test_my_registrations_are_the_callers_own(
 ) -> None:
     call_route(MINE_ENDPOINT, "GET", MINE_PATH, {}, attendee_token)
 
-    my_registrations_service.assert_called_once_with("21")
+    my_registrations_service.assert_called_once_with("21", {})
+
+
+@pytest.mark.scrum_24
+def test_my_registrations_query_string_is_handed_to_the_service(
+    call_route: CallRoute, my_registrations_service: MagicMock, attendee_token: str
+) -> None:
+    call_route(MINE_ENDPOINT, "GET", f"{MINE_PATH}?when=past", {}, attendee_token)
+
+    my_registrations_service.assert_called_once_with("21", {"when": "past"})
 
 
 def test_other_roles_cannot_list_registrations(

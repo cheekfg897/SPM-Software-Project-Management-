@@ -211,7 +211,7 @@ def test_the_event_row_is_locked_while_an_attendee_registers(
 # --------------------------------------------------------------------------
 
 
-def test_event_headings_give_each_event_its_name_and_start(
+def test_event_headings_give_each_event_its_name_start_and_end(
     db_session: Session, make_open_event: MakeOpenEvent
 ) -> None:
     jazz = make_open_event(name="Jazz")
@@ -221,11 +221,12 @@ def test_event_headings_give_each_event_its_name_and_start(
     headings = list_event_headings([jazz.id, poetry.id], session=db_session)
 
     assert sorted(headings, key=lambda heading: heading.id) == [
-        EventHeading(id=jazz.id, name="Jazz", starts_at=STARTS_AT),
+        EventHeading(id=jazz.id, name="Jazz", starts_at=STARTS_AT, ends_at=ENDS_AT),
         EventHeading(
             id=poetry.id,
             name="Poetry",
             starts_at=datetime(2026, 10, 21, 11, 30, tzinfo=timezone.utc),
+            ends_at=datetime(2026, 10, 21, 14, 0, tzinfo=timezone.utc),
         ),
     ]
 
