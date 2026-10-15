@@ -1,12 +1,26 @@
+import type { ReactNode } from 'react'
+
 import { formatShortDate, formatWeekday } from '@/lib/formatDate'
 
-import type { CatalogueEvent } from '../api'
 import { groupByDay } from '../groupByDay'
 
-import { EventCard } from './EventCard'
+interface DayTimelineProps<T extends { starts_at: string }> {
+  events: T[]
+  /** A key for each event, unique among the events shown. */
+  keyOf: (event: T) => number
+  /** The card that shows one event. */
+  renderEvent: (event: T) => ReactNode
+}
 
-/** The page's events under a heading per day, on a timeline, in the order the backend sent. */
-export function EventList({ events }: { events: CatalogueEvent[] }) {
+/**
+ * Events under a heading per day, on a timeline, in the order the backend sent. The catalogue
+ * and an Attendee's own events both draw their cards on it.
+ */
+export function DayTimeline<T extends { starts_at: string }>({
+  events,
+  keyOf,
+  renderEvent,
+}: DayTimelineProps<T>) {
   return (
     <ol className="space-y-10">
       {groupByDay(events).map((group, index) => {
@@ -27,9 +41,7 @@ export function EventList({ events }: { events: CatalogueEvent[] }) {
             </h2>
             <ul className="border-line space-y-4 border-l border-dashed pl-5 md:pl-6">
               {group.events.map((event) => (
-                <li key={event.id}>
-                  <EventCard event={event} />
-                </li>
+                <li key={keyOf(event)}>{renderEvent(event)}</li>
               ))}
             </ul>
           </li>

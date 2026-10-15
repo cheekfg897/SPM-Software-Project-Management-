@@ -4,7 +4,8 @@ import { ApiError } from '@/lib/api'
 import { useCatalogue, useCatalogueParams } from '../hooks'
 import { hasFilters } from '../searchParams'
 
-import { EventList } from './EventList'
+import { DayTimeline } from './DayTimeline'
+import { EventCard } from './EventCard'
 
 const SKELETON_CARDS = 3
 
@@ -76,7 +77,11 @@ export function CatalogueResults() {
       className={`space-y-8 transition-opacity ${catalogue.isPlaceholderData ? 'opacity-60' : ''}`}
     >
       <p className="text-ink-muted text-sm">{countLabel(data.total)}</p>
-      <EventList events={data.items} />
+      <DayTimeline
+        events={data.items}
+        keyOf={(event) => event.id}
+        renderEvent={(event) => <EventCard event={event} />}
+      />
       <Pagination page={data.page} totalPages={data.total_pages} onPageChange={changePage} />
     </section>
   )
