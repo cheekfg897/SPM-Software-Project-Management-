@@ -171,8 +171,8 @@ def make_block() -> Callable[..., VenueBlock]:
 def saved_event(save: Callable[..., None]) -> Callable[..., EventRequest]:
     """Factory for a saved event: approved, coordinated by user 3, 80 attending.
 
-    It runs on 1 November 2026 and the next day unless ``proposed_date`` says otherwise;
-    the end date always follows the proposed date.
+    It runs on 1 November 2026 and the next day, from 09:00, unless ``proposed_date`` or
+    ``start_time`` say otherwise; the end date always follows the proposed date.
 
     The event has no layout of its own, only free-text venue requirements.
     """
@@ -182,6 +182,7 @@ def saved_event(save: Callable[..., None]) -> Callable[..., EventRequest]:
         status: EventRequestStatus = EventRequestStatus.APPROVED,
         *,
         proposed_date: date = date(2026, 11, 1),
+        start_time: time = time(9, 0),
     ) -> EventRequest:
         counter["n"] += 1
         event = EventRequest(
@@ -192,7 +193,7 @@ def saved_event(save: Callable[..., None]) -> Callable[..., EventRequest]:
             name="Partner Summit",
             proposed_date=proposed_date,
             end_date=proposed_date + timedelta(days=1),
-            start_time=time(9, 0),
+            start_time=start_time,
             end_time=time(17, 30),
             expected_attendance=80,
             accessibility_needs="Step-free entrance",
