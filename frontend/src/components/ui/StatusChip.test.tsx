@@ -1,11 +1,11 @@
 import { render, screen } from '@testing-library/react'
 
-import { EVENT_REQUEST_STATUS } from '../constants'
-import type { EventRequestStatus } from '../constants'
+import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
+import type { EventRequestStatus } from '@/config/eventStatus'
 
 import { StatusChip } from './StatusChip'
 
-/** What an organiser reads for each status, written out so a renamed label is noticed. */
+/** What a user reads for each status, written out so a renamed label is noticed. */
 const LABELS: [EventRequestStatus, string][] = [
   ['draft', 'Draft'],
   ['submitted', 'Submitted'],

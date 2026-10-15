@@ -1,10 +1,8 @@
-import { EventArt } from '@/components/ui'
+import { EventArt, StatusChip } from '@/components/ui'
+import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
 
 import type { EventRequest } from '../api'
-import { EVENT_REQUEST_STATUS } from '../constants'
 import { formatSchedule } from '../formatSchedule'
-
-import { StatusChip } from './StatusChip'
 
 /** A number from the reference, so a request keeps the same artwork every time it's shown. */
 function artSeed(reference: string): number {

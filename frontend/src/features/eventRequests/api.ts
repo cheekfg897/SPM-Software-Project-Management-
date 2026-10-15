@@ -1,6 +1,6 @@
 import { apiRequest } from '@/lib/api'
 
-import type { EventRequestStatus } from './constants'
+import type { EventRequestStatus } from '@/config/eventStatus'
 
 const EVENT_REQUEST_PATHS = {
   MINE: '/api/events/requests',
