@@ -81,6 +81,29 @@ describe('SCRUM-52 catalogue page: what the backend sent', () => {
     expect(screen.queryByRole('navigation', { name: 'Pagination' })).not.toBeInTheDocument()
   })
 
+  it('links an event the attendee holds a place at to their own events, and no other', async () => {
+    respondWithPage(
+      cataloguePage({
+        items: [
+          catalogueEvent({ name: 'Mine', is_registered: true }),
+          catalogueEvent({ name: 'Open' }),
+        ],
+        total: 2,
+        total_pages: 1,
+      }),
+    )
+
+    renderApp(ROUTES.EVENTS)
+
+    await screen.findByRole('heading', { name: 'Mine' })
+    expect(
+      within(eventCard('Mine')).getByRole('link', { name: 'View in My events' }),
+    ).toHaveAttribute('href', ROUTES.MY_EVENTS)
+    expect(
+      within(eventCard('Open')).queryByRole('link', { name: 'View in My events' }),
+    ).not.toBeInTheDocument()
+  })
+
   it('says "1 event" for a single result', async () => {
     respondWithPage(cataloguePage({ items: [catalogueEvent()], total: 1, total_pages: 1 }))
 

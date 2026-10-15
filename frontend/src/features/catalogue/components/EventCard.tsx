@@ -1,4 +1,7 @@
+import { Link } from 'react-router'
+
 import { EventArt } from '@/components/ui'
+import { ROUTES } from '@/config/routes'
 import { formatTimeRange } from '@/lib/formatDate'
 
 import type { CatalogueEvent } from '../api'
@@ -18,10 +21,23 @@ function PinIcon() {
   )
 }
 
-/** The event's places as the backend reports them. */
+/**
+ * The event's places as the backend reports them. Once the attendee holds a place, it says so
+ * and links to their own events, where it now appears (SCRUM-52 AC5).
+ */
 function PlacesStatus({ event }: { event: CatalogueEvent }) {
   if (event.is_registered) {
-    return <p className="text-success text-sm font-medium">You&apos;re registered</p>
+    return (
+      <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm font-medium">
+        <span className="text-success">You&apos;re registered</span>
+        <Link
+          to={ROUTES.MY_EVENTS}
+          className="text-ink-muted hover:text-ink underline underline-offset-4 transition"
+        >
+          View in My events
+        </Link>
+      </p>
+    )
   }
   if (event.is_full) {
     return <p className="text-ink-faint text-sm font-medium">Full</p>
