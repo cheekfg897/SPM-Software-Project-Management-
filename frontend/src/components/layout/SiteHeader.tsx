@@ -3,6 +3,7 @@ import { NavLink, useNavigate } from 'react-router'
 
 import { NotificationBell } from '@/features/notifications/components/NotificationBell'
 import { Button, ButtonLink } from '@/components/ui'
+import { ROLE } from '@/config/roles'
 import { ROUTES } from '@/config/routes'
 import { selectSessionUser, signedOut, useAppDispatch, useAppSelector } from '@/store'
 
@@ -48,17 +49,31 @@ function SessionActions() {
   )
 }
 
+/** The main links: the catalogue for everyone, and their own events for an Attendee. */
+function MainNav() {
+  const user = useAppSelector(selectSessionUser)
+
+  return (
+    <nav aria-label="Main" className="flex items-center gap-4 sm:gap-6">
+      <NavLink to={ROUTES.EVENTS} className={NAV_LINK_CLASSES}>
+        Events
+      </NavLink>
+      {user?.role === ROLE.ATTENDEE && (
+        <NavLink to={ROUTES.MY_EVENTS} className={NAV_LINK_CLASSES}>
+          My events
+        </NavLink>
+      )}
+    </nav>
+  )
+}
+
 export function SiteHeader() {
   return (
     <header className="border-line/60 bg-void/60 fixed inset-x-0 top-0 z-50 border-b backdrop-blur-md">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:gap-6 sm:px-6">
         <div className="flex items-center gap-4 sm:gap-8">
           <Logo />
-          <nav aria-label="Main">
-            <NavLink to={ROUTES.EVENTS} className={NAV_LINK_CLASSES}>
-              Events
-            </NavLink>
-          </nav>
+          <MainNav />
         </div>
         <div className="flex items-center gap-2">
           <SessionActions />

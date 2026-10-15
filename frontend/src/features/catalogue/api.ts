@@ -1,7 +1,6 @@
 import type { EventRequestStatus } from '@/config/eventStatus'
 import { apiRequest } from '@/lib/api'
 
-import type { MyEventsWhen } from './constants'
 import type { CatalogueParams } from './searchParams'
 
 /**
@@ -72,14 +71,23 @@ export const catalogueKeys = {
    */
   list: (params: CatalogueParams, viewerId: number | null) =>
     [...catalogueKeys.all, 'list', viewerId, params] as const,
+  /**
+   * One half of the signed-in Attendee's own events. Under `all`, so registering reads it
+   * again; and keyed by viewer, so signing in as someone else never shows the last list.
+   */
+  mine: (when: string, viewerId: number | null) =>
+    [...catalogueKeys.all, 'mine', viewerId, when] as const,
 }
 
 export function fetchCatalogue(params: CatalogueParams): Promise<CataloguePage> {
   return apiRequest<CataloguePage>(CATALOGUE_PATHS.EVENTS, { query: params })
 }
 
-/** The signed-in Attendee's upcoming or past events, in the order the backend sends them. */
-export function fetchMyEvents(when: MyEventsWhen): Promise<MyEventList> {
+/**
+ * The signed-in Attendee's upcoming or past events, in the order the backend sends them.
+ * `when` is sent as the page URL has it; the backend refuses one it doesn't know.
+ */
+export function fetchMyEvents(when: string): Promise<MyEventList> {
   return apiRequest<MyEventList>(CATALOGUE_PATHS.MY_EVENTS, { query: { when } })
 }
 
