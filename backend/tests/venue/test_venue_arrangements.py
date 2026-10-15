@@ -138,6 +138,27 @@ def test_withdrawing_one_arrangement_leaves_the_others_untouched(
     ]
 
 
+def test_the_event_record_lists_a_withdrawn_arrangement_beside_the_active_one(
+    db_session: Session,
+    make_venue: Callable[..., Venue],
+    save: Callable[..., None],
+    saved_event: SavedEvent,
+) -> None:
+    """AC5: every arrangement and its status stays listed once one is retired."""
+    event = saved_event()
+    first_id, second_id = two_arrangements(db_session, make_venue, save, event)
+    _withdraw(event, first_id, db_session)
+
+    listed = services.list_booking_requests_for_event(
+        event.reference, coordinator_id=COORDINATOR_ID, session=db_session
+    )
+
+    assert [(shown.request.id, shown.request.status) for shown in listed] == [
+        (first_id, BookingRequestStatus.WITHDRAWN),
+        (second_id, BookingRequestStatus.PENDING),
+    ]
+
+
 def test_withdrawing_writes_a_history_entry_naming_the_arrangement(
     db_session: Session, venue: Venue, saved_event: SavedEvent
 ) -> None:
