@@ -239,13 +239,26 @@ def test_a_negative_quantity_is_refused(
     assert "provided_quantity" in exc_info.value.details
 
 
+@pytest.mark.parametrize(
+    ("provided", "note"),
+    [(10, None), (6, "Only six in stock"), (0, "All out on loan")],
+    ids=["fulfilled", "partial", "unavailable"],
+)
 def test_the_coordinator_is_told_the_outcome_is_recorded(
     record_outcome: Callable[..., EventEquipmentLine],
     ten_requested: EventEquipmentLine,
     saved_event_request: EventRequest,
     notifications_of: Callable[[int], list[tuple[Any, ...]]],
+    provided: int,
+    note: str | None,
 ) -> None:
-    record_outcome(ten_requested, provided_quantity=10)
+    # SCRUM-48 AC3 names the unavailable case, and the service tells the coordinator of
+    # every outcome (ADR-0040), so all three outcomes must send exactly one notice.
+    payload = {"provided_quantity": provided}
+    if note is not None:
+        payload["note"] = note
+
+    record_outcome(ten_requested, **payload)
 
     assert notifications_of(COORDINATOR_ID) == [
         (
