@@ -308,6 +308,35 @@ def test_deciding_one_request_leaves_the_events_other_requests_alone(
     assert [booking.venue_id for booking in _bookings(db_session)] == [auditorium.id]
 
 
+def test_a_rejected_request_stays_an_active_arrangement_and_the_others_are_untouched(
+    db_session: Session,
+    make_venue: Callable[..., Venue],
+    save: Callable[..., None],
+    saved_event: SavedEvent,
+    saved_users: list[object],
+) -> None:
+    """AC8 and AC9: a rejection stays on the event and changes nothing else.
+
+    SCRUM-49 and SCRUM-97 hold the event back while any arrangement is not approved, so
+    the rejected one must still count as active until the coordinator withdraws it.
+    """
+    auditorium, breakout = two_venues(make_venue, save)
+    event = saved_event()
+    rejected = raise_booking(auditorium, event, db_session)
+    untouched = raise_booking(breakout, event, db_session, **SECOND_PERIOD)
+
+    decide(rejected.id, "rejected", db_session, reason="Closed for repairs")
+
+    # list_active_arrangements puts the earlier period first, so the rejected one leads.
+    active = services.list_active_arrangements(event.id, session=db_session)
+    assert [(arrangement.id, arrangement.status) for arrangement in active] == [
+        (rejected.id, BookingRequestStatus.REJECTED),
+        (untouched.id, BookingRequestStatus.PENDING),
+    ]
+    assert untouched.decision_reason is None
+    assert _bookings(db_session) == []
+
+
 @pytest.mark.parametrize(
     ("outcome", "kind"),
     [
