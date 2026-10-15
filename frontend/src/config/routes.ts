@@ -8,6 +8,7 @@ export const ROUTES = {
   SIGN_UP: '/signup',
   STAFF_LOGIN: '/staff/login',
   ORGANISER_HOME: '/organiser',
+  NEW_EVENT_REQUEST: '/organiser/requests/new',
   STAFF_HOME: '/staff',
   /** A route pattern: `:reference` is the event's `EVR-…` reference. */
   VENUE_REQUESTS: '/events/:reference/venue-requests',
