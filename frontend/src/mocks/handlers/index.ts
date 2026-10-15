@@ -3,7 +3,7 @@ import type { RequestHandler } from 'msw'
 import { authHandlers, resetMockAccounts } from './auth'
 import { bookingHandlers, resetMockBooking } from './booking'
 import { catalogueHandlers, resetMockCatalogue } from './catalogue'
-import { eventRequestHandlers } from './eventRequests'
+import { eventRequestHandlers, resetMockEventRequests } from './eventRequests'
 import { notificationHandlers, resetMockNotifications } from './notifications'
 import { equipmentHandlers, resetMockEquipment } from './equipment'
 import { leadHandlers, resetMockLeadQueue } from './lead'
@@ -23,10 +23,11 @@ export const handlers: RequestHandler[] = [
   ...leadHandlers,
 ]
 
-/** Put the mock backend's data back as it started, so no test sees another's sign-ups or registrations. */
+/** Put the mock backend's data back as it started, so no test sees another's sign-ups, registrations or requests. */
 export function resetMockBackend(): void {
   resetMockAccounts()
   resetMockCatalogue()
+  resetMockEventRequests()
   resetMockNotifications()
   resetMockBooking()
   resetMockEquipment()
