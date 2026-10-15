@@ -1,9 +1,32 @@
+import { Link } from 'react-router'
+
 import { ButtonLink, ErrorAlert, Spinner } from '@/components/ui'
-import { ROUTES } from '@/config/routes'
+import { editDraftPath, ROUTES } from '@/config/routes'
+
+import type { EventRequest } from '../api'
+import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
 
 import { useMyEventRequests } from '../hooks'
 
 import { EventRequestRow } from './EventRequestRow'
+
+/**
+ * One row of the list. The organiser's own drafts open for editing (SCRUM-20 AC3); a submitted
+ * request has nothing to open yet.
+ */
+function ListedRequest({ request }: { request: EventRequest }) {
+  if (request.status !== EVENT_REQUEST_STATUS.DRAFT) {
+    return <EventRequestRow request={request} />
+  }
+  return (
+    <Link
+      to={editDraftPath(request.reference)}
+      className="focus-visible:outline-flare block rounded-2xl focus-visible:outline-2"
+    >
+      <EventRequestRow request={request} />
+    </Link>
+  )
+}
 
 /**
  * The organiser's client organisation's event requests, in the order the backend sends them
@@ -42,7 +65,7 @@ function RequestList() {
     >
       {rows.map((request) => (
         <li key={request.reference}>
-          <EventRequestRow request={request} />
+          <ListedRequest request={request} />
         </li>
       ))}
     </ul>

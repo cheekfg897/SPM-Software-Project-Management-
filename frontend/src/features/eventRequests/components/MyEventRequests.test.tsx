@@ -41,6 +41,25 @@ describe('SCRUM-19 organiser event list: starting a request', () => {
   })
 })
 
+describe('SCRUM-20 organiser event list: going back to a draft', () => {
+  it("links the organiser's own draft to where it can be edited", async () => {
+    openHome()
+
+    const row = await rowFor('Volunteer Thank-You Dinner')
+    expect(within(row).getByRole('link')).toHaveAttribute(
+      'href',
+      '/organiser/requests/EVR-3HD8PL2W/edit',
+    )
+  })
+
+  it('leaves a submitted request as it is', async () => {
+    openHome()
+
+    const row = await rowFor('Partner Summit')
+    expect(within(row).queryByRole('link')).not.toBeInTheDocument()
+  })
+})
+
 describe('SCRUM-7 organiser event list', () => {
   it('lists the requests in the order the backend sent them', async () => {
     openHome()

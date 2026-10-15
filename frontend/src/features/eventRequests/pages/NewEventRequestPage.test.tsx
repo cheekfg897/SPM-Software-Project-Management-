@@ -163,6 +163,59 @@ describe('SCRUM-19 new event request: submitting', () => {
   })
 })
 
+describe('SCRUM-20 new event request: saving a draft', () => {
+  it('saves what was typed as a draft, even with only a name, and lists it as a draft', async () => {
+    const requests = recordRequests()
+    const app = renderApp(ROUTES.NEW_EVENT_REQUEST, { session: ORGANISER })
+    await fill(app, 'Event name', 'Spring Fair')
+
+    await app.user.click(screen.getByRole('button', { name: 'Save as draft' }))
+
+    expect(await screen.findByRole('heading', { name: 'Spring Fair' })).toBeInTheDocument()
+    expect(app.router.state.location.pathname).toBe(ROUTES.ORGANISER_HOME)
+    const firstRow = within(screen.getByRole('list', { name: 'Your event requests' })).getAllByRole(
+      'listitem',
+    )[0]
+    expect(firstRow).toHaveTextContent('Spring Fair')
+    expect(firstRow).toHaveTextContent('Draft')
+    const drafts = requests.filter(
+      (request) => new URL(request.url).pathname === '/api/events/requests/drafts',
+    )
+    expect(await Promise.all(drafts.map((request) => request.json() as Promise<unknown>))).toEqual([
+      { name: 'Spring Fair', registration_required: false },
+    ])
+  })
+
+  it("shows the backend's message when a draft has no name", async () => {
+    const app = renderApp(ROUTES.NEW_EVENT_REQUEST, { session: ORGANISER })
+    await fill(app, 'Event name', '   ')
+
+    await app.user.click(screen.getByRole('button', { name: 'Save as draft' }))
+
+    expect(await screen.findByLabelText('Event name')).toHaveAccessibleDescription(
+      'Event name must not be blank.',
+    )
+  })
+})
+
+describe('SCRUM-20 new event request: one refusal at a time', () => {
+  it("after a refused submission, a refused draft shows only the draft's message", async () => {
+    const app = renderApp(ROUTES.NEW_EVENT_REQUEST, { session: ORGANISER })
+    await fill(app, 'Event name', '   ')
+    await submit(app)
+    await screen.findAllByText('Missing data for required field.')
+
+    await app.user.click(screen.getByRole('button', { name: 'Save as draft' }))
+
+    await waitFor(() =>
+      expect(screen.getByLabelText('Date')).toHaveAttribute('aria-invalid', 'false'),
+    )
+    expect(screen.getByLabelText('Event name')).toHaveAccessibleDescription(
+      'Event name must not be blank.',
+    )
+  })
+})
+
 describe('SCRUM-19 new event request: who may open it', () => {
   it('sends a visitor to log in, and back here afterwards', () => {
     const { router } = renderApp(ROUTES.NEW_EVENT_REQUEST)

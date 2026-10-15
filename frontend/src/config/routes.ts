@@ -9,6 +9,8 @@ export const ROUTES = {
   STAFF_LOGIN: '/staff/login',
   ORGANISER_HOME: '/organiser',
   NEW_EVENT_REQUEST: '/organiser/requests/new',
+  /** A route pattern: `:reference` is one of the organiser's own drafts. */
+  EDIT_DRAFT: '/organiser/requests/:reference/edit',
   STAFF_HOME: '/staff',
   /** A route pattern: `:reference` is the event's `EVR-…` reference. */
   VENUE_REQUESTS: '/events/:reference/venue-requests',
@@ -35,4 +37,9 @@ export function loginPathReturningTo(path: string, loginRoute: LoginRoute = ROUT
 /** The equipment page for one event, by its EVR- reference. */
 export function eventEquipmentPath(reference: string): string {
   return ROUTES.EVENT_EQUIPMENT.replace(':reference', encodeURIComponent(reference))
+}
+
+/** The page for editing one of the organiser's own drafts, by its EVR- reference. */
+export function editDraftPath(reference: string): string {
+  return ROUTES.EDIT_DRAFT.replace(':reference', encodeURIComponent(reference))
 }

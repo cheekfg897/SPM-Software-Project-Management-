@@ -1,4 +1,4 @@
-import { eventEquipmentPath, loginPathReturningTo, ROUTES } from './routes'
+import { editDraftPath, eventEquipmentPath, loginPathReturningTo, ROUTES } from './routes'
 
 describe('loginPathReturningTo', () => {
   it('sends the visitor to log in, remembering the page to come back to', () => {
@@ -19,5 +19,15 @@ describe('eventEquipmentPath', () => {
 
   it('escapes characters that would change the path', () => {
     expect(eventEquipmentPath('a/b')).toBe('/events/a%2Fb/equipment')
+  })
+})
+
+describe('editDraftPath', () => {
+  it("builds the page for editing one of the organiser's drafts", () => {
+    expect(editDraftPath('EVR-3HD8PL2W')).toBe('/organiser/requests/EVR-3HD8PL2W/edit')
+  })
+
+  it('escapes characters that would change the path', () => {
+    expect(editDraftPath('a/b')).toBe('/organiser/requests/a%2Fb/edit')
   })
 })

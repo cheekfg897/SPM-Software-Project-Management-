@@ -51,6 +51,9 @@ export const eventRequestKeys = {
   all: ['eventRequests'] as const,
   /** The signed-in organiser's list: it depends on whose organisation it is. */
   mine: (viewerId: number | null) => [...eventRequestKeys.all, 'mine', viewerId] as const,
+  /** One request, as its organisation's organisers see it. */
+  one: (reference: string, viewerId: number | null) =>
+    [...eventRequestKeys.all, 'one', viewerId, reference] as const,
 }
 
 /** The organiser's client organisation's event requests and their own drafts, newest first. */
