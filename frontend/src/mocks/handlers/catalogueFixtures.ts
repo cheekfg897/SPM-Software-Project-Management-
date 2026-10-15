@@ -1,8 +1,10 @@
 /**
- * Data for the catalogue mock (docs/adr/0032-event-catalogue-contract.md). Every date is
- * fixed, and "now" is fixed too, so unit tests, e2e runs and screenshots see the same page
- * whatever the real date is.
+ * Data for the catalogue mock (docs/adr/0032-event-catalogue-contract.md) and an Attendee's
+ * own events (docs/adr/0044-attendee-events-list.md). Every date is fixed, and "now" is fixed
+ * too, so unit tests, e2e runs and screenshots see the same page whatever the real date is.
  */
+
+import type { EventRequestStatus } from '@/config/eventStatus'
 
 /** The mock backend's "now": Monday 5 October 2026, midday in Singapore. */
 export const MOCK_NOW = '2026-10-05T12:00:00+08:00'
@@ -382,7 +384,46 @@ function toEvent(row: EventRow, index: number): MockCatalogueEvent {
 
 export const MOCK_CATALOGUE_EVENTS: MockCatalogueEvent[] = EVENT_ROWS.map(toEvent)
 
-/** The mock attendee starts out registered for these, so "You're registered" shows. */
+function catalogueEventId(name: string): number {
+  return MOCK_CATALOGUE_EVENTS.find((event) => event.name === name)?.id ?? 0
+}
+
+/**
+ * The mock attendee starts out registered for these: Startup Pitch Night, so "You're
+ * registered" shows, and this morning's yoga, which has ended, so their past events have one
+ * that is still confirmed.
+ */
 export const MOCK_ATTENDEE_REGISTRATIONS: number[] = [
-  MOCK_CATALOGUE_EVENTS.find((event) => event.name === 'Startup Pitch Night')?.id ?? 0,
+  catalogueEventId('Startup Pitch Night'),
+  catalogueEventId('Sunrise Yoga on the Lawn'),
+]
+
+/** An event the mock attendee registered for that the catalogue no longer lists. */
+export interface MockUnlistedEvent {
+  id: number
+  name: string
+  starts_at: string
+  ends_at: string
+  event_status: EventRequestStatus
+}
+
+/**
+ * The mock attendee's other events (ADR-0044): one that has taken place, and one the
+ * organiser has since called off, which stays under Upcoming until its date passes.
+ */
+export const MOCK_ATTENDEE_UNLISTED_EVENTS: MockUnlistedEvent[] = [
+  {
+    id: 901,
+    name: 'Orchid Show Opening Night',
+    starts_at: '2026-09-28T18:00:00+08:00',
+    ends_at: '2026-09-28T20:00:00+08:00',
+    event_status: 'completed',
+  },
+  {
+    id: 902,
+    name: 'Harbour Lights Run',
+    starts_at: '2026-10-10T07:00:00+08:00',
+    ends_at: '2026-10-10T09:00:00+08:00',
+    event_status: 'cancelled',
+  },
 ]

@@ -2,7 +2,7 @@ import { http, HttpResponse } from 'msw'
 import type { RequestHandler } from 'msw'
 
 import { ROLE } from '@/config/roles'
-import { WHEN } from '@/features/catalogue/constants'
+import { MY_EVENTS_WHEN, WHEN } from '@/features/catalogue/constants'
 import type { FieldErrors } from '@/lib/api'
 
 import { MOCK_ACCOUNTS } from '../fixtures/accounts'
@@ -13,19 +13,28 @@ import { accountForRequest } from './auth'
 import {
   addDays,
   MOCK_ATTENDEE_REGISTRATIONS,
+  MOCK_ATTENDEE_UNLISTED_EVENTS,
   MOCK_CATALOGUE_EVENTS,
   MOCK_NOW,
   MOCK_TODAY,
 } from './catalogueFixtures'
-import type { MockCatalogueEvent } from './catalogueFixtures'
+import type { MockCatalogueEvent, MockUnlistedEvent } from './catalogueFixtures'
 
 /**
- * The event catalogue endpoints as docs/adr/0032-event-catalogue-contract.md describes them.
- * This stands in for SCRUM-52's backend, so the searching, date windows, paging and counting
- * happen here, never in the UI.
+ * The event catalogue endpoints as docs/adr/0032-event-catalogue-contract.md describes them,
+ * and an Attendee's own events as docs/adr/0044-attendee-events-list.md does. This stands in
+ * for SCRUM-52's and SCRUM-24's backend, so the searching, date windows, paging, counting and
+ * the upcoming and past split happen here, never in the UI.
  */
 
 const CATALOGUE_PATH = '/api/events/catalogue'
+const MY_EVENTS_PATH = '/api/events/registrations'
+const KNOWN_MY_EVENTS_WHEN: readonly string[] = Object.values(MY_EVENTS_WHEN)
+/** What an empty half of an Attendee's events says, as the backend words it. */
+const NO_MY_EVENTS_MESSAGE: Record<string, string> = {
+  [MY_EVENTS_WHEN.UPCOMING]: 'You have no upcoming events.',
+  [MY_EVENTS_WHEN.PAST]: 'You have no past events.',
+}
 const DEFAULT_PAGE_SIZE = 12
 const MAX_PAGE_SIZE = 50
 const KNOWN_WHEN: readonly string[] = Object.values(WHEN)
@@ -200,6 +209,67 @@ function toItem(event: MockCatalogueEvent, userId: number | null) {
   }
 }
 
+/** One row of an Attendee's events, as the backend sends it. */
+interface MyEventRow {
+  event_id: number
+  name: string
+  starts_at: string
+  ends_at: string
+  event_status: string
+  status: 'registered'
+  registered_at: string
+}
+
+function myEventRow(
+  event: MockCatalogueEvent | MockUnlistedEvent,
+  eventStatus: string,
+): MyEventRow {
+  return {
+    event_id: event.id,
+    name: event.name,
+    starts_at: event.starts_at,
+    ends_at: event.ends_at,
+    event_status: eventStatus,
+    status: 'registered',
+    registered_at: MOCK_NOW,
+  }
+}
+
+/** Every event `userId` registered for, in no particular order. */
+function myEventRows(userId: number): MyEventRow[] {
+  const rows: MyEventRow[] = []
+  for (const event of MOCK_CATALOGUE_EVENTS) {
+    if (registeredUsers(event.id).has(userId)) {
+      rows.push(myEventRow(event, 'confirmed'))
+    }
+  }
+  if (userId === MOCK_ACCOUNTS.attendee.id) {
+    for (const event of MOCK_ATTENDEE_UNLISTED_EVENTS) {
+      rows.push(myEventRow(event, event.event_status))
+    }
+  }
+  return rows
+}
+
+/** Soonest start first, then by event id, as the backend orders upcoming events. */
+function bySoonestStart(first: MyEventRow, second: MyEventRow): number {
+  return first.starts_at.localeCompare(second.starts_at) || first.event_id - second.event_id
+}
+
+/** The backend's 400s for an Attendee's events: an unknown window or parameter. */
+function myEventsQueryErrors(params: URLSearchParams, when: string): FieldErrors {
+  const errors: FieldErrors = {}
+  if (!KNOWN_MY_EVENTS_WHEN.includes(when)) {
+    errors.when = [`Must be one of: ${KNOWN_MY_EVENTS_WHEN.join(', ')}.`]
+  }
+  for (const name of params.keys()) {
+    if (name !== 'when') {
+      errors[name] = ['Unknown field.']
+    }
+  }
+  return errors
+}
+
 export const catalogueHandlers: RequestHandler[] = [
   http.get(CATALOGUE_PATH, ({ request }) => {
     const { query, errors } = readQuery(new URL(request.url))
@@ -255,5 +325,31 @@ export const catalogueHandlers: RequestHandler[] = [
       },
       { status: 201 },
     )
+  }),
+
+  http.get(MY_EVENTS_PATH, ({ request }) => {
+    const user = accountForRequest(request)
+    if (user === undefined) {
+      return notAuthenticated()
+    }
+    if (user.role !== ROLE.ATTENDEE) {
+      return notAllowed()
+    }
+    const params = new URL(request.url).searchParams
+    const when = params.get('when') ?? MY_EVENTS_WHEN.UPCOMING
+    const errors = myEventsQueryErrors(params, when)
+    if (Object.keys(errors).length > 0) {
+      return validationError(errors)
+    }
+
+    const now = new Date(MOCK_NOW)
+    const rows = myEventRows(user.id).sort(bySoonestStart)
+    const upcoming = rows.filter((row) => new Date(row.ends_at) > now)
+    const past = rows.filter((row) => new Date(row.ends_at) <= now).reverse()
+    const registrations = when === MY_EVENTS_WHEN.PAST ? past : upcoming
+    if (registrations.length === 0) {
+      return HttpResponse.json({ registrations, message: NO_MY_EVENTS_MESSAGE[when] })
+    }
+    return HttpResponse.json({ registrations })
   }),
 ]

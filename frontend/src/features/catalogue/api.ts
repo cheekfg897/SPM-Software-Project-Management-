@@ -1,10 +1,16 @@
+import type { EventRequestStatus } from '@/config/eventStatus'
 import { apiRequest } from '@/lib/api'
 
+import type { MyEventsWhen } from './constants'
 import type { CatalogueParams } from './searchParams'
 
-/** The catalogue API, as docs/adr/0032-event-catalogue-contract.md describes it. */
+/**
+ * The catalogue API, as docs/adr/0032-event-catalogue-contract.md describes it, and an
+ * Attendee's own events (docs/adr/0044-attendee-events-list.md).
+ */
 const CATALOGUE_PATHS = {
   EVENTS: '/api/events/catalogue',
+  MY_EVENTS: '/api/events/registrations',
 } as const
 
 export interface CatalogueEvent {
@@ -39,6 +45,25 @@ export interface Registration {
   registered_at: string
 }
 
+/** An event the signed-in Attendee registered for, with the event's own status (ADR-0044). */
+export interface MyEvent {
+  event_id: number
+  name: string
+  /** ISO date-time with an offset, in business time. */
+  starts_at: string
+  ends_at: string
+  event_status: EventRequestStatus
+  /** The registration's own status. */
+  status: 'registered'
+  registered_at: string
+}
+
+/** One half of the Attendee's events. `message` is there only when the list is empty. */
+export interface MyEventList {
+  registrations: MyEvent[]
+  message?: string
+}
+
 export const catalogueKeys = {
   all: ['catalogue'] as const,
   /**
@@ -51,6 +76,11 @@ export const catalogueKeys = {
 
 export function fetchCatalogue(params: CatalogueParams): Promise<CataloguePage> {
   return apiRequest<CataloguePage>(CATALOGUE_PATHS.EVENTS, { query: params })
+}
+
+/** The signed-in Attendee's upcoming or past events, in the order the backend sends them. */
+export function fetchMyEvents(when: MyEventsWhen): Promise<MyEventList> {
+  return apiRequest<MyEventList>(CATALOGUE_PATHS.MY_EVENTS, { query: { when } })
 }
 
 /** Register the signed-in Attendee for an event. No body: the account is the registration. */
