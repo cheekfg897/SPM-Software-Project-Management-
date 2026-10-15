@@ -30,7 +30,7 @@ describe('SCRUM-6 pages only a role may open', () => {
       session: mockSessionFor(MOCK_ACCOUNTS.attendee),
     })
 
-    await waitFor(() => expect(router.state.location.pathname).toBe(ROUTES.EVENTS))
+    await waitFor(() => expect(router.state.location.pathname).toBe(ROUTES.MY_EVENTS))
   })
 
   it('greets the right role by the name the backend has for them', async () => {

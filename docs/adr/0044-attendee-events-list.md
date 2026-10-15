@@ -51,6 +51,10 @@ needs a fourth:
 5. **Completed and cancelled events stay listed**, with their status. A cancelled event stays
    under Upcoming until its date passes, so the attendee sees that it was cancelled instead of
    watching it disappear. *Default to review:* AC7 says "confirmed".
+6. **An Attendee lands on their own events after logging in or signing up**, as Luma opens on
+   yours. A new attendee sees the empty Upcoming list's message and a link to browse; the
+   catalogue is also the header's Events link. A `next` page still wins: someone sent to log
+   in from a page goes back to it.
 
 `200` body:
 
@@ -77,6 +81,8 @@ and when there are none:
 ```
 
 ## Consequences
+- An Attendee's home is "My events", not the catalogue (`roleHome.ts`); SCRUM-6's landing
+  tests follow.
 - The web app's "My events" page sends the toggle as `when`, keeps it in the URL, groups the rows
   by day as the catalogue does, shows `event_status` as a status chip, and shows `message` when
   the list is empty.

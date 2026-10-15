@@ -4,7 +4,9 @@ import { MOCK_ACCOUNTS } from '../src/mocks/fixtures/accounts'
 
 import { logIn } from './logIn'
 
-test('SCRUM-65: a new attendee signs up, lands on the events, and logs out', async ({ page }) => {
+test('SCRUM-65: a new attendee signs up, lands on their own events, and logs out', async ({
+  page,
+}) => {
   await page.goto('/signup')
 
   await page.getByLabel('Full name').fill('Priya Nair')
@@ -12,7 +14,7 @@ test('SCRUM-65: a new attendee signs up, lands on the events, and logs out', asy
   await page.getByLabel('Password').fill('Password123')
   await page.getByRole('button', { name: 'Create account' }).click()
 
-  await expect(page).toHaveURL('/events')
+  await expect(page).toHaveURL('/my-events')
   const header = page.getByRole('banner')
   await expect(header.getByRole('button', { name: 'Log out' })).toBeVisible()
   // The name is in the header on every screen, but phones hide it to keep the header narrow.
