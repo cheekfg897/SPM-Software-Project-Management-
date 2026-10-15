@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.common.errors import ConflictError, NotFoundError, ValidationError
 from app.modules.auth.permissions import Role
-from app.modules.events.models import EventHistoryEntry, EventHistoryKind
+from app.modules.events.models import EventHistoryEntry, EventHistoryKind, EventRequest
 from app.modules.venue import services
 from app.modules.venue.models import (
     Booking,
@@ -29,6 +29,7 @@ from app.modules.venue.models import (
     VenueBookingRequest,
 )
 from tests.venue.conftest import (
+    COORDINATOR_ID,
     SECOND_PERIOD,
     VENUE_STAFF_ID,
     SavedEvent,
@@ -335,6 +336,71 @@ def test_a_rejected_request_stays_an_active_arrangement_and_the_others_are_untou
     ]
     assert untouched.decision_reason is None
     assert _bookings(db_session) == []
+
+
+def _withdraw(event: EventRequest, arrangement_id: int, session: Session) -> VenueBookingRequest:
+    """Withdraw one of the event's arrangements as its coordinator."""
+    shown = services.withdraw_arrangement(
+        event.reference, arrangement_id, coordinator_id=COORDINATOR_ID, session=session
+    )
+    return shown.request
+
+
+def test_the_coordinator_can_withdraw_a_rejected_arrangement(
+    db_session: Session, venue: Venue, saved_event: SavedEvent, saved_users: list[object]
+) -> None:
+    """AC9: the rejected arrangement holds the event back until it is withdrawn.
+
+    Without this the event could never move on, because a rejection is final.
+    """
+    event = saved_event()
+    request = raise_booking(venue, event, db_session)
+    decide(request.id, "rejected", db_session, reason="Closed for repairs")
+
+    withdrawn = _withdraw(event, request.id, db_session)
+
+    assert withdrawn.status is BookingRequestStatus.WITHDRAWN
+    assert services.count_active_arrangements(event.id, session=db_session) == 0
+
+
+def test_cancelling_all_retires_a_rejected_arrangement_with_the_pending_ones(
+    db_session: Session,
+    make_venue: Callable[..., Venue],
+    save: Callable[..., None],
+    saved_event: SavedEvent,
+    saved_users: list[object],
+) -> None:
+    """Cancel-all must not stop at a rejected arrangement, nor leave it behind."""
+    auditorium, breakout = two_venues(make_venue, save)
+    event = saved_event()
+    rejected = raise_booking(auditorium, event, db_session)
+    pending = raise_booking(breakout, event, db_session, **SECOND_PERIOD)
+    decide(rejected.id, "rejected", db_session, reason="Closed for repairs")
+
+    retired = services.cancel_all_arrangements(
+        event.reference, coordinator_id=COORDINATOR_ID, session=db_session
+    )
+
+    assert [shown.request.id for shown in retired] == [rejected.id, pending.id]
+    assert services.count_active_arrangements(event.id, session=db_session) == 0
+
+
+def test_an_approved_arrangement_cannot_be_withdrawn(
+    db_session: Session, venue: Venue, saved_event: SavedEvent, saved_users: list[object]
+) -> None:
+    """Only a pending or rejected arrangement can be. An approval has made a booking.
+
+    Cancelling an approved booking is not in SCRUM-43's ACs, so it stays refused.
+    """
+    event = saved_event()
+    request = raise_booking(venue, event, db_session)
+    decide(request.id, "approved", db_session)
+
+    with pytest.raises(ConflictError) as refusal:
+        _withdraw(event, request.id, db_session)
+
+    assert refusal.value.message == services.WITHDRAW_NOT_ALLOWED_MESSAGE.format(status="approved")
+    assert len(_bookings(db_session)) == 1
 
 
 @pytest.mark.parametrize(

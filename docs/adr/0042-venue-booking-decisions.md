@@ -112,6 +112,13 @@ were unstarted when this story was built, so this ADR records where each seam si
     coordinator's own list (SCRUM-42's route) shows the decision too. The mock handlers, the
     integration test and the two backend tests that assert the whole body were updated in the same
     change (`backend/CONVENTIONS.md` §14).
+16. **A rejected arrangement can be withdrawn, and so is retired by cancel-all.** A rejection
+    keeps the arrangement active on purpose, because the event can neither enter Safety Review nor
+    be confirmed until the coordinator withdraws it (the story's own AC). ADR-0039 decision 4 let
+    only a Pending arrangement be withdrawn, which would leave a rejected one stuck for good, so
+    withdraw now takes Pending or Rejected and amends that decision. An Approved arrangement is
+    still refused with a 409: it has made a booking, and cancelling a booking is in no story yet,
+    so cancel-all is refused while an event has an approved arrangement.
 
 ## Consequences
 
