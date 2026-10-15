@@ -13,6 +13,7 @@ import { StaffLoginPage } from '@/features/auth/pages/StaffLoginPage'
 import { BookingDecisionsPage } from '@/features/booking/pages/BookingDecisionsPage'
 import { VenueRequestsPage } from '@/features/booking/pages/VenueRequestsPage'
 import { CataloguePage } from '@/features/catalogue/pages/CataloguePage'
+import { MyEventsPage } from '@/features/catalogue/pages/MyEventsPage'
 import { EventEquipmentPage } from '@/features/equipment/pages/EventEquipmentPage'
 import { MyEventRequests } from '@/features/eventRequests/components/MyEventRequests'
 import { LandingPage } from '@/features/landing/pages/LandingPage'
@@ -25,6 +26,7 @@ const ORGANISER_ROLES: readonly Role[] = [ROLE.EVENT_ORGANISER]
 const COORDINATOR_ROLES: readonly Role[] = [ROLE.EVENT_COORDINATOR]
 const VENUE_STAFF_ROLES: readonly Role[] = [ROLE.VENUE_STAFF]
 const LEAD_ROLES: readonly Role[] = [ROLE.EVENT_COORDINATOR_LEAD]
+const ATTENDEE_ROLES: readonly Role[] = [ROLE.ATTENDEE]
 
 /** The page tree. The browser router (App) and the test router (renderApp) both use it. */
 export const appRoutes: RouteObject[] = [
@@ -33,6 +35,14 @@ export const appRoutes: RouteObject[] = [
     children: [
       { path: ROUTES.HOME, element: <LandingPage /> },
       { path: ROUTES.EVENTS, element: <CataloguePage /> },
+      {
+        path: ROUTES.MY_EVENTS,
+        element: (
+          <RequireRole allowedRoles={ATTENDEE_ROLES} loginRoute={ROUTES.LOGIN}>
+            <MyEventsPage />
+          </RequireRole>
+        ),
+      },
       { path: ROUTES.LOGIN, element: <LoginPage /> },
       { path: ROUTES.SIGN_UP, element: <SignUpPage /> },
       { path: ROUTES.STAFF_LOGIN, element: <StaffLoginPage /> },

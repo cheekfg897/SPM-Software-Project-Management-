@@ -42,6 +42,27 @@ describe('app routes', () => {
     )
   })
 
+  it('links an attendee to their own events', () => {
+    renderApp(ROUTES.EVENTS, { session: ATTENDEE })
+
+    const header = within(screen.getByRole('banner'))
+    expect(header.getByRole('link', { name: 'My events' })).toHaveAttribute(
+      'href',
+      ROUTES.MY_EVENTS,
+    )
+  })
+
+  it.each([
+    ['a visitor', undefined],
+    ['an organiser', mockSessionFor(MOCK_ACCOUNTS.organiser)],
+  ])("shows %s no link to an attendee's events", (_who, session) => {
+    renderApp(ROUTES.EVENTS, session === undefined ? {} : { session })
+
+    expect(
+      within(screen.getByRole('banner')).queryByRole('link', { name: 'My events' }),
+    ).not.toBeInTheDocument()
+  })
+
   it('shows who is signed in, and logs them out', async () => {
     const { user, store, router } = renderApp(ROUTES.EVENTS, { session: ATTENDEE })
 
