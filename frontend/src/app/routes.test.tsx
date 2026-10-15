@@ -63,6 +63,17 @@ describe('app routes', () => {
     ).not.toBeInTheDocument()
   })
 
+  it.each([
+    ['an attendee', ROUTES.MY_EVENTS, ATTENDEE],
+    ['an organiser', ROUTES.ORGANISER_HOME, mockSessionFor(MOCK_ACCOUNTS.organiser)],
+  ])('logs %s out to the home page from a page only they may see', async (_who, path, session) => {
+    const { user, router } = renderApp(path, { session })
+
+    await user.click(within(screen.getByRole('banner')).getByRole('button', { name: 'Log out' }))
+
+    expect(router.state.location.pathname).toBe(ROUTES.HOME)
+  })
+
   it('shows who is signed in, and logs them out', async () => {
     const { user, store, router } = renderApp(ROUTES.EVENTS, { session: ATTENDEE })
 
