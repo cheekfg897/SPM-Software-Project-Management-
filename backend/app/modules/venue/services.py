@@ -953,7 +953,15 @@ def list_booking_requests_for_event(
 
 
 ARRANGEMENT_NOT_FOUND_MESSAGE = "Venue arrangement not found."
-WITHDRAW_NOT_PENDING_MESSAGE = "Only a pending arrangement can be withdrawn; this one is {status}."
+WITHDRAW_NOT_ALLOWED_MESSAGE = (
+    "Only a pending or rejected arrangement can be withdrawn; this one is {status}."
+)
+#: A rejected arrangement stays active until its coordinator withdraws it (SCRUM-43), so
+#: it can be withdrawn like a pending one. An approved one has made a booking, which
+#: withdrawing would leave behind, so it cannot.
+WITHDRAWABLE_REQUEST_STATUSES = frozenset(
+    {BookingRequestStatus.PENDING, BookingRequestStatus.REJECTED}
+)
 CHANGE_NOT_PENDING_MESSAGE = "Only a pending arrangement can be changed; this one is {status}."
 
 
@@ -1005,12 +1013,12 @@ def _withdraw_and_record(
     """Withdraw one arrangement and write its history entry, without committing.
 
     Raises:
-        ConflictError: 409 — the arrangement is no longer pending.
+        ConflictError: 409 — the arrangement is neither pending nor rejected.
     """
     from app.modules.events import services as event_services  # circular at import time
 
-    if arrangement.status is not BookingRequestStatus.PENDING:
-        raise ConflictError(WITHDRAW_NOT_PENDING_MESSAGE.format(status=arrangement.status.value))
+    if arrangement.status not in WITHDRAWABLE_REQUEST_STATUSES:
+        raise ConflictError(WITHDRAW_NOT_ALLOWED_MESSAGE.format(status=arrangement.status.value))
     arrangement.status = BookingRequestStatus.WITHDRAWN
     event_services.record_venue_arrangement_withdrawn(
         arrangement.event_id,
@@ -1030,7 +1038,7 @@ def withdraw_arrangement(
     coordinator_id: int,
     session: Session | None = None,
 ) -> BookingRequestAsShown:
-    """Retract one of an event's arrangements before Venue Staff decide it (AC6).
+    """Retract one of an event's arrangements while it is pending or rejected (AC6).
 
     The event's other arrangements are untouched. The withdrawal and its history entry
     are saved in one commit.
@@ -1038,7 +1046,7 @@ def withdraw_arrangement(
     Raises:
         NotFoundError: 404 — no such event among the coordinator's own, or no such
             arrangement on it.
-        ConflictError: 409 — the arrangement is no longer pending.
+        ConflictError: 409 — the arrangement is neither pending nor rejected.
     """
     from app.modules.events import services as event_services  # circular at import time
 
@@ -1057,14 +1065,17 @@ def cancel_all_arrangements(
 
     AC6 keeps one arrangement's fate from touching the others unless the coordinator
     asks for all of them, which is this call rather than a loop the client writes.
-    Every active arrangement is pending today, so each is withdrawn; SCRUM-43 adds
-    cancelling the approved ones. An event with none is not an error.
+    Every pending or rejected arrangement is withdrawn. An approved one cannot be (its
+    booking would be left behind), so the call is refused while the event has one;
+    cancelling an approved booking is not yet in any story. An event with none is not
+    an error.
 
     Returns:
         The retired arrangements, earliest period first, or an empty list.
 
     Raises:
         NotFoundError: 404 — no such event among the coordinator's own.
+        ConflictError: 409 — an arrangement is approved; nothing is withdrawn.
     """
     from app.modules.events import services as event_services  # circular at import time
 
