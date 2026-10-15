@@ -3381,12 +3381,17 @@ class RegistrableEvent:
 
 @dataclass(frozen=True)
 class EventHeading:
-    """The name, start and end of any event, for a list that mentions it."""
+    """The name, times and status of any event, for a list that mentions it.
+
+    ``status`` is the status's plain value (``"confirmed"``), so a module reading it
+    never needs the events module's models.
+    """
 
     id: int
     name: str
     starts_at: datetime
     ends_at: datetime
+    status: str
 
 
 def _is_open_for_registration() -> ColumnElement[bool]:
@@ -3498,7 +3503,7 @@ def get_registrable_event_for_update(
 def list_event_headings(
     event_ids: Iterable[int], *, session: Session | None = None
 ) -> list[EventHeading]:
-    """The name, start and end of each event in ``event_ids``, whatever its status.
+    """The name, times and status of each event in ``event_ids``, whatever its status.
 
     Args:
         event_ids: The events' ids; one that doesn't exist is left out.
@@ -3509,7 +3514,15 @@ def list_event_headings(
     """
     sess = resolve_session(session)
     stmt = select(EventRequest).where(EventRequest.id.in_(list(event_ids)))
-    return [
-        EventHeading(id=row.id, name=row.name, starts_at=_starts_at(row), ends_at=_ends_at(row))
-        for row in sess.scalars(stmt)
-    ]
+    headings = []
+    for row in sess.scalars(stmt):
+        headings.append(
+            EventHeading(
+                id=row.id,
+                name=row.name,
+                starts_at=_starts_at(row),
+                ends_at=_ends_at(row),
+                status=row.status.value,
+            )
+        )
+    return headings

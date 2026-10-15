@@ -1,9 +1,10 @@
 """Unit tests for SCRUM-52 AC5: the event appears in the Attendee's registrations.
 
-``list_my_registrations`` is the Attendee's own list: the event's id, name, start and
-end, the registration's status and when it was made. It is the list SCRUM-53 reads to
-show each registration with its current status (ADR-0032). Its upcoming and past split
-and its order are SCRUM-24's, tested in ``test_attendee_events_list.py`` (ADR-0044).
+``list_my_registrations`` is the Attendee's own list: the event's id, name, start, end
+and status, the registration's status and when it was made. It is the list SCRUM-53
+reads to show each registration with its current status (ADR-0032). Its upcoming and
+past split and its order are SCRUM-24's, tested in ``test_attendee_events_list.py``
+(ADR-0044).
 
 Runs against ``db_session``.
 """
@@ -44,6 +45,7 @@ def test_a_registration_shows_the_event_and_when_it_was_made(
             name="Jazz by the Bay",
             starts_at=datetime(2026, 10, 20, 11, 30, tzinfo=timezone.utc),
             ends_at=datetime(2026, 10, 20, 14, 0, tzinfo=timezone.utc),
+            event_status="confirmed",
             status=RegistrationStatus.REGISTERED,
             registered_at=now,
         )
@@ -85,7 +87,8 @@ def test_an_event_that_has_since_completed_is_still_listed(
     event.status = EventRequestStatus.COMPLETED
     db_session.commit()
 
-    assert [row.name for row in my_registrations(ATTENDEE)] == ["Done"]
+    rows = my_registrations(ATTENDEE)
+    assert [(row.name, row.event_status) for row in rows] == [("Done", "completed")]
 
 
 def test_an_attendee_with_no_registrations_has_an_empty_list(

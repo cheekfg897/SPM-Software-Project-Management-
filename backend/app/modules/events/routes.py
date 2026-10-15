@@ -137,8 +137,9 @@ def submit_request() -> tuple[Response, int]:
     return jsonify(_event_request_schema.dump(event_request)), 201
 
 
-# TODO: SCRUM-42 adds Venue Staff's list (AC4) and SCRUM-52 the Attendee's (AC7),
-# in the same shape (ADR-0026).
+# TODO: SCRUM-42 adds Venue Staff's list (AC4), in the same shape (ADR-0026).
+# The Attendee's (AC7) is the registration module's GET /api/events/registrations
+# (ADR-0044).
 @bp.get("/requests")
 @requires_role(Role.EVENT_ORGANISER)
 def list_my_requests() -> tuple[Response, int]:

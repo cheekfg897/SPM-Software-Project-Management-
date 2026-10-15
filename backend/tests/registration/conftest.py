@@ -47,6 +47,7 @@ def my_registrations(db_session: Session, now: datetime) -> Callable[..., list[M
     """The registrations ``attendee_id`` sees for the query ``params``, at ``now``."""
 
     def _list(attendee_id: int | str, params: dict[str, str] | None = None) -> list[MyRegistration]:
-        return list_my_registrations(attendee_id, params or {}, session=db_session, now=now)
+        listing = list_my_registrations(attendee_id, params or {}, session=db_session, now=now)
+        return listing.registrations
 
     return _list

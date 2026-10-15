@@ -10,12 +10,15 @@ catalogue there; the two blueprints' paths do not overlap.
 
 from __future__ import annotations
 
+from typing import Any
+
 from flask import Blueprint, Response, g, jsonify, request
 
 from app.common.decorators import optional_auth, requires_role
 from app.modules.auth.permissions import Role
 from app.modules.registration.schemas import (
     CataloguePageSchema,
+    MyEventsWindow,
     MyRegistrationSchema,
     RegistrationSchema,
 )
@@ -26,6 +29,12 @@ from app.modules.registration.services import (
 )
 
 bp = Blueprint("registration", __name__, url_prefix="/api/events")
+
+#: What an attendee's empty list says, for each window (SCRUM-24 AC11, ADR-0044).
+NO_EVENTS_MESSAGES = {
+    MyEventsWindow.UPCOMING: "You have no upcoming events.",
+    MyEventsWindow.PAST: "You have no past events.",
+}
 
 _catalogue_page_schema = CataloguePageSchema()
 _registration_schema = RegistrationSchema()
@@ -58,6 +67,12 @@ def register_for_catalogue_event(event_id: int) -> tuple[Response, int]:
 @bp.get("/registrations")
 @requires_role(Role.ATTENDEE)
 def view_my_registrations() -> Response:
-    """List the caller's own upcoming or past registrations (SCRUM-52 AC5, ADR-0044)."""
-    rows = list_my_registrations(g.current_user_id, request.args.to_dict())
-    return jsonify({"registrations": _my_registration_schema.dump(rows)})
+    """List the caller's own upcoming or past registrations (SCRUM-52 AC5, ADR-0044).
+
+    An empty list says so (SCRUM-24 AC11).
+    """
+    listing = list_my_registrations(g.current_user_id, request.args.to_dict())
+    body: dict[str, Any] = {"registrations": _my_registration_schema.dump(listing.registrations)}
+    if not listing.registrations:
+        body["message"] = NO_EVENTS_MESSAGES[listing.when]
+    return jsonify(body)

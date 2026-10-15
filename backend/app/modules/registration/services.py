@@ -96,8 +96,17 @@ class MyRegistration:
     name: str
     starts_at: datetime
     ends_at: datetime
+    event_status: str
     status: RegistrationStatus
     registered_at: datetime
+
+
+@dataclass(frozen=True)
+class MyRegistrationList:
+    """The registrations in one of an attendee's windows, and which window it is."""
+
+    when: MyEventsWindow
+    registrations: list[MyRegistration]
 
 
 # --------------------------------------------------------------------------
@@ -353,7 +362,7 @@ def register_for_event(
 def _headings_by_id(
     registrations: Iterable[Registration], session: Session
 ) -> dict[int, EventHeading]:
-    """The name, start and end of each event the registrations are for, by event id."""
+    """The heading of each event the registrations are for, by event id."""
     event_ids = [registration.event_request_id for registration in registrations]
     headings = {}
     for heading in list_event_headings(event_ids, session=session):
@@ -387,7 +396,7 @@ def list_my_registrations(
     *,
     session: Session | None = None,
     now: datetime | None = None,
-) -> list[MyRegistration]:
+) -> MyRegistrationList:
     """List an attendee's upcoming or past registrations (SCRUM-52 AC5, SCRUM-24 AC7).
 
     ``when`` picks the events that haven't ended, soonest first (the default), or the
@@ -401,8 +410,8 @@ def list_my_registrations(
         now: The current instant, timezone-aware; defaults to the real clock.
 
     Returns:
-        One :class:`MyRegistration` per registration in that window, with its event's
-        name, start and end.
+        The window, and one :class:`MyRegistration` per registration in it, with its
+        event's name, times and status.
 
     Raises:
         ValidationError: 400 — ``when`` isn't ``upcoming`` or ``past``, or a parameter
@@ -425,8 +434,10 @@ def list_my_registrations(
                 name=heading.name,
                 starts_at=heading.starts_at,
                 ends_at=heading.ends_at,
+                event_status=heading.status,
                 status=registration.status,
                 registered_at=registration.registered_at,
             )
         )
-    return _in_window(rows, query["when"], now)
+    window = query["when"]
+    return MyRegistrationList(when=window, registrations=_in_window(rows, window, now))

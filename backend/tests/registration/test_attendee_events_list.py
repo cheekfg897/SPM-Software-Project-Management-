@@ -3,6 +3,7 @@
 ``list_my_registrations`` reads the query's ``when``. ``upcoming``, the default, lists
 the events that haven't ended, soonest first; ``past`` lists the ones that have, most
 recent first. An event has ended once now reaches its end. Ties go by the event's id.
+Each row carries the event's own status, so a cancelled event shows as cancelled.
 
 Runs against ``db_session`` at ``now``: Wednesday 14 October 2026, 12:00 in Singapore.
 Events are saved, and registered for, in an order that is neither the expected one nor
@@ -19,8 +20,9 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.common.errors import ValidationError
-from app.modules.events.models import EventRequest
+from app.modules.events.models import EventRequest, EventRequestStatus
 from app.modules.registration.models import Registration
+from app.modules.registration.schemas import MyEventsWindow
 from app.modules.registration.services import MyRegistration, list_my_registrations
 
 pytestmark = pytest.mark.scrum_24
@@ -122,9 +124,47 @@ def test_the_real_clock_decides_what_has_ended_when_no_time_is_given(
     make_registration(make_open_event(name="Long over", day=date(2000, 1, 1)), ATTENDEE)
     make_registration(make_open_event(name="Far off", day=date(2099, 1, 1)), ATTENDEE)
 
-    rows = list_my_registrations(ATTENDEE, {}, session=db_session)
+    listing = list_my_registrations(ATTENDEE, {}, session=db_session)
 
-    assert _names(rows) == ["Far off"]
+    assert _names(listing.registrations) == ["Far off"]
+
+
+@pytest.mark.parametrize(
+    ("params", "window"),
+    [({}, MyEventsWindow.UPCOMING), ({"when": "past"}, MyEventsWindow.PAST)],
+    ids=["default", "past"],
+)
+def test_the_list_says_which_window_it_holds(
+    now: datetime, db_session: Session, params: dict[str, str], window: MyEventsWindow
+) -> None:
+    listing = list_my_registrations(ATTENDEE, params, session=db_session, now=now)
+
+    assert listing.when is window
+
+
+# --------------------------------------------------------------------------
+# AC8 — the event's status
+# --------------------------------------------------------------------------
+
+
+def test_a_cancelled_event_stays_listed_with_its_status(
+    my_registrations: MyRegistrations,
+    make_open_event: MakeOpenEvent,
+    make_registration: MakeRegistration,
+) -> None:
+    going_ahead = make_open_event(name="Going ahead")
+    called_off = make_open_event(
+        name="Called off", day=date(2026, 10, 21), status=EventRequestStatus.CANCELLED
+    )
+    make_registration(going_ahead, ATTENDEE)
+    make_registration(called_off, ATTENDEE)
+
+    rows = my_registrations(ATTENDEE)
+
+    assert [(row.name, row.event_status) for row in rows] == [
+        ("Going ahead", "confirmed"),
+        ("Called off", "cancelled"),
+    ]
 
 
 # --------------------------------------------------------------------------
