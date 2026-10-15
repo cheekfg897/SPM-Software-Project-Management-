@@ -79,6 +79,13 @@ export const MOCK_ACCOUNTS = {
     full_name: 'Umar Hassan',
     organisation_id: null,
   },
+  /** An attendee who has registered for nothing, so their events are empty. */
+  freshAttendee: {
+    ...BASE_ACCOUNTS.attendee,
+    id: 8,
+    email: 'ben@example.com',
+    full_name: 'Ben Koh',
+  },
 } as const satisfies Record<string, MockAccount>
 
 const MOCK_TOKEN_PREFIX = 'mock-token-'
