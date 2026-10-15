@@ -32,7 +32,12 @@ from app.modules.events.services import (
     list_registrable_events,
 )
 from app.modules.registration.models import Registration, RegistrationStatus
-from app.modules.registration.schemas import CatalogueQuerySchema, CatalogueWindow
+from app.modules.registration.schemas import (
+    CatalogueQuerySchema,
+    CatalogueWindow,
+    MyEventsWindow,
+    MyRegistrationsQuerySchema,
+)
 
 ALREADY_REGISTERED_MESSAGE = "You are already registered for this event."
 EVENT_FULL_MESSAGE = "This event is full."
@@ -90,6 +95,7 @@ class MyRegistration:
     event_id: int
     name: str
     starts_at: datetime
+    ends_at: datetime
     status: RegistrationStatus
     registered_at: datetime
 
@@ -347,7 +353,7 @@ def register_for_event(
 def _headings_by_id(
     registrations: Iterable[Registration], session: Session
 ) -> dict[int, EventHeading]:
-    """The name and start of each event the registrations are for, by event id."""
+    """The name, start and end of each event the registrations are for, by event id."""
     event_ids = [registration.event_request_id for registration in registrations]
     headings = {}
     for heading in list_event_headings(event_ids, session=session):
@@ -355,26 +361,58 @@ def _headings_by_id(
     return headings
 
 
-def list_my_registrations(
-    attendee_id: int | str, *, session: Session | None = None
-) -> list[MyRegistration]:
-    """List an attendee's own registrations, newest first (SCRUM-52 AC5).
+def _by_start(row: MyRegistration) -> tuple[datetime, int]:
+    """Sort key: the event's start, then its id for events that start together."""
+    return (row.starts_at, row.event_id)
 
-    SCRUM-53 reads the same list to show each registration with its status.
+
+def _in_window(
+    rows: list[MyRegistration], window: MyEventsWindow, now: datetime
+) -> list[MyRegistration]:
+    """The rows in ``window``, in that window's order (ADR-0044).
+
+    An event has ended once ``now`` reaches its end, as the catalogue decides it.
+    Upcoming events come soonest first, past ones most recent first.
+    """
+    if window is MyEventsWindow.PAST:
+        ended = [row for row in rows if now >= row.ends_at]
+        return sorted(ended, key=_by_start, reverse=True)
+    not_ended = [row for row in rows if now < row.ends_at]
+    return sorted(not_ended, key=_by_start)
+
+
+def list_my_registrations(
+    attendee_id: int | str,
+    params: Mapping[str, Any],
+    *,
+    session: Session | None = None,
+    now: datetime | None = None,
+) -> list[MyRegistration]:
+    """List an attendee's upcoming or past registrations (SCRUM-52 AC5, SCRUM-24 AC7).
+
+    ``when`` picks the events that haven't ended, soonest first (the default), or the
+    ones that have, most recent first (ADR-0044). SCRUM-53 reads the same list to show
+    each registration with its status.
 
     Args:
         attendee_id: The caller's user id, taken from their token.
+        params: The query string: ``when``, optional.
         session: Database session; defaults to ``db.session``.
+        now: The current instant, timezone-aware; defaults to the real clock.
 
     Returns:
-        One :class:`MyRegistration` per registration, with its event's name and start.
+        One :class:`MyRegistration` per registration in that window, with its event's
+        name, start and end.
+
+    Raises:
+        ValidationError: 400 — ``when`` isn't ``upcoming`` or ``past``, or a parameter
+            is unknown (details per parameter).
     """
     sess = resolve_session(session)
-    stmt = (
-        select(Registration)
-        .where(Registration.attendee_id == int(attendee_id))
-        .order_by(Registration.registered_at.desc(), Registration.id.desc())
-    )
+    if now is None:
+        now = datetime.now(timezone.utc)
+    query = load_or_raise(MyRegistrationsQuerySchema(), params)
+    stmt = select(Registration).where(Registration.attendee_id == int(attendee_id))
     registrations = list(sess.scalars(stmt))
     headings = _headings_by_id(registrations, sess)
 
@@ -386,8 +424,9 @@ def list_my_registrations(
                 event_id=heading.id,
                 name=heading.name,
                 starts_at=heading.starts_at,
+                ends_at=heading.ends_at,
                 status=registration.status,
                 registered_at=registration.registered_at,
             )
         )
-    return rows
+    return _in_window(rows, query["when"], now)

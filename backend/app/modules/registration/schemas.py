@@ -1,8 +1,8 @@
 """Marshmallow schemas for the registration module.
 
-``CatalogueQuerySchema`` reads the catalogue's query string, which arrives as text;
-the others write the responses ADR-0032 describes. Output schemas mark every field
-``dump_only`` and show no internal user ids.
+``CatalogueQuerySchema`` and ``MyRegistrationsQuerySchema`` read query strings, which
+arrive as text; the others write the responses ADR-0032 and ADR-0044 describe. Output
+schemas mark every field ``dump_only`` and show no internal user ids.
 """
 
 from __future__ import annotations
@@ -118,11 +118,25 @@ class RegistrationSchema(Schema):
     registered_at = BusinessDateTime(dump_only=True)
 
 
+class MyEventsWindow(str, enum.Enum):
+    """Which of an attendee's events to list: not yet ended, or ended (ADR-0044)."""
+
+    UPCOMING = "upcoming"
+    PAST = "past"
+
+
+class MyRegistrationsQuerySchema(Schema):
+    """The attendee's list's query: ``when``, upcoming by default (ADR-0044)."""
+
+    when = fields.Enum(MyEventsWindow, by_value=True, load_default=MyEventsWindow.UPCOMING)
+
+
 class MyRegistrationSchema(Schema):
     """One of the attendee's own registrations, with the event it is for."""
 
     event_id = fields.Integer(dump_only=True)
     name = fields.String(dump_only=True)
     starts_at = BusinessDateTime(dump_only=True)
+    ends_at = BusinessDateTime(dump_only=True)
     status = fields.Enum(RegistrationStatus, by_value=True, dump_only=True)
     registered_at = BusinessDateTime(dump_only=True)

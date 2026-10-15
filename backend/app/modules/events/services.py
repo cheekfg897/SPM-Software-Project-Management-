@@ -3381,11 +3381,12 @@ class RegistrableEvent:
 
 @dataclass(frozen=True)
 class EventHeading:
-    """The name and start of any event, for a list that mentions it."""
+    """The name, start and end of any event, for a list that mentions it."""
 
     id: int
     name: str
     starts_at: datetime
+    ends_at: datetime
 
 
 def _is_open_for_registration() -> ColumnElement[bool]:
@@ -3497,7 +3498,7 @@ def get_registrable_event_for_update(
 def list_event_headings(
     event_ids: Iterable[int], *, session: Session | None = None
 ) -> list[EventHeading]:
-    """The name and start of each event in ``event_ids``, whatever its status.
+    """The name, start and end of each event in ``event_ids``, whatever its status.
 
     Args:
         event_ids: The events' ids; one that doesn't exist is left out.
@@ -3509,6 +3510,6 @@ def list_event_headings(
     sess = resolve_session(session)
     stmt = select(EventRequest).where(EventRequest.id.in_(list(event_ids)))
     return [
-        EventHeading(id=row.id, name=row.name, starts_at=_starts_at(row))
+        EventHeading(id=row.id, name=row.name, starts_at=_starts_at(row), ends_at=_ends_at(row))
         for row in sess.scalars(stmt)
     ]

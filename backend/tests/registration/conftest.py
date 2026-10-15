@@ -6,10 +6,12 @@ from collections.abc import Callable
 from datetime import datetime
 
 import pytest
+from sqlalchemy.orm import Session
 
 from app.modules.auth.permissions import ALL_ROLES, Role
 from app.modules.events.models import EventRequest
 from app.modules.registration.models import Registration, RegistrationStatus
+from app.modules.registration.services import MyRegistration, list_my_registrations
 
 #: Every role but Attendee, in a fixed order so test ids are stable.
 NON_ATTENDEE_ROLES = sorted(ALL_ROLES - {Role.ATTENDEE}, key=lambda role: role.value)
@@ -38,3 +40,13 @@ def make_registration(save: Callable[..., None], now: datetime) -> Callable[...,
         return registration
 
     return _make
+
+
+@pytest.fixture()
+def my_registrations(db_session: Session, now: datetime) -> Callable[..., list[MyRegistration]]:
+    """The registrations ``attendee_id`` sees for the query ``params``, at ``now``."""
+
+    def _list(attendee_id: int | str, params: dict[str, str] | None = None) -> list[MyRegistration]:
+        return list_my_registrations(attendee_id, params or {}, session=db_session, now=now)
+
+    return _list

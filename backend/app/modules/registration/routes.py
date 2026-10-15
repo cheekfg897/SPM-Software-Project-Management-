@@ -58,6 +58,6 @@ def register_for_catalogue_event(event_id: int) -> tuple[Response, int]:
 @bp.get("/registrations")
 @requires_role(Role.ATTENDEE)
 def view_my_registrations() -> Response:
-    """List the caller's own registrations, newest first (SCRUM-52 AC5)."""
-    rows = list_my_registrations(g.current_user_id)
+    """List the caller's own upcoming or past registrations (SCRUM-52 AC5, ADR-0044)."""
+    rows = list_my_registrations(g.current_user_id, request.args.to_dict())
     return jsonify({"registrations": _my_registration_schema.dump(rows)})
