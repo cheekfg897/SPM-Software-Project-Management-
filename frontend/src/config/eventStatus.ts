@@ -1,4 +1,7 @@
-/** An event request's status, as the backend names it (SCRUM-22, ADR-0012). */
+/**
+ * An event request's status, as the backend names it (SCRUM-22, ADR-0012). An Attendee's
+ * events carry the same values as `event_status` (ADR-0044).
+ */
 export const EVENT_REQUEST_STATUS = {
   DRAFT: 'draft',
   SUBMITTED: 'submitted',

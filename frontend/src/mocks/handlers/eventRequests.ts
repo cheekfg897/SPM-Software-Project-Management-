@@ -2,7 +2,7 @@ import { http, HttpResponse } from 'msw'
 import type { RequestHandler } from 'msw'
 
 import { ROLE } from '@/config/roles'
-import { EVENT_REQUEST_STATUS } from '@/features/eventRequests/constants'
+import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
 
 import { errorResponse, INVALID_TOKEN_MESSAGE, NOT_PERMITTED_MESSAGE } from '../responses'
 

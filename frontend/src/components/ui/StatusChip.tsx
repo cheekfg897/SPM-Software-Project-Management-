@@ -1,4 +1,4 @@
-import type { EventRequestStatus } from '../constants'
+import type { EventRequestStatus } from '@/config/eventStatus'
 
 interface ChipStyle {
   label: string
@@ -8,7 +8,8 @@ interface ChipStyle {
 
 /**
  * Every status's label and colour. Typed over every status, so one the backend adds later is a
- * type error here until it gets its own. "Answer needed" is the one asking the organiser to act.
+ * type error here until it gets its own. "Answer needed" is the one asking the organiser to act;
+ * an Attendee only ever sees confirmed, completed and cancelled (ADR-0044).
  */
 const CHIP_BY_STATUS: Record<EventRequestStatus, ChipStyle> = {
   draft: { label: 'Draft', tone: 'border-dashed border-line text-ink-faint' },
@@ -25,7 +26,7 @@ const CHIP_BY_STATUS: Record<EventRequestStatus, ChipStyle> = {
   rejected: { label: 'Rejected', tone: 'border-danger/30 bg-danger/10 text-danger' },
 }
 
-/** An event request's status as a small coloured label. */
+/** An event's status as a small coloured label, wherever an event is listed. */
 export function StatusChip({ status }: { status: EventRequestStatus }) {
   const { label, tone } = CHIP_BY_STATUS[status]
   return (
