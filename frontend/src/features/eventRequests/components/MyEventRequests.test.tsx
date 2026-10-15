@@ -30,6 +30,17 @@ async function rowFor(name: string): Promise<HTMLElement> {
   return row
 }
 
+describe('SCRUM-19 organiser event list: starting a request', () => {
+  it('offers a new event request from the list', async () => {
+    openHome()
+
+    expect(await screen.findByRole('link', { name: 'New event request' })).toHaveAttribute(
+      'href',
+      ROUTES.NEW_EVENT_REQUEST,
+    )
+  })
+})
+
 describe('SCRUM-7 organiser event list', () => {
   it('lists the requests in the order the backend sent them', async () => {
     openHome()

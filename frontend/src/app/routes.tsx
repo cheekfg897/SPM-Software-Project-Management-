@@ -16,6 +16,7 @@ import { CataloguePage } from '@/features/catalogue/pages/CataloguePage'
 import { MyEventsPage } from '@/features/catalogue/pages/MyEventsPage'
 import { EventEquipmentPage } from '@/features/equipment/pages/EventEquipmentPage'
 import { MyEventRequests } from '@/features/eventRequests/components/MyEventRequests'
+import { NewEventRequestPage } from '@/features/eventRequests/pages/NewEventRequestPage'
 import { LandingPage } from '@/features/landing/pages/LandingPage'
 import { NotificationsPage } from '@/features/notifications/pages/NotificationsPage'
 import { UnassignedQueuePage } from '@/features/lead/pages/UnassignedQueuePage'
@@ -53,6 +54,14 @@ export const appRoutes: RouteObject[] = [
             <OrganiserHomePage>
               <MyEventRequests />
             </OrganiserHomePage>
+          </RequireRole>
+        ),
+      },
+      {
+        path: ROUTES.NEW_EVENT_REQUEST,
+        element: (
+          <RequireRole allowedRoles={ORGANISER_ROLES} loginRoute={ROUTES.LOGIN}>
+            <NewEventRequestPage />
           </RequireRole>
         ),
       },
