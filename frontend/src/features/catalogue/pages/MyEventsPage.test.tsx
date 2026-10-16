@@ -168,6 +168,9 @@ describe('SCRUM-52 my events page: after registering', () => {
       await within(eventCard('Jazz by the Bay')).findByText("You're registered"),
     ).toBeInTheDocument()
     await router.navigate(ROUTES.MY_EVENTS)
+    // Wait for this page first: until it renders, the catalogue's own Jazz by the Bay card
+    // can still be on screen, and finding that one fails once it is removed.
+    await screen.findByRole('heading', { level: 1, name: 'My events' })
 
     expect(await screen.findByRole('heading', { name: 'Jazz by the Bay' })).toBeInTheDocument()
   })
