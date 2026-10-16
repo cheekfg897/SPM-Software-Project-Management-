@@ -3624,3 +3624,57 @@ def submit_for_safety_review(
     )
     sess.commit()
     return event_request
+
+
+# --------------------------------------------------------------------------
+# SCRUM-55 — the event facts behind an event's list of registrants
+# --------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class EventCapacity:
+    """An event's id and capacity, for the list of who registered (SCRUM-55 AC4).
+
+    ``capacity`` is ``None`` for an event that never had one set (SCRUM-69).
+    """
+
+    id: int
+    capacity: int | None
+
+
+def _events_the_viewer_runs(
+    viewer_id: int | str, viewer_role: Role, session: Session
+) -> ColumnElement[bool]:
+    """The events an organiser or a coordinator is responsible for (SCRUM-55 AC1, AC2).
+
+    An organiser's are their client organisation's (ADR-0020), a coordinator's those
+    assigned to them (ADR-0034).
+    """
+    if viewer_role is Role.EVENT_COORDINATOR:
+        return _assigned_to(viewer_id)
+    return _visible_to_organiser(viewer_id, session)
+
+
+def get_event_capacity_for_viewer(
+    viewer_id: int | str, reference: str, *, viewer_role: Role, session: Session | None = None
+) -> EventCapacity:
+    """The event's id and capacity, if the viewer is responsible for it (SCRUM-55).
+
+    An Event Organiser is responsible for their client organisation's events, an Event
+    Coordinator for those assigned to them. An event that isn't the viewer's gets the
+    same 404 as a reference that doesn't exist (ADR-0012).
+
+    Args:
+        viewer_id: The caller's user id, taken from their token.
+        reference: The ``EVR-…`` reference; case and surrounding spaces are ignored.
+        viewer_role: The caller's role: an organiser or a coordinator.
+        session: Database session; defaults to ``db.session``.
+
+    Raises:
+        NotFoundError: 404 — no such event, or none among the viewer's own.
+        OrganiserWithoutOrganisationError: 403 — the organiser has no organisation.
+    """
+    sess = resolve_session(session)
+    belongs_to = _events_the_viewer_runs(viewer_id, viewer_role, sess)
+    event_request = _event_request_by_reference(reference, sess, belongs_to=belongs_to)
+    return EventCapacity(id=event_request.id, capacity=event_request.registration_capacity)
