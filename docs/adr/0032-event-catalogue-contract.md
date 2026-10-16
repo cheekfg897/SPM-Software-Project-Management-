@@ -1,6 +1,6 @@
 # ADR-0032: The event catalogue API, and registering for an event
 
-- **Status:** Accepted. Proposed by the frontend on 2026-09-29; implemented by SCRUM-52 on 2026-10-14. The items marked *default to review* are the team's to confirm. The attendee's own list (`GET /api/events/registrations`) is extended by [ADR-0044](0044-attendee-events-list.md): upcoming and past, the event's status, and a message when empty.
+- **Status:** Accepted. Proposed by the frontend on 2026-09-29; implemented by SCRUM-52 on 2026-10-14. The items marked *default to review* are the team's to confirm. The attendee's own list (`GET /api/events/registrations`) is extended by [ADR-0044](0044-attendee-events-list.md): upcoming and past, the event's status, and a message when empty. Withdrawing is added by SCRUM-53 on 2026-10-16 (see *Withdrawing*).
 - **Date:** 2026-09-29
 - **Story:** SCRUM-52 Register for a confirmed event (with SCRUM-54 and SCRUM-69 for capacity)
 
@@ -133,6 +133,35 @@ An event that has since completed or been cancelled is still listed: it is the a
 record. SCRUM-53 adds `DELETE /api/events/catalogue/<id>/registrations` for withdrawing and a
 `withdrawn` status to this list, rather than a second list.
 
+### Withdrawing (SCRUM-53)
+`DELETE /api/events/catalogue/<id>/registrations` (Attendees only) withdraws the caller's own
+place and answers `200` with the registration, now `"status": "withdrawn"` and a
+`withdrawn_at`. The registration body, here and on registering, and each row of the attendee's
+list gain `withdrawn_at` (`null` while the place is held).
+
+- **Nothing is deleted.** The row keeps its status and when it was withdrawn (migration 0031).
+  Only `registered` rows count against the capacity, so the place is free at once (AC4).
+- **Registering again reuses the row.** The (event, attendee) pair stays unique, so a withdrawn
+  attendee who registers again has the same row set back to `registered`, with a new
+  `registered_at` and `withdrawn_at` cleared. It passes the same checks as a first
+  registration: the event must still be open, and a place must be free.
+- **Errors.** No registration for that event and caller: `404` (`Registration not found.`), which
+  is also what someone gets who names an event where only another attendee is registered: the
+  caller names an event, never someone else's row. Withdrawing twice: `409 already_withdrawn`.
+  After withdrawals close: `409 withdrawal_closed`, with
+  `details.withdrawal_closed_at` giving the moment in business time, so the screen can show it
+  (AC3).
+- **When withdrawals close: at the event's start.** *Default to review.* AC2 and AC3 name an
+  Organiser's withdrawal cut-off, but nothing in the system sets one and the customer has not
+  said what it is (the story is labelled *needs-customer-clarification*). Until they do, the
+  rule lives in one helper (`_withdrawal_closes_at`) that answers the event's start, so the
+  cut-off later changes only that helper. An event that has started cannot be withdrawn from,
+  so a completed one cannot either (AC5, ADR-0027).
+- **A withdrawn registration stays in its tab** of the attendee's list (ADR-0044), with its
+  status, as AC1 asks to see each registration with its current status. *Default to review.*
+- **The Organiser's registration list** (AC6) is SCRUM-55's. It is not merged yet; it should show
+  each row's `status`, `withdrawn` included.
+
 ### Capacity below the registrations (SCRUM-69 AC5)
 `PATCH /api/events/requests/<reference>/registration` (ADR-0043) now refuses a capacity lower
 than the number of places taken: `400 validation_error` with
@@ -165,10 +194,9 @@ enabled or not. Turning registration off with attendees registered is allowed.
 ## Open
 - **What "registration information" SCRUM-52 AC2 needs,** if the customer wants more than the
   account. Adding fields means a body schema and a form on the card.
-- **Withdrawal and the unique constraint (SCRUM-53).** One row per (event, attendee) means a
-  withdrawn attendee who registers again must have the same row's status set back to
-  `registered`, not a new row inserted. SCRUM-53 should take this into account when it adds
-  `withdrawn`.
+- **The Organiser's withdrawal cut-off (SCRUM-53 AC2, AC3).** Who sets it, where, and what it
+  is when they haven't. Waiting on the customer; withdrawals close at the event's start until
+  then (see *Withdrawing*).
 - **Lowering the capacity while someone registers.** Registering locks the event's row, but
   `update_registration_settings` does not, so a capacity lowered in the same instant as the last
   registration could leave one more registration than the new capacity. The catalogue shows
@@ -177,5 +205,6 @@ enabled or not. Turning registration off with attendees registered is allowed.
 
 ## Revisit when
 - SCRUM-42 and SCRUM-43 merge: fill in `venue`, and make `q` match the venue's name.
-- SCRUM-53 is picked up: it adds `DELETE`, the `withdrawn` status and the re-registration rule.
+- The customer defines the withdrawal cut-off: change `_withdrawal_closes_at` to read it.
+- SCRUM-55 merges: check its list shows `withdrawn` registrations (SCRUM-53 AC6).
 - The customer defines SCRUM-52's registration information.
