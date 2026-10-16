@@ -4,6 +4,7 @@ import { selectSessionUser, useAppSelector } from '@/store'
 
 import {
   eventRequestKeys,
+  fetchAssignedEventRequests,
   fetchEventRequest,
   fetchMyEventRequests,
   saveDraftEventRequest,
@@ -19,6 +20,16 @@ export function useMyEventRequests() {
   return useQuery({
     queryKey: eventRequestKeys.mine(viewer?.id ?? null),
     queryFn: fetchMyEventRequests,
+  })
+}
+
+/** The events assigned to the signed-in coordinator, read for whoever is signed in. */
+export function useAssignedEventRequests() {
+  const viewer = useAppSelector(selectSessionUser)
+  return useQuery({
+    /* v8 ignore next -- only a signed-in coordinator's Staff home asks for it (RequireRole), so a viewer is always there */
+    queryKey: eventRequestKeys.assigned(viewer?.id ?? null),
+    queryFn: fetchAssignedEventRequests,
   })
 }
 

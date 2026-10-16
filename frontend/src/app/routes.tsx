@@ -15,6 +15,7 @@ import { VenueRequestsPage } from '@/features/booking/pages/VenueRequestsPage'
 import { CataloguePage } from '@/features/catalogue/pages/CataloguePage'
 import { MyEventsPage } from '@/features/catalogue/pages/MyEventsPage'
 import { EventEquipmentPage } from '@/features/equipment/pages/EventEquipmentPage'
+import { AssignedEventRequests } from '@/features/eventRequests/components/AssignedEventRequests'
 import { MyEventRequests } from '@/features/eventRequests/components/MyEventRequests'
 import { EditDraftPage } from '@/features/eventRequests/pages/EditDraftPage'
 import { EventRequestPage } from '@/features/eventRequests/pages/EventRequestPage'
@@ -90,7 +91,9 @@ export const appRoutes: RouteObject[] = [
         path: ROUTES.STAFF_HOME,
         element: (
           <RequireRole allowedRoles={INTERNAL_ROLES} loginRoute={ROUTES.STAFF_LOGIN}>
-            <StaffHomePage />
+            <StaffHomePage>
+              <AssignedEventRequests />
+            </StaffHomePage>
           </RequireRole>
         ),
       },
