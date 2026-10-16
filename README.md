@@ -18,7 +18,7 @@ backend/            Flask application (see below)
     modules/organisations/ client organisations that Event Organisers belong to (SCRUM-66)
     modules/notifications/ in-app notifications about events (SCRUM-28), with an optional detail such as a decision's reason (SCRUM-31) or a clarification's question or answer (SCRUM-32)
     modules/venue/  venue catalogue (SCRUM-25), availability calendar (SCRUM-26), search (SCRUM-35), suitability check (SCRUM-36), setup/turnaround (SCRUM-67), blocks (SCRUM-34)
-    modules/equipment/ equipment catalogue (SCRUM-27)
+    modules/equipment/ equipment catalogue (SCRUM-27), availability and reservations (SCRUM-45, SCRUM-46), taking damaged equipment out of circulation (SCRUM-47)
     modules/registration/ the event catalogue, registering for a confirmed event, an attendee's own registrations (SCRUM-52) and who has registered for an event (SCRUM-55)
   tests/            unit tests (pytest), one marker per story
   migrations/       Alembic migrations (Flask-Migrate)
@@ -185,6 +185,9 @@ curl http://localhost:5000/api/auth/internal-only -H "Authorization: Bearer <tok
 | `GET  /api/equipment/events/<reference>/availability` | `event_coordinator` (events assigned to you; any other is `404`), `technical_support_staff` (any event but a draft) — for every equipment type, how many are free for the event's own period, what it asks for and any shortfall |
 | `POST /api/equipment/events/<reference>/reservations` | `technical_support_staff` — reserve up to what is free (`201`); more is `400` naming how many are free |
 | `GET  /api/equipment/events/<reference>/reservations` | `event_coordinator` (events assigned to you; any other is `404`), `technical_support_staff` (any event but a draft) — the equipment reserved for the event, oldest first, with who reserved it by name |
+| `POST /api/equipment/types/<id>/out-of-service` | `technical_support_staff` — take `quantity` units out of service as `damaged` or `under_maintenance` (`201`); they stop counting as free, reservations left short are flagged `needs_attention` and their coordinator is told; more than are in service is `400` |
+| `GET  /api/equipment/types/<id>/out-of-service` | `technical_support_staff` — the units still out of service, oldest first, with who recorded them and when |
+| `POST /api/equipment/out-of-service/<id>/return` | `technical_support_staff` — put those units back in service (`409` if already back); records who and when |
 | `GET  /api/notifications`      | any authenticated user — your notifications, newest first      |
 | `GET  /api/notifications/unread-count` | any authenticated user — how many of yours are unread   |
 | `POST /api/notifications/<id>/read` | any authenticated user — mark one of yours read (`404` if it isn't yours) |
