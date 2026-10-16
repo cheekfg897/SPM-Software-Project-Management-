@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import ColumnElement, func, select
@@ -21,8 +21,17 @@ from app.common.errors import AppError, ConflictError, NotFoundError, Validation
 from app.common.validation import load_or_raise
 from app.modules.auth.permissions import Role
 from app.modules.auth.services import get_user_full_names
-from app.modules.equipment.models import EquipmentOutOfService, EquipmentReservation, EquipmentType
-from app.modules.equipment.schemas import EditEquipmentTypeSchema, EquipmentUnitsSchema
+from app.modules.equipment.models import (
+    EquipmentOutOfService,
+    EquipmentReservation,
+    EquipmentType,
+    OutOfServiceReason,
+)
+from app.modules.equipment.schemas import (
+    EditEquipmentTypeSchema,
+    EquipmentUnitsSchema,
+    MarkOutOfServiceSchema,
+)
 
 # The module, not its names: events.services imports this module too (to check a
 # catalogue entry), and module-attribute access is what lets the two import each other.
@@ -69,6 +78,26 @@ class ReservationAsShown:
     #: The reserver's full name, or ``None`` if they no longer exist.
     reserved_by: str | None
     created_at: datetime
+    #: Units out of service have left the type short of what is reserved (SCRUM-47 AC3).
+    needs_attention: bool
+
+
+@dataclass(frozen=True)
+class OutOfServiceAsShown:
+    """Units of an equipment type out of service, as the API shows them (SCRUM-47).
+
+    People are shown by name, as reservations are; ``None`` once their account is gone
+    or, for the resolver, while the units are still out.
+    """
+
+    id: int
+    equipment_type_id: int
+    quantity: int
+    reason: OutOfServiceReason
+    recorded_by: str | None
+    recorded_at: datetime
+    resolved_by: str | None
+    resolved_at: datetime | None
 
 
 def _check_venue(venue_id: int | None, session: Session) -> None:
@@ -163,6 +192,7 @@ def _as_shown(
                 ends_at=reservation.ends_at,
                 reserved_by=names.get(reservation.reserved_by),
                 created_at=reservation.created_at,
+                needs_attention=reservation.needs_attention,
             )
         )
     return shown
@@ -177,6 +207,72 @@ def _commit_or_conflict(session: Session) -> None:
     except IntegrityError as exc:
         session.rollback()
         raise ConflictError("An equipment type with this name already exists.") from exc
+
+
+def _units_in_service(equipment_type: EquipmentType, session: Session) -> int:
+    """Units of the type held and not recorded as out of service."""
+    return equipment_type.total_quantity - _out_of_service_quantity(equipment_type.id, session)
+
+
+def _out_of_service_as_shown(
+    entries: list[EquipmentOutOfService], session: Session
+) -> list[OutOfServiceAsShown]:
+    """The entries with the names of who recorded and resolved them, in one query."""
+    user_ids = set()
+    for entry in entries:
+        user_ids.add(entry.recorded_by)
+        if entry.resolved_by is not None:
+            user_ids.add(entry.resolved_by)
+    names = get_user_full_names(user_ids, session=session)
+    shown = []
+    for entry in entries:
+        shown.append(
+            OutOfServiceAsShown(
+                id=entry.id,
+                equipment_type_id=entry.equipment_type_id,
+                quantity=entry.quantity,
+                reason=entry.reason,
+                recorded_by=names.get(entry.recorded_by),
+                recorded_at=entry.recorded_at,
+                resolved_by=names.get(entry.resolved_by),
+                resolved_at=entry.resolved_at,
+            )
+        )
+    return shown
+
+
+def _reflag_short_reservations(
+    equipment_type: EquipmentType, now: datetime, session: Session
+) -> list[int]:
+    """Flag the type's coming reservations that are short, and clear the rest (AC3).
+
+    A reservation is short when the units reserved for any event overlapping its
+    period, as availability counts them, are more than the units in service. Units out
+    of service belong to no period (ADR-0037), so which reservation "depends on" a
+    broken unit can't be told: every reservation in an over-committed period is
+    flagged. A reservation that has ended is left as it was. Nothing is deleted or
+    released (ADR-0046).
+
+    Returns:
+        The ids of the events with a reservation flagged by this call, each once, so
+        a coordinator is not told again about a reservation already flagged.
+    """
+    in_service = _units_in_service(equipment_type, session)
+    statement = select(EquipmentReservation).where(
+        EquipmentReservation.equipment_type_id == equipment_type.id,
+        EquipmentReservation.ends_at > now,
+    )
+    newly_flagged_event_ids = []
+    for reservation in list(session.scalars(statement)):
+        reserved = _reserved_quantity(
+            equipment_type.id, reservation.starts_at, reservation.ends_at, session
+        )
+        is_short = reserved > in_service
+        newly_flagged = is_short and not reservation.needs_attention
+        if newly_flagged and reservation.event_id not in newly_flagged_event_ids:
+            newly_flagged_event_ids.append(reservation.event_id)
+        reservation.needs_attention = is_short
+    return newly_flagged_event_ids
 
 
 def get_equipment_type(equipment_type_id: int, *, session: Session | None = None) -> EquipmentType:
@@ -450,3 +546,127 @@ def reserve_equipment(
     events_services.notify_coordinator_equipment_reserved(need.event_id, session=sess)
     (shown,) = _as_shown([reservation], sess)
     return shown
+
+
+def mark_out_of_service(
+    equipment_type_id: int,
+    payload: Mapping[str, Any] | None,
+    *,
+    recorded_by: int | str,
+    now: datetime | None = None,
+    session: Session | None = None,
+) -> OutOfServiceAsShown:
+    """Take units of an equipment type out of service (SCRUM-47 AC1, AC4).
+
+    The units stop counting as free (AC2). Reservations they leave short are flagged
+    and, after the commit, each affected event's coordinator is told once (AC3). The
+    type is locked first, so a reservation made at the same moment is either counted
+    before the change or flagged by it (ADR-0037 section 3).
+
+    Args:
+        equipment_type_id: The equipment type, from the URL.
+        payload: Decoded JSON body: ``quantity`` and ``reason``.
+        recorded_by: The caller's user id, taken from their token (a string there).
+        now: When the change is made; defaults to the current time.
+        session: Database session; defaults to ``db.session``.
+
+    Returns:
+        The saved entry, as the API shows it.
+
+    Raises:
+        ValidationError: 400 — invalid fields, or more units than are in service.
+        NotFoundError: 404 — no such equipment type.
+    """
+    data = load_or_raise(MarkOutOfServiceSchema(), payload)
+    sess = resolve_session(session)
+    if now is None:
+        now = datetime.now(timezone.utc)
+    # A 404 for an unknown type; the locking read would call it a 400 on a body field.
+    get_equipment_type(equipment_type_id, session=sess)
+    equipment_type = _locked_equipment_type(equipment_type_id, sess)
+
+    in_service = _units_in_service(equipment_type, sess)
+    if data["quantity"] > in_service:
+        message = f"Only {in_service} units are in service."
+        raise ValidationError(message, details={"quantity": [message]})
+
+    entry = EquipmentOutOfService(
+        equipment_type_id=equipment_type.id,
+        quantity=data["quantity"],
+        reason=data["reason"],
+        recorded_by=int(recorded_by),
+        recorded_at=now,
+    )
+    sess.add(entry)
+    flagged_event_ids = _reflag_short_reservations(equipment_type, now, sess)
+    sess.commit()
+    # After the commit (ADR-0015): losing a notice must not lose the change.
+    events_services.notify_coordinators_equipment_short(flagged_event_ids, session=sess)
+    (shown,) = _out_of_service_as_shown([entry], sess)
+    return shown
+
+
+def return_to_service(
+    entry_id: int,
+    *,
+    resolved_by: int | str,
+    now: datetime | None = None,
+    session: Session | None = None,
+) -> OutOfServiceAsShown:
+    """Put the units of an out-of-service entry back, so they count as free (SCRUM-47).
+
+    Reservations that are no longer short lose their flag. Nobody is told: a flag
+    going away is not news the coordinator has to act on.
+
+    Args:
+        entry_id: The out-of-service entry, from the URL.
+        resolved_by: The caller's user id, taken from their token (a string there).
+        now: When the units are back; defaults to the current time.
+        session: Database session; defaults to ``db.session``.
+
+    Returns:
+        The updated entry, as the API shows it.
+
+    Raises:
+        NotFoundError: 404 — no such entry.
+        ConflictError: 409 — the units are already back in service.
+    """
+    sess = resolve_session(session)
+    if now is None:
+        now = datetime.now(timezone.utc)
+    entry = sess.get(EquipmentOutOfService, entry_id)
+    if entry is None:
+        raise NotFoundError("Out-of-service entry not found.")
+    equipment_type = _locked_equipment_type(entry.equipment_type_id, sess)
+    # Another request may have returned the units while this one waited for the lock.
+    sess.refresh(entry)
+    if entry.resolved_at is not None:
+        raise ConflictError("These units are already back in service.")
+
+    entry.resolved_by = int(resolved_by)
+    entry.resolved_at = now
+    _reflag_short_reservations(equipment_type, now, sess)
+    sess.commit()
+    (shown,) = _out_of_service_as_shown([entry], sess)
+    return shown
+
+
+def list_out_of_service(
+    equipment_type_id: int, *, session: Session | None = None
+) -> list[OutOfServiceAsShown]:
+    """The units of the type still out of service, oldest first (SCRUM-47 AC1).
+
+    Raises:
+        NotFoundError: 404 — no such equipment type.
+    """
+    sess = resolve_session(session)
+    get_equipment_type(equipment_type_id, session=sess)
+    statement = (
+        select(EquipmentOutOfService)
+        .where(
+            EquipmentOutOfService.equipment_type_id == equipment_type_id,
+            EquipmentOutOfService.resolved_at.is_(None),
+        )
+        .order_by(EquipmentOutOfService.recorded_at, EquipmentOutOfService.id)
+    )
+    return _out_of_service_as_shown(list(sess.scalars(statement)), sess)

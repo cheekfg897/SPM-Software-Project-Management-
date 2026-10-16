@@ -20,6 +20,7 @@ from app.modules.equipment.schemas import (
     EquipmentAvailabilitySchema,
     EquipmentReservationSchema,
     EquipmentTypeSchema,
+    OutOfServiceSchema,
 )
 
 bp = Blueprint("equipment", __name__, url_prefix="/api/equipment")
@@ -31,6 +32,7 @@ _EQUIPMENT_READERS = (Role.EVENT_COORDINATOR, Role.TECHNICAL_SUPPORT_STAFF)
 _equipment_type_schema = EquipmentTypeSchema()
 _availability_schema = EquipmentAvailabilitySchema()
 _reservation_schema = EquipmentReservationSchema()
+_out_of_service_schema = OutOfServiceSchema()
 
 
 @bp.post("/types")
@@ -102,3 +104,29 @@ def list_event_reservations(reference: str) -> tuple[Response, int]:
         g.current_user_id, reference, viewer_role=Role(g.current_user_role)
     )
     return jsonify(_reservation_schema.dump(reservations, many=True)), 200
+
+
+@bp.post("/types/<int:equipment_type_id>/out-of-service")
+@requires_role(Role.TECHNICAL_SUPPORT_STAFF)
+def mark_out_of_service(equipment_type_id: int) -> tuple[Response, int]:
+    """Take units out of service as damaged or under maintenance (SCRUM-47 AC1)."""
+    entry = services.mark_out_of_service(
+        equipment_type_id, request.get_json(silent=True), recorded_by=g.current_user_id
+    )
+    return jsonify(_out_of_service_schema.dump(entry)), 201
+
+
+@bp.get("/types/<int:equipment_type_id>/out-of-service")
+@requires_role(Role.TECHNICAL_SUPPORT_STAFF)
+def list_out_of_service(equipment_type_id: int) -> tuple[Response, int]:
+    """The units of the type still out of service, oldest first (SCRUM-47 AC1)."""
+    entries = services.list_out_of_service(equipment_type_id)
+    return jsonify(_out_of_service_schema.dump(entries, many=True)), 200
+
+
+@bp.post("/out-of-service/<int:entry_id>/return")
+@requires_role(Role.TECHNICAL_SUPPORT_STAFF)
+def return_to_service(entry_id: int) -> tuple[Response, int]:
+    """Put units back in service so they count as available again (SCRUM-47 AC1)."""
+    entry = services.return_to_service(entry_id, resolved_by=g.current_user_id)
+    return jsonify(_out_of_service_schema.dump(entry)), 200

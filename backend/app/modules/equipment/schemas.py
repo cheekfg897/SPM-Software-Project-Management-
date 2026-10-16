@@ -21,7 +21,11 @@ from marshmallow import (
 
 from app.common.fields import BusinessDateTime, PositiveId, PositiveQuantity, WholeNumber
 from app.common.validation import not_blank
-from app.modules.equipment.models import NAME_MAX_LENGTH, STORE_NAME_MAX_LENGTH
+from app.modules.equipment.models import (
+    NAME_MAX_LENGTH,
+    STORE_NAME_MAX_LENGTH,
+    OutOfServiceReason,
+)
 
 #: ADR-0014: an equipment type is kept at exactly one venue or store.
 NO_LOCATION_MESSAGE = "Either venue_id or store_name is required."
@@ -137,3 +141,32 @@ class EquipmentReservationSchema(Schema):
     ends_at = BusinessDateTime(dump_only=True)
     reserved_by = fields.String(dump_only=True, allow_none=True)
     created_at = BusinessDateTime(dump_only=True)
+    #: True while units out of service leave the reservation short (SCRUM-47 AC3).
+    needs_attention = fields.Boolean(dump_only=True)
+
+
+class MarkOutOfServiceSchema(Schema):
+    """Units of an equipment type to take out of service, and why (SCRUM-47 AC1).
+
+    The type comes from the URL and the user and time from the request, so none is sent.
+    """
+
+    quantity = PositiveQuantity(required=True)
+    reason = fields.Enum(OutOfServiceReason, by_value=True, required=True)
+
+
+class OutOfServiceSchema(Schema):
+    """Units out of service as the API shows them (SCRUM-47 AC4), in business time.
+
+    ``recorded_by`` and ``resolved_by`` are full names, never ids, as on a
+    reservation.
+    """
+
+    id = fields.Integer(dump_only=True)
+    equipment_type_id = fields.Integer(dump_only=True)
+    quantity = fields.Integer(dump_only=True)
+    reason = fields.Enum(OutOfServiceReason, by_value=True, dump_only=True)
+    recorded_by = fields.String(dump_only=True, allow_none=True)
+    recorded_at = BusinessDateTime(dump_only=True)
+    resolved_by = fields.String(dump_only=True, allow_none=True)
+    resolved_at = BusinessDateTime(dump_only=True, allow_none=True)

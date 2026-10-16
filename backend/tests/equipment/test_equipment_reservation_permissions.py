@@ -91,6 +91,7 @@ SHOWN_RESERVATION = services.ReservationAsShown(
     ends_at=datetime(2026, 10, 15, 9, 0, tzinfo=timezone.utc),
     reserved_by="Alice Example",
     created_at=datetime(2026, 10, 1, 8, 0, tzinfo=timezone.utc),
+    needs_attention=False,
 )
 RESERVATION_JSON = {
     "id": 12,
@@ -101,6 +102,7 @@ RESERVATION_JSON = {
     "ends_at": "2026-10-15T17:00:00+08:00",
     "reserved_by": "Alice Example",
     "created_at": "2026-10-01T16:00:00+08:00",
+    "needs_attention": False,
 }
 AVAILABILITY = services.EquipmentAvailability(
     equipment_type_id=2,

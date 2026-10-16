@@ -2536,6 +2536,36 @@ def notify_coordinator_equipment_reserved(event_id: int, *, session: Session | N
     _notify_assigned_coordinator(event_request, NotificationKind.EQUIPMENT_RESERVED, sess)
 
 
+EQUIPMENT_SHORT_DETAIL = (
+    "Equipment reserved for this event is no longer all available: "
+    "some units were taken out of service."
+)
+
+
+def notify_coordinators_equipment_short(
+    event_ids: Iterable[int], *, session: Session | None = None
+) -> None:
+    """Tell each event's assigned coordinator its reserved equipment is now short.
+
+    For the equipment module (SCRUM-47 AC3, ADR-0046), after the change's own commit
+    (ADR-0015). It reuses the significant-change kind: the event's arrangements need
+    another look. Each coordinator hears once per event, with the reason as the detail.
+
+    Args:
+        event_ids: The ids of the events whose reservations were left short.
+        session: Database session; defaults to ``db.session``.
+    """
+    sess = resolve_session(session)
+    for event_id in event_ids:
+        event_request = sess.get(EventRequest, event_id)
+        _notify_assigned_coordinator(
+            event_request,
+            NotificationKind.SIGNIFICANT_CHANGE,
+            sess,
+            detail=EQUIPMENT_SHORT_DETAIL,
+        )
+
+
 # --------------------------------------------------------------------------
 # SCRUM-68 — mark an event as completed after it has taken place
 # --------------------------------------------------------------------------
