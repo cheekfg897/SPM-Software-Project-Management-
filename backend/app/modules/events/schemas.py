@@ -684,6 +684,51 @@ class EquipmentAwaitingActionSchema(Schema):
     days_remaining = fields.Integer(dump_only=True)
 
 
+#: What the Safety Officer's list shows of the event itself: the equipment list's
+#: name, date and times, plus the attendance and accessibility needs they review
+#: (SCRUM-97 AC6, ADR-0047).
+SAFETY_REVIEW_EVENT_FIELDS = (*EQUIPMENT_EVENT_FIELDS, "expected_attendance", "accessibility_needs")
+
+
+class SafetyReviewVenueSchema(Schema):
+    """A booked venue as the Safety Officer sees it (SCRUM-97 AC6).
+
+    Dumped from the venue module's ``ArrangedVenue``. Times are in business time
+    (ADR-0009).
+    """
+
+    name = fields.String(dump_only=True)
+    capacity = fields.Integer(dump_only=True)
+    layouts = fields.List(fields.String(), dump_only=True)
+    facilities = fields.List(fields.String(), dump_only=True)
+    accessibility_features = fields.List(fields.String(), dump_only=True)
+    starts_at = BusinessDateTime(dump_only=True)
+    ends_at = BusinessDateTime(dump_only=True)
+
+
+class SafetyReviewEquipmentSchema(Schema):
+    """An equipment request and Technical Support's outcome, for the Safety Officer."""
+
+    equipment_type_name = fields.String(dump_only=True)
+    quantity = fields.Integer(dump_only=True)
+    notes = fields.String(dump_only=True, allow_none=True)
+    status = fields.Enum(EquipmentLineStatus, by_value=True, dump_only=True)
+    provided_quantity = fields.Integer(dump_only=True, allow_none=True)
+    outcome_note = fields.String(dump_only=True, allow_none=True)
+
+
+class EventAwaitingSafetyReviewSchema(Schema):
+    """One event in Safety Review with its venues and equipment (SCRUM-97 AC5, AC6)."""
+
+    event = fields.Nested(
+        EventRequestSchema(only=SAFETY_REVIEW_EVENT_FIELDS),
+        attribute="event_request",
+        dump_only=True,
+    )
+    venues = fields.Nested(SafetyReviewVenueSchema, many=True, dump_only=True)
+    equipment = fields.Nested(SafetyReviewEquipmentSchema, many=True, dump_only=True)
+
+
 class EventRequestDetailSchema(EventRequestSchema):
     """An event request as its own record shows it: the summary and its equipment lines.
 

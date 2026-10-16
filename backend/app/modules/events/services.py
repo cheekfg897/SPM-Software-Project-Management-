@@ -19,7 +19,7 @@ import secrets
 from collections.abc import Callable, Collection, Iterable, Mapping
 from dataclasses import asdict, dataclass, replace
 from datetime import date, datetime, time, timezone
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from marshmallow import Schema
 from sqlalchemy import Row, and_, or_, select
@@ -65,6 +65,10 @@ from app.modules.events.schemas import (
     UpdateRegistrationSettingsSchema,
 )
 from app.modules.notifications.services import EventSummary, NotificationKind, notify_users
+
+if TYPE_CHECKING:
+    # Type only: the venue module imports this one, so it is imported where it is used.
+    from app.modules.venue.services import ArrangedVenue
 
 logger = logging.getLogger("connectsphere.events")
 
@@ -3636,6 +3640,97 @@ def submit_for_safety_review(
     sess.commit()
     _notify_safety_officers(event_request, sess)
     return event_request
+
+
+# --------------------------------------------------------------------------
+# SCRUM-97 part B — the Safety Officer's list of events awaiting review
+# --------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class SafetyReviewEquipment:
+    """One equipment request with its outcome, as the Safety Officer sees it (AC6).
+
+    No ids: the equipment type is shown by name. ``status`` and ``provided_quantity``
+    are Technical Support's outcome, which exists for every request of an event in
+    Safety Review (ADR-0047).
+    """
+
+    equipment_type_name: str
+    quantity: int
+    notes: str | None
+    status: EquipmentLineStatus
+    provided_quantity: int | None
+    outcome_note: str | None
+
+
+@dataclass(frozen=True)
+class EventAwaitingSafetyReview:
+    """An event in Safety Review with the venues and equipment under review (AC6).
+
+    The event's own fields carry its date, times, expected attendance and
+    accessibility needs.
+    """
+
+    event_request: EventRequest
+    venues: list[ArrangedVenue]
+    equipment: list[SafetyReviewEquipment]
+
+
+def _equipment_for_safety_review(
+    event_request: EventRequest, session: Session
+) -> list[SafetyReviewEquipment]:
+    """The event's equipment requests in the order added, each with its type's name."""
+    type_names = {}
+    for equipment_type in equipment_services.list_equipment_types(session=session):
+        type_names[equipment_type.id] = equipment_type.name
+
+    equipment = []
+    for line in event_request.equipment_lines:
+        equipment.append(
+            SafetyReviewEquipment(
+                equipment_type_name=type_names[line.equipment_type_id],
+                quantity=line.quantity,
+                notes=line.notes,
+                status=line.status,
+                provided_quantity=line.provided_quantity,
+                outcome_note=line.outcome_note,
+            )
+        )
+    return equipment
+
+
+def list_events_awaiting_safety_review(
+    *, session: Session | None = None
+) -> list[EventAwaitingSafetyReview]:
+    """The events in Safety Review, soonest first (SCRUM-97 AC5, AC6, ADR-0047).
+
+    Ordered by the event's date, then start time, then as submitted. One list for all
+    Safety Officers. Each event comes with its active venue arrangements and its
+    equipment requests with their outcomes; the venues are read through the venue
+    module's service.
+
+    Args:
+        session: Database session; defaults to ``db.session``.
+    """
+    from app.modules.venue import services as venue_services  # circular at import time
+
+    sess = resolve_session(session)
+    stmt = (
+        select(EventRequest)
+        .where(EventRequest.status == EventRequestStatus.SAFETY_REVIEW)
+        .order_by(EventRequest.proposed_date, EventRequest.start_time, EventRequest.id)
+    )
+    awaiting = []
+    for event_request in sess.scalars(stmt):
+        awaiting.append(
+            EventAwaitingSafetyReview(
+                event_request=event_request,
+                venues=venue_services.list_arranged_venues(event_request.id, session=sess),
+                equipment=_equipment_for_safety_review(event_request, sess),
+            )
+        )
+    return awaiting
 
 
 # --------------------------------------------------------------------------
