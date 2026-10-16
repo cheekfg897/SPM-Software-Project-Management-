@@ -2,17 +2,13 @@ import { http, HttpResponse } from 'msw'
 import type { RequestHandler } from 'msw'
 
 import { ROLE } from '@/config/roles'
+import type { Role } from '@/config/roles'
 import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
 import type { EventRequest } from '@/features/eventRequests/api'
 import { isRecord } from '@/lib/isRecord'
 
 import type { MockAccount } from '../fixtures/accounts'
-import {
-  errorResponse,
-  INVALID_TOKEN_MESSAGE,
-  NOT_PERMITTED_MESSAGE,
-  validationError,
-} from '../responses'
+import { errorResponse, notAllowed, notAuthenticated, validationError } from '../responses'
 
 import { accountForRequest } from './auth'
 import {
@@ -22,20 +18,23 @@ import {
   submissionErrors,
   withSeconds,
 } from './eventRequestRules'
-import { MOCK_EVENT_REQUESTS } from './eventRequestFixtures'
+import { MOCK_EVENT_REQUESTS, NOTHING_RECORDED } from './eventRequestFixtures'
 import type { MockEventRequest } from './eventRequestFixtures'
 
 /**
- * An Event Organiser's event requests: the list (SCRUM-7, SCRUM-24, ADR-0020), submitting one
- * (SCRUM-19), saving, changing and submitting a draft (SCRUM-20, ADR-0024), and opening one.
- * Who sees what, the order, and every check are decided here as the backend decides them,
- * never in the UI.
+ * Event requests: an organiser's list (SCRUM-7, SCRUM-24, ADR-0020), submitting one
+ * (SCRUM-19), saving, changing and submitting a draft (SCRUM-20, ADR-0024), a coordinator's
+ * list of the events assigned to them, and opening one's record as either (SCRUM-24 AC2, AC9,
+ * AC10; ADR-0046). Who sees what, the order, and every check are decided here as the backend
+ * decides them, never in the UI.
  */
 
 const MY_REQUESTS_PATH = '/api/events/requests'
 const DRAFTS_PATH = `${MY_REQUESTS_PATH}/drafts`
+const ASSIGNED_PATH = `${MY_REQUESTS_PATH}/assigned`
 const NO_ORGANISATION_MESSAGE = 'Your account is not linked to a client organisation yet.'
 const NO_REQUESTS_MESSAGE = 'Your organisation has no event requests yet.'
+const NO_ASSIGNED_MESSAGE = 'No event requests are assigned to you yet.'
 const NOT_FOUND_MESSAGE = 'Event request not found.'
 const NOT_A_DRAFT_MESSAGE = 'Only a draft event request can be changed or submitted this way.'
 /** Just after the newest fixture, so a request made in the mock lists first, as it would. */
@@ -67,15 +66,25 @@ function newestFirst(a: MockEventRequest, b: MockEventRequest): number {
   return (b.request.created_at ?? '').localeCompare(a.request.created_at ?? '')
 }
 
-/** The caller, if they may work on their organisation's requests; otherwise the refusal. */
-function organiserOrRefusal(request: Request) {
+/** The caller, if they hold one of `roles`; otherwise the refusal, as the decorators give it. */
+function callerOrRefusal(request: Request, roles: readonly Role[]) {
   const account = accountForRequest(request)
   if (account === undefined) {
-    return { refusal: errorResponse(401, 'authentication_error', INVALID_TOKEN_MESSAGE) }
+    return { refusal: notAuthenticated() }
   }
-  if (account.role !== ROLE.EVENT_ORGANISER) {
-    return { refusal: errorResponse(403, 'authorization_error', NOT_PERMITTED_MESSAGE) }
+  if (!roles.includes(account.role)) {
+    return { refusal: notAllowed() }
   }
+  return { caller: account }
+}
+
+/** The caller, if they may work on their organisation's requests; otherwise the refusal. */
+function organiserOrRefusal(request: Request) {
+  const found = callerOrRefusal(request, [ROLE.EVENT_ORGANISER])
+  if ('refusal' in found) {
+    return { refusal: found.refusal }
+  }
+  const account = found.caller
   if (account.organisation_id === null) {
     return {
       refusal: errorResponse(403, 'organiser_without_organisation', NO_ORGANISATION_MESSAGE),
@@ -129,7 +138,13 @@ function make(organiser: MockAccount, organisationId: number, details: Partial<E
     created_at: new Date(FIRST_NEW_CREATED_AT + madeCount * 60_000).toISOString(),
     ...details,
   }
-  storedRequests.push({ organiserId: organiser.id, organisationId, request })
+  storedRequests.push({
+    organiserId: organiser.id,
+    organisationId,
+    coordinator: null,
+    request,
+    record: NOTHING_RECORDED,
+  })
   return request
 }
 
@@ -150,14 +165,19 @@ function savedDetails(request: EventRequest): Record<string, unknown> {
   return details
 }
 
+/** One of the organisation's requests the organiser may see (SCRUM-7, SCRUM-20 AC4). */
+function visibleRequest(organiserId: number, organisationId: number, reference: unknown) {
+  return storedRequests
+    .filter(visibleTo(organiserId, organisationId))
+    .find((stored) => stored.request.reference === reference)
+}
+
 /**
  * One of the organiser's own drafts, or the backend's refusal: not found when it isn't in
  * their organisation or is a colleague's draft, and not a draft once it has been submitted.
  */
 function ownDraftOrRefusal(organiser: MockAccount, organisationId: number, reference: unknown) {
-  const stored = storedRequests
-    .filter(visibleTo(organiser.id, organisationId))
-    .find((candidate) => candidate.request.reference === reference)
+  const stored = visibleRequest(organiser.id, organisationId, reference)
   if (stored === undefined) {
     return { refusal: errorResponse(404, 'not_found', NOT_FOUND_MESSAGE) }
   }
@@ -165,6 +185,21 @@ function ownDraftOrRefusal(organiser: MockAccount, organisationId: number, refer
     return { refusal: errorResponse(409, 'request_not_draft', NOT_A_DRAFT_MESSAGE) }
   }
   return { draft: stored.request }
+}
+
+/** A request's record as the backend shows it: the coordinator by name and email, no ids. */
+function recordOf(stored: MockEventRequest) {
+  const { coordinator } = stored
+  const contact =
+    coordinator === null ? null : { full_name: coordinator.full_name, email: coordinator.email }
+  return { ...stored.request, ...stored.record, coordinator: contact, equipment_lines: [] }
+}
+
+/** One of the coordinator's own assigned requests; no other, by any link (SCRUM-24 AC10). */
+function assignedRequest(coordinatorId: number, reference: unknown) {
+  return storedRequests.find(
+    (stored) => stored.request.reference === reference && stored.coordinator?.id === coordinatorId,
+  )
 }
 
 export const eventRequestHandlers: RequestHandler[] = [
@@ -250,23 +285,45 @@ export const eventRequestHandlers: RequestHandler[] = [
     return HttpResponse.json(found.draft)
   }),
 
+  http.get(ASSIGNED_PATH, ({ request }) => {
+    const found = callerOrRefusal(request, [ROLE.EVENT_COORDINATOR])
+    if ('refusal' in found) {
+      return found.refusal
+    }
+
+    const assigned = storedRequests.filter((stored) => stored.coordinator?.id === found.caller.id)
+    const listed = [...assigned].sort(newestFirst).map((stored) => stored.request)
+    if (listed.length === 0) {
+      return HttpResponse.json({ event_requests: [], message: NO_ASSIGNED_MESSAGE })
+    }
+    return HttpResponse.json({ event_requests: listed })
+  }),
+
   http.get(`${MY_REQUESTS_PATH}/:reference`, ({ request, params }) => {
     // The backend matches a fixed path such as /unassigned before a reference, so the mock
     // lets anything that isn't a reference through to that path's own handler.
     if (typeof params.reference !== 'string' || !params.reference.startsWith('EVR-')) {
       return undefined
     }
-    const caller = organiserOrRefusal(request)
-    if ('refusal' in caller) {
-      return caller.refusal
+    const found = callerOrRefusal(request, [ROLE.EVENT_ORGANISER, ROLE.EVENT_COORDINATOR])
+    if ('refusal' in found) {
+      return found.refusal
     }
 
-    const stored = storedRequests
-      .filter(visibleTo(caller.organiser.id, caller.organisationId))
-      .find((candidate) => candidate.request.reference === params.reference)
+    // Anything they may not open is "not found", so nobody learns it exists (ADR-0012).
+    let stored: MockEventRequest | undefined
+    if (found.caller.role === ROLE.EVENT_COORDINATOR) {
+      stored = assignedRequest(found.caller.id, params.reference)
+    } else {
+      const organiser = organiserOrRefusal(request)
+      if ('refusal' in organiser) {
+        return organiser.refusal
+      }
+      stored = visibleRequest(organiser.organiser.id, organiser.organisationId, params.reference)
+    }
     if (stored === undefined) {
       return errorResponse(404, 'not_found', NOT_FOUND_MESSAGE)
     }
-    return HttpResponse.json(stored.request)
+    return HttpResponse.json(recordOf(stored))
   }),
 ]
