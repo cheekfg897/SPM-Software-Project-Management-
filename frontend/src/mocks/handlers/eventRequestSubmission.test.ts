@@ -7,6 +7,7 @@ import {
   updateDraftEventRequest,
 } from '@/features/eventRequests/api'
 import type { EventRequestDetails } from '@/features/eventRequests/api'
+import { refusal } from '@/test/refusal'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
 
 import { MOCK_ACCOUNTS, mockTokenFor } from '../fixtures/accounts'
@@ -46,11 +47,6 @@ const COMPLETE: EventRequestDetails = {
 
 function signInAs(account: MockAccount) {
   sendRequestsAs(mockTokenFor(account))
-}
-
-/** The ApiError a call failed with, or the value it resolved to if it didn't fail. */
-function refusal(call: Promise<unknown>): Promise<unknown> {
-  return call.catch((caught: unknown) => caught)
 }
 
 describe('SCRUM-19 mock: submitting a new request', () => {
