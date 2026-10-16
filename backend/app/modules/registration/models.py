@@ -17,13 +17,14 @@ from app.extensions import db
 
 
 class RegistrationStatus(str, enum.Enum):
-    """Where an Attendee's place stands.
+    """Where an Attendee's place stands (ADR-0032).
 
-    Only ``REGISTERED`` is written so far; SCRUM-53 adds ``withdrawn`` with an
-    ``ALTER TYPE ... ADD VALUE`` migration (ADR-0032).
+    Only ``REGISTERED`` places count against the event's capacity. A withdrawal keeps
+    the row (SCRUM-53), and registering again sets the same row back.
     """
 
     REGISTERED = "registered"
+    WITHDRAWN = "withdrawn"
 
 
 #: Name of the unique constraint on (event, attendee). The service relies on it to turn
@@ -59,3 +60,5 @@ class Registration(db.Model):  # type: ignore[name-defined]
     )
     #: Set by the service in UTC (ADR-0009), so tests can pin it.
     registered_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)
+    #: When the Attendee withdrew (SCRUM-53); empty while they hold the place.
+    withdrawn_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
