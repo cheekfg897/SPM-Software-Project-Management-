@@ -3575,6 +3575,17 @@ def _equipment_gaps(event_id: int, session: Session) -> list[str]:
     return gaps
 
 
+def _notify_safety_officers(event_request: EventRequest, session: Session) -> None:
+    """Tell every Safety Officer the event has entered Safety Review (SCRUM-97 AC4).
+
+    Called once the move is saved. Each Safety Officer hears it once, as a single write.
+    """
+    officer_ids = list_user_ids_with_role(Role.SAFETY_OFFICER, session=session)
+    _raise_notifications(
+        officer_ids, event_request, NotificationKind.SAFETY_REVIEW_REQUESTED, session
+    )
+
+
 def submit_for_safety_review(
     coordinator_id: int | str, reference: str, *, session: Session | None = None
 ) -> EventRequest:
@@ -3623,6 +3634,7 @@ def submit_for_safety_review(
         session=sess,
     )
     sess.commit()
+    _notify_safety_officers(event_request, sess)
     return event_request
 
 
