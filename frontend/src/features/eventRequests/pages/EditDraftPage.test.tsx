@@ -141,6 +141,21 @@ describe('SCRUM-20 editing a draft: submitting it', () => {
     expect(calls).toEqual([`PATCH ${DRAFT_URL}`, `POST ${DRAFT_URL}/submit`])
   })
 
+  it("shows the backend's message for a date in the past under the date of a resumed draft", async () => {
+    const app = await openOwnDraft()
+    await fill(app, 'Date', '2026-10-04')
+    await fill(app, 'Starts', '18:30')
+    await fill(app, 'Ends', '22:00')
+    await fill(app, 'Expected attendance', '60')
+
+    await app.user.click(screen.getByRole('button', { name: 'Submit request' }))
+
+    expect(await screen.findByLabelText('Date')).toHaveAccessibleDescription(
+      'Proposed date cannot be in the past.',
+    )
+    expect(app.router.state.location.pathname).toBe(editDraftPath(OWN_DRAFT))
+  })
+
   it("shows the backend's message under each detail a submission still needs", async () => {
     const app = await openOwnDraft()
 
