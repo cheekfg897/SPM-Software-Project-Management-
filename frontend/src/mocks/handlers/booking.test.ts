@@ -192,3 +192,50 @@ describe('SCRUM-42 booking mock: raising a request', () => {
     expect([signedOut.status, attendee.status]).toEqual([401, 403])
   })
 })
+
+describe('SCRUM-44 booking mock: approving a request that clashes', () => {
+  const DECISION_URL = '/api/venues/booking-requests'
+  const WAITING_AT_ROOMY_VENUE = 9001
+
+  function decide(requestId: number, outcome: string) {
+    return apiRequest<Record<string, unknown>>(`${DECISION_URL}/${requestId}/decision`, {
+      method: 'POST',
+      body: { outcome, reason: 'Checked with the venue' },
+    })
+  }
+
+  /** Raise a second request at the roomy venue that overlaps the one already waiting there. */
+  async function raiseOverlappingRequest(): Promise<number> {
+    sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.coordinator))
+    const raised = await raise(
+      APPROVED_EVENT.reference,
+      validPayload({
+        starts_at: '2026-11-20T11:00:00+08:00',
+        ends_at: '2026-11-20T14:00:00+08:00',
+      }),
+    )
+    sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.venueStaff))
+    return Number(raised.id)
+  }
+
+  it('refuses an approval that overlaps an approved request at the same venue', async () => {
+    const overlapping = await raiseOverlappingRequest()
+    await decide(WAITING_AT_ROOMY_VENUE, 'approved')
+
+    const error = await errorOf(decide(overlapping, 'approved'))
+
+    expect(error.status).toBe(409)
+    expect(error.message).toBe(
+      `Cannot approve: booking #${WAITING_AT_ROOMY_VENUE} already holds this venue during the requested period.`,
+    )
+  })
+
+  it('still lets the overlapping request be rejected', async () => {
+    const overlapping = await raiseOverlappingRequest()
+    await decide(WAITING_AT_ROOMY_VENUE, 'approved')
+
+    const rejected = await decide(overlapping, 'rejected')
+
+    expect(rejected.status).toBe('rejected')
+  })
+})
