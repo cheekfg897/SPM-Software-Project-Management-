@@ -192,7 +192,8 @@ def test_withdrawing_an_already_withdrawn_arrangement_is_refused(
         _withdraw(event, arrangement.id, db_session)
 
     assert caught.value.message == (
-        "Only a pending or rejected arrangement can be withdrawn; this one is withdrawn."
+        "Only a pending, conflicting or rejected arrangement can be withdrawn; "
+        "this one is withdrawn."
     )
 
 
