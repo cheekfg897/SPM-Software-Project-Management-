@@ -10,6 +10,7 @@ import enum
 from datetime import datetime
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     DateTime,
     Enum,
@@ -22,6 +23,7 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.sql import expression
 
 from app.common.database import UTCDateTime
 from app.extensions import db
@@ -111,6 +113,12 @@ class EquipmentReservation(db.Model):  # type: ignore[name-defined]
     starts_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)
     ends_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)
     reserved_by: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+    #: Set while units going out of service leave the type short of what is reserved
+    #: for the period (SCRUM-47 AC3, ADR-0046). Nothing is released: it only asks for
+    #: someone to look.
+    needs_attention: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=expression.false()
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -129,11 +137,10 @@ class EquipmentReservation(db.Model):  # type: ignore[name-defined]
 class EquipmentOutOfService(db.Model):  # type: ignore[name-defined]
     """Units of one equipment type recorded as damaged or under maintenance (ADR-0037).
 
-    **Read-only for SCRUM-45/46.** Availability subtracts the units of every row whose
-    ``resolved_at`` is ``NULL`` (SCRUM-45 AC2), but nothing in this workstream writes
-    here: no route, schema or screen. SCRUM-47 owns writing these rows, with the
-    user-and-timestamp audit (AC4), flagging the reservations that depend on affected
-    items (AC3) and the safety-check consequence (AC5).
+    Availability subtracts the units of every row whose ``resolved_at`` is ``NULL``
+    (SCRUM-45 AC2). Technical Support write the rows and resolve them (SCRUM-47,
+    ADR-0046): ``recorded_by`` and ``recorded_at`` say who took the units out and when,
+    ``resolved_by`` and ``resolved_at`` who put them back and when (AC4).
     """
 
     __tablename__ = "equipment_out_of_service"
@@ -159,3 +166,5 @@ class EquipmentOutOfService(db.Model):  # type: ignore[name-defined]
     recorded_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)
     #: ``NULL`` while the units are still out of service; set when they are back.
     resolved_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    #: Who put the units back; ``NULL`` while they are still out of service.
+    resolved_by: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
