@@ -103,7 +103,15 @@ class BookingStatus(str, enum.Enum):
 
     TENTATIVE = "tentative"
     CONFIRMED = "confirmed"
+    #: A confirmed booking that a change to the venue's setup or turnaround time made
+    #: overlap another booking or a block (SCRUM-44). It still holds the venue.
+    CONFLICTING = "conflicting"
     CANCELLED = "cancelled"
+
+
+#: Booking statuses that hold the venue for their period. A Conflicting booking still
+#: does: marking it records a problem, it doesn't release the venue (SCRUM-44).
+HOLDING_BOOKING_STATUSES = frozenset({BookingStatus.CONFIRMED, BookingStatus.CONFLICTING})
 
 
 class CalendarEntryKind(str, enum.Enum):
@@ -138,6 +146,9 @@ class BookingRequestStatus(str, enum.Enum):
     APPROVED = "approved"
     #: Venue Staff refused the request, with a reason (SCRUM-43 AC3, AC6).
     REJECTED = "rejected"
+    #: A Pending request that clashes with one Venue Staff approved (SCRUM-44). They can
+    #: still reject it, and nothing clears the status on its own (ADR-0045).
+    CONFLICTING = "conflicting"
 
 
 class BookingDecision(str, enum.Enum):
@@ -152,6 +163,12 @@ class BookingDecision(str, enum.Enum):
     APPROVED = "approved"
     REJECTED = "rejected"
 
+
+#: Statuses Venue Staff can still decide (SCRUM-43, SCRUM-44). A Conflicting request is
+#: one of them, or nothing could ever settle it.
+DECIDABLE_REQUEST_STATUSES = frozenset(
+    {BookingRequestStatus.PENDING, BookingRequestStatus.CONFLICTING}
+)
 
 #: Statuses that take an arrangement out of an event's venue count (SCRUM-93).
 #: ``REJECTED`` stays out, because SCRUM-49 and SCRUM-97 gate on every active
