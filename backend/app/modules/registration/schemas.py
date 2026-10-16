@@ -116,6 +116,7 @@ class RegistrationSchema(Schema):
     event_id = fields.Integer(attribute="event_request_id", dump_only=True)
     status = fields.Enum(RegistrationStatus, by_value=True, dump_only=True)
     registered_at = BusinessDateTime(dump_only=True)
+    withdrawn_at = BusinessDateTime(dump_only=True)
 
 
 class RegistrantSchema(Schema):
@@ -159,3 +160,4 @@ class MyRegistrationSchema(Schema):
     event_status = fields.String(dump_only=True)
     status = fields.Enum(RegistrationStatus, by_value=True, dump_only=True)
     registered_at = BusinessDateTime(dump_only=True)
+    withdrawn_at = BusinessDateTime(dump_only=True)

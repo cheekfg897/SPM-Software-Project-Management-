@@ -28,6 +28,7 @@ from app.modules.registration.services import (
     list_my_registrations,
     list_registrants,
     register_for_event,
+    withdraw_registration,
 )
 
 bp = Blueprint("registration", __name__, url_prefix="/api/events")
@@ -65,6 +66,17 @@ def register_for_catalogue_event(event_id: int) -> tuple[Response, int]:
     """
     registration = register_for_event(g.current_user_id, event_id)
     return jsonify(_registration_schema.dump(registration)), 201
+
+
+@bp.delete("/catalogue/<int:event_id>/registrations")
+@requires_role(Role.ATTENDEE)
+def withdraw_from_catalogue_event(event_id: int) -> Response:
+    """Withdraw the caller's registration for an event (SCRUM-53 AC2, ADR-0032).
+
+    Returns ``200`` with the registration, now ``withdrawn``. The row is kept.
+    """
+    registration = withdraw_registration(g.current_user_id, event_id)
+    return jsonify(_registration_schema.dump(registration))
 
 
 @bp.get("/registrations")

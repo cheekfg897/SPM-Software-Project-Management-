@@ -100,6 +100,7 @@ def my_registrations_service(replace_services: ReplaceServices, now: datetime) -
         event_status="confirmed",
         status=RegistrationStatus.REGISTERED,
         registered_at=now,
+        withdrawn_at=None,
     )
     listing = MyRegistrationList(when=MyEventsWindow.UPCOMING, registrations=[row])
     return replace_services(routes, {"list_my_registrations": listing})["list_my_registrations"]
@@ -196,6 +197,7 @@ def test_registering_answers_201_with_the_registration(
         "event_id": 41,
         "status": "registered",
         "registered_at": "2026-10-14T12:00:00+08:00",
+        "withdrawn_at": None,
     }
 
 
@@ -261,6 +263,7 @@ def test_my_registrations_are_listed_with_the_event_and_status(
                 "event_status": "confirmed",
                 "status": "registered",
                 "registered_at": "2026-10-14T12:00:00+08:00",
+                "withdrawn_at": None,
             }
         ]
     }
