@@ -68,6 +68,9 @@ class NotificationKind(str, enum.Enum):
     #: Technical Support recorded the outcome of an equipment review, so the
     #: coordinator knows what will be provided (SCRUM-48 AC3).
     EQUIPMENT_OUTCOME_RECORDED = "equipment_outcome_recorded"
+    #: Tells every Safety Officer an event has entered Safety Review (SCRUM-97 AC4,
+    #: ADR-0047).
+    SAFETY_REVIEW_REQUESTED = "safety_review_requested"
 
 
 class Notification(db.Model):  # type: ignore[name-defined]
