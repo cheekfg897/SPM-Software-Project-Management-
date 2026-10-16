@@ -22,7 +22,7 @@ function detailsOf(request: EventRequest): string {
 }
 
 /**
- * One request in the organiser's list: when, what, its reference and its status. A draft has
+ * One request in a role's list: when, what, its reference and its status. A draft has
  * a dashed outline and a faint date line, so it stands apart from submitted requests
  * (SCRUM-20 AC2).
  */
@@ -32,7 +32,7 @@ export function EventRequestRow({ request }: { request: EventRequest }) {
   const scheduleColour = isDraft ? 'text-ink-faint' : 'text-flare'
 
   return (
-    <article
+    <div
       className={`hover:bg-surface-raised flex items-center gap-5 rounded-2xl border p-4 transition ${outline}`}
     >
       <EventArt seed={artSeed(request.reference)} />
@@ -44,6 +44,6 @@ export function EventRequestRow({ request }: { request: EventRequest }) {
         <p className="text-ink-muted mt-1 text-sm">{detailsOf(request)}</p>
       </div>
       <StatusChip status={request.status} />
-    </article>
+    </div>
   )
 }
