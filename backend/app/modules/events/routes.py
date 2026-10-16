@@ -58,6 +58,7 @@ from app.modules.events.services import (
     start_event_request_review,
     submit_draft_event_request,
     submit_event_request,
+    submit_for_safety_review,
     update_draft_event_request,
     update_equipment_line,
     update_event_request,
@@ -541,3 +542,22 @@ def update_registration(reference: str) -> tuple[Response, int]:
         g.current_user_id, reference, request.get_json(silent=True)
     )
     return jsonify(_registration_settings_schema.dump(event_request)), 200
+
+
+# --------------------------------------------------------------------------
+# SCRUM-97 — submit an event for operational safety check
+# --------------------------------------------------------------------------
+
+
+@bp.post("/requests/<reference>/safety-review")
+@requires_role(Role.EVENT_COORDINATOR)
+def submit_request_for_safety_review(reference: str) -> tuple[Response, int]:
+    """Send the caller's approved event to the Safety Officer (SCRUM-97, ADR-0047).
+
+    Only the event's assigned coordinator may; the service answers anyone else with
+    the equipment routes' "not yours" 404, and refuses an event whose venues or
+    equipment aren't settled with a ``409`` naming each gap. Returns ``200`` with the
+    request, now in Safety Review.
+    """
+    event_request = submit_for_safety_review(g.current_user_id, reference)
+    return jsonify(_event_request_schema.dump(event_request)), 200

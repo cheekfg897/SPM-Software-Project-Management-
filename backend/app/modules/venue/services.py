@@ -1025,6 +1025,21 @@ def count_active_arrangements(event_id: int, *, session: Session | None = None) 
     return len(list_active_arrangements(event_id, session=session))
 
 
+def list_unapproved_arrangements(
+    event_id: int, *, session: Session | None = None
+) -> list[VenueBookingRequest]:
+    """The event's active arrangements Venue Staff haven't approved (SCRUM-97 AC1).
+
+    A Pending or Rejected arrangement is still active, so it is listed until the
+    coordinator withdraws it; any one of them keeps the event out of Safety Review.
+    """
+    unapproved = []
+    for arrangement in list_active_arrangements(event_id, session=session):
+        if arrangement.status is not BookingRequestStatus.APPROVED:
+            unapproved.append(arrangement)
+    return unapproved
+
+
 def _arrangement_of_event(
     event_id: int, arrangement_id: int, session: Session
 ) -> VenueBookingRequest:

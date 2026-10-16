@@ -3527,3 +3527,100 @@ def list_event_headings(
             )
         )
     return headings
+
+
+# --------------------------------------------------------------------------
+# SCRUM-97 — submit an event for operational safety check
+# --------------------------------------------------------------------------
+
+NOT_APPROVED_FOR_SAFETY_REVIEW_MESSAGE = "Only an approved event can go to Safety Review."
+SAFETY_REVIEW_NOT_READY_MESSAGE = (
+    "The event can go to Safety Review once every venue arrangement is approved and every "
+    "equipment request has an outcome from Technical Support."
+)
+
+
+class SafetyReviewNotAllowedError(AppError):
+    """The event isn't approved, or its venues or equipment aren't settled (409)."""
+
+    status_code = 409
+    error_code = "safety_review_not_allowed"
+
+
+def _venue_gaps(event_id: int, session: Session) -> list[str]:
+    """Why the event's venues keep it out of Safety Review; empty when they don't.
+
+    It needs at least one venue arranged, and every active arrangement approved
+    (SCRUM-97 AC1, ADR-0047).
+    """
+    from app.modules.venue import services as venue_services  # circular at import time
+
+    if venue_services.count_active_arrangements(event_id, session=session) == 0:
+        return ["The event has no venue arranged."]
+
+    gaps = []
+    for arrangement in venue_services.list_unapproved_arrangements(event_id, session=session):
+        gaps.append(f"Venue arrangement {arrangement.id} is {arrangement.status.value}.")
+    return gaps
+
+
+def _equipment_gaps(event_id: int, session: Session) -> list[str]:
+    """Each equipment request still waiting on Technical Support (SCRUM-97 AC1, AC2).
+
+    An event with no equipment requests has none waiting, so it passes (AC2).
+    """
+    gaps = []
+    for line in lines_without_outcome(event_id, session=session):
+        gaps.append(f"Equipment request {line.id} has no outcome from Technical Support.")
+    return gaps
+
+
+def submit_for_safety_review(
+    coordinator_id: int | str, reference: str, *, session: Session | None = None
+) -> EventRequest:
+    """Send an approved event to the Safety Officer (SCRUM-97 AC1, AC2, ADR-0047).
+
+    Only the event's assigned coordinator may. The event must be approved, have at
+    least one venue arranged, every active arrangement approved (a Withdrawn one is
+    ignored) and every equipment request an outcome from Technical Support; an event
+    with no equipment requests passes that check. The ``safety_review`` status and a
+    ``safety_review_requested`` history entry naming the coordinator are saved in one
+    commit.
+
+    Args:
+        coordinator_id: The caller's user id, taken from their token.
+        reference: The ``EVR-…`` reference; case and surrounding spaces are ignored.
+        session: Database session; defaults to ``db.session``.
+
+    Returns:
+        The request, now ``safety_review``.
+
+    Raises:
+        NotFoundError: 404 — no such request among the coordinator's own.
+        SafetyReviewNotAllowedError: 409 — the event isn't approved, or a venue or
+            equipment check fails; ``details`` names each one that fails.
+    """
+    sess = resolve_session(session)
+    event_request = _event_request_assigned_to(coordinator_id, reference, sess)
+    if event_request.status is not EventRequestStatus.APPROVED:
+        raise SafetyReviewNotAllowedError(NOT_APPROVED_FOR_SAFETY_REVIEW_MESSAGE)
+
+    held_back = {}
+    venue_gaps = _venue_gaps(event_request.id, sess)
+    if venue_gaps:
+        held_back["venue_arrangements"] = venue_gaps
+    equipment_gaps = _equipment_gaps(event_request.id, sess)
+    if equipment_gaps:
+        held_back["equipment"] = equipment_gaps
+    if held_back:
+        raise SafetyReviewNotAllowedError(SAFETY_REVIEW_NOT_READY_MESSAGE, details=held_back)
+
+    event_request.status = EventRequestStatus.SAFETY_REVIEW
+    record_event_history(
+        event_request,
+        EventHistoryKind.SAFETY_REVIEW_REQUESTED,
+        actor_id=int(coordinator_id),
+        session=sess,
+    )
+    sess.commit()
+    return event_request
