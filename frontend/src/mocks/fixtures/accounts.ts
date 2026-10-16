@@ -94,6 +94,13 @@ export const MOCK_ACCOUNTS = {
     full_name: 'Sana Iyer',
     role: ROLE.SAFETY_OFFICER,
   },
+  /** A coordinator with nothing assigned yet, so their list is empty. */
+  freshCoordinator: {
+    ...BASE_ACCOUNTS.coordinator,
+    id: 10,
+    email: 'daniel@connectsphere.test',
+    full_name: 'Daniel Ong',
+  },
 } as const satisfies Record<string, MockAccount>
 
 const MOCK_TOKEN_PREFIX = 'mock-token-'

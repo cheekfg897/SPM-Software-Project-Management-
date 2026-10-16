@@ -6,7 +6,7 @@ import type { MockAccount } from '../fixtures/accounts'
 
 /**
  * The mock of GET /api/events/requests, pinned to what the backend sends an Event Organiser
- * (SCRUM-7, SCRUM-20 AC4, SCRUM-24 AC10, ADR-0020). The integration tests check the same shape
+ * (SCRUM-7, SCRUM-20 AC4, SCRUM-24 AC11, ADR-0020). The integration tests check the same shape
  * against the running backend.
  */
 
