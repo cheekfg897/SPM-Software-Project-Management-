@@ -326,7 +326,7 @@ def test_search_leaves_out_the_customers_example_until_its_turnaround_is_over(
 
 # --------------------------------------------------------------------------
 # AC4 — a buffer change reports confirmed bookings that now overlap another booking
-# or a block, and changes neither
+# or a block, and deletes neither (SCRUM-44 marks the bookings Conflicting)
 # --------------------------------------------------------------------------
 
 
@@ -346,7 +346,7 @@ def test_a_longer_turnaround_reports_confirmed_bookings_that_now_overlap(
             booking_ids=(first.id, second.id), overlap_start=_at(10, 30), overlap_end=_at(10, 45)
         )
     ]
-    assert (first.status, second.status) == (BookingStatus.CONFIRMED, BookingStatus.CONFIRMED)
+    assert (first.status, second.status) == (BookingStatus.CONFLICTING, BookingStatus.CONFLICTING)
 
 
 def test_a_longer_turnaround_reports_every_block_a_confirmed_booking_now_runs_into(
@@ -375,7 +375,7 @@ def test_a_longer_turnaround_reports_every_block_a_confirmed_booking_now_runs_in
         services.BlockOverlapWarning(booking.id, first_reached.id, _at(10, 15), _at(10, 30)),
         services.BlockOverlapWarning(booking.id, second_reached.id, _at(10, 30), _at(10, 45)),
     ]
-    assert booking.status == BookingStatus.CONFIRMED
+    assert booking.status == BookingStatus.CONFLICTING
     assert db_session.get(VenueBlock, first_reached.id) is not None
 
 

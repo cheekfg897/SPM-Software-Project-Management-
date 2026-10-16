@@ -27,6 +27,7 @@ from app.modules.auth.services import list_user_ids_with_role
 from app.modules.notifications.services import EventSummary, NotificationKind, notify_users
 from app.modules.venue.models import (
     DECIDABLE_REQUEST_STATUSES,
+    HOLDING_BOOKING_STATUSES,
     RETIRED_REQUEST_STATUSES,
     Booking,
     BookingDecision,
@@ -158,11 +159,11 @@ def _shared_period(
     return None
 
 
-def _confirmed_bookings(venue: Venue, session: Session) -> list[Booking]:
-    """The venue's confirmed bookings, in start order."""
+def _holding_bookings(venue: Venue, session: Session) -> list[Booking]:
+    """The venue's confirmed and Conflicting bookings, in start order."""
     stmt = (
         select(Booking)
-        .where(Booking.venue_id == venue.id, Booking.status == BookingStatus.CONFIRMED)
+        .where(Booking.venue_id == venue.id, Booking.status.in_(HOLDING_BOOKING_STATUSES))
         .order_by(Booking.start_time, Booking.id)
     )
     return list(session.scalars(stmt))
@@ -224,6 +225,22 @@ def _block_overlaps(
     return warnings
 
 
+def _mark_conflicting(
+    bookings: list[Booking],
+    overlaps: list[OverlapWarning],
+    block_overlaps: list[BlockOverlapWarning],
+) -> None:
+    """Mark each of ``bookings`` that a warning names as Conflicting (SCRUM-44)."""
+    affected_ids: set[int] = set()
+    for overlap in overlaps:
+        affected_ids.update(overlap.booking_ids)
+    for block_overlap in block_overlaps:
+        affected_ids.add(block_overlap.booking_id)
+    for booking in bookings:
+        if booking.id in affected_ids:
+            booking.status = BookingStatus.CONFLICTING
+
+
 def update_venue(
     venue_id: int, payload: Mapping[str, Any] | None, *, session: Session | None = None
 ) -> tuple[Venue, list[OverlapWarning], list[BlockOverlapWarning]]:
@@ -232,10 +249,11 @@ def update_venue(
     Only the fields present in ``payload`` are changed. ``opening_hours``, if
     present, replaces the whole weekly schedule (ADR-0008).
 
-    If the setup or turnaround time changes, confirmed bookings and blocks are left as
-    they are but re-checked against the new padding (ADR-0033). Every pair of confirmed
-    bookings that now overlaps is returned, and so is every confirmed booking that now
-    runs into a block.
+    If the setup or turnaround time changes, bookings and blocks are re-checked against
+    the new padding (ADR-0033). Every pair of bookings that now overlaps is returned,
+    and so is every booking that now runs into a block. Each booking returned is marked
+    Conflicting in the same commit as the change (SCRUM-44, ADR-0045); nothing is
+    deleted or cancelled.
 
     Returns:
         The updated venue, the bookings that overlap each other and the bookings that
@@ -260,11 +278,15 @@ def update_venue(
     for key, value in data.items():
         setattr(venue, key, value)
 
-    sess.commit()
     if _buffers(venue) == buffers_before:
+        sess.commit()
         return venue, [], []
-    bookings = _confirmed_bookings(venue, sess)
-    return venue, _confirmed_overlaps(venue, bookings), _block_overlaps(venue, bookings, sess)
+    bookings = _holding_bookings(venue, sess)
+    overlaps = _confirmed_overlaps(venue, bookings)
+    block_overlaps = _block_overlaps(venue, bookings, sess)
+    _mark_conflicting(bookings, overlaps, block_overlaps)
+    sess.commit()
+    return venue, overlaps, block_overlaps
 
 
 def deactivate_venue(venue_id: int, *, session: Session | None = None) -> Venue:
@@ -289,10 +311,12 @@ def reactivate_venue(venue_id: int, *, session: Session | None = None) -> Venue:
 # SCRUM-26 — availability calendar
 # --------------------------------------------------------------------------
 
-#: How each non-cancelled booking status shows on the calendar.
+#: How each non-cancelled booking status shows on the calendar. A Conflicting booking
+#: still holds the venue, so it shows as the confirmed booking it is (SCRUM-44).
 _CALENDAR_KIND_BY_STATUS = {
     BookingStatus.CONFIRMED: CalendarEntryKind.CONFIRMED_BOOKING,
     BookingStatus.TENTATIVE: CalendarEntryKind.TENTATIVE_HOLD,
+    BookingStatus.CONFLICTING: CalendarEntryKind.CONFIRMED_BOOKING,
 }
 
 
@@ -538,7 +562,7 @@ def search_venues(
 
 @dataclass(frozen=True)
 class ConflictingBooking:
-    """A confirmed booking a new block cuts into (SCRUM-34 AC2).
+    """A booking a new block cuts into (SCRUM-34 AC2).
 
     ``start_time`` and ``end_time`` are the period the booking holds the venue,
     setup and turnaround included (ADR-0011), as the calendar shows it.
@@ -551,11 +575,11 @@ class ConflictingBooking:
 
 
 def _bookings_cut_by(venue: Venue, block: VenueBlock, session: Session) -> list[ConflictingBooking]:
-    """The venue's confirmed bookings that hold it at some time during ``block``."""
+    """The venue's confirmed and Conflicting bookings that hold it during ``block``."""
     bookings = session.scalars(
         select(Booking)
         .where(
-            Booking.status == BookingStatus.CONFIRMED,
+            Booking.status.in_(HOLDING_BOOKING_STATUSES),
             _booking_holds_venue(venue, block.start_time, block.end_time),
         )
         .order_by(Booking.start_time, Booking.id)
@@ -1285,11 +1309,11 @@ def _lock_venue(venue_id: int, session: Session | None) -> Venue:
 def _clashing_booking(
     venue: Venue, request: VenueBookingRequest, session: Session | None
 ) -> Booking | None:
-    """The earliest confirmed booking at ``venue`` that ``request`` clashes with."""
+    """The earliest confirmed or Conflicting booking that ``request`` clashes with."""
     earliest_clash = (
         select(Booking)
         .where(
-            Booking.status == BookingStatus.CONFIRMED,
+            Booking.status.in_(HOLDING_BOOKING_STATUSES),
             _booking_clash(venue, request.starts_at, request.ends_at),
         )
         .order_by(Booking.start_time, Booking.id)
