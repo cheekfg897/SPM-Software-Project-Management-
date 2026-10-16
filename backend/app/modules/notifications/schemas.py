@@ -43,6 +43,7 @@ MESSAGE_BY_KIND: dict[NotificationKind, str] = {
     NotificationKind.EQUIPMENT_OUTCOME_RECORDED: (
         "Technical Support has recorded the outcome of your equipment request."
     ),
+    NotificationKind.SAFETY_REVIEW_REQUESTED: "An event is waiting for your safety review.",
 }
 
 #: Where a notification links to: the event's page, found by its reference
