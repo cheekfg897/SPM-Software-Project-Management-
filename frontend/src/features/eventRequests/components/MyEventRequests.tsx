@@ -1,7 +1,7 @@
 import { Link } from 'react-router'
 
 import { ButtonLink, ErrorAlert, Spinner } from '@/components/ui'
-import { editDraftPath, ROUTES } from '@/config/routes'
+import { editDraftPath, organiserRequestPath, ROUTES } from '@/config/routes'
 
 import type { EventRequest } from '../api'
 import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
@@ -10,17 +10,19 @@ import { useMyEventRequests } from '../hooks'
 
 import { EventRequestRow } from './EventRequestRow'
 
-/**
- * One row of the list. The organiser's own drafts open for editing (SCRUM-20 AC3); a submitted
- * request has nothing to open yet.
- */
-function ListedRequest({ request }: { request: EventRequest }) {
-  if (request.status !== EVENT_REQUEST_STATUS.DRAFT) {
-    return <EventRequestRow request={request} />
+/** Where a row opens: the organiser's own draft for editing (SCRUM-20 AC3), else the record. */
+function pathFor(request: EventRequest): string {
+  if (request.status === EVENT_REQUEST_STATUS.DRAFT) {
+    return editDraftPath(request.reference)
   }
+  return organiserRequestPath(request.reference)
+}
+
+/** One row of the list, opening its draft or its record (SCRUM-24 AC9, ADR-0046). */
+function ListedRequest({ request }: { request: EventRequest }) {
   return (
     <Link
-      to={editDraftPath(request.reference)}
+      to={pathFor(request)}
       className="focus-visible:outline-flare block rounded-2xl focus-visible:outline-2"
     >
       <EventRequestRow request={request} />
@@ -30,7 +32,7 @@ function ListedRequest({ request }: { request: EventRequest }) {
 
 /**
  * The organiser's client organisation's event requests, in the order the backend sends them
- * (newest request first). An empty list shows the backend's own message (SCRUM-24 AC10).
+ * (newest request first). An empty list shows the backend's own message (SCRUM-24 AC11).
  */
 function RequestList() {
   const requests = useMyEventRequests()

@@ -11,7 +11,11 @@ export const ROUTES = {
   NEW_EVENT_REQUEST: '/organiser/requests/new',
   /** A route pattern: `:reference` is one of the organiser's own drafts. */
   EDIT_DRAFT: '/organiser/requests/:reference/edit',
+  /** A route pattern: one of the organisation's requests, as its organisers see it (ADR-0046). */
+  ORGANISER_REQUEST: '/organiser/requests/:reference',
   STAFF_HOME: '/staff',
+  /** A route pattern: an event's record, as its assigned coordinator sees it (ADR-0046). */
+  COORDINATOR_EVENT: '/events/:reference',
   /** A route pattern: `:reference` is the event's `EVR-…` reference. */
   VENUE_REQUESTS: '/events/:reference/venue-requests',
   EVENT_EQUIPMENT: '/events/:reference/equipment',
@@ -38,12 +42,32 @@ export function loginPathReturningTo(path: string, loginRoute: LoginRoute = ROUT
   return `${loginRoute}?${params.toString()}`
 }
 
+/** `pattern` with an event's EVR- reference in place of `:reference`. */
+function withReference(pattern: string, reference: string): string {
+  return pattern.replace(':reference', encodeURIComponent(reference))
+}
+
+/** An event request's record, as its organisation's organisers open it. */
+export function organiserRequestPath(reference: string): string {
+  return withReference(ROUTES.ORGANISER_REQUEST, reference)
+}
+
+/** An event's record, as its assigned coordinator opens it. */
+export function coordinatorEventPath(reference: string): string {
+  return withReference(ROUTES.COORDINATOR_EVENT, reference)
+}
+
+/** The venue requests page for one event, by its EVR- reference. */
+export function venueRequestsPath(reference: string): string {
+  return withReference(ROUTES.VENUE_REQUESTS, reference)
+}
+
 /** The equipment page for one event, by its EVR- reference. */
 export function eventEquipmentPath(reference: string): string {
-  return ROUTES.EVENT_EQUIPMENT.replace(':reference', encodeURIComponent(reference))
+  return withReference(ROUTES.EVENT_EQUIPMENT, reference)
 }
 
 /** The page for editing one of the organiser's own drafts, by its EVR- reference. */
 export function editDraftPath(reference: string): string {
-  return ROUTES.EDIT_DRAFT.replace(':reference', encodeURIComponent(reference))
+  return withReference(ROUTES.EDIT_DRAFT, reference)
 }
