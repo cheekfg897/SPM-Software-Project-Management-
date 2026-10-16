@@ -1177,6 +1177,13 @@ def change_arrangement(
 BOOKING_REQUEST_NOT_FOUND_MESSAGE = "Booking request not found."
 DECISION_NOT_PENDING_MESSAGE = "Only a pending request can be decided; this one is {status}."
 REJECTION_REASON_REQUIRED_MESSAGE = "A reason is required to reject a booking request."
+APPROVAL_OVERLAP_MESSAGE = (
+    "Cannot approve: booking #{booking_id} already holds this venue during the requested period."
+)
+APPROVAL_PADDING_MESSAGE = (
+    "Cannot approve: the requested period is too close to booking #{booking_id}; this venue "
+    "needs {setup} minutes of setup and {turnaround} minutes of turnaround around each event."
+)
 
 #: Where each outcome leaves the request (AC3), and which notice the coordinator gets
 #: (AC6). SCRUM-75 adds holding to both.
@@ -1245,12 +1252,79 @@ def _request_to_decide(request_id: int, session: Session | None) -> VenueBooking
     return request
 
 
-def _booking_for(request: VenueBookingRequest) -> Booking:
-    """The confirmed booking an approval makes, for the period asked for (AC3).
+def _lock_venue(venue_id: int, session: Session | None) -> Venue:
+    """The venue, read under a row lock so approvals for it take turns (ADR-0045).
 
-    Whether the period clashes with another booking is SCRUM-44's check; this story's
-    ACs do not ask for one (ADR-0042).
+    Without the lock, two approvals at one venue could each find it free and each make
+    a booking. The lock is held until the approval commits, so the second one waits and
+    then sees the first's booking. ``populate_existing`` makes the read return the
+    venue's setup and turnaround as they are now, not as the session last saw them.
     """
+    locked = (
+        select(Venue)
+        .where(Venue.id == venue_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    return resolve_session(session).scalars(locked).one()
+
+
+def _clashing_booking(
+    venue: Venue, request: VenueBookingRequest, session: Session | None
+) -> Booking | None:
+    """The earliest confirmed booking at ``venue`` that ``request`` clashes with."""
+    earliest_clash = (
+        select(Booking)
+        .where(
+            Booking.status == BookingStatus.CONFIRMED,
+            _booking_clash(venue, request.starts_at, request.ends_at),
+        )
+        .order_by(Booking.start_time, Booking.id)
+    )
+    return resolve_session(session).scalars(earliest_clash).first()
+
+
+def _clash_error(venue: Venue, request: VenueBookingRequest, booking: Booking) -> ConflictError:
+    """The 409 for approving ``request`` while ``booking`` holds the venue (SCRUM-44).
+
+    It says whether the periods themselves overlap or only the setup and turnaround
+    around them do, and gives the period the booking holds the venue for.
+    """
+    # Periods that only touch don't overlap, as in ``_overlaps``.
+    periods_overlap = booking.start_time < request.ends_at and request.starts_at < booking.end_time
+    if periods_overlap:
+        message = APPROVAL_OVERLAP_MESSAGE.format(booking_id=booking.id)
+    else:
+        message = APPROVAL_PADDING_MESSAGE.format(
+            booking_id=booking.id, setup=venue.setup_minutes, turnaround=venue.turnaround_minutes
+        )
+    held_from, held_until = _occupied(venue, booking.start_time, booking.end_time)
+    return ConflictError(
+        message,
+        details={
+            "booking_id": booking.id,
+            "in_buffer": not periods_overlap,
+            "occupied_from": to_business_time(held_from).isoformat(),
+            "occupied_until": to_business_time(held_until).isoformat(),
+        },
+    )
+
+
+def _refuse_clash(request: VenueBookingRequest, session: Session | None) -> None:
+    """Refuse to approve ``request`` if it clashes with a confirmed booking (SCRUM-44).
+
+    Raises:
+        ConflictError: 409 — the period, with the venue's setup and turnaround, runs
+            into a confirmed booking at the same venue; the body names the booking.
+    """
+    venue = _lock_venue(request.venue_id, session)
+    booking = _clashing_booking(venue, request, session)
+    if booking is not None:
+        raise _clash_error(venue, request, booking)
+
+
+def _booking_for(request: VenueBookingRequest) -> Booking:
+    """The confirmed booking an approval makes, for the period asked for (AC3)."""
     return Booking(
         venue_id=request.venue_id,
         event_id=request.event_id,
@@ -1311,8 +1385,9 @@ def decide_booking_request(
     coordinator who raised the request is told in a second commit (ADR-0015). The
     event's other requests are untouched (AC8): each is decided on its own.
 
-    Holding a request instead of approving it is SCRUM-75, and refusing a period that
-    clashes with another booking is SCRUM-44.
+    An approval is refused when its period, with the venue's setup and turnaround,
+    clashes with a confirmed booking at the venue (SCRUM-44, ADR-0045). Holding a
+    request instead of approving it is SCRUM-75.
 
     Args:
         request_id: The request's own id, as the queue lists it.
@@ -1325,7 +1400,8 @@ def decide_booking_request(
 
     Raises:
         NotFoundError: 404 — no such request.
-        ConflictError: 409 — the request is not Pending.
+        ConflictError: 409 — the request is not Pending, or approving it clashes with a
+            confirmed booking (the body names the booking).
         ValidationError: 400 — payload invalid, or a rejection without a reason.
     """
     from app.modules.events import services as event_services  # circular at import time
@@ -1343,8 +1419,11 @@ def decide_booking_request(
     event = event_services.get_events_for_booking([request.event_id], session=session)[
         request.event_id
     ]
+    booking = None
+    if decision is BookingDecision.APPROVED:
+        _refuse_clash(request, session)
+        booking = _booking_for(request)
     request.decision_reason = reason
-    booking = _booking_for(request) if decision is BookingDecision.APPROVED else None
     _save_decision(request, decision, booking, decided_by=decided_by, session=session)
     _notify_about_booking(
         [request.requested_by],
