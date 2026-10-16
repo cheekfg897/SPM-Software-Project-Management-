@@ -52,12 +52,12 @@ def _open_request(app: Flask, token: str | None) -> tuple[Response, int]:
 
 
 # --------------------------------------------------------------------------
-# AC1 — exactly one of the seven statuses, plus SCRUM-31's approved and SCRUM-32's
-# awaiting_clarification
+# AC1 — exactly one of the seven statuses, plus SCRUM-31's approved, SCRUM-32's
+# awaiting_clarification and SCRUM-97's safety_review
 # --------------------------------------------------------------------------
 
 
-def test_status_values_are_the_seven_in_the_story_plus_approved_and_clarification() -> None:
+def test_status_values_are_the_seven_in_the_story_plus_the_three_added_since() -> None:
     values = [status.value for status in EventRequestStatus]
 
     assert values == [
@@ -66,6 +66,7 @@ def test_status_values_are_the_seven_in_the_story_plus_approved_and_clarificatio
         "under_review",
         "awaiting_clarification",
         "approved",
+        "safety_review",
         "confirmed",
         "completed",
         "cancelled",

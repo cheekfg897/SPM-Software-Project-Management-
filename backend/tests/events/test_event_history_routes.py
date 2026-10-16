@@ -40,6 +40,7 @@ ALLOWED_ROLE_VALUES = frozenset(
         "event_coordinator_lead",
         "venue_staff",
         "technical_support_staff",
+        "safety_officer",
         "event_organiser",
     }
 )

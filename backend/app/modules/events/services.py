@@ -1494,23 +1494,24 @@ def remove_equipment_line(
 
 #: The active statuses, from submission until the event is over. A request in one may
 #: move to another coordinator (SCRUM-87, ADR-0021; ``approved`` from SCRUM-31,
-#: ADR-0028; ``awaiting_clarification`` from SCRUM-32, ADR-0029). A completed, cancelled
-#: or rejected event has nothing left to coordinate; a draft is hidden from
-#: coordinators altogether, so it never reaches this check (SCRUM-20, ADR-0024). The
-#: Event Coordinator Lead's list of every active event reads the same set, so the two
-#: can't drift (SCRUM-96 AC1, ADR-0041).
+#: ADR-0028; ``awaiting_clarification`` from SCRUM-32, ADR-0029; ``safety_review`` from
+#: SCRUM-97, ADR-0047). A completed, cancelled or rejected event has nothing left to
+#: coordinate; a draft is hidden from coordinators altogether, so it never reaches this
+#: check (SCRUM-20, ADR-0024). The Event Coordinator Lead's list of every active event
+#: reads the same set, so the two can't drift (SCRUM-96 AC1, ADR-0041).
 ACTIVE_STATUSES: frozenset[EventRequestStatus] = frozenset(
     {
         EventRequestStatus.SUBMITTED,
         EventRequestStatus.UNDER_REVIEW,
         EventRequestStatus.AWAITING_CLARIFICATION,
         EventRequestStatus.APPROVED,
+        EventRequestStatus.SAFETY_REVIEW,
         EventRequestStatus.CONFIRMED,
     }
 )
 NOT_REASSIGNABLE_MESSAGE = (
-    "Only a submitted, under-review, awaiting-clarification, approved or confirmed event "
-    "request can be reassigned."
+    "Only a submitted, under-review, awaiting-clarification, approved, safety-review or "
+    "confirmed event request can be reassigned."
 )
 NOT_ASSIGNED_MESSAGE = "This event request has no coordinator to reassign from."
 NOT_A_COORDINATOR_MESSAGE = "No Event Coordinator has this email address."

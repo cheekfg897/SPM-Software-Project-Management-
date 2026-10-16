@@ -48,10 +48,12 @@ class EventRequestStatus(str, enum.Enum):
     of SCRUM-22's seven: SCRUM-31 adds it for a request the coordinator has approved,
     before it is confirmed (ADR-0028). Nor is ``AWAITING_CLARIFICATION``: SCRUM-32 adds
     it for a request under review whose coordinator has asked the organiser a
-    question, until the organiser answers (ADR-0029). ``SUBMITTED`` and ``DRAFT`` are
-    written so far (SCRUM-20), and ``COMPLETED`` by SCRUM-68; each other value arrives
-    with the story that performs the transition (SCRUM-31, SCRUM-32, SCRUM-49,
-    SCRUM-61).
+    question, until the organiser answers (ADR-0029). Nor is ``SAFETY_REVIEW``: SCRUM-97
+    adds it between ``APPROVED`` and ``CONFIRMED``, for an event whose venues and
+    equipment are settled and which awaits the Safety Officer (ADR-0047). ``SUBMITTED``
+    and ``DRAFT`` are written so far (SCRUM-20), and ``COMPLETED`` by SCRUM-68; each
+    other value arrives with the story that performs the transition (SCRUM-31,
+    SCRUM-32, SCRUM-49, SCRUM-61).
     """
 
     DRAFT = "draft"
@@ -59,6 +61,7 @@ class EventRequestStatus(str, enum.Enum):
     UNDER_REVIEW = "under_review"
     AWAITING_CLARIFICATION = "awaiting_clarification"
     APPROVED = "approved"
+    SAFETY_REVIEW = "safety_review"
     CONFIRMED = "confirmed"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
@@ -133,6 +136,10 @@ class EventHistoryKind(str, enum.Enum):
     #: ``note`` (``None`` when the request was met in full), and ``actor_id`` is the
     #: reviewer (SCRUM-48 AC4, AC5).
     EQUIPMENT_OUTCOME_RECORDED = "equipment_outcome_recorded"
+    #: The assigned coordinator sent the approved event to the Safety Officer once its
+    #: venues and equipment were settled; ``details`` is ``None`` and ``actor_id`` is
+    #: the coordinator (SCRUM-97 AC1, ADR-0047).
+    SAFETY_REVIEW_REQUESTED = "safety_review_requested"
 
 
 class DecisionOutcome(str, enum.Enum):

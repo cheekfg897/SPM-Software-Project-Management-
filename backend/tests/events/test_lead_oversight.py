@@ -121,11 +121,12 @@ def test_the_active_statuses_are_those_from_submission_until_the_event_is_over()
         EventRequestStatus.UNDER_REVIEW,
         EventRequestStatus.AWAITING_CLARIFICATION,
         EventRequestStatus.APPROVED,
+        EventRequestStatus.SAFETY_REVIEW,
         EventRequestStatus.CONFIRMED,
     } == ACTIVE_STATUSES
 
 
-def test_the_active_list_has_the_five_active_statuses_and_no_other(
+def test_the_active_list_has_the_six_active_statuses_and_no_other(
     one_event_in_each_status: dict[EventRequestStatus, EventRequest],
 ) -> None:
     listed = {row.event_request.id for row in list_active_requests()}
