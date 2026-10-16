@@ -1,13 +1,13 @@
 # ADR-0047: The Safety Officer is an internal role, and the assigned coordinator sends a settled, approved event to Safety Review
 
-- **Status:** Accepted (part A of SCRUM-97)
+- **Status:** Accepted (parts A and B of SCRUM-97)
 - **Date:** 2026-10-16
 - **Story:** SCRUM-97 Submit an event for operational safety check
 
 ## Context
 Customer change #6 adds an Operational Safety Check. SCRUM-97 adds the Safety Officer role and a Safety Review status: an event goes there once every active venue arrangement is Approved and every equipment request has an outcome from Technical Support (AC1), with equipment optional (AC2). SCRUM-98 records the Safety Officer's outcome and SCRUM-49 lets the coordinator confirm once venue, equipment and safety are all in. SCRUM-22's status list is to be reconciled with SCRUM-31 (Approved) and SCRUM-68.
 
-The ACs say the event "moves to" Safety Review but not who or what moves it, and leave open where it sits in the lifecycle, what happens to an event with no venue, and how the role is provisioned. This ADR covers part A: the role, the status and the transition. Part B (the Safety Officer's list, the event detail they see and their notification) comes in a second pull request.
+The ACs say the event "moves to" Safety Review but not who or what moves it, and leave open where it sits in the lifecycle, what happens to an event with no venue, and how the role is provisioned. Decisions 1-9 cover part A: the role, the status and the transition. Decisions 10-14 cover part B: the Safety Officer's list, what it shows for each event, and their notification.
 
 ## Decision
 1. **The Safety Officer is an internal staff role**, `Role.SAFETY_OFFICER = "safety_officer"`, in `INTERNAL_ROLES`. An account gets it the way every staff account does: `flask create-staff-user --role safety_officer` (ADR-0023). No new mechanism (AC7). Like every internal role, it is let into the routes open to all internal staff: the event history (internal entries included), equipment types, venue calendars, and creating client organisations (ADR-0013). The reads help part B; creating organisations goes beyond the story.
@@ -22,16 +22,21 @@ The ACs say the event "moves to" Safety Review but not who or what moves it, and
 7. **The move is recorded** as a `safety_review_requested` history entry with the coordinator as actor and no details, in the same commit as the status, like `review_started` (ADR-0028). The organiser can see it, as they see the status.
 8. **Migration `0029_add_safety_review`** adds `safety_officer`, `safety_review` and `safety_review_requested` outside the transaction. Downgrade is lossy: the entries are deleted, an event in Safety Review returns to `approved`, and a Safety Officer becomes an `attendee`, the one role with no staff access, before each type is rebuilt.
 9. **Defaults to review (not agreed with the team):** decision 1's internal-route access (in particular creating client organisations), decision 3 (the coordinator sends it, not an automatic move), decision 6 (no venue means not ready), decision 8's downgrade of a Safety Officer to `attendee`.
+10. **The list is `GET /api/events/requests/awaiting-safety-review`, for Safety Officers only** (AC5). Any other role gets `403` from the role check. It is one list for all Safety Officers, as SCRUM-38's is for Technical Support (ADR-0022), so there is no per-event "not yours" `404`. It holds every event in `safety_review`, ordered by proposed date, then start time, then as submitted. Past dates are not dropped: an event stays in review until SCRUM-98 decides it.
+11. **What each event shows** (AC6). The event: name, date, times, expected attendance and accessibility needs. Each active venue arrangement: the venue's name, capacity, supported room layouts, facilities and accessibility features, and the period it is booked for. Each equipment request: the type's name, quantity and notes, with Technical Support's outcome (status, quantity provided, note). No ids. "Room layout" is the layouts the venue supports: the system holds no layout for the event, and an arrangement's own layout is optional and normally empty (SCRUM-42). The venue name and period tell the venues of a multi-venue event apart, and the outcome is what the Safety Officer reviews after, so both go beyond the AC's list.
+12. **Reads go through public service functions.** The venue module gains `list_arranged_venues`, built on `list_active_arrangements`, so a Withdrawn arrangement is left out. The events module reads its own equipment lines and gets the type names from `equipment.services.list_equipment_types`.
+13. **Safety Officers are notified with a new `safety_review_requested` notification kind** (AC4): every Safety Officer, once, and nobody else. It is raised after the move is saved, in a second write like the other notices (ADR-0015): if it can't be saved only the notice is lost and a warning is logged, the event is still in Safety Review. A refused submission notifies no one. The organiser is not told: the story asks for the Safety Officer only. `notification_kind` is a Postgres enum, so migration `0030_add_safety_review_notification_kind` adds the value outside the transaction; its downgrade deletes those notifications and rebuilds the type, like 0019's.
+14. **Defaults to review (not agreed with the team), part B:** decision 10's ordering tie-breakers and keeping past-dated events listed, and decision 11's extra fields (venue name and period, equipment outcomes).
 
 ## Still owed
-- **SCRUM-97 part B:** the Safety Officer's list of events awaiting review, ordered by event date (AC5); the details they see (attendance, each booked venue's capacity, layout, facilities and accessibility features, the event's accessibility needs, the equipment with quantities and notes, AC6); notifying Safety Officers when an event enters Safety Review (AC4).
+- **Frontend:** a Safety Officer's page for the list, and the new notification kind's message and link. The backend is ready.
 - **SCRUM-98:** recording Approve, Reject or Request Changes with the checklist; Reject and Request Changes return the event to planning. Also ADR-0040's deferred AC6: a revised equipment outcome after the check forces a new one.
 - **SCRUM-49:** confirming the event only from `safety_review` after a safety Approve (AC3, "cannot reach Confirmed without passing through Safety Review"). Nothing moves an event to `confirmed` yet, so nothing skips Safety Review today.
-- **Open:** an event in Safety Review can't be edited, nor its equipment changed, because `safety_review` is in neither `EDITABLE_STATUSES` nor `EQUIPMENT_EDITABLE_STATUSES`. SCRUM-98's Request Changes is the way back to editing. Venue arrangements are not blocked yet: the coordinator could still withdraw or change one during review. SCRUM-98 or SCRUM-49 should decide.
+- **Open:** an event in Safety Review can't be edited, nor its equipment changed, because `safety_review` is in neither `EDITABLE_STATUSES` nor `EQUIPMENT_EDITABLE_STATUSES`. SCRUM-98's Request Changes is the way back to editing. Venue arrangements are not blocked yet: the coordinator could still withdraw or change one during review, or raise a new one, which the list would then show beside the approved ones without its status. SCRUM-98 or SCRUM-49 should decide.
 
 ## Consequences
 - SCRUM-98 and SCRUM-49 have the status, the role and the gate to build on.
-- The frontend knows the new role and status (chip label "Safety review"); a Safety Officer lands on the staff home until part B gives them a page.
+- The frontend knows the new role and status (chip label "Safety review"); a Safety Officer lands on the staff home until the frontend gives them a page for the list.
 
 ## Revisit when
 - The team settles decisions 3, 6 or 8.
