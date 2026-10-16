@@ -1,6 +1,7 @@
 import { ROLE } from '@/config/roles'
 import { register } from '@/features/auth/api'
 import {
+  fetchAssignedEventRequests,
   fetchEventRequest,
   fetchMyEventRequests,
   saveDraftEventRequest,
@@ -15,9 +16,10 @@ import { signInAs, staffAccount, uniqueEmail, VALID_PASSWORD } from './backend'
 import type { Credentials } from './backend'
 
 /**
- * The organiser's event requests against the running backend: the list (SCRUM-7, SCRUM-20 AC4,
- * SCRUM-24 AC10), submitting one (SCRUM-19), and saving, changing and submitting a draft
- * (SCRUM-20, ADR-0024).
+ * Event requests against the running backend: the organiser's list (SCRUM-7, SCRUM-20 AC4,
+ * SCRUM-24 AC11), submitting one (SCRUM-19), saving, changing and submitting a draft (SCRUM-20,
+ * ADR-0024), a coordinator's assigned list and an event's record (SCRUM-24 AC2, AC9, AC10;
+ * ADR-0046).
  * Each test records its own client organisation, which only staff may do (SCRUM-66), so these
  * tests sign in as the staff account INTEGRATION_STAFF_EMAIL / INTEGRATION_STAFF_PASSWORD.
  */
@@ -26,6 +28,8 @@ const NO_REQUESTS_MESSAGE = 'Your organisation has no event requests yet.'
 const NOT_PERMITTED_MESSAGE = 'You do not have permission to perform this action.'
 const MISSING_MESSAGE = 'Missing data for required field.'
 const NOT_A_DRAFT_MESSAGE = 'Only a draft event request can be changed or submitted this way.'
+const NOT_FOUND_MESSAGE = 'Event request not found.'
+const NO_ASSIGNED_MESSAGE = 'No event requests are assigned to you yet.'
 
 /** Every field the frontend's EventRequest type reads, and nothing more (no internal ids). */
 const EVENT_REQUEST_FIELDS = [
@@ -45,6 +49,9 @@ const EVENT_REQUEST_FIELDS = [
   'status',
   'venue_requirements',
 ]
+
+/** What the frontend's EventRecord type reads on top of the request (ADR-0046). */
+const RECORD_FIELDS = ['clarifications', 'coordinator', 'decision', 'programme_notes']
 
 /** A date `days` from now, as the backend reads dates ("2026-11-20"). */
 function daysFromNow(days: number): string {
@@ -319,4 +326,82 @@ describe('SCRUM-20 drafts against the backend', () => {
       expect(opened).toHaveProperty(field)
     }
   })
+})
+
+describe('SCRUM-24 AC9, AC10 an event record against the backend', () => {
+  it('opens a submitted request with every section the page reads, each empty until there is one', async () => {
+    await signInAsNewOrganiser()
+    const submitted = await submitEventRequest(SUBMITTED)
+
+    const record = await fetchEventRequest(submitted.reference)
+
+    expect(record).toMatchObject({
+      reference: submitted.reference,
+      status: 'submitted',
+      coordinator: null,
+      decision: null,
+      clarifications: [],
+      programme_notes: null,
+    })
+    for (const field of [...EVENT_REQUEST_FIELDS, ...RECORD_FIELDS]) {
+      expect(record).toHaveProperty(field)
+    }
+  })
+
+  it("answers another organisation's request as not found", async () => {
+    await signInAsNewOrganiser()
+    const theirs = await submitEventRequest(SUBMITTED)
+    await signInAsNewOrganiser()
+
+    await expect(fetchEventRequest(theirs.reference)).rejects.toMatchObject({
+      status: 404,
+      code: 'not_found',
+      message: NOT_FOUND_MESSAGE,
+    })
+  })
+
+  it('answers a coordinator an event not assigned to them as not found, link or no link', async () => {
+    await signInAsNewOrganiser()
+    const unassigned = await submitEventRequest(SUBMITTED)
+    await signInAs(staffAccount())
+
+    await expect(fetchEventRequest(unassigned.reference)).rejects.toMatchObject({
+      status: 404,
+      code: 'not_found',
+      message: NOT_FOUND_MESSAGE,
+    })
+  })
+
+  it.todo(
+    "opens an assigned event for its coordinator, with the coordinator's name and email, once the setup has a Lead to assign one",
+  )
+  it.todo(
+    'shows a decision and a clarification exchange in the shapes the page reads, once the setup can assign a coordinator to make them',
+  )
+})
+
+describe('SCRUM-24 AC2 a coordinator assigned events against the backend', () => {
+  // The staff account is a coordinator made fresh for each CI run, so nothing is assigned to it.
+  it('gives a coordinator with nothing assigned an empty list and the message saying so', async () => {
+    await signInAs(staffAccount())
+
+    expect(await fetchAssignedEventRequests()).toEqual({
+      event_requests: [],
+      message: NO_ASSIGNED_MESSAGE,
+    })
+  })
+
+  it('refuses an organiser', async () => {
+    await signInAsNewOrganiser()
+
+    await expect(fetchAssignedEventRequests()).rejects.toMatchObject({
+      status: 403,
+      code: 'authorization_error',
+      message: NOT_PERMITTED_MESSAGE,
+    })
+  })
+
+  it.todo(
+    'lists an assigned event in exactly the shape the frontend reads, once the setup has a Lead to assign one',
+  )
 })
