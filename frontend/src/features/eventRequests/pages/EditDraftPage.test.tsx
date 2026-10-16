@@ -74,6 +74,14 @@ describe('SCRUM-20 editing a draft: opening it', () => {
     expect(screen.getByRole('radio', { name: 'Yes' })).toBeChecked()
   })
 
+  it('says it is loading until the draft arrives', async () => {
+    renderApp(editDraftPath(OWN_DRAFT), { session: ORGANISER })
+
+    expect(screen.getByText('Loading your draft…')).toBeInTheDocument()
+    await screen.findByLabelText('Event name')
+    expect(screen.queryByText('Loading your draft…')).not.toBeInTheDocument()
+  })
+
   it("shows the backend's message for a draft that can't be opened, such as a colleague's", async () => {
     renderApp(editDraftPath('EVR-H2PL8R6K'), { session: ORGANISER })
 
