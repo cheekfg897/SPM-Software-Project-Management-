@@ -216,8 +216,9 @@ interface MyEventRow {
   starts_at: string
   ends_at: string
   event_status: string
-  status: 'registered'
+  status: 'registered' | 'withdrawn'
   registered_at: string
+  withdrawn_at: string | null
 }
 
 function myEventRow(
@@ -232,6 +233,7 @@ function myEventRow(
     event_status: eventStatus,
     status: 'registered',
     registered_at: MOCK_NOW,
+    withdrawn_at: null,
   }
 }
 
@@ -322,6 +324,7 @@ export const catalogueHandlers: RequestHandler[] = [
         event_id: event.id,
         status: 'registered',
         registered_at: MOCK_NOW,
+        withdrawn_at: null,
       },
       { status: 201 },
     )

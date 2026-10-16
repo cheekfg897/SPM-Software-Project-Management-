@@ -65,6 +65,7 @@ describe('SCRUM-24 my events mock: upcoming and past', () => {
       event_status: 'confirmed',
       status: 'registered',
       registered_at: '2026-10-05T12:00:00+08:00',
+      withdrawn_at: null,
     })
   })
 
