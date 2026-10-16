@@ -56,7 +56,7 @@ To change a decision, don't rewrite history. Add a new ADR that **supersedes** t
 | [0042](0042-venue-booking-decisions.md) | Venue Staff decide any Pending request from one queue ordered by event date; approving books the venue, rejecting needs a reason, and the coordinator is told either way | Accepted | SCRUM-43 |
 | [0043](0043-registration-settings-set-by-the-assigned-coordinator.md) | The assigned Event Coordinator enables registration and sets its capacity, as two columns on the event; the venue-capacity rule waits for the venue stack, and the registered-count rule arrived with SCRUM-52 | Accepted; the role is a default to review with the Product Owner | SCRUM-69 |
 | [0044](0044-attendee-events-list.md) | An Attendee's events list is their registrations, split into upcoming and past, with each event's status and a message when there are none | Accepted; keeping completed and cancelled events is a default to review with the Product Owner | SCRUM-24, SCRUM-52 |
-| [0045](0045-refuse-an-approval-that-clashes.md) | Approving a booking request is refused with a 409 naming the booking when its period, with the venue's setup and turnaround, clashes with a confirmed booking at the venue; the venue row is locked while it is checked | Accepted | SCRUM-44 |
+| [0045](0045-refuse-an-approval-that-clashes.md) | Approving a booking request is refused with a 409 naming the booking when its period, with the venue's setup and turnaround, clashes with a confirmed booking at the venue; the venue row is locked while it is checked. Approving a request marks the Pending requests that clash with it, and a buffer change marks the bookings it overlaps, as Conflicting | Accepted | SCRUM-44 |
 
 ## Template
 

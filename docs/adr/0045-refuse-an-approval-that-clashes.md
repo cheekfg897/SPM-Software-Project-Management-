@@ -1,8 +1,8 @@
-# ADR-0045: Approving a booking request is refused when it clashes with a confirmed booking
+# ADR-0045: Clashing bookings: refuse a clashing approval, and mark what overlaps Conflicting
 
 - **Status:** Accepted
 - **Date:** 2026-10-16
-- **Story:** SCRUM-44 Prevent the same venue being booked twice (the approval clauses only)
+- **Story:** SCRUM-44 Prevent the same venue being booked twice (the approval clauses and, from decision 7, the Conflicting status)
 - **Extends:** ADR-0011, ADR-0042
 
 ## Context
@@ -15,7 +15,7 @@ the others are separate pull requests.
    on the setup and turnaround padding, and on conflicts being per venue.
 2. **Slice B: the Conflicting status.** A Pending request that overlaps another is shown as
    Conflicting, and every booking whose period a buffer change makes overlap is marked
-   Conflicting and listed for Venue Staff.
+   Conflicting and listed for Venue Staff. Decisions 7 to 12 below.
 3. **Holds.** The ACs about tentative holds wait for SCRUM-75, which creates the hold.
 
 ## Decision
@@ -53,6 +53,48 @@ the others are separate pull requests.
    ones. **SQLite ignores `FOR UPDATE`, so the unit tests cannot show two approvals queueing.**
    They show the venue is read under the lock; the serialising itself is Postgres's.
 
+7. **Two things can be Conflicting, so two enums gain the value.** The ACs use the word for
+   a Pending *request* (AC5) and for a confirmed *booking* (AC7). They are different rows, so
+   `booking_request_status` and `booking_status` each gain `conflicting`, in one migration
+   (0028).
+
+8. **Approving a request marks the Pending requests that clash with it.** AC5 says that when
+   the first of two overlapping Pending requests is approved, the second is marked
+   Conflicting before it can be approved. So raising a request marks nothing; once an
+   approval has passed decision 1's check, every other **Pending** request at the same venue
+   that clashes with the approved one, by the rule of decision 2 (`_clash_window` is the
+   setup-and-turnaround widening `_booking_clash` uses, shared so the rule is written once),
+   is marked Conflicting. The marks are saved in the approval's own commit, so an approval
+   that is refused marks nothing. The approved request itself is not marked. Requests that
+   are Approved, Rejected, Withdrawn or already Conflicting are left alone, and a request at
+   another venue is never marked, whatever its event. A rejection marks nothing, so the
+   other request stays Pending.
+
+9. **A Conflicting request can be rejected or withdrawn, but not approved, and nothing clears
+   the status.** AC5 is silent on both. Venue Staff keep it in their queue, with its status
+   shown, and can reject it (it stays decidable, or nothing could ever settle it); the
+   coordinator can withdraw it. Approving it is refused by decision 1's check, because the
+   booking that made it Conflicting is still there. No story cancels a confirmed booking yet,
+   so the status does not need to clear. When one does, or when a buffer change or a hold
+   (SCRUM-75's "re-evaluated when the hold is approved, rejected or expires") can end the
+   clash, re-evaluating Conflicting requests belongs with it.
+
+10. **A buffer change marks the bookings the SCRUM-67 report lists.** `update_venue` marks
+    each booking in an `OverlapWarning` (both bookings of a pair) and each booking in a
+    `BlockOverlapWarning` as Conflicting, in the same commit as the buffer change, and still
+    returns the report. Nothing is deleted or cancelled. Only confirmed bookings are checked,
+    as before; tentative holds are SCRUM-75's.
+
+11. **A Conflicting booking still holds the venue.** The status records a problem, not a
+    release. Confirmed and Conflicting bookings (`HOLDING_BOOKING_STATUSES`) both count for
+    the approval check, for the report of the next buffer change and for the bookings a new
+    block cuts into, and the calendar shows a Conflicting booking as a confirmed booking.
+    Search already treated every non-cancelled booking as busy.
+
+12. **Nothing clears a Conflicting booking either.** If a later buffer change removes the
+    overlap, the booking stays Conflicting until a story says how Venue Staff resolve it. The
+    AC says only that the booking is marked and listed.
+
 ## Consequences
 
 - Venue Staff can no longer double-book a venue by approving. ADR-0042's consequence that "the
@@ -61,12 +103,18 @@ the others are separate pull requests.
   opening hours, and search leaves out blocked venues, but approving into a block is not in
   SCRUM-44's ACs.
 - The frontend shows the 409's `message`. Its mock for the decision route refuses an approval
-  that overlaps an approved request at the same venue, without the padding.
+  that overlaps an approved request at the same venue, without the padding. The mock also
+  marks the Pending requests at the same venue that overlap an approved one Conflicting, and
+  lists and decides Conflicting requests.
+- `update_venue` now commits once, after the bookings are marked, instead of committing the
+  buffer change first. A failure marking the bookings rolls the change back with it.
+- Calendar, search and the approval check treat a Conflicting booking as busy, so marking a
+  booking never frees its slot.
 
 ## Revisit when
 
-- **Slice B** adds the Conflicting status, which will want the same clash query for Pending
-  requests, and the buffer-change re-check.
+- A Conflicting request or booking should clear itself, or be resolved by Venue Staff
+  (decisions 9 and 12).
 - **SCRUM-75** adds the hold: an active hold counts as a clash, an expired one does not, and
   approving a request does not clash with its own hold (decision 3).
 - Venue blocks should refuse an approval too (Consequences).
