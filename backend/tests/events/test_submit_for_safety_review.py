@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 
 from app.common.errors import NotFoundError
 from app.modules.auth.models import User
+from app.modules.auth.permissions import Role
 from app.modules.equipment.models import EquipmentType
 from app.modules.events.models import (
     EquipmentLineStatus,
@@ -44,6 +45,7 @@ from app.modules.events.services import (
     submit_for_safety_review,
     update_event_request,
 )
+from app.modules.notifications.services import NotificationKind
 from app.modules.venue.models import BookingRequestStatus, Venue, VenueBookingRequest
 
 pytestmark = pytest.mark.scrum_97
@@ -52,11 +54,17 @@ Arrange = Callable[[BookingRequestStatus], VenueBookingRequest]
 AddLine = Callable[[int | None], EventEquipmentLine]
 HistoryOf = Callable[[int], list[tuple[EventHistoryKind, int | None, dict[str, Any] | None]]]
 ReloadEventRequest = Callable[[int], EventRequest]
+NotificationsOf = Callable[[int], list[tuple[Any, ...]]]
 
 REFERENCE = "EVR-AAAAAAAA"
 #: The Event Coordinator ``saved_event_request`` is assigned to.
 COORDINATOR_ID = 3
 OTHER_COORDINATOR_ID = 9
+#: Saved out of order, so every Safety Officer has to be found (ADR-0047).
+SAFETY_OFFICER_IDS = [21, 20]
+#: Everyone in ``saved_users``: coordinators 9 and 3, Venue Staff 4, organiser 7 and
+#: Technical Support 5 and 2.
+OTHER_USER_IDS = [9, 3, 4, 7, 5, 2]
 
 #: Every arrangement status but the two that let an event through: Approved, and
 #: Withdrawn, which is retired and ignored (AC1). Built from the enum, so a status
@@ -138,6 +146,17 @@ def add_line(
         return line
 
     return _add
+
+
+@pytest.fixture()
+def safety_officers(make_user: Callable[..., User], save: Callable[..., None]) -> list[User]:
+    """Save two Safety Officers, 21 before 20."""
+    officers = [
+        make_user(email=f"safety{user_id}@example.com", role=Role.SAFETY_OFFICER, user_id=user_id)
+        for user_id in SAFETY_OFFICER_IDS
+    ]
+    save(*officers)
+    return officers
 
 
 def _submit(session: Session, coordinator_id: int = COORDINATOR_ID) -> EventRequest:
@@ -384,3 +403,59 @@ def test_the_equipment_of_an_event_in_safety_review_cannot_be_changed(
 
     assert exc_info.value.message == EQUIPMENT_NOT_EDITABLE_MESSAGE
     assert reload_event_request(event_in_review.id).equipment_lines == []
+
+
+# --------------------------------------------------------------------------
+# AC4 — every Safety Officer is told when an event enters Safety Review
+# --------------------------------------------------------------------------
+
+
+def test_every_safety_officer_is_notified_once_when_the_event_enters_safety_review(
+    db_session: Session,
+    approved_event: EventRequest,
+    arrange: Arrange,
+    safety_officers: list[User],
+    notifications_of: NotificationsOf,
+) -> None:
+    arrange(BookingRequestStatus.APPROVED)
+
+    _submit(db_session)
+
+    for officer_id in SAFETY_OFFICER_IDS:
+        assert notifications_of(officer_id) == [
+            (
+                approved_event.id,
+                REFERENCE,
+                approved_event.name,
+                NotificationKind.SAFETY_REVIEW_REQUESTED,
+                None,
+            )
+        ]
+
+
+def test_nobody_but_the_safety_officers_is_notified(
+    db_session: Session,
+    arrange: Arrange,
+    safety_officers: list[User],
+    notifications_of: NotificationsOf,
+) -> None:
+    arrange(BookingRequestStatus.APPROVED)
+
+    _submit(db_session)
+
+    for user_id in OTHER_USER_IDS:
+        assert notifications_of(user_id) == []
+
+
+def test_a_refused_submission_notifies_no_safety_officer(
+    db_session: Session,
+    arrange: Arrange,
+    safety_officers: list[User],
+    notifications_of: NotificationsOf,
+) -> None:
+    arrange(BookingRequestStatus.PENDING)
+
+    _refusal(db_session)
+
+    for officer_id in SAFETY_OFFICER_IDS:
+        assert notifications_of(officer_id) == []
