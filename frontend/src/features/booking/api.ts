@@ -22,8 +22,11 @@ export interface RaiseBookingRequest {
   justification?: string
 }
 
-/** Where a request stands. The backend adds `on_hold` with SCRUM-75. */
-export type BookingRequestStatus = 'pending' | 'approved' | 'rejected'
+/**
+ * Where a request stands. `conflicting` is a pending request that clashes with one Venue Staff
+ * approved (SCRUM-44). The backend adds `on_hold` with SCRUM-75.
+ */
+export type BookingRequestStatus = 'pending' | 'conflicting' | 'approved' | 'rejected'
 
 /** What the backend accepts when Venue Staff decide a request (SCRUM-43). */
 export interface BookingDecision {

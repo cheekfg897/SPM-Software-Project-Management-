@@ -65,24 +65,47 @@ function checkVenueStaff(request: Request) {
 }
 
 /**
- * The approved request holding the same venue during the same period, which the backend
- * would find as a confirmed booking. The mock leaves out the venue's setup and turnaround,
- * so it only refuses periods that overlap themselves.
+ * Whether two requests want the same venue during overlapping periods, whatever their events.
+ * The mock leaves out the venue's setup and turnaround, so it only sees periods that overlap
+ * themselves.
  */
+function overlapsAtSameVenue(first: BookingRequest, second: BookingRequest): boolean {
+  return (
+    first.venue_id === second.venue_id &&
+    Date.parse(first.starts_at) < Date.parse(second.ends_at) &&
+    Date.parse(second.starts_at) < Date.parse(first.ends_at)
+  )
+}
+
+/** The approved request holding the venue during the period, which the backend would find as a confirmed booking. */
 function clashingApproval(waiting: BookingRequest): BookingRequest | undefined {
   return requests.find(
-    (existing) =>
-      existing.status === 'approved' &&
-      existing.venue_id === waiting.venue_id &&
-      Date.parse(existing.starts_at) < Date.parse(waiting.ends_at) &&
-      Date.parse(waiting.starts_at) < Date.parse(existing.ends_at),
+    (existing) => existing.status === 'approved' && overlapsAtSameVenue(existing, waiting),
   )
+}
+
+/** The backend marks each Pending request that clashes with a newly approved one Conflicting (SCRUM-44). */
+function markClashingRequestsConflicting(approved: BookingRequest): void {
+  for (const existing of requests) {
+    if (
+      existing.status === 'pending' &&
+      existing.id !== approved.id &&
+      overlapsAtSameVenue(existing, approved)
+    ) {
+      existing.status = 'conflicting'
+    }
+  }
+}
+
+/** The statuses Venue Staff can still decide: the queue lists them and a decision accepts them. */
+function isDecidable(existing: BookingRequest): boolean {
+  return existing.status === 'pending' || existing.status === 'conflicting'
 }
 
 /** The queue's order, as the backend sorts it: event date, then event start, then id. */
 function waitingForDecision(): BookingRequest[] {
   return requests
-    .filter((existing) => existing.status === 'pending')
+    .filter(isDecidable)
     .sort(
       (left, right) =>
         left.event_proposed_date.localeCompare(right.event_proposed_date) ||
@@ -215,7 +238,7 @@ export const bookingHandlers: RequestHandler[] = [
     if (waiting === undefined) {
       return errorResponse(404, 'not_found', BOOKING_REQUEST_NOT_FOUND_MESSAGE)
     }
-    if (waiting.status !== 'pending') {
+    if (!isDecidable(waiting)) {
       return errorResponse(
         409,
         'conflict',
@@ -241,6 +264,9 @@ export const bookingHandlers: RequestHandler[] = [
 
     waiting.status = body.outcome
     waiting.decision_reason = reason
+    if (body.outcome === 'approved') {
+      markClashingRequestsConflicting(waiting)
+    }
     return HttpResponse.json(waiting)
   }),
 ]

@@ -266,3 +266,65 @@ describe('SCRUM-44 booking mock: approving a request that clashes', () => {
     expect(approved.status).toBe('approved')
   })
 })
+
+describe('SCRUM-44 booking mock: approving a request marks the ones it clashes with', () => {
+  const QUEUE_URL = '/api/venues/booking-requests'
+  const WAITING_AT_ROOMY_VENUE = 9001
+
+  type Waiting = { id: number; status: string }
+
+  /** Raise a request at the roomy venue, overlapping or clear of the one waiting there. */
+  function raiseAt(startsAt: string, endsAt: string, overrides: Record<string, unknown> = {}) {
+    return raise(
+      APPROVED_EVENT.reference,
+      validPayload({ starts_at: startsAt, ends_at: endsAt, ...overrides }),
+    )
+  }
+
+  /** Approve the request already waiting at the roomy venue, as Venue Staff, and read the queue. */
+  async function approveWaitingThenReadQueue(): Promise<Waiting[]> {
+    sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.venueStaff))
+    await apiRequest(`${QUEUE_URL}/${String(WAITING_AT_ROOMY_VENUE)}/decision`, {
+      method: 'POST',
+      body: { outcome: 'approved' },
+    })
+    return apiRequest<Waiting[]>(QUEUE_URL)
+  }
+
+  function statusOf(queue: Waiting[], id: unknown): string | undefined {
+    return queue.find((waiting) => waiting.id === id)?.status
+  }
+
+  it('leaves an overlapping request Pending until one of them is approved', async () => {
+    const raised = await raiseAt('2026-11-20T11:00:00+08:00', '2026-11-20T14:00:00+08:00')
+
+    expect(raised.status).toBe('pending')
+  })
+
+  it('marks an overlapping Pending request Conflicting, and keeps it in the queue', async () => {
+    const overlapping = await raiseAt('2026-11-20T11:00:00+08:00', '2026-11-20T14:00:00+08:00')
+
+    const queue = await approveWaitingThenReadQueue()
+
+    expect(statusOf(queue, overlapping.id)).toBe('conflicting')
+  })
+
+  it('leaves a request on another day Pending', async () => {
+    const otherDay = await raiseAt('2026-11-21T11:00:00+08:00', '2026-11-21T14:00:00+08:00')
+
+    const queue = await approveWaitingThenReadQueue()
+
+    expect(statusOf(queue, otherDay.id)).toBe('pending')
+  })
+
+  it('leaves a request at another venue Pending', async () => {
+    const otherVenue = await raiseAt('2026-11-20T11:00:00+08:00', '2026-11-20T14:00:00+08:00', {
+      venue_id: TINY_VENUE.id,
+      expected_occupancy: 5,
+    })
+
+    const queue = await approveWaitingThenReadQueue()
+
+    expect(statusOf(queue, otherVenue.id)).toBe('pending')
+  })
+})
