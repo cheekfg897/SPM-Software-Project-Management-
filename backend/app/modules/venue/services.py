@@ -26,6 +26,7 @@ from app.modules.auth.permissions import Role
 from app.modules.auth.services import list_user_ids_with_role
 from app.modules.notifications.services import EventSummary, NotificationKind, notify_users
 from app.modules.venue.models import (
+    DECIDABLE_REQUEST_STATUSES,
     RETIRED_REQUEST_STATUSES,
     Booking,
     BookingDecision,
@@ -461,16 +462,22 @@ def _match_requirements(venue: Venue, data: Mapping[str, Any]) -> VenueMatch | N
     )
 
 
-def _booking_clash(venue: Venue, start: datetime, end: datetime) -> ColumnElement[bool]:
-    """SQL condition: a booking on ``venue`` too close to ``start``-``end``.
+def _clash_window(venue: Venue, start: datetime, end: datetime) -> tuple[datetime, datetime]:
+    """``start``-``end`` widened by the venue's setup + turnaround on each side.
 
-    The booking and the requested event each hold the venue from their start minus
-    setup to their end plus turnaround, so they clash unless setup + turnaround
-    separates them (ADR-0011).
+    Each event holds the venue from its start minus setup to its end plus turnaround,
+    so another period clashes with this one unless setup + turnaround separates them
+    (ADR-0011): it clashes exactly when it overlaps this window.
     """
     setup, turnaround = _buffers(venue)
     gap = setup + turnaround
-    return and_(Booking.venue_id == venue.id, _overlaps(Booking, start - gap, end + gap))
+    return start - gap, end + gap
+
+
+def _booking_clash(venue: Venue, start: datetime, end: datetime) -> ColumnElement[bool]:
+    """SQL condition: a booking on ``venue`` too close to ``start``-``end``."""
+    window_start, window_end = _clash_window(venue, start, end)
+    return and_(Booking.venue_id == venue.id, _overlaps(Booking, window_start, window_end))
 
 
 def search_venues(
@@ -954,13 +961,17 @@ def list_booking_requests_for_event(
 
 ARRANGEMENT_NOT_FOUND_MESSAGE = "Venue arrangement not found."
 WITHDRAW_NOT_ALLOWED_MESSAGE = (
-    "Only a pending or rejected arrangement can be withdrawn; this one is {status}."
+    "Only a pending, conflicting or rejected arrangement can be withdrawn; this one is {status}."
 )
 #: A rejected arrangement stays active until its coordinator withdraws it (SCRUM-43), so
-#: it can be withdrawn like a pending one. An approved one has made a booking, which
-#: withdrawing would leave behind, so it cannot.
+#: it can be withdrawn like a pending one, and so can a Conflicting one (SCRUM-44). An
+#: approved one has made a booking, which withdrawing would leave behind, so it cannot.
 WITHDRAWABLE_REQUEST_STATUSES = frozenset(
-    {BookingRequestStatus.PENDING, BookingRequestStatus.REJECTED}
+    {
+        BookingRequestStatus.PENDING,
+        BookingRequestStatus.CONFLICTING,
+        BookingRequestStatus.REJECTED,
+    }
 )
 CHANGE_NOT_PENDING_MESSAGE = "Only a pending arrangement can be changed; this one is {status}."
 
@@ -1013,7 +1024,7 @@ def _withdraw_and_record(
     """Withdraw one arrangement and write its history entry, without committing.
 
     Raises:
-        ConflictError: 409 — the arrangement is neither pending nor rejected.
+        ConflictError: 409 — the arrangement is not pending, conflicting or rejected.
     """
     from app.modules.events import services as event_services  # circular at import time
 
@@ -1046,7 +1057,7 @@ def withdraw_arrangement(
     Raises:
         NotFoundError: 404 — no such event among the coordinator's own, or no such
             arrangement on it.
-        ConflictError: 409 — the arrangement is neither pending nor rejected.
+        ConflictError: 409 — the arrangement is not pending, conflicting or rejected.
     """
     from app.modules.events import services as event_services  # circular at import time
 
@@ -1200,6 +1211,8 @@ _NOTIFICATION_BY_DECISION = {
 def list_pending_booking_requests(*, session: Session | None = None) -> list[BookingRequestAsShown]:
     """Every request waiting for a decision, the earliest event first (AC1, AC2).
 
+    That includes the Conflicting ones (SCRUM-44), shown with their status.
+
     Any Venue Staff member sees the whole queue: staff are not assigned to venues
     (ADR-0035 decision 1). The order is the event's date, then its start time, then the
     request's id, so a queue read twice is in the same order. The events are read
@@ -1211,7 +1224,7 @@ def list_pending_booking_requests(*, session: Session | None = None) -> list[Boo
     requests = list(
         resolve_session(session).scalars(
             select(VenueBookingRequest).where(
-                VenueBookingRequest.status == BookingRequestStatus.PENDING
+                VenueBookingRequest.status.in_(DECIDABLE_REQUEST_STATUSES)
             )
         )
     )
@@ -1236,7 +1249,7 @@ def _request_to_decide(request_id: int, session: Session | None) -> VenueBooking
     Raises:
         NotFoundError: 404 — no such request.
         ConflictError: 409 — it was decided or withdrawn already; the message names
-            the status it is in.
+            the status it is in. A Conflicting request can still be decided (ADR-0045).
     """
     locked = (
         select(VenueBookingRequest)
@@ -1247,7 +1260,7 @@ def _request_to_decide(request_id: int, session: Session | None) -> VenueBooking
     request = resolve_session(session).scalar(locked)
     if request is None:
         raise NotFoundError(BOOKING_REQUEST_NOT_FOUND_MESSAGE)
-    if request.status is not BookingRequestStatus.PENDING:
+    if request.status not in DECIDABLE_REQUEST_STATUSES:
         raise ConflictError(DECISION_NOT_PENDING_MESSAGE.format(status=request.status.value))
     return request
 
@@ -1324,6 +1337,28 @@ def _refuse_clash(request: VenueBookingRequest, session: Session | None) -> None
         raise _clash_error(venue, request, booking)
 
 
+def _mark_clashing_requests_conflicting(
+    approved: VenueBookingRequest, session: Session | None
+) -> None:
+    """Mark each other Pending request that clashes with ``approved`` as Conflicting.
+
+    Clashing is the rule for bookings: setup and turnaround must fit between the two
+    periods (ADR-0011). Whatever event the other request is for, only its venue counts
+    (SCRUM-44 AC5, AC8). Nothing is saved here; the approval's commit saves the marks.
+    """
+    venue = get_venue(approved.venue_id, session=session)
+    window_start, window_end = _clash_window(venue, approved.starts_at, approved.ends_at)
+    clashing_requests = select(VenueBookingRequest).where(
+        VenueBookingRequest.venue_id == venue.id,
+        VenueBookingRequest.status == BookingRequestStatus.PENDING,
+        VenueBookingRequest.id != approved.id,
+        VenueBookingRequest.starts_at < window_end,
+        VenueBookingRequest.ends_at > window_start,
+    )
+    for other in resolve_session(session).scalars(clashing_requests).all():
+        other.status = BookingRequestStatus.CONFLICTING
+
+
 def _booking_for(request: VenueBookingRequest) -> Booking:
     """The confirmed booking an approval makes, for the period asked for (AC3)."""
     return Booking(
@@ -1387,8 +1422,9 @@ def decide_booking_request(
     event's other requests are untouched (AC8): each is decided on its own.
 
     An approval is refused when its period, with the venue's setup and turnaround,
-    clashes with a confirmed booking at the venue (SCRUM-44, ADR-0045). Holding a
-    request instead of approving it is SCRUM-75.
+    clashes with a confirmed booking at the venue (SCRUM-44, ADR-0045). Once it passes,
+    every other Pending request at the venue that clashes with it is marked Conflicting
+    in the same commit. Holding a request instead of approving it is SCRUM-75.
 
     Args:
         request_id: The request's own id, as the queue lists it.
@@ -1423,6 +1459,7 @@ def decide_booking_request(
     booking = None
     if decision is BookingDecision.APPROVED:
         _refuse_clash(request, session)
+        _mark_clashing_requests_conflicting(request, session)
         booking = _booking_for(request)
     request.decision_reason = reason
     _save_decision(request, decision, booking, decided_by=decided_by, session=session)
