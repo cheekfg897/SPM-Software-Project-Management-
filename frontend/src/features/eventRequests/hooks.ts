@@ -73,11 +73,11 @@ export function useSubmitDraftEventRequest() {
   })
 }
 
-/** One request of the organiser's organisation, read for whoever is signed in. */
+/** One request's record, read for whoever is signed in: who may open it depends on them. */
 export function useEventRequest(reference: string) {
   const viewer = useAppSelector(selectSessionUser)
   return useQuery({
-    /* v8 ignore next -- the edit page is for signed-in organisers only (RequireRole), so a viewer is always there */
+    /* v8 ignore next -- its pages are for signed-in organisers and coordinators only (RequireRole), so a viewer is always there */
     queryKey: eventRequestKeys.one(reference, viewer?.id ?? null),
     queryFn: () => fetchEventRequest(reference),
   })

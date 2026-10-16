@@ -11,7 +11,7 @@ import { MyEventRequests } from './MyEventRequests'
 
 /**
  * The organiser's event list on their home page (SCRUM-7 AC1, SCRUM-19 AC5, SCRUM-20 AC2,
- * SCRUM-24 AC1, AC8, AC10). The rows come from the mock in src/mocks/handlers/eventRequests.ts.
+ * SCRUM-24 AC1, AC8, AC9, AC11). The rows come from the mock in src/mocks/handlers/eventRequests.ts.
  */
 
 const ORGANISER = mockSessionFor(MOCK_ACCOUNTS.organiser)
@@ -51,12 +51,17 @@ describe('SCRUM-20 organiser event list: going back to a draft', () => {
       '/organiser/requests/EVR-3HD8PL2W/edit',
     )
   })
+})
 
-  it('leaves a submitted request as it is', async () => {
+describe('SCRUM-24 AC9 organiser event list: opening an event', () => {
+  it("opens a submitted request's record", async () => {
     openHome()
 
     const row = await rowFor('Partner Summit')
-    expect(within(row).queryByRole('link')).not.toBeInTheDocument()
+    expect(within(row).getByRole('link')).toHaveAttribute(
+      'href',
+      '/organiser/requests/EVR-7K2M9QXA',
+    )
   })
 })
 

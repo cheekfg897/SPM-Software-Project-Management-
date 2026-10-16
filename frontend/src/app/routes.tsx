@@ -17,6 +17,7 @@ import { MyEventsPage } from '@/features/catalogue/pages/MyEventsPage'
 import { EventEquipmentPage } from '@/features/equipment/pages/EventEquipmentPage'
 import { MyEventRequests } from '@/features/eventRequests/components/MyEventRequests'
 import { EditDraftPage } from '@/features/eventRequests/pages/EditDraftPage'
+import { EventRequestPage } from '@/features/eventRequests/pages/EventRequestPage'
 import { NewEventRequestPage } from '@/features/eventRequests/pages/NewEventRequestPage'
 import { LandingPage } from '@/features/landing/pages/LandingPage'
 import { NotificationsPage } from '@/features/notifications/pages/NotificationsPage'
@@ -78,6 +79,14 @@ export const appRoutes: RouteObject[] = [
         ),
       },
       {
+        path: ROUTES.ORGANISER_REQUEST,
+        element: (
+          <RequireRole allowedRoles={ORGANISER_ROLES} loginRoute={ROUTES.LOGIN}>
+            <EventRequestPage />
+          </RequireRole>
+        ),
+      },
+      {
         path: ROUTES.STAFF_HOME,
         element: (
           <RequireRole allowedRoles={INTERNAL_ROLES} loginRoute={ROUTES.STAFF_LOGIN}>
@@ -98,6 +107,14 @@ export const appRoutes: RouteObject[] = [
         element: (
           <RequireRole allowedRoles={VENUE_STAFF_ROLES} loginRoute={ROUTES.STAFF_LOGIN}>
             <BookingDecisionsPage />
+          </RequireRole>
+        ),
+      },
+      {
+        path: ROUTES.COORDINATOR_EVENT,
+        element: (
+          <RequireRole allowedRoles={COORDINATOR_ROLES} loginRoute={ROUTES.STAFF_LOGIN}>
+            <EventRequestPage />
           </RequireRole>
         ),
       },
