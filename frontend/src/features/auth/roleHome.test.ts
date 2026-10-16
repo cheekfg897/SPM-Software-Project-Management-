@@ -11,6 +11,7 @@ describe('SCRUM-6 landing view for each role', () => {
     [ROLE.EVENT_COORDINATOR_LEAD, ROUTES.LEAD_QUEUE],
     [ROLE.VENUE_STAFF, ROUTES.STAFF_HOME],
     [ROLE.TECHNICAL_SUPPORT_STAFF, ROUTES.STAFF_HOME],
+    [ROLE.SAFETY_OFFICER, ROUTES.STAFF_HOME],
   ])('%s lands on %s', (role, route) => {
     expect(homeFor(role)).toBe(route)
   })

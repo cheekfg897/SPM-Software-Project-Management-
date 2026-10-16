@@ -14,6 +14,8 @@ const ROLE_HOME: Record<Role, RoutePath> = {
   [ROLE.EVENT_COORDINATOR_LEAD]: ROUTES.LEAD_QUEUE,
   [ROLE.VENUE_STAFF]: ROUTES.STAFF_HOME,
   [ROLE.TECHNICAL_SUPPORT_STAFF]: ROUTES.STAFF_HOME,
+  // Until SCRUM-97 part B gives the Safety Officer a review list (docs/adr/0047).
+  [ROLE.SAFETY_OFFICER]: ROUTES.STAFF_HOME,
 }
 
 export function homeFor(role: Role): RoutePath {

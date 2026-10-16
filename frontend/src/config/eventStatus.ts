@@ -8,6 +8,7 @@ export const EVENT_REQUEST_STATUS = {
   UNDER_REVIEW: 'under_review',
   AWAITING_CLARIFICATION: 'awaiting_clarification',
   APPROVED: 'approved',
+  SAFETY_REVIEW: 'safety_review',
   CONFIRMED: 'confirmed',
   COMPLETED: 'completed',
   CANCELLED: 'cancelled',

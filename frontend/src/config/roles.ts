@@ -1,4 +1,4 @@
-/** The six roles, spelt as the backend spells them (app/modules/auth/permissions.py). */
+/** The seven roles, spelt as the backend spells them (app/modules/auth/permissions.py). */
 export const ROLE = {
   EVENT_ORGANISER: 'event_organiser',
   ATTENDEE: 'attendee',
@@ -6,6 +6,7 @@ export const ROLE = {
   EVENT_COORDINATOR_LEAD: 'event_coordinator_lead',
   VENUE_STAFF: 'venue_staff',
   TECHNICAL_SUPPORT_STAFF: 'technical_support_staff',
+  SAFETY_OFFICER: 'safety_officer',
 } as const
 
 export type Role = (typeof ROLE)[keyof typeof ROLE]
@@ -19,6 +20,7 @@ export const INTERNAL_ROLES: readonly Role[] = [
   ROLE.EVENT_COORDINATOR_LEAD,
   ROLE.VENUE_STAFF,
   ROLE.TECHNICAL_SUPPORT_STAFF,
+  ROLE.SAFETY_OFFICER,
 ]
 
 /**
