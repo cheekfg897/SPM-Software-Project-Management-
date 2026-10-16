@@ -20,11 +20,13 @@ from app.modules.registration.schemas import (
     CataloguePageSchema,
     MyEventsWindow,
     MyRegistrationSchema,
+    RegistrantListSchema,
     RegistrationSchema,
 )
 from app.modules.registration.services import (
     list_catalogue,
     list_my_registrations,
+    list_registrants,
     register_for_event,
 )
 
@@ -39,6 +41,7 @@ NO_EVENTS_MESSAGES = {
 _catalogue_page_schema = CataloguePageSchema()
 _registration_schema = RegistrationSchema()
 _my_registration_schema = MyRegistrationSchema(many=True)
+_registrant_list_schema = RegistrantListSchema()
 
 
 @bp.get("/catalogue")
@@ -76,3 +79,17 @@ def view_my_registrations() -> Response:
     if not listing.registrations:
         body["message"] = NO_EVENTS_MESSAGES[listing.when]
     return jsonify(body)
+
+
+@bp.get("/requests/<reference>/registrations")
+@requires_role(Role.EVENT_ORGANISER, Role.EVENT_COORDINATOR)
+def view_registrants(reference: str) -> Response:
+    """List who has registered for an event, with its count and capacity (SCRUM-55).
+
+    An Event Organiser sees their client organisation's events, an Event Coordinator
+    the events assigned to them; anyone else's is ``404``, like an unknown reference
+    (ADR-0012). Attendees are refused with ``403`` by the decorator, so none sees
+    another's details (AC5).
+    """
+    listing = list_registrants(g.current_user_id, reference, viewer_role=Role(g.current_user_role))
+    return jsonify(_registrant_list_schema.dump(listing))

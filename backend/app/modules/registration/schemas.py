@@ -118,6 +118,24 @@ class RegistrationSchema(Schema):
     registered_at = BusinessDateTime(dump_only=True)
 
 
+class RegistrantSchema(Schema):
+    """One registrant: their name, email, date and status (SCRUM-55 AC3)."""
+
+    name = fields.String(dump_only=True)
+    email = fields.String(dump_only=True)
+    registered_at = BusinessDateTime(dump_only=True)
+    status = fields.Enum(RegistrationStatus, by_value=True, dump_only=True)
+
+
+class RegistrantListSchema(Schema):
+    """An event's registrants and the count against its capacity (SCRUM-55)."""
+
+    capacity = fields.Integer(dump_only=True, allow_none=True)
+    registered_count = fields.Integer(dump_only=True)
+    places_left = fields.Integer(dump_only=True, allow_none=True)
+    items = fields.List(fields.Nested(RegistrantSchema), dump_only=True)
+
+
 class MyEventsWindow(str, enum.Enum):
     """Which of an attendee's events to list: not yet ended, or ended (ADR-0044)."""
 

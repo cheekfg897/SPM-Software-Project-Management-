@@ -24,9 +24,12 @@ from app.common.clock import as_utc, local_today
 from app.common.database import resolve_session
 from app.common.errors import AppError
 from app.common.validation import load_or_raise
+from app.modules.auth.permissions import Role
+from app.modules.auth.services import get_user_contacts
 from app.modules.events.services import (
     EventHeading,
     RegistrableEvent,
+    get_event_capacity_for_viewer,
     get_registrable_event_for_update,
     list_event_headings,
     list_registrable_events,
@@ -107,6 +110,33 @@ class MyRegistrationList:
 
     when: MyEventsWindow
     registrations: list[MyRegistration]
+
+
+@dataclass(frozen=True)
+class Registrant:
+    """One person's registration, as the people running the event see it (SCRUM-55 AC3).
+
+    No user id: the Attendee is shown by name and email.
+    """
+
+    name: str
+    email: str
+    registered_at: datetime
+    status: RegistrationStatus
+
+
+@dataclass(frozen=True)
+class RegistrantList:
+    """An event's registrants and places, for its organiser and coordinator (SCRUM-55).
+
+    ``capacity`` and ``places_left`` are ``None`` for an event that never had a capacity
+    set (SCRUM-69).
+    """
+
+    capacity: int | None
+    registered_count: int
+    places_left: int | None
+    items: list[Registrant]
 
 
 # --------------------------------------------------------------------------
@@ -441,3 +471,75 @@ def list_my_registrations(
         )
     window = query["when"]
     return MyRegistrationList(when=window, registrations=_in_window(rows, window, now))
+
+
+# --------------------------------------------------------------------------
+# Who has registered for an event (SCRUM-55)
+# --------------------------------------------------------------------------
+
+
+def _places_left(capacity: int | None, registered_count: int) -> int | None:
+    """Places still free: none left rather than fewer, and ``None`` with no capacity."""
+    if capacity is None:
+        return None
+    return max(capacity - registered_count, 0)
+
+
+def list_registrants(
+    viewer_id: int | str,
+    reference: str,
+    *,
+    viewer_role: Role,
+    session: Session | None = None,
+) -> RegistrantList:
+    """List who has registered for an event, oldest registration first (SCRUM-55).
+
+    Only an Event Organiser of the event's client organisation (AC1) and the event's
+    assigned Event Coordinator (AC2) may. Each registrant shows their name, email,
+    registration date and status (AC3), beside the number registered and the capacity
+    (AC4). The Attendee role never reaches this: the route refuses it (AC5).
+
+    Args:
+        viewer_id: The caller's user id, taken from their token.
+        reference: The event's ``EVR-…`` reference; case and spaces are ignored.
+        viewer_role: The caller's role: an organiser or a coordinator.
+        session: Database session; defaults to ``db.session``.
+
+    Returns:
+        The registrants and the event's places.
+
+    Raises:
+        NotFoundError: 404 — no such event, or none among the viewer's own (ADR-0012).
+    """
+    sess = resolve_session(session)
+    event = get_event_capacity_for_viewer(
+        viewer_id, reference, viewer_role=viewer_role, session=sess
+    )
+    stmt = (
+        select(Registration)
+        .where(Registration.event_request_id == event.id)
+        .order_by(Registration.registered_at, Registration.id)
+    )
+    registrations = list(sess.scalars(stmt))
+    contacts = get_user_contacts(
+        [registration.attendee_id for registration in registrations], session=sess
+    )
+
+    items = []
+    for registration in registrations:
+        contact = contacts[registration.attendee_id]
+        items.append(
+            Registrant(
+                name=contact.full_name,
+                email=contact.email,
+                registered_at=registration.registered_at,
+                status=registration.status,
+            )
+        )
+    registered_count = count_registered(event.id, session=sess)
+    return RegistrantList(
+        capacity=event.capacity,
+        registered_count=registered_count,
+        places_left=_places_left(event.capacity, registered_count),
+        items=items,
+    )
