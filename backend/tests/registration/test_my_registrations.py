@@ -48,6 +48,7 @@ def test_a_registration_shows_the_event_and_when_it_was_made(
             event_status="confirmed",
             status=RegistrationStatus.REGISTERED,
             registered_at=now,
+            withdrawn_at=None,
         )
     ]
 

@@ -1,0 +1,395 @@
+"""Unit tests for SCRUM-53 "See and withdraw my registration".
+
+AC1: an attendee sees each registration with its status, withdrawn ones included. AC2:
+they can withdraw from an event that has not taken place; until the customer defines the
+Organiser's cut-off (AC3), withdrawals close when the event starts (ADR-0032). AC4: a
+withdrawn place returns to the event's capacity. AC5: nobody withdraws from an event
+already completed. A withdrawal sets the row's status, nothing is deleted, and
+registering again sets the same row back (ADR-0032).
+
+Runs against ``db_session``, so the counts are real SQL.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from datetime import datetime, timedelta, timezone
+from unittest.mock import MagicMock
+
+import pytest
+from flask import Flask
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.common.errors import AuthenticationError, AuthorizationError, NotFoundError
+from app.modules.auth.models import User
+from app.modules.auth.permissions import Role
+from app.modules.events.models import EventRequest
+from app.modules.registration import routes
+from app.modules.registration.models import Registration, RegistrationStatus
+from app.modules.registration.services import (
+    AlreadyWithdrawnError,
+    EventFullError,
+    MyRegistration,
+    WithdrawalClosedError,
+    count_registered,
+    register_for_event,
+    withdraw_registration,
+)
+
+pytestmark = pytest.mark.scrum_53
+
+Act = Callable[[int, int], Registration]
+RowsOf = Callable[[int], list[tuple[int, RegistrationStatus]]]
+CallRoute = Callable[..., object]
+
+ATTENDEE = 21
+OTHER_ATTENDEE = 22
+
+#: When the default open event starts: Tuesday 20 October 2026, 19:30 in Singapore.
+EVENT_STARTS = datetime(2026, 10, 20, 11, 30, tzinfo=timezone.utc)
+#: When it ends, 22:00 in Singapore.
+EVENT_ENDS = datetime(2026, 10, 20, 14, 0, tzinfo=timezone.utc)
+
+WITHDRAW_ENDPOINT = "registration.withdraw_from_catalogue_event"
+WITHDRAW_PATH = "/api/events/catalogue/41/registrations"
+WITHDRAW_KWARGS = {"event_id": 41}
+
+
+@pytest.fixture()
+def register(db_session: Session, now: datetime) -> Act:
+    """Register an attendee for an event at ``now``."""
+
+    def _register(attendee_id: int, event_id: int) -> Registration:
+        return register_for_event(attendee_id, event_id, session=db_session, now=now)
+
+    return _register
+
+
+@pytest.fixture()
+def withdraw(db_session: Session, now: datetime) -> Act:
+    """Withdraw an attendee's registration for an event at ``now``."""
+
+    def _withdraw(attendee_id: int, event_id: int) -> Registration:
+        return withdraw_registration(attendee_id, event_id, session=db_session, now=now)
+
+    return _withdraw
+
+
+@pytest.fixture()
+def rows_of(db_session: Session) -> RowsOf:
+    """Every registration row for an event, and its status, from the database."""
+
+    def _rows(event_id: int) -> list[tuple[int, RegistrationStatus]]:
+        db_session.expire_all()
+        stmt = (
+            select(Registration)
+            .where(Registration.event_request_id == event_id)
+            .order_by(Registration.id)
+        )
+        return [(row.attendee_id, row.status) for row in db_session.scalars(stmt)]
+
+    return _rows
+
+
+# --------------------------------------------------------------------------
+# AC2 — an attendee withdraws; nothing is deleted
+# --------------------------------------------------------------------------
+
+
+def test_an_attendee_withdraws_their_registration(
+    now: datetime, register: Act, withdraw: Act, open_event: EventRequest, rows_of: RowsOf
+) -> None:
+    register(ATTENDEE, open_event.id)
+
+    registration = withdraw(ATTENDEE, open_event.id)
+
+    assert registration.status is RegistrationStatus.WITHDRAWN
+    assert registration.withdrawn_at == now
+    assert rows_of(open_event.id) == [(ATTENDEE, RegistrationStatus.WITHDRAWN)]
+
+
+def test_the_withdrawal_is_stamped_with_the_real_time_when_none_is_given(
+    db_session: Session, register: Act, open_event: EventRequest
+) -> None:
+    register(ATTENDEE, open_event.id)
+
+    registration = withdraw_registration(ATTENDEE, open_event.id, session=db_session)
+
+    assert abs(registration.withdrawn_at - datetime.now(timezone.utc)) < timedelta(minutes=1)
+
+
+def test_withdrawing_twice_is_refused(
+    register: Act, withdraw: Act, open_event: EventRequest
+) -> None:
+    register(ATTENDEE, open_event.id)
+    withdraw(ATTENDEE, open_event.id)
+
+    with pytest.raises(AlreadyWithdrawnError) as exc_info:
+        withdraw(ATTENDEE, open_event.id)
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.error_code == "already_withdrawn"
+    assert exc_info.value.message == "You have already withdrawn from this event."
+
+
+def test_an_attendee_cannot_withdraw_someone_elses_registration(
+    register: Act, withdraw: Act, open_event: EventRequest, rows_of: RowsOf
+) -> None:
+    """The caller only names an event, so another attendee's place is never theirs."""
+    register(ATTENDEE, open_event.id)
+
+    with pytest.raises(NotFoundError) as exc_info:
+        withdraw(OTHER_ATTENDEE, open_event.id)
+
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.message == "Registration not found."
+    assert rows_of(open_event.id) == [(ATTENDEE, RegistrationStatus.REGISTERED)]
+
+
+def test_withdrawing_touches_only_that_event_and_that_attendee(
+    register: Act,
+    withdraw: Act,
+    make_open_event: Callable[..., EventRequest],
+    rows_of: RowsOf,
+) -> None:
+    event = make_open_event()
+    other_event = make_open_event()
+    register(ATTENDEE, event.id)
+    register(OTHER_ATTENDEE, event.id)
+    register(ATTENDEE, other_event.id)
+
+    withdraw(ATTENDEE, event.id)
+
+    assert rows_of(event.id) == [
+        (ATTENDEE, RegistrationStatus.WITHDRAWN),
+        (OTHER_ATTENDEE, RegistrationStatus.REGISTERED),
+    ]
+    assert rows_of(other_event.id) == [(ATTENDEE, RegistrationStatus.REGISTERED)]
+
+
+# --------------------------------------------------------------------------
+# AC2, AC3 placeholder and AC5 — withdrawals close when the event starts
+# --------------------------------------------------------------------------
+
+
+def test_an_attendee_can_withdraw_until_the_moment_the_event_starts(
+    db_session: Session, register: Act, open_event: EventRequest
+) -> None:
+    register(ATTENDEE, open_event.id)
+    just_before = EVENT_STARTS - timedelta(seconds=1)
+
+    registration = withdraw_registration(
+        ATTENDEE, open_event.id, session=db_session, now=just_before
+    )
+
+    assert registration.status is RegistrationStatus.WITHDRAWN
+
+
+@pytest.mark.parametrize(
+    "moment",
+    [EVENT_STARTS, EVENT_ENDS + timedelta(days=1)],
+    ids=["as-it-starts", "once-completed"],
+)
+def test_withdrawing_is_refused_once_the_event_has_started(
+    db_session: Session,
+    register: Act,
+    open_event: EventRequest,
+    rows_of: RowsOf,
+    moment: datetime,
+) -> None:
+    register(ATTENDEE, open_event.id)
+
+    with pytest.raises(WithdrawalClosedError) as exc_info:
+        withdraw_registration(ATTENDEE, open_event.id, session=db_session, now=moment)
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.error_code == "withdrawal_closed"
+    assert exc_info.value.details == {"withdrawal_closed_at": "2026-10-20T19:30:00+08:00"}
+    assert rows_of(open_event.id) == [(ATTENDEE, RegistrationStatus.REGISTERED)]
+
+
+# --------------------------------------------------------------------------
+# AC4 — a withdrawn place returns to the event's capacity
+# --------------------------------------------------------------------------
+
+
+def test_a_withdrawal_frees_a_place_on_a_full_event(
+    db_session: Session,
+    register: Act,
+    withdraw: Act,
+    make_open_event: Callable[..., EventRequest],
+) -> None:
+    full_event = make_open_event(capacity=1)
+    register(ATTENDEE, full_event.id)
+
+    withdraw(ATTENDEE, full_event.id)
+    register(OTHER_ATTENDEE, full_event.id)
+
+    assert count_registered(full_event.id, session=db_session) == 1
+
+
+# --------------------------------------------------------------------------
+# Registering again reuses the row (ADR-0032)
+# --------------------------------------------------------------------------
+
+
+def test_registering_again_after_withdrawing_reuses_the_row(
+    db_session: Session,
+    now: datetime,
+    register: Act,
+    open_event: EventRequest,
+    rows_of: RowsOf,
+) -> None:
+    first = register(ATTENDEE, open_event.id)
+    withdraw_registration(ATTENDEE, open_event.id, session=db_session, now=now)
+    later = now + timedelta(hours=1)
+
+    again = register_for_event(ATTENDEE, open_event.id, session=db_session, now=later)
+
+    assert again.id == first.id
+    assert again.status is RegistrationStatus.REGISTERED
+    assert again.registered_at == later
+    assert again.withdrawn_at is None
+    assert rows_of(open_event.id) == [(ATTENDEE, RegistrationStatus.REGISTERED)]
+
+
+def test_registering_again_is_refused_when_the_freed_place_was_taken(
+    register: Act,
+    withdraw: Act,
+    make_open_event: Callable[..., EventRequest],
+    rows_of: RowsOf,
+) -> None:
+    event = make_open_event(capacity=1)
+    register(ATTENDEE, event.id)
+    withdraw(ATTENDEE, event.id)
+    register(OTHER_ATTENDEE, event.id)
+
+    with pytest.raises(EventFullError):
+        register(ATTENDEE, event.id)
+
+    assert rows_of(event.id) == [
+        (ATTENDEE, RegistrationStatus.WITHDRAWN),
+        (OTHER_ATTENDEE, RegistrationStatus.REGISTERED),
+    ]
+
+
+def test_registering_again_is_refused_once_registration_is_closed(
+    save: Callable[..., None],
+    register: Act,
+    withdraw: Act,
+    open_event: EventRequest,
+    rows_of: RowsOf,
+) -> None:
+    register(ATTENDEE, open_event.id)
+    withdraw(ATTENDEE, open_event.id)
+    open_event.registration_enabled = False
+    save(open_event)
+
+    with pytest.raises(NotFoundError):
+        register(ATTENDEE, open_event.id)
+
+    assert rows_of(open_event.id) == [(ATTENDEE, RegistrationStatus.WITHDRAWN)]
+
+
+# --------------------------------------------------------------------------
+# AC1 — the attendee's own list shows each registration with its status
+# --------------------------------------------------------------------------
+
+
+def test_my_list_shows_a_withdrawn_registration_with_its_status_and_when(
+    now: datetime,
+    register: Act,
+    withdraw: Act,
+    make_open_event: Callable[..., EventRequest],
+    my_registrations: Callable[..., list[MyRegistration]],
+) -> None:
+    kept = make_open_event(name="Kept")
+    dropped = make_open_event(name="Dropped")
+    register(ATTENDEE, kept.id)
+    register(ATTENDEE, dropped.id)
+
+    withdraw(ATTENDEE, dropped.id)
+
+    shown = {row.name: (row.status, row.withdrawn_at) for row in my_registrations(ATTENDEE)}
+    assert shown == {
+        "Kept": (RegistrationStatus.REGISTERED, None),
+        "Dropped": (RegistrationStatus.WITHDRAWN, now),
+    }
+
+
+# --------------------------------------------------------------------------
+# DELETE /api/events/catalogue/<id>/registrations — attendees only, their own
+# --------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def attendee_token(token_for: Callable[..., str], make_user: Callable[..., User]) -> str:
+    """A token for attendee 21."""
+    return token_for(make_user(role=Role.ATTENDEE, user_id=ATTENDEE))
+
+
+@pytest.fixture()
+def withdraw_service(
+    replace_services: Callable[..., dict[str, MagicMock]], now: datetime
+) -> MagicMock:
+    """Replace ``withdraw_registration`` with a mock returning a withdrawn one."""
+    registration = Registration(
+        id=7,
+        event_request_id=41,
+        attendee_id=ATTENDEE,
+        status=RegistrationStatus.WITHDRAWN,
+        registered_at=now,
+        withdrawn_at=now,
+    )
+    mocks = replace_services(routes, {"withdraw_registration": registration})
+    return mocks["withdraw_registration"]
+
+
+def test_withdraw_route_allows_only_attendees(app: Flask) -> None:
+    assert app.view_functions[WITHDRAW_ENDPOINT].allowed_roles == frozenset({"attendee"})
+
+
+def test_withdrawing_answers_200_with_the_withdrawn_registration(
+    call_route: CallRoute, withdraw_service: MagicMock, attendee_token: str
+) -> None:
+    response = call_route(
+        WITHDRAW_ENDPOINT, "DELETE", WITHDRAW_PATH, WITHDRAW_KWARGS, attendee_token
+    )
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "id": 7,
+        "event_id": 41,
+        "status": "withdrawn",
+        "registered_at": "2026-10-14T12:00:00+08:00",
+        "withdrawn_at": "2026-10-14T12:00:00+08:00",
+    }
+    withdraw_service.assert_called_once_with("21", 41)
+
+
+def test_other_roles_cannot_withdraw(
+    call_route: CallRoute,
+    token_for: Callable[..., str],
+    withdraw_service: MagicMock,
+    non_attendee_role: Role,
+) -> None:
+    with pytest.raises(AuthorizationError):
+        call_route(
+            WITHDRAW_ENDPOINT,
+            "DELETE",
+            WITHDRAW_PATH,
+            WITHDRAW_KWARGS,
+            token_for(role=non_attendee_role),
+        )
+
+    withdraw_service.assert_not_called()
+
+
+def test_withdrawing_without_a_token_is_401(
+    call_route: CallRoute, withdraw_service: MagicMock
+) -> None:
+    with pytest.raises(AuthenticationError):
+        call_route(WITHDRAW_ENDPOINT, "DELETE", WITHDRAW_PATH, WITHDRAW_KWARGS, None)
+
+    withdraw_service.assert_not_called()

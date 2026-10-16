@@ -162,7 +162,7 @@ def test_the_database_refuses_a_second_registration_the_check_missed(
     register(ATTENDEE, open_event.id)
     # What a second request that read "not registered" before the first committed
     # would do: skip the check and let the unique constraint decide.
-    monkeypatch.setattr(services, "_check_not_registered", lambda *args, **kwargs: None)
+    monkeypatch.setattr(services, "_registration_of", lambda *args, **kwargs: None)
 
     with pytest.raises(AlreadyRegisteredError) as exc_info:
         register(ATTENDEE, open_event.id)

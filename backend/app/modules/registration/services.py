@@ -20,9 +20,9 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.common.clock import as_utc, local_today
+from app.common.clock import as_utc, local_today, to_business_time
 from app.common.database import resolve_session
-from app.common.errors import AppError
+from app.common.errors import AppError, NotFoundError
 from app.common.validation import load_or_raise
 from app.modules.auth.permissions import Role
 from app.modules.auth.services import get_user_contacts
@@ -44,6 +44,9 @@ from app.modules.registration.schemas import (
 
 ALREADY_REGISTERED_MESSAGE = "You are already registered for this event."
 EVENT_FULL_MESSAGE = "This event is full."
+REGISTRATION_NOT_FOUND_MESSAGE = "Registration not found."
+ALREADY_WITHDRAWN_MESSAGE = "You have already withdrawn from this event."
+WITHDRAWAL_CLOSED_MESSAGE = "Withdrawals for this event have closed."
 
 #: Monday is 0 and Sunday is 6, as :meth:`datetime.date.weekday` counts.
 SATURDAY = 5
@@ -62,6 +65,20 @@ class EventFullError(AppError):
 
     status_code = 409
     error_code = "event_full"
+
+
+class AlreadyWithdrawnError(AppError):
+    """The Attendee has already withdrawn from this event (409)."""
+
+    status_code = 409
+    error_code = "already_withdrawn"
+
+
+class WithdrawalClosedError(AppError):
+    """Withdrawals for this event have closed (409)."""
+
+    status_code = 409
+    error_code = "withdrawal_closed"
 
 
 @dataclass(frozen=True)
@@ -102,6 +119,7 @@ class MyRegistration:
     event_status: str
     status: RegistrationStatus
     registered_at: datetime
+    withdrawn_at: datetime | None
 
 
 @dataclass(frozen=True)
@@ -314,14 +332,13 @@ def list_catalogue(
 # --------------------------------------------------------------------------
 
 
-def _check_not_registered(attendee_id: int, event_id: int, session: Session) -> None:
-    """Refuse an attendee who already holds a place at the event (SCRUM-52 AC3).
-
-    Raises:
-        AlreadyRegisteredError: 409 — they do.
-    """
-    if event_id in _events_held_by(attendee_id, [event_id], session):
-        raise AlreadyRegisteredError(ALREADY_REGISTERED_MESSAGE)
+def _registration_of(attendee_id: int, event_id: int, session: Session) -> Registration | None:
+    """The attendee's row for the event, held or withdrawn, or ``None``."""
+    stmt = select(Registration).where(
+        Registration.event_request_id == event_id,
+        Registration.attendee_id == attendee_id,
+    )
+    return session.scalars(stmt).first()
 
 
 def _commit_or_already_registered(session: Session) -> None:
@@ -347,7 +364,8 @@ def register_for_event(
     The account is the registration information (ADR-0032). The event's row is locked
     from the first read to the commit, so of two attendees asking for the last place
     one waits, then finds it taken (SCRUM-54 AC4). Someone who already holds a place is
-    told so even if the event is also full.
+    told so even if the event is also full. Someone who withdrew gets their row back,
+    since the pair (event, attendee) is unique (SCRUM-53, ADR-0032).
 
     Args:
         attendee_id: The caller's user id, taken from their token.
@@ -369,18 +387,83 @@ def register_for_event(
         now = datetime.now(timezone.utc)
 
     event = get_registrable_event_for_update(event_id, session=sess, now=now)
-    _check_not_registered(int(attendee_id), event.id, sess)
+    registration = _registration_of(int(attendee_id), event.id, sess)
+    if registration is not None and registration.status is RegistrationStatus.REGISTERED:
+        raise AlreadyRegisteredError(ALREADY_REGISTERED_MESSAGE)
     if count_registered(event.id, session=sess) >= event.capacity:
         raise EventFullError(EVENT_FULL_MESSAGE)
 
-    registration = Registration(
-        event_request_id=event.id,
-        attendee_id=int(attendee_id),
-        status=RegistrationStatus.REGISTERED,
-        registered_at=now,
-    )
-    sess.add(registration)
+    if registration is None:
+        registration = Registration(event_request_id=event.id, attendee_id=int(attendee_id))
+        sess.add(registration)
+    registration.status = RegistrationStatus.REGISTERED
+    registration.registered_at = now
+    registration.withdrawn_at = None
     _commit_or_already_registered(sess)
+    return registration
+
+
+# --------------------------------------------------------------------------
+# Withdrawing (SCRUM-53 AC2-AC5)
+# --------------------------------------------------------------------------
+
+
+def _withdrawal_closes_at(event: EventHeading) -> datetime:
+    """When the attendees of ``event`` can no longer withdraw (SCRUM-53 AC2, AC5).
+
+    The event's start, until the customer defines the Organiser's cut-off (AC3), which
+    then replaces it here (ADR-0032). An event that has started cannot be withdrawn
+    from, so a completed one cannot either (AC5).
+    """
+    return event.starts_at
+
+
+def withdraw_registration(
+    attendee_id: int | str,
+    event_id: int,
+    *,
+    session: Session | None = None,
+    now: datetime | None = None,
+) -> Registration:
+    """Withdraw an attendee's place at an event, freeing it for someone else (SCRUM-53).
+
+    The row is kept with status ``withdrawn``; only held places are counted, so the
+    place returns to the event's capacity (AC4).
+
+    Args:
+        attendee_id: The caller's user id, taken from their token.
+        event_id: The event to withdraw from.
+        session: Database session; defaults to ``db.session``.
+        now: The current instant, timezone-aware; defaults to the real clock.
+
+    Returns:
+        The withdrawn :class:`Registration`.
+
+    Raises:
+        NotFoundError: 404 — the attendee never registered for the event.
+        AlreadyWithdrawnError: 409 — they have already withdrawn.
+        WithdrawalClosedError: 409 — withdrawals have closed; ``details`` says when.
+    """
+    sess = resolve_session(session)
+    if now is None:
+        now = datetime.now(timezone.utc)
+
+    registration = _registration_of(int(attendee_id), event_id, sess)
+    if registration is None:
+        raise NotFoundError(REGISTRATION_NOT_FOUND_MESSAGE)
+    if registration.status is RegistrationStatus.WITHDRAWN:
+        raise AlreadyWithdrawnError(ALREADY_WITHDRAWN_MESSAGE)
+    event = list_event_headings([event_id], session=sess)[0]
+    closes_at = _withdrawal_closes_at(event)
+    if now >= closes_at:
+        shown = to_business_time(closes_at).isoformat()
+        raise WithdrawalClosedError(
+            WITHDRAWAL_CLOSED_MESSAGE, details={"withdrawal_closed_at": shown}
+        )
+
+    registration.status = RegistrationStatus.WITHDRAWN
+    registration.withdrawn_at = now
+    sess.commit()
     return registration
 
 
@@ -467,6 +550,7 @@ def list_my_registrations(
                 event_status=heading.status,
                 status=registration.status,
                 registered_at=registration.registered_at,
+                withdrawn_at=registration.withdrawn_at,
             )
         )
     window = query["when"]
