@@ -47,6 +47,14 @@ class AuthResult:
     user: User
 
 
+@dataclass(frozen=True)
+class UserContact:
+    """A user's name and email, for another module to show (SCRUM-55)."""
+
+    full_name: str
+    email: str
+
+
 def normalise_email(email: str) -> str:
     """Canonicalise an email for storage/lookup (trimmed, lower-cased)."""
     return email.strip().lower()
@@ -149,6 +157,28 @@ def get_user_full_names(
     for user_id, full_name in resolve_session(session).execute(stmt):
         names[user_id] = full_name
     return names
+
+
+def get_user_contacts(
+    user_ids: Iterable[int], *, session: Session | None = None
+) -> dict[int, UserContact]:
+    """Look up several users' names and emails in one query (SCRUM-55).
+
+    Showing who registered for an event resolves the attendees' details without a
+    query per registration, and without their :class:`User` rows leaving this module.
+
+    Args:
+        user_ids: The ids to look up.
+        session: Database session; defaults to ``db.session``.
+
+    Returns:
+        User id to :class:`UserContact`, for the ids that have an account.
+    """
+    stmt = select(User.id, User.full_name, User.email).where(User.id.in_(user_ids))
+    contacts: dict[int, UserContact] = {}
+    for user_id, full_name, email in resolve_session(session).execute(stmt):
+        contacts[user_id] = UserContact(full_name=full_name, email=email)
+    return contacts
 
 
 def register_user(payload: Mapping[str, Any] | None, *, session: Session | None = None) -> User:
