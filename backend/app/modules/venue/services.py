@@ -1040,6 +1040,45 @@ def list_unapproved_arrangements(
     return unapproved
 
 
+@dataclass(frozen=True)
+class ArrangedVenue:
+    """A venue an event has booked, with what the Safety Officer reviews (SCRUM-97 AC6).
+
+    The venue's name, capacity, supported room layouts, facilities and accessibility
+    features, and the period it is booked for. No ids: they are not the reader's to use.
+    """
+
+    name: str
+    capacity: int
+    layouts: list[str]
+    facilities: list[str]
+    accessibility_features: list[str]
+    starts_at: datetime
+    ends_at: datetime
+
+
+def list_arranged_venues(event_id: int, *, session: Session | None = None) -> list[ArrangedVenue]:
+    """The venues the event still has arranged, earliest period first (SCRUM-97 AC6).
+
+    Withdrawn arrangements are left out, as :func:`list_active_arrangements` does.
+    """
+    arranged = []
+    for arrangement in list_active_arrangements(event_id, session=session):
+        venue = get_venue(arrangement.venue_id, session=session)
+        arranged.append(
+            ArrangedVenue(
+                name=venue.name,
+                capacity=venue.capacity,
+                layouts=venue.layouts_list(),
+                facilities=venue.facilities_list(),
+                accessibility_features=venue.accessibility_list(),
+                starts_at=arrangement.starts_at,
+                ends_at=arrangement.ends_at,
+            )
+        )
+    return arranged
+
+
 def _arrangement_of_event(
     event_id: int, arrangement_id: int, session: Session
 ) -> VenueBookingRequest:

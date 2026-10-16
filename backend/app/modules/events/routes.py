@@ -24,6 +24,7 @@ from app.modules.events.schemas import (
     EquipmentAwaitingActionSchema,
     EquipmentLineSchema,
     EquipmentLineWithOutcomeSchema,
+    EventAwaitingSafetyReviewSchema,
     EventHistoryEntrySchema,
     EventRequestDetailSchema,
     EventRequestSchema,
@@ -47,6 +48,7 @@ from app.modules.events.services import (
     list_event_requests_for_coordinator,
     list_event_requests_for_organiser,
     list_event_requests_with_equipment,
+    list_events_awaiting_safety_review,
     list_requests_for_each_coordinator,
     list_unassigned_requests,
     reassign_coordinator,
@@ -76,6 +78,7 @@ _equipment_line_schema = EquipmentLineSchema()
 _equipment_line_with_outcome_schema = EquipmentLineWithOutcomeSchema()
 _equipment_event_schema = EventRequestSchema(only=EQUIPMENT_EVENT_FIELDS)
 _equipment_awaiting_action_schema = EquipmentAwaitingActionSchema()
+_awaiting_safety_review_schema = EventAwaitingSafetyReviewSchema()
 _edited_event_request_schema = EditedEventRequestSchema()
 _field_change_schema = FieldChangeSchema()
 _event_history_entry_schema = EventHistoryEntrySchema()
@@ -561,3 +564,16 @@ def submit_request_for_safety_review(reference: str) -> tuple[Response, int]:
     """
     event_request = submit_for_safety_review(g.current_user_id, reference)
     return jsonify(_event_request_schema.dump(event_request)), 200
+
+
+@bp.get("/requests/awaiting-safety-review")
+@requires_role(Role.SAFETY_OFFICER)
+def list_events_awaiting_review() -> tuple[Response, int]:
+    """The events in Safety Review, soonest first, for the Safety Officer (SCRUM-97).
+
+    Each comes with its venues, accessibility needs and equipment (AC5, AC6). One list
+    for all Safety Officers (ADR-0047).
+    """
+    awaiting = list_events_awaiting_safety_review()
+    body = {"events": _awaiting_safety_review_schema.dump(awaiting, many=True)}
+    return jsonify(body), 200
