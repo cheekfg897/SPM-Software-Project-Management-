@@ -1,3 +1,5 @@
+import { useId } from 'react'
+
 import { ROLE } from '@/config/roles'
 import { coordinatorEventPath } from '@/config/routes'
 import { selectSessionUser, useAppSelector } from '@/store'
@@ -16,12 +18,10 @@ function pathFor(request: EventRequest): string {
 
 function AssignedList() {
   const requests = useAssignedEventRequests()
+  const headingId = useId()
   return (
-    <section aria-labelledby="assigned-events-heading" className="mt-12">
-      <h2
-        id="assigned-events-heading"
-        className="font-display text-2xl font-semibold tracking-tight"
-      >
+    <section aria-labelledby={headingId} className="mt-12">
+      <h2 id={headingId} className="font-display text-2xl font-semibold tracking-tight">
         {TITLE}
       </h2>
       <RequestList requests={requests} label={TITLE} pathFor={pathFor} />
