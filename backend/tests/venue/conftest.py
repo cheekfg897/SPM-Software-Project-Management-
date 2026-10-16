@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta, timezone
 from typing import Any
 
 import pytest
@@ -25,6 +25,19 @@ COORDINATOR_ID = 3
 #: The Venue Staff user ``saved_users`` saves; they decide booking requests (SCRUM-43).
 VENUE_STAFF_ID = 4
 SavedEvent = Callable[..., EventRequest]
+VenueWithBuffers = Callable[..., Venue]
+SaveBooking = Callable[..., Booking]
+SINGAPORE = timezone(timedelta(hours=8))
+
+
+def at(hour: int, minute: int = 0, *, day: int = 1) -> datetime:
+    """A moment on 1 November 2026 (or ``day``) in Singapore time."""
+    return datetime(2026, 11, day, hour, minute, tzinfo=SINGAPORE)
+
+
+def period(start: datetime, end: datetime) -> dict[str, str]:
+    """The ``raise_booking`` overrides for a request from ``start`` to ``end``."""
+    return {"starts_at": start.isoformat(), "ends_at": end.isoformat()}
 
 
 def booking_payload(**overrides: Any) -> dict[str, Any]:
@@ -201,5 +214,40 @@ def saved_event(save: Callable[..., None]) -> Callable[..., EventRequest]:
         )
         save(event)
         return event
+
+    return _save
+
+
+@pytest.fixture()
+def venue_with_buffers(
+    make_venue: Callable[..., Venue], save: Callable[..., None]
+) -> VenueWithBuffers:
+    """Save a venue with the given setup and turnaround minutes."""
+
+    def _save(setup_minutes: int, turnaround_minutes: int) -> Venue:
+        saved = make_venue(setup_minutes=setup_minutes, turnaround_minutes=turnaround_minutes)
+        save(saved)
+        return saved
+
+    return _save
+
+
+@pytest.fixture()
+def confirmed_booking(
+    make_booking: Callable[..., Booking], save: Callable[..., None]
+) -> SaveBooking:
+    """Save a booking at a venue; it is confirmed unless ``status`` says otherwise."""
+
+    def _save(
+        venue: Venue,
+        start: datetime,
+        end: datetime,
+        *,
+        status: BookingStatus = BookingStatus.CONFIRMED,
+        event_id: int | None = None,
+    ) -> Booking:
+        booking = make_booking(venue, start, end, status=status, event_id=event_id)
+        save(booking)
+        return booking
 
     return _save

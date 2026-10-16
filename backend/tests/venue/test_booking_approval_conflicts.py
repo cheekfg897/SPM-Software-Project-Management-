@@ -9,8 +9,7 @@ after a buffer change and the hold clauses are not in this slice.
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 
 import pytest
 from sqlalchemy import event as sqlalchemy_event, select
@@ -26,64 +25,23 @@ from app.modules.venue.models import (
     Venue,
     VenueBookingRequest,
 )
-from tests.venue.conftest import SavedEvent, decide, raise_booking
+from tests.venue.conftest import (
+    SaveBooking,
+    SavedEvent,
+    VenueWithBuffers,
+    at,
+    decide,
+    period,
+    raise_booking,
+)
 
 pytestmark = pytest.mark.scrum_44
-
-SINGAPORE = timezone(timedelta(hours=8))
-VenueWithBuffers = Callable[..., Venue]
-SaveBooking = Callable[..., Booking]
-
-
-def _at(hour: int, minute: int = 0, *, day: int = 1) -> datetime:
-    """A moment on 1 November 2026 (or ``day``) in Singapore time."""
-    return datetime(2026, 11, day, hour, minute, tzinfo=SINGAPORE)
-
-
-def _period(start: datetime, end: datetime) -> dict[str, str]:
-    """The ``raise_booking`` overrides for a request from ``start`` to ``end``."""
-    return {"starts_at": start.isoformat(), "ends_at": end.isoformat()}
-
-
-@pytest.fixture()
-def venue_with_buffers(
-    make_venue: Callable[..., Venue], save: Callable[..., None]
-) -> VenueWithBuffers:
-    """Save a venue with the given setup and turnaround minutes."""
-
-    def _save(setup_minutes: int, turnaround_minutes: int) -> Venue:
-        saved = make_venue(setup_minutes=setup_minutes, turnaround_minutes=turnaround_minutes)
-        save(saved)
-        return saved
-
-    return _save
-
-
-@pytest.fixture()
-def confirmed_booking(
-    make_booking: Callable[..., Booking], save: Callable[..., None]
-) -> SaveBooking:
-    """Save a booking at a venue; it is confirmed unless ``status`` says otherwise."""
-
-    def _save(
-        venue: Venue,
-        start: datetime,
-        end: datetime,
-        *,
-        status: BookingStatus = BookingStatus.CONFIRMED,
-        event_id: int | None = None,
-    ) -> Booking:
-        booking = make_booking(venue, start, end, status=status, event_id=event_id)
-        save(booking)
-        return booking
-
-    return _save
 
 
 def _request_for(
     venue: Venue, event: EventRequest, session: Session, start: datetime, end: datetime
 ) -> VenueBookingRequest:
-    return raise_booking(venue, event, session, **_period(start, end))
+    return raise_booking(venue, event, session, **period(start, end))
 
 
 def _refused_approval(request: VenueBookingRequest, session: Session) -> ConflictError:
@@ -111,8 +69,8 @@ def test_an_approval_overlapping_a_confirmed_booking_is_refused_and_names_it(
 ) -> None:
     """AC1: 09:00-12:00 is booked, so 11:00-14:00 cannot be approved."""
     venue = venue_with_buffers(0, 0)
-    existing = confirmed_booking(venue, _at(9), _at(12))
-    request = _request_for(venue, saved_event(), db_session, _at(11), _at(14))
+    existing = confirmed_booking(venue, at(9), at(12))
+    request = _request_for(venue, saved_event(), db_session, at(11), at(14))
 
     refusal = _refused_approval(request, db_session)
 
@@ -137,8 +95,8 @@ def test_a_refused_approval_books_nothing_and_leaves_the_request_pending(
     saved_users: list[object],
 ) -> None:
     venue = venue_with_buffers(0, 0)
-    existing = confirmed_booking(venue, _at(9), _at(12))
-    request = _request_for(venue, saved_event(), db_session, _at(11), _at(14))
+    existing = confirmed_booking(venue, at(9), at(12))
+    request = _request_for(venue, saved_event(), db_session, at(11), at(14))
 
     _refused_approval(request, db_session)
 
@@ -155,9 +113,9 @@ def test_when_two_bookings_clash_the_earliest_is_named(
 ) -> None:
     venue = venue_with_buffers(0, 0)
     # The later booking is saved first, so only the ordering puts the earlier one first.
-    confirmed_booking(venue, _at(13), _at(15))
-    earlier = confirmed_booking(venue, _at(10), _at(12))
-    request = _request_for(venue, saved_event(), db_session, _at(11), _at(14))
+    confirmed_booking(venue, at(13), at(15))
+    earlier = confirmed_booking(venue, at(10), at(12))
+    request = _request_for(venue, saved_event(), db_session, at(11), at(14))
 
     refusal = _refused_approval(request, db_session)
 
@@ -178,8 +136,8 @@ def test_the_conflicting_booking_is_reported_with_its_setup_and_turnaround(
 ) -> None:
     """AC2: 30 minutes setup and 45 turnaround make 10:00-12:00 occupy 09:30-12:45."""
     venue = venue_with_buffers(30, 45)
-    confirmed_booking(venue, _at(10), _at(12))
-    request = _request_for(venue, saved_event(), db_session, _at(11), _at(14))
+    confirmed_booking(venue, at(10), at(12))
+    request = _request_for(venue, saved_event(), db_session, at(11), at(14))
 
     refusal = _refused_approval(request, db_session)
 
@@ -201,8 +159,8 @@ def test_a_request_far_enough_after_a_booking_for_its_padding_is_approved(
 ) -> None:
     """AC3: 15 minutes setup, 30 turnaround, booked 09:00-12:00, so 13:00 is clear."""
     venue = venue_with_buffers(15, 30)
-    confirmed_booking(venue, _at(9), _at(12))
-    request = _request_for(venue, saved_event(), db_session, _at(13), _at(16))
+    confirmed_booking(venue, at(9), at(12))
+    request = _request_for(venue, saved_event(), db_session, at(13), at(16))
 
     decided = decide(request.id, "approved", db_session)
 
@@ -213,9 +171,9 @@ def test_a_request_far_enough_after_a_booking_for_its_padding_is_approved(
 @pytest.mark.parametrize(
     ("setup", "turnaround", "request_start"),
     [
-        pytest.param(30, 30, _at(12, 45), id="AC4: 12:45 is too soon"),
-        pytest.param(20, 40, _at(12, 30), id="setup and turnaround differ"),
-        pytest.param(30, 30, _at(12), id="starting as the booking ends"),
+        pytest.param(30, 30, at(12, 45), id="AC4: 12:45 is too soon"),
+        pytest.param(20, 40, at(12, 30), id="setup and turnaround differ"),
+        pytest.param(30, 30, at(12), id="starting as the booking ends"),
     ],
 )
 def test_a_request_inside_the_padding_is_refused_and_the_buffer_is_named(
@@ -230,8 +188,8 @@ def test_a_request_inside_the_padding_is_refused_and_the_buffer_is_named(
 ) -> None:
     """AC4: a booking ends at 12:00; the request starts inside its padding."""
     venue = venue_with_buffers(setup, turnaround)
-    existing = confirmed_booking(venue, _at(9), _at(12))
-    request = _request_for(venue, saved_event(), db_session, request_start, _at(15))
+    existing = confirmed_booking(venue, at(9), at(12))
+    request = _request_for(venue, saved_event(), db_session, request_start, at(15))
 
     refusal = _refused_approval(request, db_session)
 
@@ -247,8 +205,8 @@ def test_a_request_inside_the_padding_is_refused_and_the_buffer_is_named(
 @pytest.mark.parametrize(
     ("setup", "turnaround", "request_start"),
     [
-        pytest.param(0, 0, _at(12), id="touching with no padding"),
-        pytest.param(30, 30, _at(13), id="exactly the padding apart"),
+        pytest.param(0, 0, at(12), id="touching with no padding"),
+        pytest.param(30, 30, at(13), id="exactly the padding apart"),
     ],
 )
 def test_a_request_that_only_touches_the_padding_is_approved(
@@ -263,8 +221,8 @@ def test_a_request_that_only_touches_the_padding_is_approved(
 ) -> None:
     """The edges are free: periods that meet, or are exactly the padding apart."""
     venue = venue_with_buffers(setup, turnaround)
-    confirmed_booking(venue, _at(9), _at(12))
-    request = _request_for(venue, saved_event(), db_session, request_start, _at(15))
+    confirmed_booking(venue, at(9), at(12))
+    request = _request_for(venue, saved_event(), db_session, request_start, at(15))
 
     decided = decide(request.id, "approved", db_session)
 
@@ -298,8 +256,8 @@ def test_a_booking_that_is_elsewhere_cancelled_or_tentative_does_not_block_an_ap
     venue = venue_with_buffers(0, 0)
     other_venue = venue_with_buffers(0, 0)
     booked_venue = venue if same_venue else other_venue
-    confirmed_booking(booked_venue, _at(9, day=day), _at(12, day=day), status=status)
-    request = _request_for(venue, saved_event(), db_session, _at(9), _at(12))
+    confirmed_booking(booked_venue, at(9, day=day), at(12, day=day), status=status)
+    request = _request_for(venue, saved_event(), db_session, at(9), at(12))
 
     decided = decide(request.id, "approved", db_session)
 
@@ -322,8 +280,8 @@ def test_the_same_event_at_a_different_venue_never_conflicts(
     event = saved_event()
     auditorium = venue_with_buffers(0, 0)
     breakout = venue_with_buffers(0, 0)
-    confirmed_booking(auditorium, _at(9), _at(12), event_id=event.id)
-    request = _request_for(breakout, event, db_session, _at(9), _at(12))
+    confirmed_booking(auditorium, at(9), at(12), event_id=event.id)
+    request = _request_for(breakout, event, db_session, at(9), at(12))
 
     decided = decide(request.id, "approved", db_session)
 
@@ -340,8 +298,8 @@ def test_the_same_event_at_the_same_venue_overlapping_does_conflict(
     """The conflict rule: one event cannot book a venue twice for one period."""
     event = saved_event()
     venue = venue_with_buffers(0, 0)
-    existing = confirmed_booking(venue, _at(9), _at(12), event_id=event.id)
-    request = _request_for(venue, event, db_session, _at(11), _at(14))
+    existing = confirmed_booking(venue, at(9), at(12), event_id=event.id)
+    request = _request_for(venue, event, db_session, at(11), at(14))
 
     refusal = _refused_approval(request, db_session)
 
@@ -362,8 +320,8 @@ def test_rejecting_a_clashing_request_is_not_refused(
 ) -> None:
     """Rejection books nothing, so there is nothing for it to clash with."""
     venue = venue_with_buffers(0, 0)
-    confirmed_booking(venue, _at(9), _at(12))
-    request = _request_for(venue, saved_event(), db_session, _at(11), _at(14))
+    confirmed_booking(venue, at(9), at(12))
+    request = _request_for(venue, saved_event(), db_session, at(11), at(14))
 
     decided = decide(request.id, "rejected", db_session, reason="The hall is taken")
 
@@ -387,7 +345,7 @@ def test_an_approval_locks_the_venue_row_before_checking_for_a_clash(
     the venue is read under a lock, in the SQL Postgres is sent (ADR-0045).
     """
     venue = venue_with_buffers(0, 0)
-    request = _request_for(venue, saved_event(), db_session, _at(9), _at(12))
+    request = _request_for(venue, saved_event(), db_session, at(9), at(12))
     sent: list[str] = []
 
     def _record(connection: object, clause: object, *args: object) -> None:
