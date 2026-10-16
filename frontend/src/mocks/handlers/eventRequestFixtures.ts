@@ -36,8 +36,8 @@ export const NOTHING_RECORDED: MockRecordSections = {
 /** Someone in the mock organiser's organisation who isn't a mock account. */
 const COLLEAGUE_ID = 7
 const ORGANISER = MOCK_ACCOUNTS.organiser
-/** Another organisation's organiser, who isn't a mock account. */
-const OTHER_ORGANISER_ID = 9
+/** Another organisation's organiser: an id no mock account has. */
+const OTHER_ORGANISER_ID = 90
 const OTHER_ORGANISATION_ID = 2
 
 /** The mock coordinator, who can log in. */
