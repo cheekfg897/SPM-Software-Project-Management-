@@ -36,6 +36,10 @@ const DUPLICATE_REQUEST_MESSAGE =
 const BOOKING_REQUEST_NOT_FOUND_MESSAGE = 'Booking request not found.'
 export const REJECTION_REASON_REQUIRED_MESSAGE = 'A reason is required to reject a booking request.'
 const OUTCOME_ERROR_MESSAGE = 'Outcome must be approved or rejected.'
+/** The backend's refusal of a clashing approval (venue/services.py, SCRUM-44), for an overlap. */
+function clashMessage(bookingId: number): string {
+  return `Cannot approve: booking #${bookingId} already holds this venue during the requested period.`
+}
 
 const events: MockBookingEvent[] = Object.values(MOCK_BOOKING_EVENTS)
 const venues = Object.values(MOCK_BOOKING_VENUES)
@@ -58,6 +62,21 @@ function checkVenueStaff(request: Request) {
     return notAllowed()
   }
   return null
+}
+
+/**
+ * The approved request holding the same venue during the same period, which the backend
+ * would find as a confirmed booking. The mock leaves out the venue's setup and turnaround,
+ * so it only refuses periods that overlap themselves.
+ */
+function clashingApproval(waiting: BookingRequest): BookingRequest | undefined {
+  return requests.find(
+    (existing) =>
+      existing.status === 'approved' &&
+      existing.venue_id === waiting.venue_id &&
+      Date.parse(existing.starts_at) < Date.parse(waiting.ends_at) &&
+      Date.parse(waiting.starts_at) < Date.parse(existing.ends_at),
+  )
 }
 
 /** The queue's order, as the backend sorts it: event date, then event start, then id. */
@@ -211,6 +230,13 @@ export const bookingHandlers: RequestHandler[] = [
     const reason = typeof body.reason === 'string' ? body.reason : null
     if (body.outcome === 'rejected' && reason === null) {
       return validationError({ reason: [REJECTION_REASON_REQUIRED_MESSAGE] })
+    }
+
+    if (body.outcome === 'approved') {
+      const clash = clashingApproval(waiting)
+      if (clash !== undefined) {
+        return errorResponse(409, 'conflict', clashMessage(clash.id))
+      }
     }
 
     waiting.status = body.outcome
