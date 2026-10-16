@@ -11,9 +11,27 @@ import { selectSessionUser, useAppSelector } from '@/store'
 import type { Clarification, CoordinatorContact, Decision, EventRecord } from '../api'
 import { formatSchedule } from '../formatSchedule'
 
-const DECISION_LABEL: Record<Decision['outcome'], string> = {
-  approved: 'Approved',
-  rejected: 'Rejected',
+interface DecisionStyle {
+  label: string
+  /** Theme-token class for the outcome's colour. */
+  tone: string
+}
+
+const DECISION_STYLE: Record<Decision['outcome'], DecisionStyle> = {
+  approved: { label: 'Approved', tone: 'text-success' },
+  rejected: { label: 'Rejected', tone: 'text-danger' },
+}
+
+/**
+ * e.g. "Decided by Marcus Tan, 29 Sept, 3:20 pm". The backend sends no name for someone whose
+ * account is gone (events/services.py `_actor_name`), and then it's only when.
+ */
+function attributed(action: string, name: string | null, at: string): string {
+  const when = formatDateTime(at)
+  if (name === null) {
+    return `${action} ${when}`
+  }
+  return `${action} by ${name}, ${when}`
 }
 
 /** A heading and what goes under it; the heading names the section for screen readers. */
@@ -83,13 +101,13 @@ function CoordinatorDetails({ coordinator }: { coordinator: CoordinatorContact |
 }
 
 function DecisionDetails({ decision }: { decision: Decision }) {
-  const tone = decision.outcome === 'approved' ? 'text-success' : 'text-danger'
+  const { label, tone } = DECISION_STYLE[decision.outcome]
   return (
     <div className="border-line/60 bg-surface/50 rounded-2xl border p-5">
-      <p className={`font-semibold ${tone}`}>{DECISION_LABEL[decision.outcome]}</p>
+      <p className={`font-semibold ${tone}`}>{label}</p>
       {decision.reason !== null && <p className="text-ink mt-2">{decision.reason}</p>}
       <p className="text-ink-faint mt-2 text-sm">
-        By {decision.decided_by}, {formatDateTime(decision.decided_at)}
+        {attributed('Decided', decision.decided_by, decision.decided_at)}
       </p>
     </div>
   )
@@ -102,7 +120,7 @@ function ClarificationExchange({ clarification }: { clarification: Clarification
     <li className="border-line/60 bg-surface/50 rounded-2xl border p-5">
       <p className="text-ink">{clarification.message}</p>
       <p className="text-ink-faint mt-1 text-sm">
-        {clarification.requested_by} asked, {formatDateTime(clarification.requested_at)}
+        {attributed('Asked', clarification.requested_by, clarification.requested_at)}
       </p>
       {answeredAt === null ? (
         <p className="text-flare mt-3 text-sm font-medium">Waiting for an answer.</p>
@@ -110,7 +128,7 @@ function ClarificationExchange({ clarification }: { clarification: Clarification
         <div className="border-line/60 mt-3 border-l-2 pl-4">
           <p className="text-ink">{clarification.response}</p>
           <p className="text-ink-faint mt-1 text-sm">
-            {clarification.answered_by} answered, {formatDateTime(answeredAt)}
+            {attributed('Answered', clarification.answered_by, answeredAt)}
           </p>
         </div>
       )}

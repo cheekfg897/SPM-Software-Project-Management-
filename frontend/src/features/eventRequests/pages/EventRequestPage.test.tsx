@@ -1,8 +1,12 @@
 import { screen, within } from '@testing-library/react'
+import { http, HttpResponse } from 'msw'
 
 import { coordinatorEventPath, organiserRequestPath, ROUTES } from '@/config/routes'
-import { MOCK_ACCOUNTS, mockSessionFor } from '@/mocks/fixtures/accounts'
+import { fetchEventRequest } from '@/features/eventRequests/api'
+import { MOCK_ACCOUNTS, mockSessionFor, mockTokenFor } from '@/mocks/fixtures/accounts'
+import { server } from '@/mocks/server'
 import { renderApp } from '@/test/render'
+import { sendRequestsAs } from '@/test/sendRequestsAs'
 
 /**
  * SCRUM-24 AC9, AC10: opening an event shows its record, with the sections the backend sends,
@@ -106,7 +110,9 @@ describe('SCRUM-24 AC9 event record: what an organiser sees', () => {
     expect(
       within(decision).getByText('The proposed date clashes with the venue refurbishment.'),
     ).toBeInTheDocument()
-    expect(within(decision).getByText('By Marcus Tan, 29 Sept, 3:20 pm')).toBeInTheDocument()
+    expect(
+      within(decision).getByText('Decided by Marcus Tan, 29 Sept, 3:20 pm'),
+    ).toBeInTheDocument()
   })
 
   it('shows an approval given without a reason', async () => {
@@ -114,7 +120,9 @@ describe('SCRUM-24 AC9 event record: what an organiser sees', () => {
 
     const decision = await section('Decision')
     expect(within(decision).getByText('Approved')).toBeInTheDocument()
-    expect(within(decision).getByText('By Marcus Tan, 30 Sept, 11:00 am')).toBeInTheDocument()
+    expect(
+      within(decision).getByText('Decided by Marcus Tan, 30 Sept, 11:00 am'),
+    ).toBeInTheDocument()
   })
 
   it('shows each clarification question with its answer, and the open one as waiting', async () => {
@@ -127,11 +135,39 @@ describe('SCRUM-24 AC9 event record: what an organiser sees', () => {
     expect(answered).toHaveTextContent(
       'Will the roadshow need a loading bay for the demo vehicles?',
     )
-    expect(answered).toHaveTextContent('Chloe Lim asked, 26 Sept, 10:00 am')
+    expect(answered).toHaveTextContent('Asked by Chloe Lim, 26 Sept, 10:00 am')
     expect(answered).toHaveTextContent('Yes, for two vans between 11am and noon.')
-    expect(answered).toHaveTextContent('Omar Rahman answered, 26 Sept, 2:30 pm')
+    expect(answered).toHaveTextContent('Answered by Omar Rahman, 26 Sept, 2:30 pm')
     expect(open).toHaveTextContent('Can the start move to 2pm so the vans can unload first?')
     expect(open).toHaveTextContent('Waiting for an answer.')
+  })
+
+  it('says only when, for a decision and an answer whose author is no longer known', async () => {
+    // The backend sends no name for a removed user (events/services.py _actor_name).
+    sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.organiser))
+    const record = await fetchEventRequest('EVR-B6YF2K8V')
+    const [answered] = record.clarifications
+    server.use(
+      http.get('/api/events/requests/EVR-B6YF2K8V', () =>
+        HttpResponse.json({
+          ...record,
+          decision: {
+            outcome: 'rejected',
+            reason: null,
+            decided_by: null,
+            decided_at: '2026-09-29T15:20:00+08:00',
+          },
+          clarifications: [{ ...answered, requested_by: null, answered_by: null }],
+        }),
+      ),
+    )
+    openAsOrganiser('EVR-B6YF2K8V')
+
+    const decision = await section('Decision')
+    expect(within(decision).getByText('Decided 29 Sept, 3:20 pm')).toBeInTheDocument()
+    const clarifications = await section('Clarifications')
+    expect(clarifications).toHaveTextContent('Asked 26 Sept, 10:00 am')
+    expect(clarifications).toHaveTextContent('Answered 26 Sept, 2:30 pm')
   })
 
   it('leaves out the sections the record has nothing for', async () => {
