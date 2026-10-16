@@ -12,6 +12,7 @@ const LABELS: [EventRequestStatus, string][] = [
   ['under_review', 'Under review'],
   ['awaiting_clarification', 'Answer needed'],
   ['approved', 'Approved'],
+  ['safety_review', 'Safety review'],
   ['confirmed', 'Confirmed'],
   ['completed', 'Completed'],
   ['cancelled', 'Cancelled'],

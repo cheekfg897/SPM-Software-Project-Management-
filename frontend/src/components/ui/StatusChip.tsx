@@ -20,6 +20,7 @@ const CHIP_BY_STATUS: Record<EventRequestStatus, ChipStyle> = {
     tone: 'border-ember/50 bg-ember/15 text-corona',
   },
   approved: { label: 'Approved', tone: 'border-success/30 bg-success/10 text-success' },
+  safety_review: { label: 'Safety review', tone: 'border-nebula/50 bg-nebula/15 text-ink' },
   confirmed: { label: 'Confirmed', tone: 'border-success/50 bg-success/15 text-success' },
   completed: { label: 'Completed', tone: 'border-line text-ink-muted' },
   cancelled: { label: 'Cancelled', tone: 'border-line text-ink-faint' },
