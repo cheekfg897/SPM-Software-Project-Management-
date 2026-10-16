@@ -40,8 +40,10 @@ export interface CataloguePage {
 export interface Registration {
   id: number
   event_id: number
-  status: 'registered'
+  status: 'registered' | 'withdrawn'
   registered_at: string
+  /** When the Attendee withdrew (SCRUM-53); `null` while they hold the place. */
+  withdrawn_at: string | null
 }
 
 /** An event the signed-in Attendee registered for, with the event's own status (ADR-0044). */
@@ -53,8 +55,10 @@ export interface MyEvent {
   ends_at: string
   event_status: EventRequestStatus
   /** The registration's own status. */
-  status: 'registered'
+  status: 'registered' | 'withdrawn'
   registered_at: string
+  /** When the Attendee withdrew (SCRUM-53); `null` while they hold the place. */
+  withdrawn_at: string | null
 }
 
 /** One half of the Attendee's events. `message` is there only when the list is empty. */
