@@ -92,6 +92,21 @@ describe('SCRUM-24 my events page: none, loading and errors', () => {
     )
   })
 
+  it("shows the backend's message and a way to find events when there are no past ones", async () => {
+    // A fresh attendee holds nothing, so both halves are empty. Opening on Past checks the
+    // message comes from the half that was asked for, not a fixed "upcoming" line.
+    renderApp(`${ROUTES.MY_EVENTS}?when=past`, { session: FRESH_ATTENDEE })
+
+    expect(await screen.findByText('You have no past events.')).toBeInTheDocument()
+    expect(screen.queryByText('You have no upcoming events.')).not.toBeInTheDocument()
+    // An empty list is a message, not a blank page (SCRUM-24 AC11), and it points somewhere.
+    expect(screen.getByRole('link', { name: 'Browse events' })).toHaveAttribute(
+      'href',
+      ROUTES.EVENTS,
+    )
+    expect(screen.getByRole('radio', { name: 'Past' })).toBeChecked()
+  })
+
   it('says it is loading until the backend answers', () => {
     renderApp(ROUTES.MY_EVENTS, { session: ATTENDEE })
 
