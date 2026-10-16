@@ -86,6 +86,9 @@ were unstarted when this story was built, so this ADR records where each seam si
     every overlap rule — the setup and turnaround padding, identifying the conflicting booking,
     marking other Pending requests Conflicting — is SCRUM-44's story, which also owns the hold-aware
     clauses. The team decided to keep this story to its own ACs rather than pre-empt them.
+    **Amended by [ADR-0045](0045-refuse-an-approval-that-clashes.md):** an approval is now refused
+    when it clashes with a confirmed booking; the Conflicting status and the hold clauses are still
+    to come.
     **Consequence:** until SCRUM-44 merges, two events can be approved into one venue for
     overlapping periods, and nothing warns Venue Staff. The helpers SCRUM-44 needs (`_occupied`,
     `_booking_clash`) already exist, so the change is small when it comes.

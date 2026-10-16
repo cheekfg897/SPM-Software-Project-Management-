@@ -171,7 +171,7 @@ curl http://localhost:5000/api/auth/internal-only -H "Authorization: Bearer <tok
 | `POST  /api/venues/events/<reference>/booking-requests/<id>/withdraw` | `event_coordinator` — retract one arrangement before Venue Staff decide it; 409 if it isn't pending |
 | `POST  /api/venues/events/<reference>/booking-requests/cancel-all` | `event_coordinator` — retire every arrangement the event still has |
 | `GET  /api/venues/booking-requests` | `venue_staff` — every request waiting for a decision, earliest event first, with the event's timing and accessibility needs |
-| `POST /api/venues/booking-requests/<id>/decision` | `venue_staff` — approve a request (books the venue) or reject it; a rejection needs a reason; 409 if it isn't pending |
+| `POST /api/venues/booking-requests/<id>/decision` | `venue_staff` — approve a request (books the venue) or reject it; a rejection needs a reason; 409 if it isn't pending, or if approving clashes with a confirmed booking at the venue (setup and turnaround included), naming that booking (ADR-0045) |
 | `POST /api/equipment/types`    | `technical_support_staff` — add an equipment type               |
 | `GET  /api/equipment/types`    | internal roles — every equipment type with its total quantity, by name |
 | `GET  /api/equipment/types/<id>` | internal roles — one equipment type                           |
