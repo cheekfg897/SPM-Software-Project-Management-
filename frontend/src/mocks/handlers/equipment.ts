@@ -3,6 +3,7 @@ import type { RequestHandler } from 'msw'
 
 import { EQUIPMENT_READER_ROLES, ROLE } from '@/config/roles'
 import type { Role } from '@/config/roles'
+import type { PreparationStatus } from '@/features/equipment/api'
 import { isRecord } from '@/lib/isRecord'
 
 import type { MockAccount } from '../fixtures/accounts'
@@ -28,6 +29,8 @@ interface MockReservation {
   ends_at: string
   reserved_by: string
   created_at: string
+  preparation_status: PreparationStatus
+  preparation_notes: string | null
 }
 
 let reservations: MockReservation[] = []
@@ -183,6 +186,8 @@ export const equipmentHandlers: RequestHandler[] = [
       ...MOCK_EVENT_PERIOD,
       reserved_by: caller.full_name,
       created_at: MOCK_EVENT_PERIOD.starts_at,
+      preparation_status: 'not_started',
+      preparation_notes: null,
     }
     reservations.push(reservation)
     return HttpResponse.json(reservation, { status: 201 })

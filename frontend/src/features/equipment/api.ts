@@ -20,6 +20,9 @@ export interface EquipmentAvailability {
   shortfall: number
 }
 
+/** How far Technical Support have got in preparing a reservation (SCRUM-85). */
+export type PreparationStatus = 'not_started' | 'in_progress' | 'ready'
+
 /** Equipment held for an event. `reserved_by` is the reserver's name, null once their account is gone. */
 export interface EquipmentReservation {
   id: number
@@ -31,6 +34,9 @@ export interface EquipmentReservation {
   ends_at: string
   reserved_by: string | null
   created_at: string
+  /** Technical Support's progress in preparing the units, and their notes (SCRUM-85). */
+  preparation_status: PreparationStatus
+  preparation_notes: string | null
 }
 
 export interface ReserveEquipmentBody {

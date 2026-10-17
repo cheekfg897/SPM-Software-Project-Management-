@@ -94,6 +94,8 @@ describe('SCRUM-45 equipment page: what is free for the event', () => {
             ends_at: '2026-10-12T22:00:00+08:00',
             reserved_by: null,
             created_at: '2026-10-10T09:00:00+08:00',
+            preparation_status: 'not_started',
+            preparation_notes: null,
           },
         ]),
       ),

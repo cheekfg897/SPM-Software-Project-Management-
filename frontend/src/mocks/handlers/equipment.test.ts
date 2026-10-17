@@ -112,6 +112,8 @@ describe('SCRUM-46 equipment mock: reservations', () => {
       equipment_type_name: 'Projector',
       quantity: 4,
       reserved_by: 'Tariq Hassan',
+      preparation_status: 'not_started',
+      preparation_notes: null,
     })
     expect(projector(await availability())).toMatchObject({ available: 2, shortfall: 6 })
     await expect(apiRequest(`${OPEN}/reservations`)).resolves.toHaveLength(1)
