@@ -152,7 +152,10 @@ def test_a_settled_event_reaches_the_safety_officer(
     )
     refused = _body(coordinator.post(safety_review_path), 409)
     assert refused["error"] == "safety_review_not_allowed"
-    assert _body(safety_officer.get(awaiting_path), 200)["events"] == []
+    assert _body(safety_officer.get(awaiting_path), 200) == {
+        "events": [],
+        "message": "No events are waiting for a safety review.",
+    }
 
     # --- Venue Staff approve it (SCRUM-97 AC1) ---
     decision = {"outcome": "approved"}

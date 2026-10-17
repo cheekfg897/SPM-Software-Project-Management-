@@ -102,6 +102,7 @@ def test_a_safety_officer_gets_each_event_with_its_venues_and_equipment(
                     "end_date": "2026-10-15",
                     "start_time": "09:00:00",
                     "end_time": "17:00:00",
+                    "status": "safety_review",
                     "expected_attendance": 250,
                     "accessibility_needs": "Step-free entrance",
                 },
@@ -128,4 +129,18 @@ def test_a_safety_officer_gets_each_event_with_its_venues_and_equipment(
                 ],
             }
         ]
+    }
+
+
+def test_an_empty_list_says_no_events_are_waiting(
+    call_route: CallRoute, token_for: Callable[..., str], replace_services: ReplaceServices
+) -> None:
+    replace_services(routes, {"list_events_awaiting_safety_review": []})
+
+    response, status = call_route(ENDPOINT, "GET", PATH, {}, token_for(role=Role.SAFETY_OFFICER))
+
+    assert status == 200
+    assert response.get_json() == {
+        "events": [],
+        "message": "No events are waiting for a safety review.",
     }
