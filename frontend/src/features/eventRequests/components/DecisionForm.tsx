@@ -28,7 +28,7 @@ interface DecisionFormProps {
 /**
  * Approve or reject a request, or change its decision (SCRUM-31 AC4, AC6). The reason is sent
  * only when one is typed; whether one is needed is the backend's rule, and its message shows
- * under the box (ADR-0049).
+ * under the box (ADR-0060).
  */
 export function DecisionForm({ reference, outcomes }: DecisionFormProps) {
   const [reason, setReason] = useState('')

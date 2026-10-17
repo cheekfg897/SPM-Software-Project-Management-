@@ -24,7 +24,7 @@ import type { Credentials } from './backend'
  * SCRUM-24 AC11), submitting one (SCRUM-19), saving, changing and submitting a draft (SCRUM-20,
  * ADR-0024), a coordinator's assigned list and an event's record (SCRUM-24 AC2, AC9, AC10;
  * ADR-0056), and the review actions: starting a review, deciding, asking for clarification and
- * answering (SCRUM-31, SCRUM-32; ADR-0028, ADR-0029, ADR-0049).
+ * answering (SCRUM-31, SCRUM-32; ADR-0028, ADR-0029, ADR-0060).
  * Each test records its own client organisation, which only staff may do (SCRUM-66), so these
  * tests sign in as the staff account INTEGRATION_STAFF_EMAIL / INTEGRATION_STAFF_PASSWORD.
  */

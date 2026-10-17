@@ -7,7 +7,7 @@ import { logIn } from './logIn'
 
 /**
  * SCRUM-31, SCRUM-32: a coordinator starts reviewing a request and asks the organiser a
- * question; the organiser answers it; the coordinator then approves the request (ADR-0049).
+ * question; the organiser answers it; the coordinator then approves the request (ADR-0060).
  * Against the mock backend, which keeps its data only until the page reloads, so the journey
  * switches users through the app's own log-out and log-in, never by reloading.
  */

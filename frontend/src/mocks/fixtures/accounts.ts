@@ -103,7 +103,7 @@ export const MOCK_ACCOUNTS = {
   },
   /**
    * A coordinator whose events are all another organisation's, so reviewing and deciding them
-   * changes nothing the organiser's or Chloe's lists show (ADR-0049).
+   * changes nothing the organiser's or Chloe's lists show (ADR-0060).
    */
   reviewingCoordinator: {
     ...BASE_ACCOUNTS.coordinator,
@@ -111,7 +111,7 @@ export const MOCK_ACCOUNTS = {
     email: 'priya@connectsphere.test',
     full_name: 'Priya Nair',
   },
-  /** An organiser of organisation 2, whose requests Priya reviews (ADR-0049). */
+  /** An organiser of organisation 2, whose requests Priya reviews (ADR-0060). */
   otherOrganiser: {
     ...BASE_ACCOUNTS.organiser,
     id: 12,

@@ -25,7 +25,7 @@ import {
  * The mock of a coordinator starting a review and deciding a request (POST
  * /api/events/requests/<reference>/review and /decide), pinned to what the backend does:
  * only the assigned coordinator, only from the statuses it allows, its check order, codes,
- * messages and field messages (SCRUM-31 AC3 to AC7, ADR-0028, ADR-0029, ADR-0049). The mock's
+ * messages and field messages (SCRUM-31 AC3 to AC7, ADR-0028, ADR-0029, ADR-0060). The mock's
  * "now" is MOCK_NOW. The integration tests check the same contract against the backend.
  *
  * Priya coordinates organisation 2's EVR-RV4K8N2P (submitted), EVR-RV2D5F8J (under review) and

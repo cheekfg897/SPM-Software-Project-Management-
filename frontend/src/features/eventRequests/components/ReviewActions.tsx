@@ -24,7 +24,7 @@ const NOTHING_TO_OFFER: ReviewOptions = {
 const EITHER_OUTCOME: readonly Decision['outcome'][] = ['approved', 'rejected']
 
 /**
- * The actions that can apply in each status (ADR-0049). Only buttons that can't apply are
+ * The actions that can apply in each status (ADR-0060). Only buttons that can't apply are
  * hidden: the backend still decides each action, and its refusal is shown. A question can be
  * asked only under review (SCRUM-32 AC1); a request awaiting its answer can be rejected but not
  * approved (SCRUM-32 AC3), and a decided one can be decided again (SCRUM-31 AC6).

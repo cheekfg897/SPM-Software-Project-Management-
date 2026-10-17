@@ -30,7 +30,7 @@ import type { LoadedDecision } from './eventReviewRules'
  * (SCRUM-19), saving, changing and submitting a draft (SCRUM-20, ADR-0024), a coordinator's
  * list of the events assigned to them, opening one's record as either (SCRUM-24 AC2, AC9,
  * AC10; ADR-0056), the coordinator starting a review, deciding and asking a question, and an
- * organiser answering it (SCRUM-31, SCRUM-32; ADR-0028, ADR-0029, ADR-0049). Who sees what,
+ * organiser answering it (SCRUM-31, SCRUM-32; ADR-0028, ADR-0029, ADR-0060). Who sees what,
  * the order, and every check are decided here as the backend decides them, never in the UI.
  * A decision, question or answer is made at the mock's "now", MOCK_NOW.
  */

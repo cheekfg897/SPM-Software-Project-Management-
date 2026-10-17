@@ -55,7 +55,7 @@ const MARCUS: MockCoordinator = {
   email: 'marcus@connectsphere.test',
 }
 
-/** A coordinator who can log in, whose events are all another organisation's (ADR-0049). */
+/** A coordinator who can log in, whose events are all another organisation's (ADR-0060). */
 const PRIYA: MockCoordinator = {
   id: MOCK_ACCOUNTS.reviewingCoordinator.id,
   full_name: MOCK_ACCOUNTS.reviewingCoordinator.full_name,
@@ -83,7 +83,7 @@ const DETAILS = {
  * organisation's, which the booking and equipment mocks also hold, so her links lead somewhere.
  * Marcus has two of the organiser's, one dated between hers, so a list that leaks it shows it.
  * Priya has four of organisation 2's (submitted, under review, approved and rejected), so
- * reviewing and deciding them changes nothing the organiser's or Chloe's lists show (ADR-0049).
+ * reviewing and deciding them changes nothing the organiser's or Chloe's lists show (ADR-0060).
  * Sara wrote all but the one under review, which her colleague did, so answering its question
  * shows any organiser of the organisation may. The one under
  * review and the approved one have an equipment request, so the approved one's decision is

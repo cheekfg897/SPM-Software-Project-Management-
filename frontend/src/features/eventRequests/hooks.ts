@@ -115,7 +115,7 @@ export function useRequestClarification(reference: string) {
   })
 }
 
-/** Answer the open question, sending the request back to review (SCRUM-32 AC2, ADR-0049). */
+/** Answer the open question, sending the request back to review (SCRUM-32 AC2, ADR-0060). */
 export function useAnswerClarification(reference: string) {
   const refresh = useRefreshEventRequests()
   return useMutation({

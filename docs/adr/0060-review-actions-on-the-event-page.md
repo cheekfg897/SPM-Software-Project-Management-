@@ -1,4 +1,4 @@
-# ADR-0049: The coordinator reviews, decides and asks for clarification on the event page; the organiser answers there
+# ADR-0060: The coordinator reviews, decides and asks for clarification on the event page; the organiser answers there
 
 - **Status:** Accepted; every decision below is a default to review with the team
 - **Date:** 2026-10-17
@@ -76,8 +76,8 @@ Six things are left open.
 does: the same roles, scope (only the assigned coordinator; any organiser of the organisation),
 check order, status changes, error codes and messages, field messages and trimming. A decision
 or question appears on the record with the caller's name and the mock's "now". Two accounts
-are added so the actions have data no other test reads: Priya Nair (id 10), a coordinator, and
-Sara Lee (id 11), an organiser of organisation 2. Two of Priya's events have an equipment
+are added so the actions have data no other test reads: Priya Nair (id 11), a coordinator, and
+Sara Lee (id 12), an organiser of organisation 2. Two of Priya's events have an equipment
 request: the approved one's decision can't be changed, while the one under review can still
 get its first decision.
 
