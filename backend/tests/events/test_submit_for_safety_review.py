@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import patch
 
@@ -30,8 +29,6 @@ from app.modules.auth.models import User
 from app.modules.auth.permissions import Role
 from app.modules.equipment.models import EquipmentType
 from app.modules.events.models import (
-    EquipmentLineStatus,
-    EventEquipmentLine,
     EventHistoryKind,
     EventRequest,
     EventRequestStatus,
@@ -49,12 +46,11 @@ from app.modules.events.services import (
     update_event_request,
 )
 from app.modules.notifications.services import NotificationKind
-from app.modules.venue.models import BookingRequestStatus, Venue, VenueBookingRequest
+from app.modules.venue.models import BookingRequestStatus
+from tests.events.cases import AddLine, Arrange
 
 pytestmark = pytest.mark.scrum_97
 
-Arrange = Callable[[BookingRequestStatus], VenueBookingRequest]
-AddLine = Callable[[int | None], EventEquipmentLine]
 HistoryOf = Callable[[int], list[tuple[EventHistoryKind, int | None, dict[str, Any] | None]]]
 ReloadEventRequest = Callable[[int], EventRequest]
 NotificationsOf = Callable[[int], list[tuple[Any, ...]]]
@@ -86,7 +82,7 @@ NOT_APPROVED_STATUSES = [
 ]
 
 
-@pytest.fixture()
+@pytest.fixture(autouse=True)
 def approved_event(
     saved_users: list[User], saved_event_request: EventRequest, save: Callable[..., None]
 ) -> EventRequest:
@@ -94,61 +90,6 @@ def approved_event(
     saved_event_request.status = EventRequestStatus.APPROVED
     save(saved_event_request)
     return saved_event_request
-
-
-@pytest.fixture()
-def arrange(approved_event: EventRequest, venue: Venue, save: Callable[..., None]) -> Arrange:
-    """Save a venue arrangement for ``approved_event`` with the given status.
-
-    Each one starts an hour after the last, so two Pending ones never share a period.
-    """
-    arranged: list[VenueBookingRequest] = []
-
-    def _arrange(status: BookingRequestStatus) -> VenueBookingRequest:
-        hour = 9 + len(arranged)
-        arrangement = VenueBookingRequest(
-            event_id=approved_event.id,
-            venue_id=venue.id,
-            starts_at=datetime(2026, 11, 1, hour, tzinfo=timezone.utc),
-            ends_at=datetime(2026, 11, 1, hour, 30, tzinfo=timezone.utc),
-            purpose="Main session",
-            expected_occupancy=80,
-            status=status,
-            requested_by=COORDINATOR_ID,
-        )
-        save(arrangement)
-        arranged.append(arrangement)
-        return arrangement
-
-    return _arrange
-
-
-@pytest.fixture()
-def add_line(
-    approved_event: EventRequest,
-    make_equipment_type: Callable[..., EquipmentType],
-    make_equipment_line: Callable[..., EventEquipmentLine],
-    save: Callable[..., None],
-) -> AddLine:
-    """Save a request for 2 units on ``approved_event``, ``provided_quantity`` as given.
-
-    ``None`` means Technical Support has not recorded an outcome yet (ADR-0040).
-    Each request is for its own equipment type.
-    """
-    added: list[EventEquipmentLine] = []
-
-    def _add(provided_quantity: int | None) -> EventEquipmentLine:
-        equipment_type = make_equipment_type(name=f"Item {len(added)}")
-        save(equipment_type)
-        line = make_equipment_line(approved_event, equipment_type)
-        if provided_quantity is not None:
-            line.provided_quantity = provided_quantity
-            line.status = EquipmentLineStatus.FULFILLED
-        save(line)
-        added.append(line)
-        return line
-
-    return _add
 
 
 @pytest.fixture()

@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from types import SimpleNamespace
 
 import pytest
 from sqlalchemy.exc import OperationalError
 
-from app.modules.events.models import EventRequestStatus
+from app.modules.events.models import EventEquipmentLine, EventRequestStatus
+from app.modules.venue.models import BookingRequestStatus, VenueBookingRequest
+
+#: The ``arrange`` and ``add_line`` fixtures' callables (SCRUM-97, SCRUM-49).
+Arrange = Callable[[BookingRequestStatus], VenueBookingRequest]
+AddLine = Callable[[int | None], EventEquipmentLine]
 
 
 class DriverError(Exception):
