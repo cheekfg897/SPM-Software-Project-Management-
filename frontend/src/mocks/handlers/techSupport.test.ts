@@ -215,6 +215,14 @@ describe('mock of the equipment types the queue is named from', () => {
 
     expect(await fetchEquipmentTypes()).toEqual([
       {
+        id: 3,
+        name: 'Lectern',
+        description: null,
+        total_quantity: 2,
+        venue_id: null,
+        store_name: null,
+      },
+      {
         id: 2,
         name: 'Microphone',
         description: null,

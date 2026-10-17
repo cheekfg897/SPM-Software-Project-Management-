@@ -1,16 +1,33 @@
+// Relative imports, not `@/`: the Playwright tests import this file, and they don't know the
+// alias. Keep it free of msw for the same reason.
+import { EVENT_REQUEST_STATUS } from '../../config/eventStatus'
+import type { EventRequestStatus } from '../../config/eventStatus'
 import { MOCK_ACCOUNTS } from '../fixtures/accounts'
 
 /**
- * Data for the equipment mock (backend/app/modules/equipment). Every mock event shares one
- * period, so a reservation for one lowers what is free for all of them.
+ * Data for the equipment mock (backend/app/modules/equipment, and the events module's equipment
+ * lines). Every mock event shares one period, so a reservation for one lowers what is free for
+ * all of them.
  */
 
 export const MOCK_OPEN_EVENT_REFERENCE = 'EVR-MOCK0001'
 export const MOCK_CLOSED_EVENT_REFERENCE = 'EVR-MOCK0002'
+/** An event assigned to a coordinator other than the mock one, who is refused it. */
+export const MOCK_OTHER_COORDINATORS_EVENT_REFERENCE = 'EVR-MOCK0003'
+/** That other coordinator. No mock account signs in as them. */
+const OTHER_COORDINATOR_ID = 15
 
 export const MOCK_EVENT_PERIOD = {
   starts_at: '2026-10-12T19:30:00+08:00',
   ends_at: '2026-10-12T22:00:00+08:00',
+}
+
+/** The same period as the event's own date and times, written as the backend writes them. */
+export const MOCK_EVENT_SCHEDULE = {
+  proposed_date: '2026-10-12',
+  end_date: '2026-10-12',
+  start_time: '19:30:00',
+  end_time: '22:00:00',
 }
 
 export interface MockEquipmentType {
@@ -18,28 +35,116 @@ export interface MockEquipmentType {
   name: string
   /** Units free for the period before anything is reserved through the mock. */
   free: number
-  /** Units the mock events ask for. */
-  requested: number
 }
 
-/** Ten projectors held, four reserved by other events, leaves six free against eight asked for. */
+/**
+ * Ten projectors held, four reserved by other events, leaves six free against the eight the open
+ * event asks for. Not in name order, so the mock has to sort them as the backend does.
+ */
 export const MOCK_EQUIPMENT_TYPES: readonly MockEquipmentType[] = [
-  { id: 1, name: 'Projector', free: 6, requested: 8 },
-  { id: 2, name: 'Microphone', free: 12, requested: 4 },
+  { id: 1, name: 'Projector', free: 6 },
+  { id: 2, name: 'Microphone', free: 12 },
+  { id: 3, name: 'Lectern', free: 2 },
 ]
 
-interface MockEvent {
-  /** A closed event is completed, cancelled or rejected: nothing can be reserved for it. */
-  accepts_reservations: boolean
-  /** The assigned coordinator's account id; only they, of the coordinators, read its equipment. */
+export interface MockEvent {
+  reference: string
+  name: string
+  status: EventRequestStatus
+  /** The assigned coordinator's account id; only they, of the coordinators, see its equipment. */
   coordinator_id: number | null
 }
 
-/** Events that exist. The open one is the mock coordinator's; nobody is assigned the closed one. */
-export const MOCK_EVENT_REFERENCES: Record<string, MockEvent> = {
-  [MOCK_OPEN_EVENT_REFERENCE]: {
-    accepts_reservations: true,
+/** The mock coordinator's event in `status`, e.g. EVR-UNDER_REVIEW, one for every status. */
+export function mockStatusEventReference(status: EventRequestStatus): string {
+  return `EVR-${status.toUpperCase()}`
+}
+
+function eventsInEveryStatus(): MockEvent[] {
+  const events: MockEvent[] = []
+  for (const status of Object.values(EVENT_REQUEST_STATUS)) {
+    events.push({
+      reference: mockStatusEventReference(status),
+      name: `Planning meeting (${status})`,
+      status,
+      coordinator_id: MOCK_ACCOUNTS.coordinator.id,
+    })
+  }
+  return events
+}
+
+/**
+ * Events that exist. The open one is the mock coordinator's and approved; nobody is assigned the
+ * closed one, which is over; the third is another coordinator's.
+ */
+export const MOCK_EVENTS: readonly MockEvent[] = [
+  {
+    reference: MOCK_OPEN_EVENT_REFERENCE,
+    name: 'Annual Partner Summit',
+    status: EVENT_REQUEST_STATUS.APPROVED,
     coordinator_id: MOCK_ACCOUNTS.coordinator.id,
   },
-  [MOCK_CLOSED_EVENT_REFERENCE]: { accepts_reservations: false, coordinator_id: null },
+  {
+    reference: MOCK_CLOSED_EVENT_REFERENCE,
+    name: 'Product Launch Evening',
+    status: EVENT_REQUEST_STATUS.COMPLETED,
+    coordinator_id: null,
+  },
+  {
+    reference: MOCK_OTHER_COORDINATORS_EVENT_REFERENCE,
+    name: 'Alumni Dinner',
+    status: EVENT_REQUEST_STATUS.SUBMITTED,
+    coordinator_id: OTHER_COORDINATOR_ID,
+  },
+  ...eventsInEveryStatus(),
+]
+
+/** Where a line stands, as the backend names it (EquipmentLineStatus, SCRUM-48). */
+export type MockEquipmentLineStatus =
+  'requested' | 'fulfilled' | 'partially_fulfilled' | 'unavailable'
+
+/** One kind of equipment an event needs (SCRUM-37), with Technical Support's outcome, if any. */
+export interface MockEquipmentLine {
+  id: number
+  event_reference: string
+  equipment_type_id: number
+  quantity: number
+  notes: string | null
+  status: MockEquipmentLineStatus
+  provided_quantity: number | null
+  outcome_note: string | null
+  reviewed_by: string | null
+  reviewed_at: string | null
 }
+
+/**
+ * The open event's lines. Projectors first, though "Microphone" sorts before it: the backend
+ * keeps the order the lines were added. The microphones have been reviewed and will all be
+ * provided, so their quantity can't go below four.
+ */
+export const MOCK_EQUIPMENT_LINES: readonly MockEquipmentLine[] = [
+  {
+    id: 41,
+    event_reference: MOCK_OPEN_EVENT_REFERENCE,
+    equipment_type_id: 1,
+    quantity: 8,
+    notes: 'Ceiling-mounted, with HDMI at the lectern.',
+    status: 'requested',
+    provided_quantity: null,
+    outcome_note: null,
+    reviewed_by: null,
+    reviewed_at: null,
+  },
+  {
+    id: 42,
+    event_reference: MOCK_OPEN_EVENT_REFERENCE,
+    equipment_type_id: 2,
+    quantity: 4,
+    notes: null,
+    status: 'fulfilled',
+    provided_quantity: 4,
+    outcome_note: null,
+    reviewed_by: MOCK_ACCOUNTS.technicalSupport.full_name,
+    reviewed_at: '2026-10-05T10:00:00+08:00',
+  },
+]

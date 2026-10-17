@@ -1,16 +1,24 @@
 import { http, HttpResponse } from 'msw'
 import type { RequestHandler } from 'msw'
 
+import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
+import type { EventRequestStatus } from '@/config/eventStatus'
 import { EQUIPMENT_READER_ROLES, ROLE } from '@/config/roles'
-import type { Role } from '@/config/roles'
 import type { PreparationStatus } from '@/features/equipment/api'
 import { isRecord } from '@/lib/isRecord'
 
-import type { MockAccount } from '../fixtures/accounts'
-import { errorResponse, INVALID_TOKEN_MESSAGE, validationError } from '../responses'
+import { errorResponse, validationError } from '../responses'
 
-import { accountForRequest } from './auth'
-import { MOCK_EQUIPMENT_TYPES, MOCK_EVENT_PERIOD, MOCK_EVENT_REFERENCES } from './equipmentFixtures'
+import { callerOrRefusal, eventForReader, eventForStaff, eventNotFound } from './equipmentAccess'
+import { MOCK_EQUIPMENT_TYPES, MOCK_EVENT_PERIOD } from './equipmentFixtures'
+import type { MockEquipmentType } from './equipmentFixtures'
+import { requestedQuantity, resetMockEquipmentLines } from './equipmentLines'
+import {
+  EQUIPMENT_TYPE_ID_RANGE_MESSAGE,
+  MISSING_MESSAGE,
+  positiveWholeNumberError,
+  QUANTITY_RANGE_MESSAGE,
+} from './equipmentValidation'
 
 /**
  * The equipment endpoints, as backend/app/modules/equipment/routes.py answers them (SCRUM-45
@@ -18,7 +26,13 @@ import { MOCK_EQUIPMENT_TYPES, MOCK_EVENT_PERIOD, MOCK_EVENT_REFERENCES } from '
  */
 
 const EVENT_PATH = '/api/equipment/events/:reference'
-const MISSING_MESSAGE = 'Missing data for required field.'
+
+/** Events nothing can be reserved for any more (EQUIPMENT_NOT_NEEDED_STATUSES). */
+const RESERVATIONS_CLOSED_STATUSES: readonly EventRequestStatus[] = [
+  EVENT_REQUEST_STATUS.COMPLETED,
+  EVENT_REQUEST_STATUS.CANCELLED,
+  EVENT_REQUEST_STATUS.REJECTED,
+]
 
 interface MockReservation {
   id: number
@@ -35,9 +49,15 @@ interface MockReservation {
 
 let reservations: MockReservation[] = []
 
-/** Forget every reservation made since the mock started. Runs after every test. */
+/** Forget every reservation and line change made since the mock started. Runs after every test. */
 export function resetMockEquipment(): void {
   reservations = []
+  resetMockEquipmentLines()
+}
+
+/** Every equipment type, by name, as the backend lists the catalogue. */
+export function equipmentTypesByName(): MockEquipmentType[] {
+  return [...MOCK_EQUIPMENT_TYPES].sort((first, second) => first.name.localeCompare(second.name))
 }
 
 function reservedQuantity(equipmentTypeId: number): number {
@@ -54,67 +74,37 @@ function availableQuantity(equipmentTypeId: number, free: number): number {
   return Math.max(free - reservedQuantity(equipmentTypeId), 0)
 }
 
-function availabilityRows() {
-  return MOCK_EQUIPMENT_TYPES.map((type) => {
+/** One row per equipment type, by name, against what this event's lines ask for. */
+function availabilityRows(reference: string) {
+  return equipmentTypesByName().map((type) => {
     const available = availableQuantity(type.id, type.free)
+    const requested = requestedQuantity(reference, type.id)
     return {
       equipment_type_id: type.id,
       equipment_type_name: type.name,
       available,
-      requested: type.requested,
-      shortfall: Math.max(type.requested - available, 0),
+      requested,
+      shortfall: Math.max(requested - available, 0),
     }
   })
-}
-
-/** The caller, or the refusal for a missing token or a role that may not call this. */
-function callerOrRefusal(request: Request, allowedRoles: readonly Role[]) {
-  const user = accountForRequest(request)
-  if (user === undefined) {
-    return errorResponse(401, 'authentication_error', INVALID_TOKEN_MESSAGE)
-  }
-  if (!allowedRoles.includes(user.role)) {
-    return errorResponse(
-      403,
-      'authorization_error',
-      'You do not have permission to perform this action.',
-    )
-  }
-  return user
-}
-
-function eventNotFound() {
-  return errorResponse(404, 'not_found', 'Event request not found.')
-}
-
-/**
- * Whether the reader may see the event's equipment: Technical Support any event's, a coordinator
- * only one assigned to them. Anything else is the same 404 as an unknown event (ADR-0019).
- */
-function mayRead(reader: MockAccount, reference: string): boolean {
-  const event = MOCK_EVENT_REFERENCES[reference]
-  if (event === undefined) {
-    return false
-  }
-  return reader.role === ROLE.TECHNICAL_SUPPORT_STAFF || event.coordinator_id === reader.id
 }
 
 /** Problems with the reservation body, by field, in the backend's wording (EquipmentUnitsSchema). */
 function bodyErrors(body: unknown): Record<string, string[]> {
   const sent = isRecord(body) ? body : {}
+  const rangeMessages = {
+    equipment_type_id: EQUIPMENT_TYPE_ID_RANGE_MESSAGE,
+    quantity: QUANTITY_RANGE_MESSAGE,
+  }
   const errors: Record<string, string[]> = {}
-  for (const name of ['equipment_type_id', 'quantity']) {
-    if (sent[name] === undefined) {
-      errors[name] = [MISSING_MESSAGE]
-    } else if (!Number.isInteger(sent[name])) {
-      errors[name] = ['Not a valid integer.']
+  for (const [name, rangeMessage] of Object.entries(rangeMessages)) {
+    const error =
+      sent[name] === undefined
+        ? MISSING_MESSAGE
+        : positiveWholeNumberError(sent[name], rangeMessage)
+    if (error !== undefined) {
+      errors[name] = [error]
     }
-  }
-  if (errors.equipment_type_id === undefined && Number(sent.equipment_type_id) < 1) {
-    errors.equipment_type_id = ['equipment_type_id must be a positive number.']
-  }
-  if (errors.quantity === undefined && Number(sent.quantity) < 1) {
-    errors.quantity = ['Quantity must be at least 1.']
   }
   return errors
 }
@@ -125,10 +115,11 @@ export const equipmentHandlers: RequestHandler[] = [
     if (caller instanceof Response) {
       return caller
     }
-    if (!mayRead(caller, String(params.reference))) {
+    const event = eventForReader(caller, String(params.reference))
+    if (event === undefined) {
       return eventNotFound()
     }
-    return HttpResponse.json(availabilityRows())
+    return HttpResponse.json(availabilityRows(event.reference))
   }),
 
   http.get(`${EVENT_PATH}/reservations`, ({ request, params }) => {
@@ -136,7 +127,7 @@ export const equipmentHandlers: RequestHandler[] = [
     if (caller instanceof Response) {
       return caller
     }
-    if (!mayRead(caller, String(params.reference))) {
+    if (eventForReader(caller, String(params.reference)) === undefined) {
       return eventNotFound()
     }
     return HttpResponse.json(reservations)
@@ -153,11 +144,11 @@ export const equipmentHandlers: RequestHandler[] = [
     if (Object.keys(errors).length > 0) {
       return validationError(errors)
     }
-    const event = MOCK_EVENT_REFERENCES[String(params.reference)]
+    const event = eventForStaff(String(params.reference))
     if (event === undefined) {
       return eventNotFound()
     }
-    if (!event.accepts_reservations) {
+    if (RESERVATIONS_CLOSED_STATUSES.includes(event.status)) {
       return errorResponse(
         409,
         'equipment_not_reservable',
@@ -165,6 +156,7 @@ export const equipmentHandlers: RequestHandler[] = [
       )
     }
 
+    // bodyErrors has just checked both are whole numbers.
     const { equipment_type_id: typeId, quantity } = body as {
       equipment_type_id: number
       quantity: number

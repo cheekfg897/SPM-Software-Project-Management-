@@ -1,10 +1,25 @@
 import { apiRequest } from '@/lib/api'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
 
+import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
+import type { EventRequestStatus } from '@/config/eventStatus'
+
 import { MOCK_ACCOUNTS, mockTokenFor } from '../fixtures/accounts'
-import { MOCK_CLOSED_EVENT_REFERENCE, MOCK_OPEN_EVENT_REFERENCE } from './equipmentFixtures'
+import {
+  MOCK_CLOSED_EVENT_REFERENCE,
+  MOCK_OPEN_EVENT_REFERENCE,
+  MOCK_OTHER_COORDINATORS_EVENT_REFERENCE,
+  mockStatusEventReference,
+} from './equipmentFixtures'
 
 /** The equipment mock mirrors backend/app/modules/equipment/routes.py (SCRUM-45, SCRUM-46). */
+
+/** Statuses an event takes no more reservations in (EQUIPMENT_NOT_NEEDED_STATUSES). */
+const CLOSED_STATUSES: readonly EventRequestStatus[] = ['completed', 'cancelled', 'rejected']
+/** Every other status but a draft, which staff never find (ADR-0024). */
+const OPEN_STATUSES = Object.values(EVENT_REQUEST_STATUS).filter(
+  (status) => status !== 'draft' && !CLOSED_STATUSES.includes(status),
+)
 
 interface Availability {
   equipment_type_id: number
@@ -47,7 +62,54 @@ describe('SCRUM-45 equipment mock: availability', () => {
   it('lets a coordinator read it', async () => {
     signInAs(MOCK_ACCOUNTS.coordinator)
 
-    await expect(availability()).resolves.toHaveLength(2)
+    await expect(availability()).resolves.toHaveLength(3)
+  })
+
+  it('lists every equipment type by name, as the backend does', async () => {
+    signInAs(MOCK_ACCOUNTS.technicalSupport)
+
+    const rows = await availability()
+
+    expect(rows.map((row) => row.equipment_type_name)).toEqual([
+      'Lectern',
+      'Microphone',
+      'Projector',
+    ])
+  })
+
+  it("counts what is requested from this event's own lines, and none for a type it lacks", async () => {
+    signInAs(MOCK_ACCOUNTS.technicalSupport)
+
+    const open = await availability()
+    const closed = await availability(MOCK_CLOSED_EVENT_REFERENCE)
+
+    expect(open.map((row) => row.requested)).toEqual([0, 4, 8])
+    expect(closed.map((row) => row.requested)).toEqual([0, 0, 0])
+  })
+
+  it('finds the event whatever its case and surrounding spaces, as the backend does', async () => {
+    signInAs(MOCK_ACCOUNTS.coordinator)
+
+    const rows = await availability(encodeURIComponent(' evr-mock0001 '))
+
+    expect(projector(rows)).toMatchObject({ requested: 8 })
+  })
+
+  it('answers Technical Support 404 for a draft, which staff never see', async () => {
+    signInAs(MOCK_ACCOUNTS.technicalSupport)
+
+    await expect(availability(mockStatusEventReference('draft'))).rejects.toMatchObject({
+      status: 404,
+      message: 'Event request not found.',
+    })
+  })
+
+  it("answers a coordinator 404 for another coordinator's event", async () => {
+    signInAs(MOCK_ACCOUNTS.coordinator)
+
+    await expect(availability(MOCK_OTHER_COORDINATORS_EVENT_REFERENCE)).rejects.toMatchObject({
+      status: 404,
+    })
   })
 
   it('refuses an organiser with the 403 the backend sends', async () => {
@@ -78,7 +140,7 @@ describe('SCRUM-45 equipment mock: availability', () => {
   it('lets Technical Support read an event nobody is assigned to', async () => {
     signInAs(MOCK_ACCOUNTS.technicalSupport)
 
-    await expect(availability(MOCK_CLOSED_EVENT_REFERENCE)).resolves.toHaveLength(2)
+    await expect(availability(MOCK_CLOSED_EVENT_REFERENCE)).resolves.toHaveLength(3)
   })
 
   it('refuses a visitor with a 401', async () => {
@@ -162,6 +224,38 @@ describe('SCRUM-46 equipment mock: reservations', () => {
         quantity: ['Quantity must be at least 1.'],
       },
     })
+  })
+
+  it('refuses a null quantity in the backend wording', async () => {
+    signInAs(MOCK_ACCOUNTS.technicalSupport)
+
+    await expect(
+      reserve(MOCK_OPEN_EVENT_REFERENCE, { equipment_type_id: 1, quantity: null }),
+    ).rejects.toMatchObject({ fieldErrors: { quantity: ['Field may not be null.'] } })
+  })
+
+  it.each(OPEN_STATUSES)('reserves for an event that is %s', async (status) => {
+    signInAs(MOCK_ACCOUNTS.technicalSupport)
+
+    await expect(
+      reserve(mockStatusEventReference(status), { equipment_type_id: 3, quantity: 1 }),
+    ).resolves.toMatchObject({ equipment_type_name: 'Lectern', quantity: 1 })
+  })
+
+  it.each(CLOSED_STATUSES)('refuses to reserve for an event that is %s', async (status) => {
+    signInAs(MOCK_ACCOUNTS.technicalSupport)
+
+    await expect(
+      reserve(mockStatusEventReference(status), { equipment_type_id: 3, quantity: 1 }),
+    ).rejects.toMatchObject({ status: 409, code: 'equipment_not_reservable' })
+  })
+
+  it('answers 404 when reserving for a draft', async () => {
+    signInAs(MOCK_ACCOUNTS.technicalSupport)
+
+    await expect(
+      reserve(mockStatusEventReference('draft'), { equipment_type_id: 3, quantity: 1 }),
+    ).rejects.toMatchObject({ status: 404 })
   })
 
   it('refuses a quantity that is not a whole number', async () => {
