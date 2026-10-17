@@ -6,8 +6,8 @@ request has an outcome. AC2: an event with no equipment requests passes the equi
 check. AC3: confirmation is a manual action; nothing confirms an event on its own. AC4,
 AC5, AC8: a refusal names each gap (no venue, a Pending or Rejected arrangement, the
 outstanding safety check); a Withdrawn arrangement is ignored. AC7: a tentative hold on
-a venue is not a booking. AC12: the organiser is
-notified. The confirmation is written to the event history, and a confirmed event with
+a venue is not a booking. AC12: the organiser is notified. The confirmation is written
+to the event history, which the organiser sees too, and a confirmed event with
 registration on is open for registration (ADR-0051).
 
 Runs against ``db_session`` with ``saved_users`` and ``saved_event_request``
@@ -27,6 +27,7 @@ from sqlalchemy.orm import Session
 
 from app.common.errors import NotFoundError
 from app.modules.auth.models import User
+from app.modules.auth.permissions import Role
 from app.modules.events import services as events_services
 from app.modules.events.models import EventHistoryKind, EventRequest, EventRequestStatus
 from app.modules.events.services import (
@@ -34,10 +35,12 @@ from app.modules.events.services import (
     NOT_IN_SAFETY_REVIEW_FOR_CONFIRMATION_MESSAGE,
     EventConfirmationNotAllowedError,
     confirm_event_request,
+    list_event_history,
     list_registrable_events,
     record_event_history,
 )
-from app.modules.notifications.services import NotificationKind
+from app.modules.notifications.schemas import NotificationSchema
+from app.modules.notifications.services import NotificationKind, list_notifications_for_recipient
 from app.modules.venue.models import Booking, BookingRequestStatus, BookingStatus, Venue
 from tests.events.cases import LOST_CONNECTION, AddLine, Arrange
 
@@ -186,6 +189,22 @@ def test_the_confirmation_is_written_to_the_event_history(
     )
 
 
+def test_the_organiser_sees_the_confirmation_in_the_history(
+    db_session: Session, ready_event: EventRequest
+) -> None:
+    """ADR-0051 decision 6: unlike the Safety Officer's outcome, it isn't internal."""
+    _confirm(db_session)
+
+    shown = list_event_history(
+        ORGANISER_ID, REFERENCE, viewer_role=Role.EVENT_ORGANISER, session=db_session
+    )
+
+    assert (shown[-1].kind, shown[-1].actor_name) == (
+        EventHistoryKind.EVENT_CONFIRMED,
+        "Coordinator Three",
+    )
+
+
 # --------------------------------------------------------------------------
 # AC12 — the organiser is told, and nobody else
 # --------------------------------------------------------------------------
@@ -201,6 +220,19 @@ def test_the_organiser_is_notified_once_and_nobody_else(
     ]
     for user_id in NON_ORGANISER_IDS:
         assert notifications_of(user_id) == []
+
+
+def test_the_organisers_notice_says_the_event_is_confirmed_and_links_to_it(
+    db_session: Session, ready_event: EventRequest
+) -> None:
+    _confirm(db_session)
+
+    shown = NotificationSchema().dump(list_notifications_for_recipient(ORGANISER_ID)[0])
+
+    assert (shown["message"], shown["link"]) == (
+        "Your event has been confirmed.",
+        "/events/EVR-AAAAAAAA",
+    )
 
 
 def test_a_lost_notification_does_not_lose_the_confirmation(
