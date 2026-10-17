@@ -43,6 +43,9 @@ Arrange = Callable[..., VenueBookingRequest]
 
 #: The order the references are handed out in; each event needs its own.
 REFERENCES = ["EVR-AAAAAAAA", "EVR-BBBBBBBB", "EVR-CCCCCCCC", "EVR-DDDDDDDD", "EVR-EEEEEEEE"]
+#: Every status but Safety Review, built from the enum so a status added later is
+#: checked too.
+OTHER_STATUSES = [status for status in Status if status is not Status.SAFETY_REVIEW]
 
 
 @pytest.fixture()
@@ -104,14 +107,12 @@ def _references(db_session: Session) -> list[str]:
 # --------------------------------------------------------------------------
 
 
+@pytest.mark.parametrize("status", OTHER_STATUSES, ids=lambda status: status.value)
 def test_only_events_in_safety_review_are_listed(
-    db_session: Session, event_in: Callable[..., EventRequest]
+    db_session: Session, event_in: Callable[..., EventRequest], status: Status
 ) -> None:
-    event_in(Status.SUBMITTED)
-    event_in(Status.APPROVED)
+    event_in(status)
     in_review = event_in(Status.SAFETY_REVIEW)
-    event_in(Status.CONFIRMED)
-    event_in(Status.COMPLETED)
 
     assert _references(db_session) == [in_review.reference]
 
