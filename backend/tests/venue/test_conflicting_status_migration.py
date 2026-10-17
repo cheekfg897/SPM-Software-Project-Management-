@@ -50,7 +50,7 @@ def test_the_revision_id_fits_alembics_version_column(load_migration: LoadMigrat
     assert len(load_migration(MIGRATION).revision) <= 32
 
 
-def test_upgrade_adds_the_value_to_both_types_outside_the_transaction(
+def test_upgrade_adds_the_value_outside_the_transaction_then_widens_the_pending_index(
     load_migration: LoadMigration,
     render_migration_sql: RenderMigrationSql,
     assert_in_order: AssertInOrder,
@@ -61,6 +61,9 @@ def test_upgrade_adds_the_value_to_both_types_outside_the_transaction(
         "ALTER TYPE booking_request_status ADD VALUE IF NOT EXISTS 'conflicting'",
         "ALTER TYPE booking_status ADD VALUE IF NOT EXISTS 'conflicting'",
         "BEGIN",
+        "DROP INDEX uq_venue_booking_requests_pending",
+        "CREATE UNIQUE INDEX uq_venue_booking_requests_pending ON venue_booking_requests "
+        "(event_id, venue_id, starts_at, ends_at) WHERE status IN ('pending', 'conflicting')",
     ]
 
     sql = render_migration_sql(migration.upgrade)
@@ -84,7 +87,8 @@ def test_downgrade_puts_conflicting_rows_back_and_rebuilds_both_types(
         "ALTER TABLE venue_booking_requests ALTER COLUMN status "
         "TYPE booking_request_status USING status::text::booking_request_status",
         "DROP TYPE booking_request_status_old",
-        "CREATE UNIQUE INDEX uq_venue_booking_requests_pending",
+        "CREATE UNIQUE INDEX uq_venue_booking_requests_pending ON venue_booking_requests "
+        "(event_id, venue_id, starts_at, ends_at) WHERE status = 'pending'",
         "UPDATE bookings SET status='confirmed' WHERE status = 'conflicting'",
         "ALTER TYPE booking_status RENAME TO booking_status_old",
         "CREATE TYPE booking_status AS ENUM ('tentative', 'confirmed', 'cancelled')",

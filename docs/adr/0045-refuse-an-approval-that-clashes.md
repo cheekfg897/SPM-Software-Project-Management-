@@ -77,7 +77,10 @@ the others are separate pull requests.
    booking that made it Conflicting is still there. No story cancels a confirmed booking yet,
    so the status does not need to clear. When one does, or when a buffer change or a hold
    (SCRUM-75's "re-evaluated when the hold is approved, rejected or expires") can end the
-   clash, re-evaluating Conflicting requests belongs with it.
+   clash, re-evaluating Conflicting requests belongs with it. A Conflicting request is still
+   waiting for a decision, so it counts for SCRUM-42's one-request-per-event-venue-and-period
+   rule: the unique index behind it covers Pending and Conflicting requests, and a second
+   request for the same period is refused while the first is Conflicting.
 
 10. **A buffer change marks the bookings the SCRUM-67 report lists.** `update_venue` marks
     each booking in an `OverlapWarning` (both bookings of a pair) and each booking in a

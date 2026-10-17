@@ -299,3 +299,19 @@ def test_the_coordinator_can_withdraw_a_conflicting_request(
     )
 
     assert withdrawn.request.status is BookingRequestStatus.WITHDRAWN
+
+
+def test_a_second_request_for_the_same_period_is_refused_while_the_first_is_conflicting(
+    db_session: Session,
+    conflicting_pair: tuple[VenueBookingRequest, VenueBookingRequest, EventRequest],
+) -> None:
+    """The one-request-per-event-venue-and-period rule (SCRUM-42 AC6) still holds."""
+    _, conflicting, event = conflicting_pair
+    venue = db_session.get(Venue, conflicting.venue_id)
+
+    with pytest.raises(ConflictError) as refusal:
+        raise_booking(venue, event, db_session, **period(at(11), at(14)))
+
+    assert refusal.value.message == (
+        "A pending request for this event, venue and period already exists."
+    )
