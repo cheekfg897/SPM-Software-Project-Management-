@@ -5,15 +5,21 @@ import {
   fetchEventRequest,
   startEventRequestReview,
 } from '@/features/eventRequests/api'
-import { apiRequest, fieldErrorsOf } from '@/lib/api'
-import type { FieldErrors } from '@/lib/api'
+import { apiRequest } from '@/lib/api'
 import { refusal } from '@/test/refusal'
-import { sendRequestsAs } from '@/test/sendRequestsAs'
 
-import { MOCK_ACCOUNTS, mockTokenFor } from '../fixtures/accounts'
-import type { MockAccount } from '../fixtures/accounts'
+import { MOCK_ACCOUNTS } from '../fixtures/accounts'
 
 import { MOCK_NOW } from './catalogueFixtures'
+import {
+  expectInvalid,
+  expectNotAnObject,
+  NOT_FOUND,
+  NOT_PERMITTED,
+  NOT_SIGNED_IN,
+  signInAs,
+  statusOf,
+} from './test/eventRequestCalls'
 
 /**
  * The mock of a coordinator starting a review and deciding a request (POST
@@ -37,9 +43,6 @@ const UNASSIGNED = 'EVR-Q4ZT6N1B'
 const PRIYA = MOCK_ACCOUNTS.reviewingCoordinator
 const CHLOE = MOCK_ACCOUNTS.coordinator
 
-const NOT_FOUND = { status: 404, code: 'not_found', message: 'Event request not found.' }
-const NOT_PERMITTED = { status: 403, code: 'authorization_error' }
-const NOT_SIGNED_IN = { status: 401, code: 'authentication_error' }
 const NOT_REVIEWABLE = {
   status: 409,
   code: 'request_not_reviewable',
@@ -68,27 +71,9 @@ const CLARIFICATION_OUTSTANDING = {
 const REASON_REQUIRED = 'A reason is required to reject a request or to change a decision.'
 const OUTCOME_MESSAGE = 'Outcome must be approved or rejected.'
 
-function signInAs(account: MockAccount | null) {
-  sendRequestsAs(account === null ? null : mockTokenFor(account))
-}
-
 /** Send `body` to /decide as it is, whatever its shape. */
 function decideWith(reference: string, body: unknown) {
   return apiRequest(`/api/events/requests/${reference}/decide`, { method: 'POST', body })
-}
-
-/** Check `error` is the backend's 400 with exactly these per-field messages. */
-function expectInvalid(error: unknown, details: FieldErrors) {
-  expect(error).toMatchObject({
-    status: 400,
-    code: 'validation_error',
-    message: 'Invalid request.',
-  })
-  expect(fieldErrorsOf(error)).toEqual(details)
-}
-
-async function statusOf(reference: string) {
-  return (await fetchEventRequest(reference)).status
 }
 
 describe('SCRUM-31 AC3 mock: starting a review', () => {
@@ -310,13 +295,6 @@ describe('SCRUM-31 mock: what /decide refuses in its body', () => {
     ['a list', ['approved']],
     ['a string', 'approved'],
   ])('refuses a body that is %s, not an object', async (_case, body) => {
-    const error = await refusal(decideWith(SUBMITTED, body))
-
-    expect(error).toMatchObject({
-      status: 400,
-      code: 'validation_error',
-      message: 'Request body must be a JSON object.',
-    })
-    expect(fieldErrorsOf(error)).toEqual({})
+    expectNotAnObject(await refusal(decideWith(SUBMITTED, body)))
   })
 })

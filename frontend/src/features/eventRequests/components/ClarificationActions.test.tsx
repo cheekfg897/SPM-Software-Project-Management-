@@ -4,12 +4,12 @@ import { delay, http, HttpResponse } from 'msw'
 import { coordinatorEventPath, organiserRequestPath } from '@/config/routes'
 import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
 import type { EventRequestStatus } from '@/config/eventStatus'
-import { fetchEventRequest } from '@/features/eventRequests/api'
-import { MOCK_ACCOUNTS, mockSessionFor, mockTokenFor } from '@/mocks/fixtures/accounts'
+import { MOCK_ACCOUNTS, mockSessionFor } from '@/mocks/fixtures/accounts'
 import { server } from '@/mocks/server'
 import { recordRequests } from '@/test/recordRequests'
 import { renderApp } from '@/test/render'
-import { sendRequestsAs } from '@/test/sendRequestsAs'
+
+import { findRegion, serveRecordInStatus, statusShownFor } from '../test/recordPage'
 
 /**
  * SCRUM-32 AC1, AC2, AC4: the assigned coordinator asks the organiser a question from the
@@ -31,24 +31,9 @@ function openAsOmar(reference: string) {
   return renderApp(organiserRequestPath(reference), { session: mockSessionFor(OMAR) })
 }
 
-function findRegion(name: string) {
-  return screen.findByRole('region', { name })
-}
-
-/** The page's status chip, which sits beside the reference. */
-function statusShownFor(reference: string) {
-  return screen.getByText(reference).previousElementSibling?.textContent
-}
-
 /** Omar's request awaiting an answer, as the backend would send it in `status`. */
-async function serveAwaitingAs(status: EventRequestStatus) {
-  sendRequestsAs(mockTokenFor(OMAR))
-  const record = await fetchEventRequest(AWAITING_ANSWER)
-  server.use(
-    http.get(`/api/events/requests/${AWAITING_ANSWER}`, () =>
-      HttpResponse.json({ ...record, status }),
-    ),
-  )
+function serveAwaitingAs(status: EventRequestStatus) {
+  return serveRecordInStatus(OMAR, AWAITING_ANSWER, status)
 }
 
 describe('SCRUM-32 AC1, AC4 asking the organiser a question', () => {

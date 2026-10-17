@@ -4,15 +4,22 @@ import {
   fetchEventRequest,
   requestClarification,
 } from '@/features/eventRequests/api'
-import { apiRequest, fieldErrorsOf } from '@/lib/api'
+import { apiRequest } from '@/lib/api'
 import type { FieldErrors } from '@/lib/api'
 import { refusal } from '@/test/refusal'
-import { sendRequestsAs } from '@/test/sendRequestsAs'
 
-import { MOCK_ACCOUNTS, mockTokenFor } from '../fixtures/accounts'
-import type { MockAccount } from '../fixtures/accounts'
+import { MOCK_ACCOUNTS } from '../fixtures/accounts'
 
 import { MOCK_NOW } from './catalogueFixtures'
+import {
+  expectInvalid,
+  expectNotAnObject,
+  NOT_FOUND,
+  NOT_PERMITTED,
+  NOT_SIGNED_IN,
+  signInAs,
+  statusOf,
+} from './test/eventRequestCalls'
 
 /**
  * The mock of a coordinator asking the organiser a question and an organiser answering it
@@ -35,9 +42,6 @@ const CHLOE = MOCK_ACCOUNTS.coordinator
 const OMAR = MOCK_ACCOUNTS.organiser
 const SARA = MOCK_ACCOUNTS.otherOrganiser
 
-const NOT_FOUND = { status: 404, code: 'not_found', message: 'Event request not found.' }
-const NOT_PERMITTED = { status: 403, code: 'authorization_error' }
-const NOT_SIGNED_IN = { status: 401, code: 'authentication_error' }
 const NOT_ALLOWED = {
   status: 409,
   code: 'clarification_not_allowed',
@@ -53,11 +57,6 @@ const NO_ORGANISATION = {
   code: 'organiser_without_organisation',
   message: 'Your account is not linked to a client organisation yet.',
 }
-const NOT_AN_OBJECT = {
-  status: 400,
-  code: 'validation_error',
-  message: 'Request body must be a JSON object.',
-}
 const EARLIER_EXCHANGE = {
   message: 'Will the roadshow need a loading bay for the demo vehicles?',
   requested_by: 'Chloe Lim',
@@ -67,27 +66,9 @@ const EARLIER_EXCHANGE = {
   answered_at: '2026-09-26T14:30:00+08:00',
 }
 
-function signInAs(account: MockAccount | null) {
-  sendRequestsAs(account === null ? null : mockTokenFor(account))
-}
-
 /** Send `body` to one of the two routes as it is, whatever its shape. */
 function postTo(reference: string, route: 'request-clarification' | 'resubmit', body: unknown) {
   return apiRequest(`/api/events/requests/${reference}/${route}`, { method: 'POST', body })
-}
-
-/** Check `error` is the backend's 400 with exactly these per-field messages. */
-function expectInvalid(error: unknown, details: FieldErrors) {
-  expect(error).toMatchObject({
-    status: 400,
-    code: 'validation_error',
-    message: 'Invalid request.',
-  })
-  expect(fieldErrorsOf(error)).toEqual(details)
-}
-
-async function statusOf(reference: string) {
-  return (await fetchEventRequest(reference)).status
 }
 
 /** The wrong text bodies both routes refuse, for the field each one reads. */
@@ -170,10 +151,7 @@ describe('SCRUM-32 AC1 mock: asking for clarification', () => {
   )
 
   it('refuses a body that is not an object', async () => {
-    const error = await refusal(postTo(PRIYAS_UNDER_REVIEW, 'request-clarification', ['Why?']))
-
-    expect(error).toMatchObject(NOT_AN_OBJECT)
-    expect(fieldErrorsOf(error)).toEqual({})
+    expectNotAnObject(await refusal(postTo(PRIYAS_UNDER_REVIEW, 'request-clarification', ['Why?'])))
   })
 })
 
@@ -275,9 +253,6 @@ describe('SCRUM-32 AC2, AC4 mock: answering a question', () => {
   )
 
   it('refuses a body that is not an object', async () => {
-    const error = await refusal(postTo(AWAITING_ANSWER, 'resubmit', 'Yes.'))
-
-    expect(error).toMatchObject(NOT_AN_OBJECT)
-    expect(fieldErrorsOf(error)).toEqual({})
+    expectNotAnObject(await refusal(postTo(AWAITING_ANSWER, 'resubmit', 'Yes.')))
   })
 })
