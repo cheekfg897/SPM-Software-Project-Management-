@@ -140,6 +140,22 @@ class EventHistoryKind(str, enum.Enum):
     #: venues and equipment were settled; ``details`` is ``None`` and ``actor_id`` is
     #: the coordinator (SCRUM-97 AC1, ADR-0047).
     SAFETY_REVIEW_REQUESTED = "safety_review_requested"
+    #: The Safety Officer recorded the safety check's outcome; ``details`` holds the
+    #: ``outcome``, the ``checklist`` of notes and the ``reason`` (``None`` on an
+    #: approval without one), and ``actor_id`` is the Safety Officer (SCRUM-98 AC7).
+    SAFETY_OUTCOME_RECORDED = "safety_outcome_recorded"
+
+
+class SafetyOutcome(str, enum.Enum):
+    """The Safety Officer's ruling on an event in Safety Review (SCRUM-98 AC1).
+
+    Not a database enum: it is stored as the ``outcome`` in a
+    ``safety_outcome_recorded`` history entry's ``details``.
+    """
+
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    CHANGES_REQUESTED = "changes_requested"
 
 
 class DecisionOutcome(str, enum.Enum):
