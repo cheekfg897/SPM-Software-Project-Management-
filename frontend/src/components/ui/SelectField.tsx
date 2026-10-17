@@ -14,6 +14,8 @@ interface SelectFieldProps extends SelectHTMLAttributes<HTMLSelectElement> {
   /** The backend's messages for this field, e.g. `fieldErrorsOf(error).required_layout`. */
   errors?: string[] | undefined
   hint?: string
+  /** What the empty first choice says. */
+  emptyLabel?: string
 }
 
 /** A labelled drop-down. Its first choice is empty, so the field can be left unanswered. */
@@ -23,6 +25,7 @@ export function SelectField({
   options,
   errors,
   hint,
+  emptyLabel = 'No preference',
   className,
   ...rest
 }: SelectFieldProps) {
@@ -35,7 +38,7 @@ export function SelectField({
           className="border-line bg-surface text-ink focus:border-flare/70 aria-invalid:border-danger w-full rounded-xl border px-4 py-2.5 focus:outline-none"
           {...rest}
         >
-          <option value="">No preference</option>
+          <option value="">{emptyLabel}</option>
           {options.map((option) => (
             <option key={option.value} value={option.value}>
               {option.label}

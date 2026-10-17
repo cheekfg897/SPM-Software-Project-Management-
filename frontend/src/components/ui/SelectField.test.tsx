@@ -21,6 +21,12 @@ describe('SelectField', () => {
     ])
   })
 
+  it('names its empty choice when told what to call it', () => {
+    render(<SelectField label="Venue" name="venue" options={OPTIONS} emptyLabel="Choose a venue" />)
+
+    expect(screen.getAllByRole('option')[0]).toHaveTextContent('Choose a venue')
+  })
+
   it('lets the user choose an option', async () => {
     render(<SelectField label="Layout" name="layout" options={OPTIONS} />)
 
