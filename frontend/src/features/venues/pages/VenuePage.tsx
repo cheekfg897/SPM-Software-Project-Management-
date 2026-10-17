@@ -3,6 +3,7 @@ import { ButtonLink } from '@/components/ui'
 import { editVenuePath } from '@/config/routes'
 
 import type { Venue } from '../api'
+import { VenueCalendar } from '../components/VenueCalendar'
 import { VenueProfile } from '../components/VenueProfile'
 import { VenueStatusAction } from '../components/VenueStatusAction'
 import { WithVenue } from '../components/WithVenue'
@@ -22,6 +23,7 @@ function VenueContent({ venue }: { venue: Venue }) {
         </div>
       )}
       <VenueProfile venue={venue} />
+      <VenueCalendar venueId={venue.id} />
       {isVenueStaff && <VenueStatusAction venue={venue} />}
     </PageContainer>
   )
