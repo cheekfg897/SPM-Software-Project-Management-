@@ -236,6 +236,23 @@ def test_a_withdrawal_frees_a_place_on_a_full_event(
     assert count_registered(full_event.id, session=db_session) == 1
 
 
+def test_the_catalogue_shows_the_freed_place_and_the_attendee_as_not_registered(
+    db_session: Session,
+    now: datetime,
+    register: Act,
+    withdraw: Act,
+    make_open_event: Callable[..., EventRequest],
+) -> None:
+    event = make_open_event(capacity=2)
+    register(ATTENDEE, event.id)
+    register(OTHER_ATTENDEE, event.id)
+
+    withdraw(ATTENDEE, event.id)
+
+    entry = list_catalogue({}, ATTENDEE, session=db_session, now=now).items[0]
+    assert (entry.places_left, entry.is_full, entry.is_registered) == (1, False, False)
+
+
 # --------------------------------------------------------------------------
 # Registering again reuses the row (ADR-0032)
 # --------------------------------------------------------------------------
