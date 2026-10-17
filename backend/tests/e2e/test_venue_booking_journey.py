@@ -28,6 +28,10 @@ The user stories and acceptance criteria it exercises (SCRUM-51 AC5):
 - SCRUM-46 "reserve equipment": AC1.
 - SCRUM-67 "record setup and turnaround time for a venue": AC1, AC3.
 
+A second journey, SCRUM-75's, has a multi-venue event hold one venue tentatively: the
+hold shows as Tentative, refuses a clashing approval, and is turned into the confirmed
+booking by Venue Staff's final approval.
+
 Each step's banner comment names the ones it covers. It runs with the rest of the suite
 in CI, so a broken journey fails the backend check (SCRUM-51 AC4).
 """
@@ -37,6 +41,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import datetime, time, timedelta
 from typing import Any
+from urllib.parse import urlencode
 
 import pytest
 from sqlalchemy.orm import Session
@@ -268,3 +273,94 @@ def test_a_clashing_venue_request_is_marked_conflicting_and_refused(
     assert (reservation["quantity"], reservation["reserved_by"]) == (4, "Tina Technician")
     (after,) = _body(technical_support.get(availability_path), 200)
     assert after["available"] == 6
+
+
+@pytest.mark.scrum_75
+@pytest.mark.scrum_44
+def test_a_held_venue_refuses_a_clashing_approval_until_the_hold_is_confirmed(
+    coordinator: Actor,
+    venue_staff: Actor,
+    two_approved_events: None,
+    event_day: datetime,
+) -> None:
+    held_period = {
+        "starts_at": _on_event_day(event_day, 9),
+        "ends_at": _on_event_day(event_day, 12),
+    }
+    clashing_period = {
+        "starts_at": _on_event_day(event_day, 11),
+        "ends_at": _on_event_day(event_day, 14),
+    }
+    expires_at = (datetime.now(app_timezone()) + timedelta(days=2)).replace(microsecond=0)
+    calendar_query = urlencode(
+        {"range_start": _on_event_day(event_day, 0), "range_end": _on_event_day(event_day, 23)}
+    )
+
+    # --- 1. Venue Staff set up two venues (SCRUM-25 AC3) ---
+    hall = _body(venue_staff.post("/api/venues", VENUE), 201)
+    side_room = _body(venue_staff.post("/api/venues", {**VENUE, "name": "Side Room"}), 201)
+    calendar_path = f"/api/venues/{hall['id']}/calendar?{calendar_query}"
+
+    # --- 2. The first event asks for both venues, so is multi-venue (SCRUM-75) ---
+    first_path = f"/api/venues/events/{FIRST_EVENT}/booking-requests"
+    hall_request = _body(
+        coordinator.post(
+            first_path, {"venue_id": hall["id"], "purpose": "Main hall", **held_period}
+        ),
+        201,
+    )
+    _body(
+        coordinator.post(
+            first_path, {"venue_id": side_room["id"], "purpose": "Breakout", **held_period}
+        ),
+        201,
+    )
+    clashing_request = _body(
+        coordinator.post(
+            f"/api/venues/events/{SECOND_EVENT}/booking-requests",
+            {"venue_id": hall["id"], "purpose": "Overflow talks", **clashing_period},
+        ),
+        201,
+    )
+
+    # --- 3. Venue Staff hold the hall until an expiry of theirs (SCRUM-75 AC1, AC3) ---
+    held = _body(
+        venue_staff.post(
+            f"/api/venues/booking-requests/{hall_request['id']}/hold",
+            {"expires_at": expires_at.isoformat()},
+        ),
+        200,
+    )
+    assert (held["status"], held["hold_expires_at"]) == ("on_hold", expires_at.isoformat())
+
+    # --- 4. The hold shows as Tentative, and the coordinator sees it (AC6, AC9) ---
+    calendar = _body(venue_staff.get(calendar_path), 200)
+    assert [entry["kind"] for entry in calendar] == ["tentative_hold"]
+    listed = _body(coordinator.get(first_path), 200)
+    assert [(row["status"], row["hold_expires_at"]) for row in listed] == [
+        ("on_hold", expires_at.isoformat()),
+        ("pending", None),
+    ]
+
+    # --- 5. Approving the clashing request is refused, naming the hold (SCRUM-44) ---
+    refused = _body(
+        venue_staff.post(
+            f"/api/venues/booking-requests/{clashing_request['id']}/decision",
+            {"outcome": "approved"},
+        ),
+        409,
+    )
+    assert refused["details"]["in_buffer"] is False
+    assert f"#{refused['details']['booking_id']}" in refused["message"]
+
+    # --- 6. Final approval turns the hold into the confirmed booking (SCRUM-75 AC7) ---
+    approved = _body(
+        venue_staff.post(
+            f"/api/venues/booking-requests/{hall_request['id']}/decision",
+            {"outcome": "approved"},
+        ),
+        200,
+    )
+    assert (approved["status"], approved["hold_expires_at"]) == ("approved", None)
+    calendar = _body(venue_staff.get(calendar_path), 200)
+    assert [entry["kind"] for entry in calendar] == ["confirmed_booking"]

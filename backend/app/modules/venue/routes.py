@@ -295,3 +295,24 @@ def update_preparation_details(request_id: int) -> tuple[Response, int]:
         request_id, request.get_json(silent=True), updated_by=int(g.current_user_id)
     )
     return jsonify(_booking_request_schema.dump(shown)), 200
+
+
+# --------------------------------------------------------------------------
+# SCRUM-75 — Venue Staff hold a venue tentatively
+# --------------------------------------------------------------------------
+
+
+@bp.post("/booking-requests/<int:request_id>/hold")
+@requires_role(Role.VENUE_STAFF)
+def place_booking_hold(request_id: int) -> tuple[Response, int]:
+    """Hold the request's venue tentatively until an expiry, instead of booking it."""
+    shown = services.place_booking_hold(request_id, request.get_json(silent=True))
+    return jsonify(_booking_request_schema.dump(shown)), 200
+
+
+@bp.patch("/booking-requests/<int:request_id>/hold")
+@requires_role(Role.VENUE_STAFF)
+def change_hold_expiry(request_id: int) -> tuple[Response, int]:
+    """Move the expiry of the request's active hold."""
+    shown = services.change_hold_expiry(request_id, request.get_json(silent=True))
+    return jsonify(_booking_request_schema.dump(shown)), 200

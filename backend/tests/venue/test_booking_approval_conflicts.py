@@ -240,10 +240,9 @@ def test_a_request_that_only_touches_the_padding_is_approved(
         pytest.param(False, 1, BookingStatus.CONFIRMED, id="another venue"),
         pytest.param(True, 2, BookingStatus.CONFIRMED, id="another day"),
         pytest.param(True, 1, BookingStatus.CANCELLED, id="a cancelled booking"),
-        pytest.param(True, 1, BookingStatus.TENTATIVE, id="a tentative booking (ADR-0045)"),
     ],
 )
-def test_a_booking_that_is_elsewhere_cancelled_or_tentative_does_not_block_an_approval(
+def test_a_booking_that_is_elsewhere_or_cancelled_does_not_block_an_approval(
     db_session: Session,
     venue_with_buffers: VenueWithBuffers,
     confirmed_booking: SaveBooking,

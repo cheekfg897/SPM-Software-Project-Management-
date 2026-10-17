@@ -9,6 +9,7 @@ from typing import Any
 import pytest
 from sqlalchemy.orm import Session
 
+from app.common.clock import app_timezone, local_today
 from app.modules.events.models import (
     EventHistoryEntry,
     EventHistoryKind,
@@ -33,6 +34,8 @@ SavedEvent = Callable[..., EventRequest]
 VenueWithBuffers = Callable[..., Venue]
 SaveBooking = Callable[..., Booking]
 SINGAPORE = timezone(timedelta(hours=8))
+#: How far ahead the ``multi_venue_request`` fixture's event starts.
+EVENT_DAYS_AWAY = 30
 
 
 def at(hour: int, minute: int = 0, *, day: int = 1) -> datetime:
@@ -91,6 +94,33 @@ def approve_safety(event: EventRequest, session: Session) -> None:
     )
     session.add(approval)
     session.commit()
+
+
+def event_starts_at() -> datetime:
+    """When ``multi_venue_event`` starts: 09:00, 30 days from today."""
+    starts_on = local_today() + timedelta(days=EVENT_DAYS_AWAY)
+    return datetime.combine(starts_on, time(9, 0), tzinfo=app_timezone())
+
+
+def hours_from_now(hours: int) -> datetime:
+    """A moment ``hours`` from now (negative: ago), for a live or a passed expiry."""
+    return datetime.now(UTC) + timedelta(hours=hours)
+
+
+def place_hold(request_id: int, expires_at: datetime, session: Session) -> VenueBookingRequest:
+    """Place a hold on a request as Venue Staff; the expiry is sent as ISO 8601."""
+    shown = services.place_booking_hold(
+        request_id, {"expires_at": expires_at.isoformat()}, session=session
+    )
+    return shown.request
+
+
+def change_expiry(request_id: int, expires_at: datetime, session: Session) -> VenueBookingRequest:
+    """Change a hold's expiry as Venue Staff; the expiry is sent as ISO 8601."""
+    shown = services.change_hold_expiry(
+        request_id, {"expires_at": expires_at.isoformat()}, session=session
+    )
+    return shown.request
 
 
 SECOND_PERIOD = {
@@ -178,9 +208,15 @@ def make_booking() -> Callable[..., Booking]:
         *,
         status: BookingStatus = BookingStatus.CONFIRMED,
         event_id: int | None = None,
+        hold_expires_at: datetime | None = None,
     ) -> Booking:
         return Booking(
-            venue_id=venue.id, start_time=start, end_time=end, status=status, event_id=event_id
+            venue_id=venue.id,
+            start_time=start,
+            end_time=end,
+            status=status,
+            event_id=event_id,
+            hold_expires_at=hold_expires_at,
         )
 
     return _make
@@ -263,9 +299,57 @@ def confirmed_booking(
         *,
         status: BookingStatus = BookingStatus.CONFIRMED,
         event_id: int | None = None,
+        hold_expires_at: datetime | None = None,
     ) -> Booking:
-        booking = make_booking(venue, start, end, status=status, event_id=event_id)
+        booking = make_booking(
+            venue, start, end, status=status, event_id=event_id, hold_expires_at=hold_expires_at
+        )
         save(booking)
         return booking
 
     return _save
+
+
+@pytest.fixture()
+def tentative_hold(confirmed_booking: SaveBooking) -> SaveBooking:
+    """Save a tentative hold at a venue; live unless ``hold_expires_at`` is past."""
+
+    def _save(
+        venue: Venue,
+        start: datetime,
+        end: datetime,
+        *,
+        hold_expires_at: datetime | None = None,
+    ) -> Booking:
+        expires_at = hold_expires_at if hold_expires_at is not None else hours_from_now(24)
+        return confirmed_booking(
+            venue, start, end, status=BookingStatus.TENTATIVE, hold_expires_at=expires_at
+        )
+
+    return _save
+
+
+@pytest.fixture()
+def multi_venue_event(
+    db_session: Session,
+    make_venue: Callable[..., Venue],
+    save: Callable[..., None],
+    saved_event: SavedEvent,
+    saved_users: list[object],
+) -> EventRequest:
+    """An event with a Pending request at each of two venues, so it is multi-venue.
+
+    The event starts 30 days from now (``event_starts_at``), so an expiry between now
+    and then is valid.
+    """
+    event = saved_event(proposed_date=local_today() + timedelta(days=EVENT_DAYS_AWAY))
+    two_arrangements(db_session, make_venue, save, event)
+    return event
+
+
+@pytest.fixture()
+def multi_venue_request(
+    db_session: Session, multi_venue_event: EventRequest
+) -> VenueBookingRequest:
+    """The multi-venue event's first request: 09:00-12:00 on 1 November 2026."""
+    return services.list_active_arrangements(multi_venue_event.id, session=db_session)[0]

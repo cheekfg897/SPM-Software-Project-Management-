@@ -9,7 +9,7 @@ the project's 400 ``ValidationError`` with per-field details. Output schemas are
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, time
+from datetime import date, datetime, time
 from typing import Any
 
 from marshmallow import (
@@ -467,11 +467,19 @@ class BookingRequestAsShown:
     end_time: time
     accessibility_needs: str | None
 
+    @property
+    def hold_expires_at(self) -> datetime | None:
+        """When the request's hold expires; ``None`` unless the request is On Hold."""
+        if self.request.status is not BookingRequestStatus.ON_HOLD:
+            return None
+        return self.request.booking.hold_expires_at
+
 
 class DecideBookingRequestSchema(Schema):
     """Payload for ``POST /api/venues/booking-requests/<id>/decision`` (SCRUM-43 AC3).
 
-    ``outcome`` is ``approved`` or ``rejected``; holding a request is SCRUM-75.
+    ``outcome`` is ``approved`` or ``rejected``; holding a request is a separate route
+    (SCRUM-75).
     ``reason`` may be left out here — only a rejection needs one, which the service
     checks, as the events module's decide route does (ADR-0028). A reason that is sent
     must not be blank, and is trimmed.
@@ -508,6 +516,22 @@ class UpdatePreparationSchema(PreparationNotesSchema):
     )
 
 
+class HoldBookingRequestSchema(Schema):
+    """Payload for placing a hold or changing its expiry (SCRUM-75 AC3, AC4).
+
+    A time with no offset is read as business time and loaded as UTC (ADR-0009). Whether
+    it is in the future and before the event starts depends on the event, so the service
+    checks that.
+    """
+
+    expires_at = fields.DateTime(required=True)
+
+    @post_load
+    def _to_utc(self, data: dict[str, Any], **_: Any) -> dict[str, Any]:
+        data["expires_at"] = as_utc(data["expires_at"])
+        return data
+
+
 class VenueBookingRequestSchema(Schema):
     """A booking request as Venue Staff see it, in business time (AC4, ADR-0009)."""
 
@@ -528,6 +552,8 @@ class VenueBookingRequestSchema(Schema):
         PreparationStatus, by_value=True, attribute="request.preparation_status", dump_only=True
     )
     preparation_notes = fields.String(attribute="request.preparation_notes", dump_only=True)
+    #: When the request's hold expires; ``null`` unless it is On Hold (SCRUM-75).
+    hold_expires_at = BusinessDateTime(dump_only=True, allow_none=True)
     event_proposed_date = fields.Date(attribute="proposed_date", dump_only=True)
     event_end_date = fields.Date(attribute="end_date", dump_only=True)
     event_start_time = fields.Time(attribute="start_time", dump_only=True)
