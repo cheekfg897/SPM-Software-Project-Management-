@@ -82,6 +82,10 @@ export function resetMockBooking(): void {
 
 resetMockBooking()
 
+function notFound(message: string) {
+  return errorResponse(404, 'not_found', message)
+}
+
 /** Whether the caller is Venue Staff, who decide requests; otherwise the response to send. */
 function checkVenueStaff(request: Request) {
   const user = accountForRequest(request)
@@ -305,7 +309,7 @@ export const bookingHandlers: RequestHandler[] = [
     }
     const event = findOwnEvent(params.reference, user.id)
     if (event === undefined) {
-      return errorResponse(404, 'not_found', EVENT_NOT_FOUND_MESSAGE)
+      return notFound(EVENT_NOT_FOUND_MESSAGE)
     }
     return HttpResponse.json(requestsOf(event))
   }),
@@ -323,7 +327,7 @@ export const bookingHandlers: RequestHandler[] = [
 
     const event = findOwnEvent(params.reference, user.id)
     if (event === undefined) {
-      return errorResponse(404, 'not_found', EVENT_NOT_FOUND_MESSAGE)
+      return notFound(EVENT_NOT_FOUND_MESSAGE)
     }
     if (event.status !== 'approved') {
       return errorResponse(
@@ -361,7 +365,7 @@ export const bookingHandlers: RequestHandler[] = [
     }
     const waiting = requests.find((existing) => existing.id === Number(params.requestId))
     if (waiting === undefined) {
-      return errorResponse(404, 'not_found', BOOKING_REQUEST_NOT_FOUND_MESSAGE)
+      return notFound(BOOKING_REQUEST_NOT_FOUND_MESSAGE)
     }
     if (!isDecidable(waiting)) {
       return errorResponse(
@@ -402,11 +406,11 @@ export const bookingHandlers: RequestHandler[] = [
     }
     const event = findOwnEvent(params.reference, user.id)
     if (event === undefined) {
-      return errorResponse(404, 'not_found', EVENT_NOT_FOUND_MESSAGE)
+      return notFound(EVENT_NOT_FOUND_MESSAGE)
     }
     const arrangement = findArrangement(event, params.arrangementId)
     if (arrangement === undefined) {
-      return errorResponse(404, 'not_found', ARRANGEMENT_NOT_FOUND_MESSAGE)
+      return notFound(ARRANGEMENT_NOT_FOUND_MESSAGE)
     }
     if (!WITHDRAWABLE_STATUSES.includes(arrangement.status)) {
       return withdrawRefusal(arrangement)
@@ -423,7 +427,7 @@ export const bookingHandlers: RequestHandler[] = [
     }
     const event = findOwnEvent(params.reference, user.id)
     if (event === undefined) {
-      return errorResponse(404, 'not_found', EVENT_NOT_FOUND_MESSAGE)
+      return notFound(EVENT_NOT_FOUND_MESSAGE)
     }
     const active = requestsOf(event).filter((existing) => existing.status !== 'withdrawn')
     // The backend commits once, so one it cannot withdraw means none of them is.
@@ -451,11 +455,11 @@ export const bookingHandlers: RequestHandler[] = [
 
     const event = findOwnEvent(params.reference, user.id)
     if (event === undefined) {
-      return errorResponse(404, 'not_found', EVENT_NOT_FOUND_MESSAGE)
+      return notFound(EVENT_NOT_FOUND_MESSAGE)
     }
     const arrangement = findArrangement(event, params.arrangementId)
     if (arrangement === undefined) {
-      return errorResponse(404, 'not_found', ARRANGEMENT_NOT_FOUND_MESSAGE)
+      return notFound(ARRANGEMENT_NOT_FOUND_MESSAGE)
     }
     if (arrangement.status !== 'pending') {
       return errorResponse(
