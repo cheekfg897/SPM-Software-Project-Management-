@@ -100,6 +100,17 @@ flask create-staff-user --email alice@example.com --full-name Alice --role venue
 docker compose exec backend flask create-staff-user --email alice@example.com --full-name Alice --role venue_staff
 ```
 
+Tentative venue holds expire on a clock. `flask expire-holds` marks the holds whose expiry
+has passed Expired and warns coordinators 24 hours before; running it again repeats
+nothing. The scheduled *Expire Tentative Holds* workflow runs it every hour once a
+`DATABASE_URL` repository secret exists, and skips until then
+([ADR-0052](docs/adr/0052-expire-tentative-holds.md)):
+
+```bash
+flask expire-holds
+# Expired 1 hold(s); warned about 0 hold(s).
+```
+
 ```bash
 # Register (public; only event_organiser or attendee — staff comes from the command above)
 curl -X POST http://localhost:5000/api/auth/register \

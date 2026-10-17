@@ -128,8 +128,9 @@ the others are separate pull requests.
     and before the event starts (the event's date and start time, in business time). The
     system sets no length. A time with no offset is read as business time (ADR-0009).
     `PATCH` on the same route changes it, under the same limits, and only while the hold
-    is live; a hold that has run out cannot be extended. Both notify the coordinator who
-    raised the request, with the expiry as the notice's detail
+    is live; a hold that has run out cannot be extended. Both notify the event's assigned
+    coordinator (the one who raised the request until SCRUM-94; see ADR-0052 decision 7),
+    with the expiry as the notice's detail
     (`venue_hold_placed`, `venue_hold_expiry_changed`). **No event-history entry is
     written for a hold**; the ACs do not ask for one, and it can follow with SCRUM-94's
     expiry; **default to review**.
@@ -143,8 +144,8 @@ the others are separate pull requests.
     no longer blocks anything at 17:00. The ACs do not say; this is the simplest reading
     of "until the expiry" and matches how final approval treats it (decision 18);
     **default pending customer**. Marking the hold
-    and its request Expired, and the warnings, are SCRUM-94's. A tentative booking with
-    no expiry, made before holds had one, never lapses.
+    and its request Expired, and the warnings, are SCRUM-94's (ADR-0052). A tentative
+    booking with no expiry, made before holds had one, never lapses.
 
 18. **Final approval and rejection decide a request that is On Hold (SCRUM-43's deferred
     ACs).** Approving it turns its own hold into the confirmed booking (status
@@ -181,8 +182,8 @@ the others are separate pull requests.
 - A Conflicting request or booking should clear itself, or be resolved by Venue Staff
   (decisions 9 and 12).
 - Venue blocks should refuse an approval too (Consequences).
-- **SCRUM-94** expires holds: it marks the hold and its request Expired and sends the
-  24-hour warning. Until then an expired hold only stops counting (decision 17), and its
+- **SCRUM-94** expires holds: it marks the request Expired and sends the 24-hour warning
+  (ADR-0052). Until that runs, an expired hold only stops counting (decision 17), and its
   request stays On Hold.
 - A Pending request that overlaps a hold should be marked Conflicting, and cleared when
   the hold ends (decision 19), once something can clear a Conflicting status.
