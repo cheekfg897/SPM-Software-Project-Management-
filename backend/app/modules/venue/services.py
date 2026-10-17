@@ -10,15 +10,15 @@ from __future__ import annotations
 import logging
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
 from flask import current_app
-from sqlalchemy import ColumnElement, and_, or_, select
+from sqlalchemy import ColumnElement, and_, not_, or_, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.common.clock import to_business_time
+from app.common.clock import as_utc, to_business_time
 from app.common.database import resolve_session
 from app.common.errors import ConflictError, NotFoundError, ValidationError
 from app.common.preparation import PREPARATION_NEEDS_SAFETY_APPROVAL_MESSAGE
@@ -28,6 +28,7 @@ from app.modules.auth.services import list_user_ids_with_role
 from app.modules.notifications.services import EventSummary, NotificationKind, notify_users
 from app.modules.venue.models import (
     DECIDABLE_REQUEST_STATUSES,
+    HOLDABLE_REQUEST_STATUSES,
     HOLDING_BOOKING_STATUSES,
     RETIRED_REQUEST_STATUSES,
     Booking,
@@ -50,6 +51,7 @@ from app.modules.venue.schemas import (
     ChangeArrangementSchema,
     DecideBookingRequestSchema,
     EditVenueSchema,
+    HoldBookingRequestSchema,
     RaiseBookingRequestSchema,
     UpdatePreparationSchema,
     VenueSearchSchema,
@@ -332,6 +334,27 @@ def _overlaps(
     return and_(model.start_time < end, model.end_time > start)
 
 
+def _utc_now() -> datetime:
+    """The current instant, which a hold's expiry is compared with."""
+    return datetime.now(timezone.utc)
+
+
+def _booking_is_live(now: datetime) -> ColumnElement[bool]:
+    """SQL condition: the booking holds its venue at ``now`` (SCRUM-75).
+
+    Every booking does except a cancelled one and a tentative hold whose expiry has
+    passed. The check is made when the booking is read, so a hold stops counting the
+    moment it expires; marking it Expired is SCRUM-94's. A tentative booking with no
+    expiry was made before holds had one and never lapses.
+    """
+    expired_hold = and_(
+        Booking.status == BookingStatus.TENTATIVE,
+        Booking.hold_expires_at.is_not(None),
+        Booking.hold_expires_at <= now,
+    )
+    return and_(Booking.status != BookingStatus.CANCELLED, not_(expired_hold))
+
+
 def _booking_holds_venue(venue: Venue, start: datetime, end: datetime) -> ColumnElement[bool]:
     """SQL condition: a booking on ``venue`` holds it at any time in ``start``-``end``.
 
@@ -382,10 +405,10 @@ def get_venue_calendar(
     """A venue's unavailable periods that overlap a range, in time order (SCRUM-26).
 
     Confirmed bookings, tentative holds and blocked periods are all shown, each marked
-    with its kind; cancelled bookings aren't. How much of the reason a viewer sees
-    depends on their role (AC3). A booking is shown as the period it holds the venue,
-    padded by setup and turnaround, with the event's own times alongside (SCRUM-67);
-    a block isn't padded, so its event times are ``None``.
+    with its kind; cancelled bookings and expired holds aren't. How much of the reason a
+    viewer sees depends on their role (AC3). A booking is shown as the period it holds
+    the venue, padded by setup and turnaround, with the event's own times alongside
+    (SCRUM-67); a block isn't padded, so its event times are ``None``.
 
     Raises:
         NotFoundError: 404 — no such venue.
@@ -395,7 +418,7 @@ def get_venue_calendar(
 
     bookings = sess.scalars(
         select(Booking).where(
-            Booking.status != BookingStatus.CANCELLED,
+            _booking_is_live(_utc_now()),
             _booking_holds_venue(venue, range_start, range_end),
         )
     )
@@ -515,7 +538,8 @@ def search_venues(
     out any blocked during the period (AC1, AC2). Facilities, accessibility and layout
     are stored as joined strings, so they're checked on the venues it returns. The
     second finds which of those have a non-cancelled booking too close to the period,
-    each venue padded by its own setup and turnaround (SCRUM-67, ADR-0011); that
+    each venue padded by its own setup and turnaround (SCRUM-67, ADR-0011); a live
+    tentative hold is one of them and an expired hold is not (SCRUM-75); that
     padding differs per venue, which one portable query can't express. Results are
     ordered by name.
 
@@ -551,7 +575,7 @@ def search_venues(
 
     clash_conditions = [_booking_clash(match.venue, start, end) for match in matches]
     clashing_bookings = select(Booking.venue_id).where(
-        Booking.status != BookingStatus.CANCELLED, or_(*clash_conditions)
+        _booking_is_live(_utc_now()), or_(*clash_conditions)
     )
     busy_venue_ids = set(sess.scalars(clashing_bookings))
     return [match for match in matches if match.venue.id not in busy_venue_ids]
@@ -1316,8 +1340,8 @@ def list_pending_booking_requests(*, session: Session | None = None) -> list[Boo
     return [show_booking_request(request, event) for event, request in waiting]
 
 
-def _request_to_decide(request_id: int, session: Session | None) -> VenueBookingRequest:
-    """The request ``request_id`` names, if it is still waiting for a decision.
+def _locked_request(request_id: int, session: Session | None) -> VenueBookingRequest:
+    """The request ``request_id`` names, read under a row lock.
 
     The row is locked while it is read, as the equipment type is before a reservation is
     counted (ADR-0037): two Venue Staff deciding the same request at the same moment
@@ -1328,8 +1352,6 @@ def _request_to_decide(request_id: int, session: Session | None) -> VenueBooking
 
     Raises:
         NotFoundError: 404 — no such request.
-        ConflictError: 409 — it was decided or withdrawn already; the message names
-            the status it is in. A Conflicting request can still be decided (ADR-0045).
     """
     locked = (
         select(VenueBookingRequest)
@@ -1340,6 +1362,19 @@ def _request_to_decide(request_id: int, session: Session | None) -> VenueBooking
     request = resolve_session(session).scalar(locked)
     if request is None:
         raise NotFoundError(BOOKING_REQUEST_NOT_FOUND_MESSAGE)
+    return request
+
+
+def _request_to_decide(request_id: int, session: Session | None) -> VenueBookingRequest:
+    """The request ``request_id`` names, if it is still waiting for a decision.
+
+    Raises:
+        NotFoundError: 404 — no such request.
+        ConflictError: 409 — it was decided or withdrawn already; the message names
+            the status it is in. A Conflicting request can still be decided (ADR-0045),
+            and so can one On Hold (SCRUM-75).
+    """
+    request = _locked_request(request_id, session)
     if request.status not in DECIDABLE_REQUEST_STATUSES:
         raise ConflictError(DECISION_NOT_PENDING_MESSAGE.format(status=request.status.value))
     return request
@@ -1365,11 +1400,11 @@ def _lock_venue(venue_id: int, session: Session | None) -> Venue:
 def _clashing_booking(
     venue: Venue, request: VenueBookingRequest, session: Session | None
 ) -> Booking | None:
-    """The earliest confirmed or Conflicting booking that ``request`` clashes with."""
+    """The earliest booking or live hold that ``request`` clashes with (ADR-0045)."""
     earliest_clash = (
         select(Booking)
         .where(
-            Booking.status.in_(HOLDING_BOOKING_STATUSES),
+            _booking_is_live(_utc_now()),
             _booking_clash(venue, request.starts_at, request.ends_at),
         )
         .order_by(Booking.start_time, Booking.id)
@@ -1405,11 +1440,12 @@ def _clash_error(venue: Venue, request: VenueBookingRequest, booking: Booking) -
 
 
 def _refuse_clash(request: VenueBookingRequest, session: Session | None) -> None:
-    """Refuse to approve ``request`` if it clashes with a confirmed booking (SCRUM-44).
+    """Refuse to approve or hold ``request`` if it clashes with a booking (SCRUM-44).
 
     Raises:
         ConflictError: 409 — the period, with the venue's setup and turnaround, runs
-            into a confirmed booking at the same venue; the body names the booking.
+            into a confirmed booking or a live hold at the same venue; the body names
+            the booking.
     """
     venue = _lock_venue(request.venue_id, session)
     booking = _clashing_booking(venue, request, session)
@@ -1448,6 +1484,43 @@ def _booking_for(request: VenueBookingRequest) -> Booking:
         end_time=request.ends_at,
         status=BookingStatus.CONFIRMED,
     )
+
+
+HOLD_EXPIRED_MESSAGE = "This hold has expired."
+
+
+def _hold_has_expired(hold: Booking) -> bool:
+    """Whether the hold's expiry has passed, as :func:`_booking_is_live` has it."""
+    return hold.hold_expires_at is not None and hold.hold_expires_at <= _utc_now()
+
+
+def _confirm_hold(request: VenueBookingRequest) -> Booking:
+    """Turn the request's hold into the confirmed booking (SCRUM-75 AC7).
+
+    The hold already keeps the venue free of other bookings, so there is no clash to
+    check: a request On Hold does not clash with its own hold (SCRUM-44).
+
+    Raises:
+        ConflictError: 409 — the hold expired before the final approval.
+    """
+    hold = request.booking
+    if _hold_has_expired(hold):
+        raise ConflictError(HOLD_EXPIRED_MESSAGE)
+    hold.status = BookingStatus.CONFIRMED
+    hold.hold_expires_at = None
+    return hold
+
+
+def _booking_to_approve(request: VenueBookingRequest, session: Session | None) -> Booking:
+    """The confirmed booking approving ``request`` makes (SCRUM-43 AC3, SCRUM-75 AC7).
+
+    A request On Hold confirms its hold. Any other is refused if it clashes with a
+    booking or a live hold (SCRUM-44), and gets a new booking.
+    """
+    if request.status is BookingRequestStatus.ON_HOLD:
+        return _confirm_hold(request)
+    _refuse_clash(request, session)
+    return _booking_for(request)
 
 
 def _save_decision(
@@ -1504,7 +1577,8 @@ def decide_booking_request(
     An approval is refused when its period, with the venue's setup and turnaround,
     clashes with a confirmed booking at the venue (SCRUM-44, ADR-0045). Once it passes,
     every other Pending request at the venue that clashes with it is marked Conflicting
-    in the same commit. Holding a request instead of approving it is SCRUM-75.
+    in the same commit. A request On Hold (SCRUM-75) is decided too: approving it turns
+    its hold into the confirmed booking, and rejecting it releases the venue.
 
     Args:
         request_id: The request's own id, as the queue lists it.
@@ -1517,8 +1591,8 @@ def decide_booking_request(
 
     Raises:
         NotFoundError: 404 — no such request.
-        ConflictError: 409 — the request is not Pending, or approving it clashes with a
-            confirmed booking (the body names the booking).
+        ConflictError: 409 — the request was decided already, approving it clashes with
+            a booking or live hold (the body names it), or its hold has expired.
         ValidationError: 400 — payload invalid, or a rejection without a reason.
     """
     from app.modules.events import services as event_services  # circular at import time
@@ -1538,9 +1612,11 @@ def decide_booking_request(
     ]
     booking = None
     if decision is BookingDecision.APPROVED:
-        _refuse_clash(request, session)
+        booking = _booking_to_approve(request, session)
         _mark_clashing_requests_conflicting(request, session)
-        booking = _booking_for(request)
+    elif request.status is BookingRequestStatus.ON_HOLD:
+        # Rejecting a hold releases the venue at once (SCRUM-75 AC7).
+        request.booking.status = BookingStatus.CANCELLED
     request.decision_reason = reason
     _save_decision(request, decision, booking, decided_by=decided_by, session=session)
     _notify_about_booking(
@@ -1621,4 +1697,155 @@ def update_preparation_details(
     event = event_services.get_events_for_booking([request.event_id], session=sess)[
         request.event_id
     ]
+    return show_booking_request(request, event)
+
+
+# --------------------------------------------------------------------------
+# SCRUM-75 — place a tentative hold on a venue
+# --------------------------------------------------------------------------
+
+SINGLE_VENUE_HOLD_MESSAGE = (
+    "A hold can only be placed on a request of an event with more than one venue."
+)
+HOLD_NOT_ALLOWED_MESSAGE = (
+    "Only a pending or conflicting request can be held; this one is {status}."
+)
+NOT_ON_HOLD_MESSAGE = "Only a request on hold has an expiry to change; this one is {status}."
+EXPIRY_NOT_FUTURE_MESSAGE = "The expiry must be in the future."
+EXPIRY_NOT_BEFORE_EVENT_MESSAGE = "The expiry must be before the event starts."
+
+
+def _expiry_error(message: str) -> ValidationError:
+    return ValidationError("Invalid request.", details={"expires_at": [message]})
+
+
+def _require_valid_expiry(expires_at: datetime, event: EventForBooking) -> None:
+    """The expiry must be in the future and before the event starts (SCRUM-75 AC3).
+
+    The system sets no minimum or maximum length: Venue Staff choose it.
+
+    Raises:
+        ValidationError: 400 — the expiry has passed, or is not before the event starts.
+    """
+    if expires_at <= _utc_now():
+        raise _expiry_error(EXPIRY_NOT_FUTURE_MESSAGE)
+    event_starts_at = as_utc(datetime.combine(event.proposed_date, event.start_time))
+    if expires_at >= event_starts_at:
+        raise _expiry_error(EXPIRY_NOT_BEFORE_EVENT_MESSAGE)
+
+
+def _event_to_hold_for(request: VenueBookingRequest, session: Session | None) -> EventForBooking:
+    """The request's event, if it has more than one active venue arrangement (AC1).
+
+    A rejected arrangement is still active until the coordinator withdraws it.
+    Eligibility is checked when the hold is placed (ADR-0045), so a hold already placed
+    stands even if the event later drops to one venue.
+
+    Raises:
+        ConflictError: 409 — the event has only this venue.
+    """
+    from app.modules.events import services as event_services  # circular at import time
+
+    if count_active_arrangements(request.event_id, session=session) < 2:
+        raise ConflictError(SINGLE_VENUE_HOLD_MESSAGE)
+    return event_services.get_events_for_booking([request.event_id], session=session)[
+        request.event_id
+    ]
+
+
+def _notify_hold(
+    request: VenueBookingRequest,
+    event: EventForBooking,
+    kind: NotificationKind,
+    session: Session | None,
+) -> None:
+    """Tell the coordinator who raised the request about its hold, with the expiry."""
+    expires_at = to_business_time(request.booking.hold_expires_at)
+    _notify_about_booking(
+        [request.requested_by], event, kind, detail=expires_at.isoformat(), session=session
+    )
+
+
+def place_booking_hold(
+    request_id: int, payload: Mapping[str, Any] | None, *, session: Session | None = None
+) -> BookingRequestAsShown:
+    """Hold the venue tentatively instead of confirming the booking (SCRUM-75 AC1-AC3).
+
+    Venue Staff place a hold on a request of a multi-venue event, with an expiry they
+    choose. It is checked for clashes exactly as an approval is (SCRUM-44), then makes a
+    tentative booking for the request's period and moves the request to On Hold. The
+    coordinator who raised the request is told, with the expiry, in a second commit.
+
+    Args:
+        request_id: The request's own id, as the queue lists it.
+        payload: Decoded JSON body: ``expires_at``.
+        session: Database session; defaults to ``db.session``.
+
+    Returns:
+        The held request, with its event's details beside it.
+
+    Raises:
+        NotFoundError: 404 — no such request.
+        ConflictError: 409 — the request is not Pending or Conflicting, the event has
+            only one venue, or the hold clashes with a booking or another hold (the
+            body names it).
+        ValidationError: 400 — the expiry is missing, has passed or is not before the
+            event starts.
+    """
+    request = _locked_request(request_id, session)
+    if request.status not in HOLDABLE_REQUEST_STATUSES:
+        raise ConflictError(HOLD_NOT_ALLOWED_MESSAGE.format(status=request.status.value))
+    data = load_or_raise(HoldBookingRequestSchema(), payload)
+    event = _event_to_hold_for(request, session)
+    _require_valid_expiry(data["expires_at"], event)
+    _refuse_clash(request, session)
+
+    hold = _booking_for(request)
+    hold.status = BookingStatus.TENTATIVE
+    hold.hold_expires_at = data["expires_at"]
+    request.booking = hold
+    request.status = BookingRequestStatus.ON_HOLD
+    resolve_session(session).commit()
+    _notify_hold(request, event, NotificationKind.VENUE_HOLD_PLACED, session)
+    return show_booking_request(request, event)
+
+
+def change_hold_expiry(
+    request_id: int, payload: Mapping[str, Any] | None, *, session: Session | None = None
+) -> BookingRequestAsShown:
+    """Move an active hold's expiry (SCRUM-75 AC4).
+
+    The new expiry follows the rules of the first: in the future and before the event
+    starts. The coordinator is told the new expiry in a second commit.
+
+    Args:
+        request_id: The request's own id.
+        payload: Decoded JSON body: ``expires_at``.
+        session: Database session; defaults to ``db.session``.
+
+    Returns:
+        The request, with its event's details beside it.
+
+    Raises:
+        NotFoundError: 404 — no such request.
+        ConflictError: 409 — the request is not On Hold, or its hold has expired.
+        ValidationError: 400 — the expiry is missing, has passed or is not before the
+            event starts.
+    """
+    from app.modules.events import services as event_services  # circular at import time
+
+    request = _locked_request(request_id, session)
+    if request.status is not BookingRequestStatus.ON_HOLD:
+        raise ConflictError(NOT_ON_HOLD_MESSAGE.format(status=request.status.value))
+    if _hold_has_expired(request.booking):
+        raise ConflictError(HOLD_EXPIRED_MESSAGE)
+    data = load_or_raise(HoldBookingRequestSchema(), payload)
+    event = event_services.get_events_for_booking([request.event_id], session=session)[
+        request.event_id
+    ]
+    _require_valid_expiry(data["expires_at"], event)
+
+    request.booking.hold_expires_at = data["expires_at"]
+    resolve_session(session).commit()
+    _notify_hold(request, event, NotificationKind.VENUE_HOLD_EXPIRY_CHANGED, session)
     return show_booking_request(request, event)
