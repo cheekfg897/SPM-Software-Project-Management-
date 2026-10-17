@@ -79,6 +79,10 @@ class NotificationKind(str, enum.Enum):
     #: Tells the organiser who submitted the request that the coordinator confirmed the
     #: event (SCRUM-49 AC12, ADR-0051).
     EVENT_CONFIRMED = "event_confirmed"
+    #: Venue Staff placed a tentative hold on one of the coordinator's venue requests,
+    #: or changed its expiry; the expiry is the notification's ``detail`` (SCRUM-75).
+    VENUE_HOLD_PLACED = "venue_hold_placed"
+    VENUE_HOLD_EXPIRY_CHANGED = "venue_hold_expiry_changed"
 
 
 class Notification(db.Model):  # type: ignore[name-defined]

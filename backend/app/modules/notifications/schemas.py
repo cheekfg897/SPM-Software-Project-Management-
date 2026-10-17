@@ -36,6 +36,10 @@ MESSAGE_BY_KIND: dict[NotificationKind, str] = {
     ),
     NotificationKind.VENUE_BOOKING_APPROVED: "Your venue booking request was approved.",
     NotificationKind.VENUE_BOOKING_REJECTED: "Your venue booking request was rejected.",
+    NotificationKind.VENUE_HOLD_PLACED: "A venue is being held tentatively for your event.",
+    NotificationKind.VENUE_HOLD_EXPIRY_CHANGED: (
+        "The expiry of a tentative venue hold on your event has changed."
+    ),
     NotificationKind.EQUIPMENT_RESERVED: "Equipment was reserved for an event.",
     NotificationKind.REQUEST_QUEUED_FOR_LEAD: (
         "A new event request is waiting in the unassigned queue."
