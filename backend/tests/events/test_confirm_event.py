@@ -57,6 +57,13 @@ NON_ORGANISER_IDS = [9, 3, 4, 5, 2]
 SENT_TO_SAFETY_REVIEW_AT = datetime(2026, 10, 12, 2, 0, tzinfo=timezone.utc)
 NO_SAFETY_APPROVAL = {"safety_check": ["The Safety Officer has not approved the event."]}
 NO_VENUE_ARRANGED = {"venue_arrangements": ["The event has no venue arranged."]}
+#: Every status but Safety Review, built from the enum so a status added later is
+#: refused too. A draft is left out: staff get a 404 for it, not a 409 (ADR-0024).
+NOT_IN_SAFETY_REVIEW = [
+    status
+    for status in EventRequestStatus
+    if status not in {EventRequestStatus.SAFETY_REVIEW, EventRequestStatus.DRAFT}
+]
 
 
 @pytest.fixture()
@@ -338,11 +345,7 @@ def test_every_gap_is_named_together(
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "status",
-    [EventRequestStatus.APPROVED, EventRequestStatus.CONFIRMED, EventRequestStatus.SUBMITTED],
-    ids=lambda status: status.value,
-)
+@pytest.mark.parametrize("status", NOT_IN_SAFETY_REVIEW, ids=lambda status: status.value)
 def test_only_an_event_in_safety_review_can_be_confirmed(
     db_session: Session,
     ready_event: EventRequest,
