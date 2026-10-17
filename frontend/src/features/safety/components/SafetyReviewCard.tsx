@@ -1,7 +1,7 @@
-import { useId } from 'react'
+import { useId, useState } from 'react'
 import type { ReactNode } from 'react'
 
-import { StatusChip } from '@/components/ui'
+import { Button, StatusChip } from '@/components/ui'
 import { LAYOUT_OPTIONS } from '@/features/booking/constants'
 import { formatSchedule } from '@/features/eventRequests/formatSchedule'
 import { formatShortDate, formatTimeRange } from '@/lib/formatDate'
@@ -12,6 +12,8 @@ import type {
   SafetyReviewEquipment,
   SafetyReviewVenue,
 } from '../api'
+
+import { SafetyOutcomeForm } from './SafetyOutcomeForm'
 
 /** Technical Support's outcome in words, as the backend names it (EquipmentLineStatus). */
 const EQUIPMENT_STATUS_LABELS: Record<EquipmentStatus, string> = {
@@ -103,9 +105,13 @@ function EquipmentItem({ equipment }: { equipment: SafetyReviewEquipment }) {
   )
 }
 
-/** One event awaiting the safety check: what the system holds about it (SCRUM-97 AC6). */
+/**
+ * One event awaiting the safety check: what the system holds about it (SCRUM-97 AC6), and the
+ * form to record the outcome (SCRUM-98), opened on demand so the list stays readable.
+ */
 export function SafetyReviewCard({ awaiting }: { awaiting: AwaitingSafetyReview }) {
   const headingId = useId()
+  const [isFormOpen, setIsFormOpen] = useState(false)
   const { event, venues, equipment } = awaiting
 
   return (
@@ -152,6 +158,17 @@ export function SafetyReviewCard({ awaiting }: { awaiting: AwaitingSafetyReview 
           </ul>
         )}
       </section>
+
+      <div className="border-line/60 mt-6 border-t pt-5">
+        <Button
+          variant="secondary"
+          aria-expanded={isFormOpen}
+          onClick={() => setIsFormOpen((open) => !open)}
+        >
+          Record safety check
+        </Button>
+        {isFormOpen && <SafetyOutcomeForm reference={event.reference} name={event.name} />}
+      </div>
     </article>
   )
 }
