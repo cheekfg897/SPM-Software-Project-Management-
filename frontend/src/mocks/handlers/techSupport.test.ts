@@ -227,8 +227,8 @@ describe('mock of the equipment types the queue is named from', () => {
         name: 'Microphone',
         description: 'Wireless, handheld.',
         total_quantity: 12,
-        venue_id: null,
-        store_name: 'Main store',
+        venue_id: 3,
+        store_name: null,
       },
       {
         id: 1,

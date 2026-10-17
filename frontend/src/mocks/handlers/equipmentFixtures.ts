@@ -63,7 +63,9 @@ export const MOCK_EQUIPMENT_TYPES: readonly MockEquipmentType[] = [
     name: 'Microphone',
     description: 'Wireless, handheld.',
     total_quantity: 12,
-    ...IN_THE_STORE,
+    // Kept at a venue, not the store, so the catalogue screens show both kinds of place.
+    venue_id: 3,
+    store_name: null,
     free: 12,
   },
   { id: 3, name: 'Lectern', description: null, total_quantity: 2, ...IN_THE_STORE, free: 2 },
