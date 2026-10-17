@@ -53,6 +53,17 @@ describe('SCRUM-6 pages only a role may open', () => {
   })
 })
 
+describe('SCRUM-97 the Safety Officer is staff', () => {
+  it('lets a Safety Officer into the staff home, where they land', async () => {
+    const { router } = renderApp(ROUTES.STAFF_HOME, {
+      session: mockSessionFor(MOCK_ACCOUNTS.safetyOfficer),
+    })
+
+    expect(await screen.findByRole('heading', { name: 'Staff home' })).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe(ROUTES.STAFF_HOME)
+  })
+})
+
 describe('SCRUM-28 pages any signed-in user may open', () => {
   it('lets every role into the notifications page', async () => {
     renderApp(ROUTES.NOTIFICATIONS, { session: mockSessionFor(MOCK_ACCOUNTS.coordinator) })
