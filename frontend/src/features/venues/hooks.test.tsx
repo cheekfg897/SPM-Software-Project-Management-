@@ -2,10 +2,10 @@ import { screen } from '@testing-library/react'
 
 import { MOCK_ACCOUNTS, mockSessionFor } from '@/mocks/fixtures/accounts'
 import { MOCK_VENUES } from '@/mocks/handlers/venueFixtures'
-import { renderWithProviders } from '@/test/render'
+import { renderHookWithProviders, renderWithProviders } from '@/test/render'
 
 import type { VenueDetails } from './api'
-import { useCreateVenue, useUpdateVenue, useVenue, useVenues } from './hooks'
+import { useCreateVenue, useIsVenueStaff, useUpdateVenue, useVenue, useVenues } from './hooks'
 
 const GARDEN = MOCK_VENUES.gardenPavilion
 const SESSION = { session: mockSessionFor(MOCK_ACCOUNTS.venueStaff) }
@@ -45,6 +45,22 @@ function VenuesProbe() {
     </div>
   )
 }
+
+describe('SCRUM-25 who the venue pages treat as Venue Staff (AC4)', () => {
+  it.each([
+    { name: 'Venue Staff', options: SESSION, expected: true },
+    {
+      name: 'a coordinator',
+      options: { session: mockSessionFor(MOCK_ACCOUNTS.coordinator) },
+      expected: false,
+    },
+    { name: 'nobody signed in', options: {}, expected: false },
+  ])('answers $expected for $name', ({ options, expected }) => {
+    const { result } = renderHookWithProviders(useIsVenueStaff, options)
+
+    expect(result.current).toBe(expected)
+  })
+})
 
 describe('SCRUM-25 venue hooks read the venues again after a change (AC3)', () => {
   it('shows a venue added while the list is on screen', async () => {
