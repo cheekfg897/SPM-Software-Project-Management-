@@ -71,6 +71,11 @@ class NotificationKind(str, enum.Enum):
     #: Tells every Safety Officer an event has entered Safety Review (SCRUM-97 AC4,
     #: ADR-0047).
     SAFETY_REVIEW_REQUESTED = "safety_review_requested"
+    #: Tells the event's assigned coordinator the Safety Officer's outcome; the reason,
+    #: if any, is the notification's ``detail`` (SCRUM-98 AC8).
+    SAFETY_CHECK_APPROVED = "safety_check_approved"
+    SAFETY_CHECK_REJECTED = "safety_check_rejected"
+    SAFETY_CHANGES_REQUESTED = "safety_changes_requested"
 
 
 class Notification(db.Model):  # type: ignore[name-defined]

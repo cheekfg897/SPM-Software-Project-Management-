@@ -44,6 +44,13 @@ MESSAGE_BY_KIND: dict[NotificationKind, str] = {
         "Technical Support has recorded the outcome of your equipment request."
     ),
     NotificationKind.SAFETY_REVIEW_REQUESTED: "An event is waiting for your safety review.",
+    NotificationKind.SAFETY_CHECK_APPROVED: "The Safety Officer approved your event.",
+    NotificationKind.SAFETY_CHECK_REJECTED: (
+        "The Safety Officer rejected your event. It is back in planning."
+    ),
+    NotificationKind.SAFETY_CHANGES_REQUESTED: (
+        "The Safety Officer requested changes to your event. It is back in planning."
+    ),
 }
 
 #: Where a notification links to: the event's page, found by its reference
