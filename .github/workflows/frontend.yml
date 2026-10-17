@@ -102,6 +102,10 @@ jobs:
       BACKEND_URL: http://127.0.0.1:5000
       # The staff account the integration tests sign in as (see "Create a staff account").
       INTEGRATION_STAFF_EMAIL: integration-coordinator@connectsphere.test
+      # The other staff accounts (see "Create the Lead, Venue Staff and Safety Officer accounts").
+      INTEGRATION_LEAD_EMAIL: integration-lead@connectsphere.test
+      INTEGRATION_VENUE_STAFF_EMAIL: integration-venue-staff@connectsphere.test
+      INTEGRATION_SAFETY_OFFICER_EMAIL: integration-safety-officer@connectsphere.test
 
     steps:
       - name: Check out
@@ -140,6 +144,29 @@ jobs:
             --email "$INTEGRATION_STAFF_EMAIL" --full-name "Integration Coordinator" \
             --role event_coordinator
           echo "INTEGRATION_STAFF_PASSWORD=$password" >> "$GITHUB_ENV"
+
+      # The safety checks (SCRUM-97, SCRUM-98) need an event in Safety Review, which takes a Lead
+      # to assign it and Venue Staff to approve its venue, and a Safety Officer to answer. They
+      # are made the same way, each with its own password for this run. The Venue Staff account
+      # also runs the SCRUM-43 decision checks that skip without one.
+      - name: Create the Lead, Venue Staff and Safety Officer accounts for the tests
+        working-directory: backend
+        run: |
+          create_account() {
+            local role="$1" email="$2" full_name="$3" password_variable="$4"
+            local password
+            password="$(openssl rand -hex 16)"
+            echo "::add-mask::$password"
+            printf '%s\n%s\n' "$password" "$password" | flask create-staff-user \
+              --email "$email" --full-name "$full_name" --role "$role"
+            echo "$password_variable=$password" >> "$GITHUB_ENV"
+          }
+          create_account event_coordinator_lead "$INTEGRATION_LEAD_EMAIL" \
+            "Integration Lead" INTEGRATION_LEAD_PASSWORD
+          create_account venue_staff "$INTEGRATION_VENUE_STAFF_EMAIL" \
+            "Integration Venue Staff" INTEGRATION_VENUE_STAFF_PASSWORD
+          create_account safety_officer "$INTEGRATION_SAFETY_OFFICER_EMAIL" \
+            "Integration Safety Officer" INTEGRATION_SAFETY_OFFICER_PASSWORD
 
       # Left running in the background for the next step; the runner stops it at the end.
       - name: Start the backend
