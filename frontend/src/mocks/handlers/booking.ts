@@ -138,6 +138,7 @@ function toRequest(event: MockBookingEvent, body: Record<string, unknown>, id: n
     status: 'pending',
     preparation_status: 'not_started',
     preparation_notes: null,
+    hold_expires_at: null,
     event_proposed_date: event.proposed_date,
     event_end_date: event.end_date,
     event_start_time: event.start_time,
