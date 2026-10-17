@@ -170,6 +170,8 @@ def test_an_event_ready_on_both_counts_moves_to_safety_review(
     add_line(2)
 
     submitted = _submit(db_session)
+    # Only what was committed survives a rollback; a flush alone would be undone.
+    db_session.rollback()
 
     assert submitted.status is EventRequestStatus.SAFETY_REVIEW
     assert reload_event_request(approved_event.id).status is EventRequestStatus.SAFETY_REVIEW
@@ -184,6 +186,7 @@ def test_the_move_is_written_to_the_event_history(
     arrange(BookingRequestStatus.APPROVED)
 
     _submit(db_session)
+    db_session.rollback()
 
     assert history_of(approved_event.id) == [
         (EventHistoryKind.SAFETY_REVIEW_REQUESTED, COORDINATOR_ID, None)
