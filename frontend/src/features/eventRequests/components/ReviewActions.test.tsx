@@ -23,7 +23,7 @@ const PRIYA = mockSessionFor(MOCK_ACCOUNTS.reviewingCoordinator)
 const SUBMITTED = 'EVR-RV4K8N2P'
 const LOCKED_APPROVED = 'EVR-RV7T3M5Q'
 const REJECTED = 'EVR-RV9H6C1W'
-const ACTION_BUTTONS = ['Start review', 'Approve', 'Reject']
+const ACTION_BUTTONS = ['Start review', 'Approve', 'Reject', 'Ask for clarification']
 
 function openAsPriya(reference: string) {
   return renderApp(coordinatorEventPath(reference), { session: PRIYA })
@@ -54,10 +54,10 @@ async function serveSubmittedAs(status: EventRequestStatus) {
   )
 }
 
-describe('SCRUM-31 the review actions offered in each status', () => {
+describe('SCRUM-31, SCRUM-32 the review actions offered in each status', () => {
   it.each<[EventRequestStatus, string[]]>([
     [EVENT_REQUEST_STATUS.SUBMITTED, ['Start review', 'Approve', 'Reject']],
-    [EVENT_REQUEST_STATUS.UNDER_REVIEW, ['Approve', 'Reject']],
+    [EVENT_REQUEST_STATUS.UNDER_REVIEW, ['Approve', 'Reject', 'Ask for clarification']],
     [EVENT_REQUEST_STATUS.AWAITING_CLARIFICATION, ['Reject']],
     [EVENT_REQUEST_STATUS.APPROVED, ['Approve', 'Reject']],
     [EVENT_REQUEST_STATUS.REJECTED, ['Approve', 'Reject']],

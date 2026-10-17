@@ -3,11 +3,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { selectSessionUser, useAppSelector } from '@/store'
 
 import {
+  answerClarification,
   decideEventRequest,
   eventRequestKeys,
   fetchAssignedEventRequests,
   fetchEventRequest,
   fetchMyEventRequests,
+  requestClarification,
   saveDraftEventRequest,
   startEventRequestReview,
   submitDraftEventRequest,
@@ -100,6 +102,24 @@ export function useDecideEventRequest(reference: string) {
   const refresh = useRefreshEventRequests()
   return useMutation({
     mutationFn: (decision: DecisionChoice) => decideEventRequest(reference, decision),
+    onSuccess: refresh,
+  })
+}
+
+/** Ask the organiser a question about a request under review (SCRUM-32 AC1). */
+export function useRequestClarification(reference: string) {
+  const refresh = useRefreshEventRequests()
+  return useMutation({
+    mutationFn: (message: string) => requestClarification(reference, message),
+    onSuccess: refresh,
+  })
+}
+
+/** Answer the open question, sending the request back to review (SCRUM-32 AC2, ADR-0049). */
+export function useAnswerClarification(reference: string) {
+  const refresh = useRefreshEventRequests()
+  return useMutation({
+    mutationFn: (response: string) => answerClarification(reference, response),
     onSuccess: refresh,
   })
 }
