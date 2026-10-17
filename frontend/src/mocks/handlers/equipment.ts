@@ -3,7 +3,7 @@ import type { RequestHandler } from 'msw'
 
 import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
 import type { EventRequestStatus } from '@/config/eventStatus'
-import { EQUIPMENT_READER_ROLES, ROLE } from '@/config/roles'
+import { EQUIPMENT_READER_ROLES, INTERNAL_ROLES, ROLE } from '@/config/roles'
 import type { PreparationStatus } from '@/features/equipment/api'
 import { isRecord } from '@/lib/isRecord'
 
@@ -12,7 +12,7 @@ import { errorResponse, validationError } from '../responses'
 import { callerOrRefusal, eventForReader, eventForStaff, eventNotFound } from './equipmentAccess'
 import { MOCK_EQUIPMENT_TYPES, MOCK_EVENT_PERIOD } from './equipmentFixtures'
 import type { MockEquipmentType } from './equipmentFixtures'
-import { requestedQuantity, resetMockEquipmentLines } from './equipmentLines'
+import { equipmentLineHandlers, requestedQuantity, resetMockEquipmentLines } from './equipmentLines'
 import {
   EQUIPMENT_TYPE_ID_RANGE_MESSAGE,
   MISSING_MESSAGE,
@@ -21,8 +21,9 @@ import {
 } from './equipmentValidation'
 
 /**
- * The equipment endpoints, as backend/app/modules/equipment/routes.py answers them (SCRUM-45
- * availability, SCRUM-46 reservations). Reservations live in memory until resetMockEquipment.
+ * The equipment endpoints, as backend/app/modules/equipment/routes.py answers them (SCRUM-27
+ * types, SCRUM-45 availability, SCRUM-46 reservations), and the events module's equipment lines
+ * (SCRUM-37, equipmentLines.ts). Reservations live in memory until resetMockEquipment.
  */
 
 const EVENT_PATH = '/api/equipment/events/:reference'
@@ -56,7 +57,7 @@ export function resetMockEquipment(): void {
 }
 
 /** Every equipment type, by name, as the backend lists the catalogue. */
-export function equipmentTypesByName(): MockEquipmentType[] {
+function equipmentTypesByName(): MockEquipmentType[] {
   return [...MOCK_EQUIPMENT_TYPES].sort((first, second) => first.name.localeCompare(second.name))
 }
 
@@ -109,7 +110,21 @@ function bodyErrors(body: unknown): Record<string, string[]> {
   return errors
 }
 
+/** An equipment type as the catalogue shows it (EquipmentTypeSchema): not what the mock keeps free. */
+function catalogueEntry(type: MockEquipmentType) {
+  const { id, name, description, total_quantity, venue_id, store_name } = type
+  return { id, name, description, total_quantity, venue_id, store_name }
+}
+
 export const equipmentHandlers: RequestHandler[] = [
+  http.get('/api/equipment/types', ({ request }) => {
+    const caller = callerOrRefusal(request, INTERNAL_ROLES)
+    if (caller instanceof Response) {
+      return caller
+    }
+    return HttpResponse.json(equipmentTypesByName().map(catalogueEntry))
+  }),
+
   http.get(`${EVENT_PATH}/availability`, ({ request, params }) => {
     const caller = callerOrRefusal(request, EQUIPMENT_READER_ROLES)
     if (caller instanceof Response) {
@@ -184,4 +199,6 @@ export const equipmentHandlers: RequestHandler[] = [
     reservations.push(reservation)
     return HttpResponse.json(reservation, { status: 201 })
   }),
+
+  ...equipmentLineHandlers,
 ]

@@ -1,14 +1,23 @@
-import { screen, waitFor } from '@testing-library/react'
+import { act, screen, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 
 import { MOCK_ACCOUNTS, mockSessionFor } from '@/mocks/handlers/auth'
 import { MOCK_OPEN_EVENT_REFERENCE } from '@/mocks/handlers/equipmentFixtures'
 import { fieldErrorsOf } from '@/lib/api'
 import { server } from '@/mocks/server'
+import { signedIn } from '@/store'
 import { recordRequests } from '@/test/recordRequests'
-import { renderWithProviders } from '@/test/render'
+import { renderHookWithProviders, renderWithProviders } from '@/test/render'
 
-import { useEventAvailability, useEventReservations, useReserveEquipment } from './hooks'
+import {
+  useAddEquipmentLine,
+  useEventAvailability,
+  useEventEquipmentLines,
+  useEventReservations,
+  useRemoveEquipmentLine,
+  useReserveEquipment,
+  useUpdateEquipmentLine,
+} from './hooks'
 
 const SESSION = mockSessionFor(MOCK_ACCOUNTS.technicalSupport)
 const PROJECTOR_ID = 1
@@ -108,4 +117,66 @@ describe('SCRUM-46 reserving equipment', () => {
 
     expect(await screen.findByText('Projector available: 1')).toBeInTheDocument()
   })
+})
+
+describe('SCRUM-37 equipment line hooks', () => {
+  const LINES_PATH = `/api/events/requests/${MOCK_OPEN_EVENT_REFERENCE}/equipment`
+  const COORDINATOR = mockSessionFor(MOCK_ACCOUNTS.coordinator)
+
+  function linesReads(requests: Request[]): number {
+    const reads = requests.filter(
+      (request) => request.method === 'GET' && new URL(request.url).pathname === LINES_PATH,
+    )
+    return reads.length
+  }
+
+  function useLineHooks() {
+    return {
+      lines: useEventEquipmentLines(MOCK_OPEN_EVENT_REFERENCE),
+      add: useAddEquipmentLine(MOCK_OPEN_EVENT_REFERENCE),
+      update: useUpdateEquipmentLine(MOCK_OPEN_EVENT_REFERENCE),
+      remove: useRemoveEquipmentLine(MOCK_OPEN_EVENT_REFERENCE),
+    }
+  }
+
+  it('reads the lines again when someone else signs in, since the answer depends on who asks', async () => {
+    const requests = recordRequests()
+    const { result, store } = renderHookWithProviders(useLineHooks, { session: SESSION })
+    await waitFor(() => expect(result.current.lines.data?.equipment_lines).toHaveLength(2))
+
+    act(() => {
+      store.dispatch(signedIn(COORDINATOR))
+    })
+
+    await waitFor(() => expect(linesReads(requests)).toBe(2))
+  })
+
+  type LineHooks = ReturnType<typeof useLineHooks>
+
+  // A second Projector line is a conflict, the microphones can't go below the four that will be
+  // provided, and there is no line 999.
+  it.each([
+    ['add', (hooks: LineHooks) => hooks.add.mutate({ equipment_type_id: 1, quantity: 1 })],
+    ['update', (hooks: LineHooks) => hooks.update.mutate({ lineId: 42, body: { quantity: 3 } })],
+    ['remove', (hooks: LineHooks) => hooks.remove.mutate(999)],
+  ] as const)(
+    'reads the lines again after a refused %s, to show what the backend has now',
+    async (name, send) => {
+      const { result } = renderHookWithProviders(useLineHooks, { session: COORDINATOR })
+      await waitFor(() => expect(result.current.lines.data?.equipment_lines).toHaveLength(2))
+      // Meanwhile someone else removed every line.
+      server.use(
+        http.get(LINES_PATH, () =>
+          HttpResponse.json({ event: { name: 'Annual Partner Summit' }, equipment_lines: [] }),
+        ),
+      )
+
+      act(() => {
+        send(result.current)
+      })
+
+      await waitFor(() => expect(result.current[name].isError).toBe(true))
+      await waitFor(() => expect(result.current.lines.data?.equipment_lines).toEqual([]))
+    },
+  )
 })

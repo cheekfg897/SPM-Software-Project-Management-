@@ -30,21 +30,43 @@ export const MOCK_EVENT_SCHEDULE = {
   end_time: '22:00:00',
 }
 
+/** An equipment type as the catalogue lists it (SCRUM-27), with what the mock keeps free. */
 export interface MockEquipmentType {
   id: number
   name: string
+  description: string | null
+  total_quantity: number
+  venue_id: number | null
+  store_name: string | null
   /** Units free for the period before anything is reserved through the mock. */
   free: number
 }
+
+/** Kept in the central store, not at a venue (ADR-0014). */
+const IN_THE_STORE = { venue_id: null, store_name: 'Main store' }
 
 /**
  * Ten projectors held, four reserved by other events, leaves six free against the eight the open
  * event asks for. Not in name order, so the mock has to sort them as the backend does.
  */
 export const MOCK_EQUIPMENT_TYPES: readonly MockEquipmentType[] = [
-  { id: 1, name: 'Projector', free: 6 },
-  { id: 2, name: 'Microphone', free: 12 },
-  { id: 3, name: 'Lectern', free: 2 },
+  {
+    id: 1,
+    name: 'Projector',
+    description: 'Full HD, with HDMI and USB-C.',
+    total_quantity: 10,
+    ...IN_THE_STORE,
+    free: 6,
+  },
+  {
+    id: 2,
+    name: 'Microphone',
+    description: 'Wireless, handheld.',
+    total_quantity: 12,
+    ...IN_THE_STORE,
+    free: 12,
+  },
+  { id: 3, name: 'Lectern', description: null, total_quantity: 2, ...IN_THE_STORE, free: 2 },
 ]
 
 export interface MockEvent {
