@@ -45,6 +45,7 @@ from app.modules.events.models import (
     EventHistoryKind,
     EventRequest,
     EventRequestStatus,
+    SafetyOutcome,
 )
 
 #: Free-text fields a request may leave out. Blank values are stored as null.
@@ -543,6 +544,64 @@ class DecideEventRequestSchema(Schema):
         error_messages={"unknown": "Outcome must be approved or rejected."},
     )
     reason = fields.String(allow_none=True, load_default=None, validate=not_blank)
+
+    @post_load
+    def _trim_reason(self, data: dict[str, Any], **_: Any) -> dict[str, Any]:
+        if data["reason"] is not None:
+            data["reason"] = data["reason"].strip()
+        return data
+
+
+SAFETY_REASON_REQUIRED_MESSAGE = "A reason is required to reject the event or request changes."
+
+
+class SafetyChecklistSchema(Schema):
+    """The Safety Officer's checklist: a note on each of the seven items (SCRUM-98 AC2).
+
+    Every item is required and its note must not be blank. Items the system holds no
+    data for are assessed by the officer and recorded the same way, as a note (AC3).
+    Notes are trimmed.
+    """
+
+    attendance_vs_capacity = fields.String(required=True, validate=not_blank)
+    venue_layout = fields.String(required=True, validate=not_blank)
+    emergency_access = fields.String(required=True, validate=not_blank)
+    accessibility = fields.String(required=True, validate=not_blank)
+    equipment_placement = fields.String(required=True, validate=not_blank)
+    crowd_movement = fields.String(required=True, validate=not_blank)
+    venue_restrictions = fields.String(required=True, validate=not_blank)
+
+    @post_load
+    def _trim_notes(self, data: dict[str, Any], **_: Any) -> dict[str, Any]:
+        trimmed = {}
+        for item, note in data.items():
+            trimmed[item] = note.strip()
+        return trimmed
+
+
+class RecordSafetyOutcomeSchema(Schema):
+    """Payload for ``POST .../<reference>/safety-outcome`` (SCRUM-98 AC1, AC2, AC4).
+
+    ``outcome`` is ``approved``, ``rejected`` or ``changes_requested``, and the
+    ``checklist`` is required with every outcome. ``reason`` is required unless the
+    outcome is ``approved``; one that is sent must not be blank, and is trimmed.
+    """
+
+    outcome = fields.Enum(
+        SafetyOutcome,
+        by_value=True,
+        required=True,
+        error_messages={"unknown": "Outcome must be approved, rejected or changes_requested."},
+    )
+    checklist = fields.Nested(SafetyChecklistSchema, required=True)
+    reason = fields.String(allow_none=True, load_default=None, validate=not_blank)
+
+    @validates_schema
+    def _reason_unless_approved(self, data: dict[str, Any], **_: Any) -> None:
+        if data.get("outcome") is SafetyOutcome.APPROVED:
+            return
+        if data.get("reason") is None:
+            raise MarshmallowValidationError(SAFETY_REASON_REQUIRED_MESSAGE, field_name="reason")
 
     @post_load
     def _trim_reason(self, data: dict[str, Any], **_: Any) -> dict[str, Any]:

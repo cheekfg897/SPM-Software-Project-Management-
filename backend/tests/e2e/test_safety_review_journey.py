@@ -4,8 +4,10 @@ An approved event has a venue booked and an equipment line. The coordinator can'
 it to Safety Review while the venue is pending (AC1). Venue Staff approve the booking,
 Technical Support record the equipment outcome, and the coordinator sends the event. It
 is then in the Safety Officer's awaiting list with its venue and equipment (AC5, AC6),
-and the Safety Officer has the notification (AC4). Every call goes through the real
-routes with Flask's test client (ADR-0031).
+and the Safety Officer has the notification (AC4). SCRUM-98: the Safety Officer
+requests changes, which sends the event back to planning; the coordinator sends it
+again and the Safety Officer approves it, which takes it off their list. Every call
+goes through the real routes with Flask's test client (ADR-0031).
 
 Nothing here walks the request to approval: the event is saved as approved, with its
 coordinator, and that journey is test_request_to_approval_journey.py.
@@ -27,7 +29,7 @@ from app.modules.auth.services import create_staff_user
 from app.modules.events.models import EventRequest, EventRequestStatus
 from tests.e2e.actors import Actor, SignIn
 
-pytestmark = [pytest.mark.scrum_97, pytest.mark.e2e]
+pytestmark = [pytest.mark.scrum_97, pytest.mark.scrum_98, pytest.mark.e2e]
 
 PASSWORD = "Password123"
 COORDINATOR_ACCOUNT = {"full_name": "Cara Coordinator", "email": "cara@example.com"}
@@ -44,6 +46,16 @@ VENUE = {
     "accessibility_features": ["wheelchair_access"],
 }
 PROJECTORS = {"name": "Projector", "total_quantity": 10, "store_name": "Central AV store"}
+#: The Safety Officer's note on each of SCRUM-98 AC2's seven items.
+CHECKLIST = {
+    "attendance_vs_capacity": "80 expected in a hall for 300.",
+    "venue_layout": "Theatre layout, aisles clear.",
+    "emergency_access": "Two exits, both signed.",
+    "accessibility": "Step-free entrance confirmed.",
+    "equipment_placement": "Projector cables taped down.",
+    "crowd_movement": "One-way flow at the doors.",
+    "venue_restrictions": "No open flames.",
+}
 
 
 def _body(response: TestResponse, expected_status: int) -> Any:
@@ -192,3 +204,23 @@ def test_a_settled_event_reaches_the_safety_officer(
 
     # --- ...and has the notification (AC4) ---
     assert _latest_notification_kind(safety_officer) == "safety_review_requested"
+
+    # --- The Safety Officer asks for changes: back to planning (SCRUM-98 AC4, AC6) ---
+    outcome_path = f"/api/events/requests/{EVENT}/safety-outcome"
+    changes = {"outcome": "changes_requested", "checklist": CHECKLIST}
+    assert _body(safety_officer.post(outcome_path, changes), 400)["details"].keys() == {"reason"}
+    returned = _body(safety_officer.post(outcome_path, {**changes, "reason": "Exit blocked."}), 200)
+    assert returned["status"] == "approved"
+    assert _latest_notification_kind(coordinator) == "safety_changes_requested"
+
+    # --- The coordinator sends it again, and the Safety Officer approves (AC1, AC5) ---
+    _body(coordinator.post(safety_review_path), 200)
+    approval = {"outcome": "approved", "checklist": CHECKLIST}
+    approved = _body(safety_officer.post(outcome_path, approval), 200)
+    assert approved["status"] == "safety_review"
+    assert _body(safety_officer.get(awaiting_path), 200)["events"] == []
+    assert _latest_notification_kind(coordinator) == "safety_check_approved"
+    # Approved once is enough: a second outcome is refused.
+    assert _body(safety_officer.post(outcome_path, approval), 409)["error"] == (
+        "safety_outcome_not_allowed"
+    )

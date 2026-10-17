@@ -48,6 +48,7 @@ from app.modules.events.models import (
     EventHistoryKind,
     EventRequest,
     EventRequestStatus,
+    SafetyOutcome,
 )
 from app.modules.events.schemas import (
     AMENDABLE_FIELDS,
@@ -58,6 +59,7 @@ from app.modules.events.schemas import (
     EventRequestSchema,
     ReassignCoordinatorSchema,
     RecordEquipmentOutcomeSchema,
+    RecordSafetyOutcomeSchema,
     RequestClarificationSchema,
     ResubmitEventRequestSchema,
     SaveDraftSchema,
@@ -1970,7 +1972,11 @@ INTERNAL_ONLY_FIELDS: frozenset[str] = frozenset({"internal_planning_notes"})
 #: Support set aside, and what they ruled on a request, is their working, not the
 #: organiser's (SCRUM-46, ADR-0037, SCRUM-48).
 INTERNAL_ONLY_KINDS: frozenset[EventHistoryKind] = frozenset(
-    {EventHistoryKind.EQUIPMENT_RESERVED, EventHistoryKind.EQUIPMENT_OUTCOME_RECORDED}
+    {
+        EventHistoryKind.EQUIPMENT_RESERVED,
+        EventHistoryKind.EQUIPMENT_OUTCOME_RECORDED,
+        EventHistoryKind.SAFETY_OUTCOME_RECORDED,
+    }
 )
 
 
@@ -2495,16 +2501,23 @@ def record_equipment_reserved(
 
 
 def _notify_assigned_coordinator(
-    event_request: EventRequest, kind: NotificationKind, session: Session
+    event_request: EventRequest,
+    kind: NotificationKind,
+    session: Session,
+    *,
+    detail: str | None = None,
 ) -> None:
     """Tell the event's assigned coordinator that ``kind`` happened, if there is one.
 
-    With nobody assigned, nobody is told, and that is logged.
+    With nobody assigned, nobody is told, and that is logged. ``detail`` says more,
+    such as the Safety Officer's reason (SCRUM-98 AC8).
     """
     if event_request.coordinator_id is None:
         _warn_unassigned(event_request)
         return
-    _raise_notifications([event_request.coordinator_id], event_request, kind, session)
+    _raise_notifications(
+        [event_request.coordinator_id], event_request, kind, session, detail=detail
+    )
 
 
 def notify_coordinator_equipment_reserved(event_id: int, *, session: Session | None = None) -> None:
@@ -3700,13 +3713,49 @@ def _equipment_for_safety_review(
     return equipment
 
 
+#: The history kinds that open or settle a safety check. The newest of them says
+#: whether the event's current check is approved (SCRUM-98, ADR-0047).
+SAFETY_CHECK_KINDS = (
+    EventHistoryKind.SAFETY_REVIEW_REQUESTED,
+    EventHistoryKind.SAFETY_OUTCOME_RECORDED,
+)
+
+
+def has_safety_approval(event_id: int, *, session: Session | None = None) -> bool:
+    """Whether the Safety Officer has approved the event's current safety check.
+
+    SCRUM-98 AC5. For SCRUM-49, which confirms only an approved event, and SCRUM-84/85,
+    which prepare only one. The newest entry that opens or settles a check decides, so
+    an approval counts until the event is sent to Safety Review again (ADR-0047).
+
+    Args:
+        event_id: The event request's id.
+        session: Database session; defaults to ``db.session``.
+    """
+    stmt = (
+        select(EventHistoryEntry)
+        .where(
+            EventHistoryEntry.event_request_id == event_id,
+            EventHistoryEntry.kind.in_(SAFETY_CHECK_KINDS),
+        )
+        .order_by(EventHistoryEntry.occurred_at.desc(), EventHistoryEntry.id.desc())
+        .limit(1)
+    )
+    latest = resolve_session(session).scalar(stmt)
+    if latest is None or latest.kind is not EventHistoryKind.SAFETY_OUTCOME_RECORDED:
+        return False
+    return latest.details["outcome"] == SafetyOutcome.APPROVED.value
+
+
 def list_events_awaiting_safety_review(
     *, session: Session | None = None
 ) -> list[EventAwaitingSafetyReview]:
     """The events in Safety Review, soonest first (SCRUM-97 AC5, AC6, ADR-0047).
 
     Ordered by the event's date, then start time, then as submitted. One list for all
-    Safety Officers. Each event comes with its active venue arrangements and its
+    Safety Officers. An event the Safety Officer has approved stays in Safety Review
+    until it is confirmed, but is no longer awaiting them, so it is left out
+    (SCRUM-98). Each event comes with its active venue arrangements and its
     equipment requests with their outcomes; the venues are read through the venue
     module's service.
 
@@ -3723,6 +3772,8 @@ def list_events_awaiting_safety_review(
     )
     awaiting = []
     for event_request in sess.scalars(stmt):
+        if has_safety_approval(event_request.id, session=sess):
+            continue
         awaiting.append(
             EventAwaitingSafetyReview(
                 event_request=event_request,
@@ -3731,6 +3782,100 @@ def list_events_awaiting_safety_review(
             )
         )
     return awaiting
+
+
+# --------------------------------------------------------------------------
+# SCRUM-98 — record the operational safety check outcome
+# --------------------------------------------------------------------------
+
+NOT_IN_SAFETY_REVIEW_MESSAGE = "Only an event in Safety Review can get a safety outcome."
+ALREADY_SAFETY_APPROVED_MESSAGE = "The Safety Officer has already approved this event."
+
+
+class SafetyOutcomeNotAllowedError(AppError):
+    """The event isn't in Safety Review, or is already approved (409)."""
+
+    status_code = 409
+    error_code = "safety_outcome_not_allowed"
+
+
+#: Where each outcome leaves the event. An approval keeps it in Safety Review for
+#: the coordinator to confirm (SCRUM-49); the others return it to planning, which is
+#: ``approved``, never to Rejected (AC5, AC6, ADR-0047).
+STATUS_AFTER_SAFETY_OUTCOME = {
+    SafetyOutcome.APPROVED: EventRequestStatus.SAFETY_REVIEW,
+    SafetyOutcome.REJECTED: EventRequestStatus.APPROVED,
+    SafetyOutcome.CHANGES_REQUESTED: EventRequestStatus.APPROVED,
+}
+#: What the assigned coordinator is told for each outcome (AC8).
+NOTIFICATION_BY_SAFETY_OUTCOME = {
+    SafetyOutcome.APPROVED: NotificationKind.SAFETY_CHECK_APPROVED,
+    SafetyOutcome.REJECTED: NotificationKind.SAFETY_CHECK_REJECTED,
+    SafetyOutcome.CHANGES_REQUESTED: NotificationKind.SAFETY_CHANGES_REQUESTED,
+}
+
+
+def record_safety_outcome(
+    officer_id: int | str,
+    reference: str,
+    payload: Mapping[str, Any] | None,
+    *,
+    session: Session | None = None,
+    now: datetime | None = None,
+) -> EventRequest:
+    """Record the Safety Officer's outcome for an event in Safety Review (SCRUM-98).
+
+    AC1-AC8. The checklist is required with every outcome, and a reason unless it is
+    an approval. An approval leaves the event in Safety Review, approved; Reject and
+    Request Changes return it to planning (``approved``). A
+    ``safety_outcome_recorded`` history entry, naming the officer and keeping the
+    outcome, checklist and reason, is saved with the status. The assigned coordinator
+    is told afterwards, with the reason (ADR-0015).
+
+    Args:
+        officer_id: The Safety Officer's user id, taken from their token.
+        reference: The ``EVR-…`` reference; case and surrounding spaces are ignored.
+        payload: Decoded JSON body: ``outcome``, ``checklist`` and ``reason``.
+        session: Database session; defaults to ``db.session``.
+        now: The current instant, timezone-aware; defaults to the real clock.
+
+    Returns:
+        The request, in the status the outcome leaves it in.
+
+    Raises:
+        ValidationError: 400 — invalid payload, a checklist note missing or blank, or
+            no reason for Reject or Request Changes.
+        NotFoundError: 404 — no such request, or it is still a draft.
+        SafetyOutcomeNotAllowedError: 409 — the event isn't in Safety Review, or the
+            Safety Officer has already approved it.
+    """
+    recorded = load_or_raise(RecordSafetyOutcomeSchema(), payload)
+    sess = resolve_session(session)
+    event_request = _event_request_for_staff(reference, sess)
+    if event_request.status is not EventRequestStatus.SAFETY_REVIEW:
+        raise SafetyOutcomeNotAllowedError(NOT_IN_SAFETY_REVIEW_MESSAGE)
+    if has_safety_approval(event_request.id, session=sess):
+        raise SafetyOutcomeNotAllowedError(ALREADY_SAFETY_APPROVED_MESSAGE)
+
+    outcome = recorded["outcome"]
+    event_request.status = STATUS_AFTER_SAFETY_OUTCOME[outcome]
+    record_event_history(
+        event_request,
+        EventHistoryKind.SAFETY_OUTCOME_RECORDED,
+        actor_id=int(officer_id),
+        details={
+            "outcome": outcome.value,
+            "checklist": recorded["checklist"],
+            "reason": recorded["reason"],
+        },
+        session=sess,
+        now=now,
+    )
+    sess.commit()
+    _notify_assigned_coordinator(
+        event_request, NOTIFICATION_BY_SAFETY_OUTCOME[outcome], sess, detail=recorded["reason"]
+    )
+    return event_request
 
 
 # --------------------------------------------------------------------------
