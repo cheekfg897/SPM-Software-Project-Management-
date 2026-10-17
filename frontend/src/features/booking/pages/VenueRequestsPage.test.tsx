@@ -215,3 +215,19 @@ describe('SCRUM-42 venue requests page', () => {
     expect(router.state.location.search).toContain(encodeURIComponent(APPROVED_PATH))
   })
 })
+
+describe('SCRUM-94 expired holds on the venue requests page', () => {
+  it('shows a request whose hold ran out as Expired', async () => {
+    const expired: BookingRequest = {
+      ...EXISTING_REQUEST,
+      status: 'expired',
+      hold_expires_at: '2026-11-08T17:00:00+08:00',
+    }
+    server.use(http.get(BOOKING_URL, () => HttpResponse.json([expired])))
+
+    renderApp(APPROVED_PATH, SESSION)
+
+    const item = await screen.findByRole('listitem', { name: /Opening keynote/ })
+    expect(item.textContent).toContain('Expired')
+  })
+})

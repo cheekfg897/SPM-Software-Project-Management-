@@ -25,9 +25,11 @@ export interface RaiseBookingRequest {
 /**
  * Where a request stands. `conflicting` is a pending request that clashes with one Venue Staff
  * approved (SCRUM-44). `on_hold` is a venue Venue Staff hold tentatively until the request's
- * `hold_expires_at` (SCRUM-75).
+ * `hold_expires_at` (SCRUM-75). `expired` is a hold that ran out before Venue Staff's final
+ * approval, so the venue was released (SCRUM-94).
  */
-export type BookingRequestStatus = 'pending' | 'conflicting' | 'on_hold' | 'approved' | 'rejected'
+export type BookingRequestStatus =
+  'pending' | 'conflicting' | 'on_hold' | 'approved' | 'rejected' | 'expired'
 
 /** How far Venue Staff have got in setting up an approved booking (SCRUM-84). */
 export type PreparationStatus = 'not_started' | 'in_progress' | 'ready'
@@ -56,7 +58,10 @@ export interface BookingRequest {
   /** Venue Staff's progress in preparing the venue, and their notes (SCRUM-84). */
   preparation_status: PreparationStatus
   preparation_notes: string | null
-  /** When a request that is `on_hold` stops holding the venue, in business time; otherwise null. */
+  /**
+   * When an `on_hold` request's hold expires, or an `expired` one's did, in business time;
+   * otherwise null.
+   */
   hold_expires_at: string | null
   /** The event's own timing: dates as `2026-11-10`, times as `09:00:00`, in business time. */
   event_proposed_date: string
