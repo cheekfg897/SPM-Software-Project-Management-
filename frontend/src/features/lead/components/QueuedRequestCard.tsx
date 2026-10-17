@@ -3,7 +3,9 @@ import { useId } from 'react'
 import type { UnassignedRequest } from '../api'
 import { formatProposedDate, formatProposedTimes, formatSubmittedAt } from '../formatRequest'
 
-import { AssignCoordinatorForm } from './AssignCoordinatorForm'
+import { useAssignCoordinator } from '../hooks'
+
+import { CoordinatorEmailForm } from './CoordinatorEmailForm'
 
 interface QueuedRequestCardProps {
   request: UnassignedRequest
@@ -21,6 +23,7 @@ function Detail({ term, children }: { term: string; children: string | number })
 /** One request waiting in the queue: what it is, when it is for, and the form to assign it. */
 export function QueuedRequestCard({ request }: QueuedRequestCardProps) {
   const headingId = useId()
+  const assign = useAssignCoordinator()
   return (
     <article aria-labelledby={headingId} className="border-line bg-surface rounded-2xl border p-6">
       <h2 id={headingId} className="font-display text-xl font-semibold">
@@ -33,7 +36,12 @@ export function QueuedRequestCard({ request }: QueuedRequestCardProps) {
         <Detail term="Expected attendance">{request.expected_attendance}</Detail>
         <Detail term="Submitted">{formatSubmittedAt(request.submitted_at)}</Detail>
       </dl>
-      <AssignCoordinatorForm reference={request.reference} name={request.name} />
+      <CoordinatorEmailForm
+        reference={request.reference}
+        name={request.name}
+        verb="Assign"
+        mutation={assign}
+      />
     </article>
   )
 }

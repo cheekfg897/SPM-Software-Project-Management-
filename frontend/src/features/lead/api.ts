@@ -25,7 +25,8 @@ export interface UnassignedQueue {
   message?: string
 }
 
-export interface AssignCoordinatorInput {
+/** The event to hand over, and the Event Coordinator to hand it to, named by email. */
+export interface CoordinatorChoice {
   reference: string
   coordinator_email: string
 }
@@ -50,7 +51,7 @@ export function fetchUnassignedQueue(): Promise<UnassignedQueue> {
 export function assignCoordinator({
   reference,
   coordinator_email,
-}: AssignCoordinatorInput): Promise<AssignedRequest> {
+}: CoordinatorChoice): Promise<AssignedRequest> {
   return apiRequest<AssignedRequest>(LEAD_PATHS.coordinatorFor(reference), {
     method: 'POST',
     body: { coordinator_email },
