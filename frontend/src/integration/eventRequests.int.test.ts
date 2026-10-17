@@ -1,10 +1,14 @@
 import { ROLE } from '@/config/roles'
 import { register } from '@/features/auth/api'
 import {
+  answerClarification,
+  decideEventRequest,
   fetchAssignedEventRequests,
   fetchEventRequest,
   fetchMyEventRequests,
+  requestClarification,
   saveDraftEventRequest,
+  startEventRequestReview,
   submitDraftEventRequest,
   submitEventRequest,
   updateDraftEventRequest,
@@ -19,7 +23,8 @@ import type { Credentials } from './backend'
  * Event requests against the running backend: the organiser's list (SCRUM-7, SCRUM-20 AC4,
  * SCRUM-24 AC11), submitting one (SCRUM-19), saving, changing and submitting a draft (SCRUM-20,
  * ADR-0024), a coordinator's assigned list and an event's record (SCRUM-24 AC2, AC9, AC10;
- * ADR-0056).
+ * ADR-0056), and the review actions: starting a review, deciding, asking for clarification and
+ * answering (SCRUM-31, SCRUM-32; ADR-0028, ADR-0029, ADR-0049).
  * Each test records its own client organisation, which only staff may do (SCRUM-66), so these
  * tests sign in as the staff account INTEGRATION_STAFF_EMAIL / INTEGRATION_STAFF_PASSWORD.
  */
@@ -30,6 +35,8 @@ const MISSING_MESSAGE = 'Missing data for required field.'
 const NOT_A_DRAFT_MESSAGE = 'Only a draft event request can be changed or submitted this way.'
 const NOT_FOUND_MESSAGE = 'Event request not found.'
 const NO_ASSIGNED_MESSAGE = 'No event requests are assigned to you yet.'
+const NOT_AWAITING_MESSAGE =
+  'Only an event request awaiting clarification can be answered and resubmitted.'
 
 /** Every field the frontend's EventRequest type reads, and nothing more (no internal ids). */
 const EVENT_REQUEST_FIELDS = [
@@ -407,5 +414,85 @@ describe('SCRUM-24 AC2 a coordinator assigned events against the backend', () =>
 
   it.todo(
     'lists an assigned event in exactly the shape the frontend reads, once the setup has a Lead to assign one',
+  )
+})
+
+/** Every action only the request's assigned coordinator may take (SCRUM-31 AC5, SCRUM-32). */
+const COORDINATOR_ACTIONS: [string, (reference: string) => Promise<unknown>][] = [
+  ['start a review', (reference) => startEventRequestReview(reference)],
+  ['approve', (reference) => decideEventRequest(reference, { outcome: 'approved' })],
+  ['ask for clarification', (reference) => requestClarification(reference, 'Is it step-free?')],
+]
+
+describe('SCRUM-31, SCRUM-32 review actions against the backend', () => {
+  it.each(COORDINATOR_ACTIONS)(
+    'answers a coordinator not assigned to the request as not found when they %s',
+    async (_action, act) => {
+      await signInAsNewOrganiser()
+      const unassigned = await submitEventRequest(SUBMITTED)
+      await signInAs(staffAccount())
+
+      await expect(act(unassigned.reference)).rejects.toMatchObject({
+        status: 404,
+        code: 'not_found',
+        message: NOT_FOUND_MESSAGE,
+      })
+    },
+  )
+
+  it.each(COORDINATOR_ACTIONS)('refuses an organiser who tries to %s', async (_action, act) => {
+    await signInAsNewOrganiser()
+    const submitted = await submitEventRequest(SUBMITTED)
+
+    await expect(act(submitted.reference)).rejects.toMatchObject({
+      status: 403,
+      code: 'authorization_error',
+      message: NOT_PERMITTED_MESSAGE,
+    })
+  })
+
+  it('refuses to take an answer for a request with no open question', async () => {
+    await signInAsNewOrganiser()
+    const submitted = await submitEventRequest(SUBMITTED)
+
+    await expect(answerClarification(submitted.reference, 'Yes.')).rejects.toMatchObject({
+      status: 409,
+      code: 'request_not_awaiting_clarification',
+      message: NOT_AWAITING_MESSAGE,
+    })
+  })
+
+  it("answers another organisation's request as not found", async () => {
+    await signInAsNewOrganiser()
+    const theirs = await submitEventRequest(SUBMITTED)
+    await signInAsNewOrganiser()
+
+    await expect(answerClarification(theirs.reference, 'Yes.')).rejects.toMatchObject({
+      status: 404,
+      code: 'not_found',
+      message: NOT_FOUND_MESSAGE,
+    })
+  })
+
+  it("refuses a coordinator the organiser's answer", async () => {
+    await signInAsNewOrganiser()
+    const submitted = await submitEventRequest(SUBMITTED)
+    await signInAs(staffAccount())
+
+    await expect(answerClarification(submitted.reference, 'Yes.')).rejects.toMatchObject({
+      status: 403,
+      code: 'authorization_error',
+      message: NOT_PERMITTED_MESSAGE,
+    })
+  })
+
+  it.todo(
+    'starts a review and decides, each reply in the shape the page reads, once the setup has a Lead to assign a coordinator',
+  )
+  it.todo(
+    "refuses a rejection without a reason with the backend's field message, once the setup can assign a coordinator",
+  )
+  it.todo(
+    'asks a question and takes the answer, both kept on the record in the shape the page reads, once the setup can assign a coordinator',
   )
 })
