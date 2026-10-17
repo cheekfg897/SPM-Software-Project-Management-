@@ -33,7 +33,7 @@ AC does not say what `/` shows someone already signed in.
 - Every role's home is pinned by a test that opens `/` signed in, with the paths written out.
 - A new test proves logging out empties the query cache: a second coordinator on the same device
   no longer sees the first one's venue requests, which are cached by event rather than viewer.
-  It needed a second Event Coordinator in the mock accounts (`otherCoordinator`, id 40).
+  It needed a second Event Coordinator in the mock accounts (`idleCoordinator`, id 14).
 
 ## Revisit when
 - The team wants signed-in users to reach the landing page (for example an "About" link).
