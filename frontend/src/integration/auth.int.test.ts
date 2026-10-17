@@ -1,8 +1,19 @@
 import { INTERNAL_ROLES, ROLE } from '@/config/roles'
 import { fetchCurrentUser, logIn, register } from '@/features/auth/api'
+import { createOrganisation } from '@/features/organisations/api'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
 
-import { refusal, uniqueEmail, VALID_PASSWORD } from './backend'
+import {
+  newOrganiser,
+  refusal,
+  signInAs,
+  staffAccount,
+  uniqueEmail,
+  VALID_PASSWORD,
+} from './backend'
+
+/** An organisation id no database has. */
+const UNKNOWN_ORGANISATION_ID = 99_999_999
 
 const INVALID_CREDENTIALS_MESSAGE = 'Invalid email or password.'
 /** What the backend says when sign-up names a staff role (SCRUM-88), as the mock says it too. */
@@ -82,9 +93,37 @@ describe('SCRUM-65 and SCRUM-6 against the backend', () => {
     expect(error).toMatchObject({ status: 401, code: 'authentication_error' })
   })
 
-  it.todo('signs up an Event Organiser with an existing organisation_id (lands with SCRUM-66)')
-  it.todo('refuses an Event Organiser without an organisation_id, on that field (SCRUM-66)')
-  it.todo('refuses an unknown organisation_id, on that field (SCRUM-66)')
+  it('signs up an Event Organiser with an existing organisation_id (SCRUM-66)', async () => {
+    await signInAs(staffAccount())
+    const organisation = await createOrganisation({
+      name: `Integration organisation ${uniqueEmail('organisation')}`,
+      contact_name: 'Integration Contact',
+      contact_email: uniqueEmail('contact'),
+    })
+    sendRequestsAs(null)
+    const organiser = newOrganiser(organisation.id)
+
+    await register(organiser)
+    await signInAs({ email: organiser.email, password: organiser.password })
+
+    expect(await fetchCurrentUser()).toMatchObject({
+      role: ROLE.EVENT_ORGANISER,
+      organisation_id: organisation.id,
+    })
+  })
+
+  it.each([
+    ['without one', null, 'Event Organisers must belong to a client organisation.'],
+    ['with an unknown one', UNKNOWN_ORGANISATION_ID, 'Client organisation not found.'],
+  ])(
+    'refuses an Event Organiser %s, on organisation_id (SCRUM-66)',
+    async (_case, organisationId, message) => {
+      const error = await refusal(register(newOrganiser(organisationId)))
+
+      expect(error).toMatchObject({ status: 400, code: 'validation_error' })
+      expect(error.fieldErrors).toEqual({ organisation_id: [message] })
+    },
+  )
 })
 
 describe('SCRUM-88 against the backend', () => {
