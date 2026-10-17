@@ -1,11 +1,18 @@
-import { screen } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 
 import { MOCK_ACCOUNTS, mockSessionFor } from '@/mocks/fixtures/accounts'
 import { MOCK_VENUES } from '@/mocks/handlers/venueFixtures'
 import { renderHookWithProviders, renderWithProviders } from '@/test/render'
 
 import type { VenueDetails } from './api'
-import { useCreateVenue, useIsVenueStaff, useUpdateVenue, useVenue, useVenues } from './hooks'
+import {
+  useCreateVenue,
+  useIsVenueStaff,
+  useUpdateVenue,
+  useVenue,
+  useVenueCalendar,
+  useVenues,
+} from './hooks'
 
 const MARQUEE = MOCK_VENUES.lawnMarquee
 const SESSION = { session: mockSessionFor(MOCK_ACCOUNTS.venueStaff) }
@@ -59,6 +66,17 @@ describe('SCRUM-25 who the venue pages treat as Venue Staff (AC4)', () => {
     const { result } = renderHookWithProviders(useIsVenueStaff, options)
 
     expect(result.current).toBe(expected)
+  })
+})
+
+describe('SCRUM-26 the calendar hook', () => {
+  it('asks the backend even with nobody signed in, and shows its refusal', async () => {
+    const range = { range_start: '2026-11-10T00:00:00', range_end: '2026-11-11T00:00:00' }
+
+    const { result } = renderHookWithProviders(() => useVenueCalendar(MARQUEE.id, range))
+
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    expect(result.current.error).toMatchObject({ status: 401 })
   })
 })
 
