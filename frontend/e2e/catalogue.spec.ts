@@ -37,9 +37,11 @@ test('a visitor browses, searches, filters and pages through the catalogue', asy
 
   await chooseWhen(page, 'Pick dates')
   await page.getByLabel('From', { exact: true }).fill('2026-10-20T00:00')
-  // Wait for the first end to reach the URL: filling "To" in the same instant builds its URL
-  // from the one before, and drops "From".
+  // Wait for the page to redraw with "From" before filling "To": each end builds the next URL
+  // from the last render's, so filling "To" earlier drops "From". The URL changes before that
+  // render, so wait for the list too: the 10 October event leaves it once "From" applies.
   await expect(page).toHaveURL('/events?starts_from=2026-10-20T00%3A00')
+  await expect(page.getByRole('heading', { name: 'Family Science Saturday' })).toHaveCount(0)
   await page.getByLabel('To', { exact: true }).fill('2026-10-25T23:59')
   await expect(page.getByRole('heading', { name: 'Poetry at the Gallery' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Family Science Saturday' })).toHaveCount(0)
