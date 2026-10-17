@@ -70,6 +70,13 @@ CHECKLIST = {
     "venue_restrictions": "No open flames.",
 }
 NOT_APPROVED_OUTCOMES = ["rejected", "changes_requested"]
+#: Every status but Safety Review, built from the enum so a status added later is
+#: refused here too. A draft is left out: staff can't see one, so it is a 404.
+NOT_IN_SAFETY_REVIEW = [
+    status
+    for status in EventRequestStatus
+    if status not in {EventRequestStatus.DRAFT, EventRequestStatus.SAFETY_REVIEW}
+]
 
 
 @pytest.fixture()
@@ -298,11 +305,7 @@ def test_the_outcome_is_kept_in_the_history_with_the_officer_checklist_and_reaso
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "status",
-    [EventRequestStatus.APPROVED, EventRequestStatus.CONFIRMED],
-    ids=lambda status: status.value,
-)
+@pytest.mark.parametrize("status", NOT_IN_SAFETY_REVIEW, ids=lambda status: status.value)
 def test_only_an_event_in_safety_review_can_get_an_outcome(
     db_session: Session,
     in_review: EventRequest,
