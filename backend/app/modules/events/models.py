@@ -42,18 +42,16 @@ REFERENCE_UNIQUE_CONSTRAINT = "uq_event_requests_reference"
 
 
 class EventRequestStatus(str, enum.Enum):
-    """The stages an event request passes through (SCRUM-22, ADR-0012).
+    """The ten stages an event request passes through (SCRUM-22, ADR-0048).
 
-    ``UNDER_REVIEW`` is the story's "Under Review / Planning". ``APPROVED`` is not one
-    of SCRUM-22's seven: SCRUM-31 adds it for a request the coordinator has approved,
-    before it is confirmed (ADR-0028). Nor is ``AWAITING_CLARIFICATION``: SCRUM-32 adds
-    it for a request under review whose coordinator has asked the organiser a
-    question, until the organiser answers (ADR-0029). Nor is ``SAFETY_REVIEW``: SCRUM-97
-    adds it between ``APPROVED`` and ``CONFIRMED``, for an event whose venues and
-    equipment are settled and which awaits the Safety Officer (ADR-0047). ``SUBMITTED``
-    and ``DRAFT`` are written so far (SCRUM-20), and ``COMPLETED`` by SCRUM-68; each
-    other value arrives with the story that performs the transition (SCRUM-31,
-    SCRUM-32, SCRUM-49, SCRUM-61).
+    There is no Planning status: planning work happens while the request is
+    ``APPROVED``, and a request that "returns to planning" returns to ``APPROVED``.
+    ``APPROVED`` means the coordinator has approved the request to go on to planning
+    (SCRUM-31, ADR-0028), not the customer's "event approved", which is ``CONFIRMED``.
+    ``AWAITING_CLARIFICATION`` is the coordinator waiting for the organiser's answer
+    (SCRUM-32, ADR-0029). ``SAFETY_REVIEW`` sits between ``APPROVED`` and ``CONFIRMED``,
+    for an event whose venues and equipment are settled and which awaits the Safety
+    Officer (SCRUM-97, ADR-0047).
     """
 
     DRAFT = "draft"
