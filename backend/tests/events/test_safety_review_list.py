@@ -217,6 +217,44 @@ def test_a_multi_venue_event_shows_each_venue_its_accessibility_needs_and_equipm
     ]
 
 
+def test_each_event_shows_its_own_venues_and_equipment(
+    db_session: Session,
+    event_in: Callable[..., EventRequest],
+    make_venue: MakeVenue,
+    arrange: Arrange,
+    make_equipment_type: MakeEquipmentType,
+    make_equipment_line: MakeEquipmentLine,
+    save: Save,
+) -> None:
+    first = event_in(Status.SAFETY_REVIEW, date(2026, 11, 1))
+    second = event_in(Status.SAFETY_REVIEW, date(2026, 11, 2))
+    # Venue, type, arrangement and line ids all differ, and the second event's rows
+    # are saved first, so a lookup by the wrong id or event shows the wrong name.
+    hall = make_venue(name="Main Hall", venue_id=42)
+    annex = make_venue(name="Annex", venue_id=57)
+    save(hall, annex)
+    arrange(second, annex)
+    arrange(first, hall)
+    lectern = make_equipment_type(name="Lectern")
+    projector = make_equipment_type(name="Projector")
+    microphone = make_equipment_type(name="Microphone")
+    save(lectern, projector, microphone)
+    save(make_equipment_line(second, microphone))
+    save(make_equipment_line(first, projector))
+
+    listed = list_events_awaiting_safety_review(session=db_session)
+
+    shown = []
+    for item in listed:
+        venue_names = [arranged.name for arranged in item.venues]
+        type_names = [line.equipment_type_name for line in item.equipment]
+        shown.append((item.event_request.reference, venue_names, type_names))
+    assert shown == [
+        (first.reference, ["Main Hall"], ["Projector"]),
+        (second.reference, ["Annex"], ["Microphone"]),
+    ]
+
+
 def test_an_event_with_no_equipment_requests_shows_an_empty_equipment_list(
     db_session: Session,
     event_in: Callable[..., EventRequest],
