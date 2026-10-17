@@ -38,6 +38,7 @@ from app.modules.events.services import (
     NOT_IN_SAFETY_REVIEW_MESSAGE,
     SafetyOutcomeNotAllowedError,
     has_safety_approval,
+    list_event_history,
     list_events_awaiting_safety_review,
     record_event_history,
     record_safety_outcome,
@@ -397,6 +398,25 @@ def test_the_outcome_is_kept_in_the_history_with_the_officer_checklist_and_reaso
     ]
     entry = db_session.scalar(select(EventHistoryEntry))
     assert entry.occurred_at.astimezone(timezone.utc) == RECORDED_AT
+
+
+def test_only_internal_staff_see_the_outcome_in_the_history(
+    db_session: Session, in_review: EventRequest
+) -> None:
+    """The checklist is the Safety Officer's working: internal-only (ADR-0047 #19)."""
+    _record(db_session, "changes_requested")
+
+    seen_by_coordinator = list_event_history(
+        COORDINATOR_ID, REFERENCE, viewer_role=Role.EVENT_COORDINATOR, session=db_session
+    )
+    seen_by_organiser = list_event_history(
+        in_review.organiser_id, REFERENCE, viewer_role=Role.EVENT_ORGANISER, session=db_session
+    )
+
+    assert [entry.kind for entry in seen_by_coordinator] == [
+        EventHistoryKind.SAFETY_OUTCOME_RECORDED
+    ]
+    assert seen_by_organiser == []
 
 
 # --------------------------------------------------------------------------
