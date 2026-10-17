@@ -36,7 +36,7 @@ const EQUIPMENT_TYPE_FIELDS = [
 
 afterEach(() => sendRequestsAs(null))
 
-describe('SCRUM-27 equipment catalogue contract (ADR-0014, ADR-0054)', () => {
+describe('SCRUM-27 equipment catalogue contract (ADR-0014, ADR-0066)', () => {
   it('lets an Event Coordinator read the list, each type with exactly the fields the web app reads', async () => {
     await signInAs(staffAccount())
 

@@ -12,7 +12,7 @@ function textOrNull(text: string): string | null {
 }
 
 /**
- * The equipment type form as the backend wants it (ADR-0054). Every field is sent, so an edit
+ * The equipment type form as the backend wants it (ADR-0066). Every field is sent, so an edit
  * replaces the whole type. An empty quantity, venue or store goes as null, so the backend refuses
  * a missing quantity or place instead of keeping the old one; every check is the backend's.
  */

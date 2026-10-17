@@ -17,7 +17,7 @@ function CatalogueContent() {
   if (types.isError) {
     return <ErrorAlert error={types.error} />
   }
-  // The backend sends no message for an empty catalogue, so this wording is ours (ADR-0054).
+  // The backend sends no message for an empty catalogue, so this wording is ours (ADR-0066).
   if (types.data.length === 0) {
     return <EmptyState message="No equipment types yet." />
   }

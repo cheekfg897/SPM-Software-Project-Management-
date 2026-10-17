@@ -64,7 +64,7 @@ function SessionActions() {
 /**
  * The main links: the catalogue for everyone, their own events for an Attendee, and for staff
  * the client organisations (SCRUM-66, as "Clients") and the equipment catalogue, which every
- * member of staff reads (SCRUM-27, ADR-0054).
+ * member of staff reads (SCRUM-27, ADR-0066).
  */
 function MainNav() {
   const user = useAppSelector(selectSessionUser)
