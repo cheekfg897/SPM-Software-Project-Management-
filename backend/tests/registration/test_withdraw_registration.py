@@ -80,10 +80,13 @@ def withdraw(db_session: Session, now: datetime) -> Act:
 
 @pytest.fixture()
 def rows_of(db_session: Session) -> RowsOf:
-    """Every registration row for an event, and its status, from the database."""
+    """Every registration row for an event, and its status, as committed.
+
+    Rolls back first, so a change the service only flushed is not read back.
+    """
 
     def _rows(event_id: int) -> list[tuple[int, RegistrationStatus]]:
-        db_session.expire_all()
+        db_session.rollback()
         stmt = (
             select(Registration)
             .where(Registration.event_request_id == event_id)
