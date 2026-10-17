@@ -82,8 +82,10 @@ const DETAILS = {
  * Chloe, the mock coordinator, has two of the organiser's requests and three of another
  * organisation's, which the booking and equipment mocks also hold, so her links lead somewhere.
  * Marcus has two of the organiser's, one dated between hers, so a list that leaks it shows it.
- * Priya has four of Sara's (submitted, under review, approved and rejected), so reviewing and
- * deciding them changes nothing the organiser's or Chloe's lists show (ADR-0049). The one under
+ * Priya has four of organisation 2's (submitted, under review, approved and rejected), so
+ * reviewing and deciding them changes nothing the organiser's or Chloe's lists show (ADR-0049).
+ * Sara wrote all but the one under review, which her colleague did, so answering its question
+ * shows any organiser of the organisation may. The one under
  * review and the approved one have an equipment request, so the approved one's decision is
  * locked; a first decision never is (ADR-0028).
  */
@@ -350,7 +352,7 @@ export const MOCK_EVENT_REQUESTS: readonly MockEventRequest[] = [
     },
   },
   {
-    organiserId: SARA.id,
+    organiserId: OTHER_ORGANISER_ID,
     organisationId: SARA.organisation_id,
     coordinator: PRIYA,
     hasEquipmentRequest: true,

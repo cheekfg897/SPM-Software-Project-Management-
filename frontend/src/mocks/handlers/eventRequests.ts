@@ -5,7 +5,7 @@ import { ROLE } from '@/config/roles'
 import type { Role } from '@/config/roles'
 import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
 import type { EventRequestStatus } from '@/config/eventStatus'
-import type { Decision, EventRequest } from '@/features/eventRequests/api'
+import type { Clarification, Decision, EventRequest } from '@/features/eventRequests/api'
 import { isRecord } from '@/lib/isRecord'
 
 import type { MockAccount } from '../fixtures/accounts'
@@ -22,16 +22,17 @@ import {
 } from './eventRequestRules'
 import { MOCK_EVENT_REQUESTS, NOTHING_RECORDED } from './eventRequestFixtures'
 import type { MockEventRequest } from './eventRequestFixtures'
-import { loadDecision } from './eventReviewRules'
+import { loadDecision, loadText } from './eventReviewRules'
 import type { LoadedDecision } from './eventReviewRules'
 
 /**
  * Event requests: an organiser's list (SCRUM-7, SCRUM-24, ADR-0020), submitting one
  * (SCRUM-19), saving, changing and submitting a draft (SCRUM-20, ADR-0024), a coordinator's
  * list of the events assigned to them, opening one's record as either (SCRUM-24 AC2, AC9,
- * AC10; ADR-0056), and the coordinator starting a review and deciding (SCRUM-31, ADR-0028,
- * ADR-0049). Who sees what, the order, and every check are decided here as the backend
- * decides them, never in the UI. A decision is made at the mock's "now", MOCK_NOW.
+ * AC10; ADR-0056), the coordinator starting a review, deciding and asking a question, and an
+ * organiser answering it (SCRUM-31, SCRUM-32; ADR-0028, ADR-0029, ADR-0049). Who sees what,
+ * the order, and every check are decided here as the backend decides them, never in the UI.
+ * A decision, question or answer is made at the mock's "now", MOCK_NOW.
  */
 
 const MY_REQUESTS_PATH = '/api/events/requests'
@@ -53,6 +54,10 @@ const DECISION_LOCKED_MESSAGE =
   'booking request.'
 const CLARIFICATION_OUTSTANDING_MESSAGE =
   "The request can't be approved until the organiser has answered the clarification request."
+const CLARIFICATION_NOT_ALLOWED_MESSAGE =
+  'Clarification can only be requested while the event request is under review.'
+const NOT_AWAITING_CLARIFICATION_MESSAGE =
+  'Only an event request awaiting clarification can be answered and resubmitted.'
 /** Statuses a request awaits its first decision in (ADR-0028, ADR-0029). */
 const AWAITING_DECISION_STATUSES: readonly EventRequestStatus[] = [
   EVENT_REQUEST_STATUS.SUBMITTED,
@@ -289,6 +294,14 @@ function decisionRefusal(status: EventRequestStatus, decision: LoadedDecision) {
   return null
 }
 
+/** The exchange with its last question answered: an answer belongs to the question before it. */
+function withLastAnswered(clarifications: Clarification[], answer: Partial<Clarification>) {
+  const lastIndex = clarifications.length - 1
+  return clarifications.map((exchange, index) =>
+    index === lastIndex ? { ...exchange, ...answer } : exchange,
+  )
+}
+
 export const eventRequestHandlers: RequestHandler[] = [
   http.get(MY_REQUESTS_PATH, ({ request }) => {
     const caller = organiserOrRefusal(request)
@@ -456,6 +469,79 @@ export const eventRequestHandlers: RequestHandler[] = [
     stored.record = {
       ...stored.record,
       decision: { ...decision, decided_by: coordinator.full_name, decided_at: MOCK_NOW },
+    }
+    return HttpResponse.json(stored.request)
+  }),
+
+  http.post(`${MY_REQUESTS_PATH}/:reference/request-clarification`, async ({ request, params }) => {
+    const found = assignedOrRefusal(request, params.reference)
+    if ('refusal' in found) {
+      return found.refusal
+    }
+    const { coordinator, stored } = found
+    if (stored.request.status !== EVENT_REQUEST_STATUS.UNDER_REVIEW) {
+      return errorResponse(409, 'clarification_not_allowed', CLARIFICATION_NOT_ALLOWED_MESSAGE)
+    }
+    const payload = await objectBodyOrRefusal(request)
+    if ('refusal' in payload) {
+      return payload.refusal
+    }
+    const loaded = loadText(payload.body, 'message')
+    if ('errors' in loaded) {
+      return validationError(loaded.errors)
+    }
+
+    stored.request.status = EVENT_REQUEST_STATUS.AWAITING_CLARIFICATION
+    const question: Clarification = {
+      message: loaded.text,
+      requested_by: coordinator.full_name,
+      requested_at: MOCK_NOW,
+      response: null,
+      answered_by: null,
+      answered_at: null,
+    }
+    stored.record = {
+      ...stored.record,
+      clarifications: [...stored.record.clarifications, question],
+    }
+    return HttpResponse.json(stored.request)
+  }),
+
+  http.post(`${MY_REQUESTS_PATH}/:reference/resubmit`, async ({ request, params }) => {
+    const caller = organiserOrRefusal(request)
+    if ('refusal' in caller) {
+      return caller.refusal
+    }
+    const { organiser, organisationId } = caller
+    const stored = visibleRequest(organiser.id, organisationId, params.reference)
+    if (stored === undefined) {
+      return errorResponse(404, 'not_found', NOT_FOUND_MESSAGE)
+    }
+    if (stored.request.status !== EVENT_REQUEST_STATUS.AWAITING_CLARIFICATION) {
+      return errorResponse(
+        409,
+        'request_not_awaiting_clarification',
+        NOT_AWAITING_CLARIFICATION_MESSAGE,
+      )
+    }
+    const payload = await objectBodyOrRefusal(request)
+    if ('refusal' in payload) {
+      return payload.refusal
+    }
+    const loaded = loadText(payload.body, 'response')
+    if ('errors' in loaded) {
+      return validationError(loaded.errors)
+    }
+
+    stored.request.status = EVENT_REQUEST_STATUS.UNDER_REVIEW
+    const answer = {
+      response: loaded.text,
+      answered_by: organiser.full_name,
+      answered_at: MOCK_NOW,
+    }
+    stored.record = {
+      ...stored.record,
+      clarifications: withLastAnswered(stored.record.clarifications, answer),
     }
     return HttpResponse.json(stored.request)
   }),
