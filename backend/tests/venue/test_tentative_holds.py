@@ -43,6 +43,22 @@ from tests.venue.conftest import (
 
 pytestmark = pytest.mark.scrum_75
 
+#: Every status a hold is refused in: all but the two that are still waiting. Built from
+#: the enum, so a status added later is checked too.
+NOT_HOLDABLE_STATUSES = [
+    status
+    for status in BookingRequestStatus
+    if status not in {BookingRequestStatus.PENDING, BookingRequestStatus.CONFLICTING}
+]
+
+
+def _write_status(
+    request: VenueBookingRequest, status: BookingRequestStatus, session: Session
+) -> None:
+    """Put ``request`` in ``status`` straight in the table, as no flow here can."""
+    request.status = status
+    session.commit()
+
 
 def _bookings(session: Session) -> list[Booking]:
     return list(session.scalars(select(Booking).order_by(Booking.id)))
@@ -213,6 +229,35 @@ def test_only_a_request_still_waiting_can_be_held(
         f"Only a pending or conflicting request can be held; this one is {status}."
     )
     assert len(_bookings(db_session)) == bookings_before
+
+
+def test_a_conflicting_request_can_be_held(
+    db_session: Session, multi_venue_request: VenueBookingRequest
+) -> None:
+    """Conflicting (SCRUM-44) is still waiting for a decision, so it can be held."""
+    _write_status(multi_venue_request, BookingRequestStatus.CONFLICTING, db_session)
+
+    held = place_hold(multi_venue_request.id, hours_from_now(48), db_session)
+
+    assert held.status is BookingRequestStatus.ON_HOLD
+
+
+@pytest.mark.parametrize("status", NOT_HOLDABLE_STATUSES, ids=lambda status: status.value)
+def test_a_request_in_any_other_status_cannot_be_held(
+    db_session: Session,
+    multi_venue_request: VenueBookingRequest,
+    status: BookingRequestStatus,
+) -> None:
+    """Withdrawn included, which no decision reaches; nothing is booked."""
+    _write_status(multi_venue_request, status, db_session)
+
+    with pytest.raises(ConflictError) as refusal:
+        place_hold(multi_venue_request.id, hours_from_now(48), db_session)
+
+    assert refusal.value.message == (
+        f"Only a pending or conflicting request can be held; this one is {status.value}."
+    )
+    assert _bookings(db_session) == []
 
 
 # --------------------------------------------------------------------------
