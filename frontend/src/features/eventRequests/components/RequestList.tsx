@@ -7,7 +7,7 @@ import type { EventRequest, EventRequestList } from '../api'
 
 import { EventRequestRow } from './EventRequestRow'
 
-interface RequestListProps {
+export interface RequestListProps {
   /** A role's list as its hook reads it. */
   requests: UseQueryResult<EventRequestList>
   /** What the list is, for screen readers, e.g. "Your event requests". */
