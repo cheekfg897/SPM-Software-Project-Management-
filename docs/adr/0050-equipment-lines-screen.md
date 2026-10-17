@@ -40,7 +40,8 @@ from `GET /api/equipment/types`.
    changing a line sends it as `null`, and the backend's message for that shows. The screen
    checks nothing itself (`frontend/CLAUDE.md`).
 5. **Removing a line asks first**, in the place of the add form: "Remove Projector from this
-   event?" with Remove and Keep it. A removal is a hard delete (ADR-0019) and loses the notes.
+   event?" with "Remove line" and "Keep it". A removal is a hard delete (ADR-0019) and loses
+   the notes.
 6. **Status words:** `requested` is "Awaiting Technical Support", `fulfilled` "Fulfilled",
    `partially_fulfilled` "Partly fulfilled" and `unavailable` "Unavailable", written out rather
    than shown by colour alone. The outcome's details (the quantity provided, the note, who
