@@ -85,11 +85,6 @@ class OutOfServiceReason(str, enum.Enum):
     UNDER_MAINTENANCE = "under_maintenance"
 
 
-#: Longest preparation note (SCRUM-85, ADR-0050). The column is ``Text``, so this is an
-#: API rule.
-PREPARATION_NOTES_MAX_LENGTH = 1000
-
-
 class PreparationStatus(str, enum.Enum):
     """How far Technical Support have got in preparing a reservation (SCRUM-85).
 

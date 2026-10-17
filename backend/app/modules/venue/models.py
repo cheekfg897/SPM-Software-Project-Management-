@@ -45,9 +45,6 @@ LIST_MAX_ITEMS = (LIST_COLUMN_LENGTH + len(LIST_SEPARATOR)) // (
 #: Longest reason a block may carry (SCRUM-34, ADR-0016). The column is ``Text``, so
 #: this is an API rule rather than a column length: a reason is a short note.
 BLOCK_REASON_MAX_LENGTH = 500
-#: Longest preparation note (SCRUM-84, ADR-0049). The column is ``Text``, so this is an
-#: API rule, as for a block's reason.
-PREPARATION_NOTES_MAX_LENGTH = 1000
 
 
 def join_list_field(items: list[str]) -> str:

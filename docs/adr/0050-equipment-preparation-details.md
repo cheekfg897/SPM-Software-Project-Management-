@@ -9,7 +9,7 @@ SCRUM-85 lets a Technical Support member record "preparation notes and a prepara
 
 ## Decision
 1. **The reservation is the `equipment_reservations` row** (SCRUM-46): the units held for an event's period. The details live on it: `preparation_status` and `preparation_notes`.
-2. **Three statuses, as for venues: `not_started` (every reservation begins here), `in_progress` and `ready`.** The enum is the equipment module's own, with the same values as the venue module's: a module never imports another module's models.
+2. **Three statuses, as for venues: `not_started` (every reservation begins here), `in_progress` and `ready`.** The enum is the equipment module's own, with the same values as the venue module's: a module never imports another module's models. The notes rules (optional, never blank, trimmed, at most 1,000 characters) and the gate's message are the venue module's too, so both modules take them from `app/common/preparation.py` (CONVENTIONS §7: code two modules use).
 3. **"Responsible for" is any Technical Support member.** Nothing assigns a reservation, or an equipment type, to a staff member: the reserver is whoever reserved it, and the reservation, availability and outcome routes are open to all Technical Support (ADR-0037, ADR-0040). The product owner removed "responsible for" from the venue stories for the same reason (ADR-0035 decision 1); SCRUM-85 still carries it. Other roles get `403` from the role check. **Open question for the product owner:** if responsibility should mean the reserver, or a new assignment, a check is added in `update_preparation_details`.
 4. **`PUT /api/equipment/reservations/<id>/preparation`, body `status` (required) and `notes` (optional).** Each update states the whole picture: notes left out are cleared. A field other than these two is a `400`, which is how AC3 holds: the route has no way to change the quantity, type or period. Notes that are sent must not be blank, are trimmed, and are at most 1000 characters (the column is `Text`, so this is an API rule).
 5. **The gate is `events.services.has_safety_approval`** (AC5). Without it the update is `409` with `PREPARATION_NEEDS_SAFETY_APPROVAL_MESSAGE` and nothing is saved. There is no reservation status to check, unlike a venue request.
@@ -21,7 +21,6 @@ SCRUM-85 lets a Technical Support member record "preparation notes and a prepara
 
 ## Still owed
 - **Frontend:** a Technical Support form for the details, and the coordinator's view of them.
-- **After SCRUM-84 and SCRUM-85 both merge:** the two preparation schemas, enums and gate messages are copies in the venue and equipment modules. If a third caller appears, move the schema and the gate message into `app/common/`.
 
 ## Revisit when
 - The team settles decisions 2, 3, 4 or 7.
