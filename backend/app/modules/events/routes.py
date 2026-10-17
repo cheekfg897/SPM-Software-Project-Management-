@@ -93,6 +93,7 @@ NO_EQUIPMENT_REQUESTS_MESSAGE = "No events have an equipment request yet."
 NO_UNASSIGNED_REQUESTS_MESSAGE = "No event requests are waiting to be assigned."
 NO_ACTIVE_REQUESTS_MESSAGE = "There are no active event requests."
 NO_WORKLOAD_MESSAGE = "No coordinator has an active event request."
+NO_SAFETY_REVIEW_EVENTS_MESSAGE = "No events are waiting for a safety review."
 
 
 def _event_list_body(
@@ -102,7 +103,8 @@ def _event_list_body(
 
     Copies ``search_venues``'s precedent (SCRUM-35 AC4): ``message`` is added only
     when the list is empty, so a client shows it whenever it is present (SCRUM-24
-    AC10). The Lead's workload list is the one that names its list differently.
+    AC10). The Lead's workload list and the Safety Officer's list name theirs
+    differently.
     """
     body: dict[str, Any] = {list_name: listed}
     if not listed:
@@ -571,9 +573,10 @@ def submit_request_for_safety_review(reference: str) -> tuple[Response, int]:
 def list_events_awaiting_review() -> tuple[Response, int]:
     """The events in Safety Review, soonest first, for the Safety Officer (SCRUM-97).
 
-    Each comes with its venues, accessibility needs and equipment (AC5, AC6). One list
-    for all Safety Officers (ADR-0047).
+    Each comes with its status, venues, accessibility needs and equipment (AC5, AC6;
+    SCRUM-24 AC6, AC8). One list for all Safety Officers (ADR-0047); an empty one
+    says so (SCRUM-24 AC11).
     """
     awaiting = list_events_awaiting_safety_review()
-    body = {"events": _awaiting_safety_review_schema.dump(awaiting, many=True)}
-    return jsonify(body), 200
+    listed = _awaiting_safety_review_schema.dump(awaiting, many=True)
+    return jsonify(_event_list_body(listed, NO_SAFETY_REVIEW_EVENTS_MESSAGE, "events")), 200

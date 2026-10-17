@@ -685,9 +685,14 @@ class EquipmentAwaitingActionSchema(Schema):
 
 
 #: What the Safety Officer's list shows of the event itself: the equipment list's
-#: name, date and times, plus the attendance and accessibility needs they review
-#: (SCRUM-97 AC6, ADR-0047).
-SAFETY_REVIEW_EVENT_FIELDS = (*EQUIPMENT_EVENT_FIELDS, "expected_attendance", "accessibility_needs")
+#: name, date and times, the status every role's list shows (SCRUM-24 AC8), and the
+#: attendance and accessibility needs they review (SCRUM-97 AC6, ADR-0047).
+SAFETY_REVIEW_EVENT_FIELDS = (
+    *EQUIPMENT_EVENT_FIELDS,
+    "status",
+    "expected_attendance",
+    "accessibility_needs",
+)
 
 
 class SafetyReviewVenueSchema(Schema):
