@@ -28,6 +28,9 @@ export interface RaiseBookingRequest {
  */
 export type BookingRequestStatus = 'pending' | 'conflicting' | 'approved' | 'rejected'
 
+/** How far Venue Staff have got in setting up an approved booking (SCRUM-84). */
+export type PreparationStatus = 'not_started' | 'in_progress' | 'ready'
+
 /** What the backend accepts when Venue Staff decide a request (SCRUM-43). */
 export interface BookingDecision {
   outcome: 'approved' | 'rejected'
@@ -49,6 +52,9 @@ export interface BookingRequest {
   status: BookingRequestStatus
   /** Why Venue Staff decided as they did; required to reject (SCRUM-43). */
   decision_reason: string | null
+  /** Venue Staff's progress in preparing the venue, and their notes (SCRUM-84). */
+  preparation_status: PreparationStatus
+  preparation_notes: string | null
   /** The event's own timing: dates as `2026-11-10`, times as `09:00:00`, in business time. */
   event_proposed_date: string
   event_end_date: string | null

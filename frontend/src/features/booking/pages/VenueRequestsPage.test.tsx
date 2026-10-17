@@ -26,6 +26,8 @@ const EXISTING_REQUEST: BookingRequest = {
   justification: null,
   status: 'pending',
   decision_reason: null,
+  preparation_status: 'not_started',
+  preparation_notes: null,
   event_proposed_date: '2026-11-10',
   event_end_date: null,
   event_start_time: '09:00:00',

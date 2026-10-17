@@ -59,6 +59,8 @@ describe('SCRUM-42 booking mock: raising a request', () => {
       expected_occupancy: APPROVED_EVENT.expected_attendance,
       required_layout: null,
       justification: null,
+      preparation_status: 'not_started',
+      preparation_notes: null,
       event_proposed_date: APPROVED_EVENT.proposed_date,
       event_end_date: APPROVED_EVENT.end_date,
       event_start_time: APPROVED_EVENT.start_time,
