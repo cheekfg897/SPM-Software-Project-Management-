@@ -18,8 +18,9 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+from flask import Flask
 
-from app.common.errors import AuthorizationError
+from app.common.errors import AuthenticationError, AuthorizationError
 from app.modules.auth.permissions import Role
 from app.modules.events import routes
 from app.modules.events.models import EventRequest, EventRequestStatus
@@ -43,6 +44,20 @@ def submit_service(
     in_review = make_event_request(status=EventRequestStatus.SAFETY_REVIEW, coordinator_id=3)
     mocks = replace_services(routes, {"submit_for_safety_review": in_review})
     return mocks["submit_for_safety_review"]
+
+
+def test_safety_review_route_allows_only_event_coordinators(app: Flask) -> None:
+    assert app.view_functions[ENDPOINT].allowed_roles == frozenset({"event_coordinator"})
+
+
+def test_submitting_for_safety_review_without_a_token_is_401(
+    call_route: CallRoute, submit_service: MagicMock
+) -> None:
+    with pytest.raises(AuthenticationError) as exc_info:
+        call_route(ENDPOINT, "POST", PATH, VIEW_KWARGS, None)
+
+    assert exc_info.value.status_code == 401
+    submit_service.assert_not_called()
 
 
 def test_other_roles_cannot_submit_an_event_for_safety_review(
