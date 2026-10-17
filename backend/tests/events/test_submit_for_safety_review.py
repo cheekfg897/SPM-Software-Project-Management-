@@ -51,6 +51,22 @@ REFERENCE = "EVR-AAAAAAAA"
 COORDINATOR_ID = 3
 OTHER_COORDINATOR_ID = 9
 
+#: Every arrangement status but the two that let an event through: Approved, and
+#: Withdrawn, which is retired and ignored (AC1). Built from the enum, so a status
+#: added later is checked too.
+HOLDING_ARRANGEMENT_STATUSES = [
+    status
+    for status in BookingRequestStatus
+    if status not in {BookingRequestStatus.APPROVED, BookingRequestStatus.WITHDRAWN}
+]
+#: Every event status but approved, the one an event is sent from (ADR-0047). A draft
+#: is left out: it has no coordinator, so it is a 404, not a 409 (ADR-0024).
+NOT_APPROVED_STATUSES = [
+    status
+    for status in EventRequestStatus
+    if status not in {EventRequestStatus.APPROVED, EventRequestStatus.DRAFT}
+]
+
 
 @pytest.fixture()
 def approved_event(
@@ -174,7 +190,7 @@ def test_the_move_is_written_to_the_event_history(
     ]
 
 
-@pytest.mark.parametrize("status", [BookingRequestStatus.PENDING, BookingRequestStatus.REJECTED])
+@pytest.mark.parametrize("status", HOLDING_ARRANGEMENT_STATUSES, ids=lambda status: status.value)
 def test_an_arrangement_that_is_not_approved_holds_the_event_back(
     db_session: Session,
     approved_event: EventRequest,
@@ -252,16 +268,7 @@ def test_an_event_with_no_venue_arranged_is_held_back(
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "status",
-    [
-        EventRequestStatus.SUBMITTED,
-        EventRequestStatus.UNDER_REVIEW,
-        EventRequestStatus.SAFETY_REVIEW,
-        EventRequestStatus.CONFIRMED,
-    ],
-    ids=lambda status: status.value,
-)
+@pytest.mark.parametrize("status", NOT_APPROVED_STATUSES, ids=lambda status: status.value)
 def test_only_an_approved_event_can_be_submitted(
     db_session: Session,
     approved_event: EventRequest,
