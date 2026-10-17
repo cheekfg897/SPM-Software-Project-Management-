@@ -117,6 +117,8 @@ def test_raising_a_request_returns_201_with_the_request_and_the_events_details(
         "justification": None,
         "status": "pending",
         "decision_reason": None,
+        "preparation_status": None,
+        "preparation_notes": None,
         "event_proposed_date": "2026-11-01",
         "event_end_date": "2026-11-02",
         "event_start_time": "09:00:00",

@@ -6,10 +6,11 @@ Technical Support record the equipment outcome, and the coordinator sends the ev
 is then in the Safety Officer's awaiting list with its venue and equipment (AC5, AC6),
 and the Safety Officer has the notification (AC4). SCRUM-98: the Safety Officer
 requests changes, which sends the event back to planning; the coordinator sends it
-again and the Safety Officer approves it, which takes it off their list. SCRUM-49: the
-coordinator can't confirm the event before that approval; once it is in, they confirm
-it and the event is confirmed. Every call goes through the real routes with Flask's test
-client (ADR-0031).
+again and the Safety Officer approves it, which takes it off their list. Venue Staff
+can record the booking's preparation only once the Safety Officer has approved
+(SCRUM-84), and the coordinator then reads it. SCRUM-49: the coordinator can't confirm
+the event before that approval; once it is in, they confirm it and the event is
+confirmed. Every call goes through the real routes with Flask's test client (ADR-0031).
 
 Nothing here walks the request to approval: the event is saved as approved, with its
 coordinator, and that journey is test_request_to_approval_journey.py.
@@ -31,7 +32,13 @@ from app.modules.auth.services import create_staff_user
 from app.modules.events.models import EventRequest, EventRequestStatus
 from tests.e2e.actors import Actor, SignIn
 
-pytestmark = [pytest.mark.scrum_97, pytest.mark.scrum_98, pytest.mark.scrum_49, pytest.mark.e2e]
+pytestmark = [
+    pytest.mark.scrum_84,
+    pytest.mark.scrum_97,
+    pytest.mark.scrum_98,
+    pytest.mark.scrum_49,
+    pytest.mark.e2e,
+]
 
 PASSWORD = "Password123"
 COORDINATOR_ACCOUNT = {"full_name": "Cara Coordinator", "email": "cara@example.com"}
@@ -192,6 +199,11 @@ def test_a_settled_event_reaches_the_safety_officer(
     sent = _body(coordinator.post(safety_review_path), 200)
     assert sent["status"] == "safety_review"
 
+    # --- Preparation is refused before the officer approves (SCRUM-84 AC5) ---
+    preparation_path = f"/api/venues/booking-requests/{arrangement['id']}/preparation"
+    ready = {"status": "ready", "notes": "Room set out."}
+    assert venue_staff.put(preparation_path, ready).status_code == 409
+
     # --- The Safety Officer sees it, with its venue and equipment (AC5, AC6) ---
     [awaiting] = _body(safety_officer.get(awaiting_path), 200)["events"]
     assert awaiting["event"]["name"] == "Partner Summit"
@@ -232,6 +244,14 @@ def test_a_settled_event_reaches_the_safety_officer(
     # Approved once is enough: a second outcome is refused.
     assert _body(safety_officer.post(outcome_path, approval), 409)["error"] == (
         "safety_outcome_not_allowed"
+    )
+
+    # --- Venue Staff record it; the coordinator reads it (SCRUM-84 AC1, AC2) ---
+    assert venue_staff.put(preparation_path, ready).status_code == 200
+    [booking] = _body(coordinator.get(f"/api/venues/events/{EVENT}/booking-requests"), 200)
+    assert (booking["preparation_status"], booking["preparation_notes"]) == (
+        "ready",
+        "Room set out.",
     )
 
     # --- The coordinator confirms the event (SCRUM-49 AC1) ---
