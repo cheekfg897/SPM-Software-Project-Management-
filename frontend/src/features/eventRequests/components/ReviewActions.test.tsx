@@ -4,12 +4,12 @@ import { delay, http, HttpResponse } from 'msw'
 import { coordinatorEventPath, organiserRequestPath } from '@/config/routes'
 import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
 import type { EventRequestStatus } from '@/config/eventStatus'
-import { fetchEventRequest } from '@/features/eventRequests/api'
-import { MOCK_ACCOUNTS, mockSessionFor, mockTokenFor } from '@/mocks/fixtures/accounts'
+import { MOCK_ACCOUNTS, mockSessionFor } from '@/mocks/fixtures/accounts'
 import { server } from '@/mocks/server'
 import { recordRequests } from '@/test/recordRequests'
 import { renderApp } from '@/test/render'
-import { sendRequestsAs } from '@/test/sendRequestsAs'
+
+import { findRegion, serveRecordInStatus, statusShownFor } from '../test/recordPage'
 
 /**
  * SCRUM-31 AC3, AC4, AC6, AC7: the assigned coordinator starts a review and decides a request
@@ -29,16 +29,6 @@ function openAsPriya(reference: string) {
   return renderApp(coordinatorEventPath(reference), { session: PRIYA })
 }
 
-/** The region named `name`, once the record has loaded. */
-function findRegion(name: string) {
-  return screen.findByRole('region', { name })
-}
-
-/** The page's status chip, which sits beside the reference. */
-function statusShownFor(reference: string) {
-  return screen.getByText(reference).previousElementSibling?.textContent
-}
-
 /** The names of the review buttons the page offers, in order. */
 async function offeredActions(): Promise<string[]> {
   await screen.findByRole('region', { name: 'About the event' })
@@ -46,12 +36,8 @@ async function offeredActions(): Promise<string[]> {
 }
 
 /** Priya's submitted request, as the backend would send it in `status`. */
-async function serveSubmittedAs(status: EventRequestStatus) {
-  sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.reviewingCoordinator))
-  const record = await fetchEventRequest(SUBMITTED)
-  server.use(
-    http.get(`/api/events/requests/${SUBMITTED}`, () => HttpResponse.json({ ...record, status })),
-  )
+function serveSubmittedAs(status: EventRequestStatus) {
+  return serveRecordInStatus(MOCK_ACCOUNTS.reviewingCoordinator, SUBMITTED, status)
 }
 
 describe('SCRUM-31, SCRUM-32 the review actions offered in each status', () => {
