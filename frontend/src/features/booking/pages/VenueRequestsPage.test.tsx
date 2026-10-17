@@ -9,6 +9,7 @@ import { recordRequests } from '@/test/recordRequests'
 import { renderApp } from '@/test/render'
 
 import type { BookingRequest } from '../api'
+import { fillRequest } from '../test/requestForm'
 
 const APPROVED_PATH = `/events/${MOCK_BOOKING_EVENTS.approved.reference}/venue-requests`
 const SESSION = { session: mockSessionFor(MOCK_ACCOUNTS.coordinator) }
@@ -37,21 +38,6 @@ const EXISTING_REQUEST: BookingRequest = {
   event_start_time: '09:00:00',
   event_end_time: '17:00:00',
   accessibility_needs: 'Step-free access',
-}
-
-/** Type into a field from scratch: after a form reset, user-event still remembers the old text. */
-async function typeInto(view: ReturnType<typeof renderApp>, label: string, text: string) {
-  const field = await view.findByLabelText(label)
-  await view.user.clear(field)
-  await view.user.type(field, text)
-}
-
-/** Fill the required fields; the venue is the one id the form needs. */
-async function fillRequest(view: ReturnType<typeof renderApp>, venueId: number) {
-  await typeInto(view, 'Venue ID', String(venueId))
-  await typeInto(view, 'Starts', '2026-11-10T09:00')
-  await typeInto(view, 'Ends', '2026-11-10T12:00')
-  await typeInto(view, 'Purpose', 'Keynote')
 }
 
 describe('SCRUM-42 venue requests page', () => {
