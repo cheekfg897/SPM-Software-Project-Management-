@@ -179,6 +179,23 @@ def test_a_rejected_arrangement_still_makes_the_event_multi_venue(
     assert held.status is BookingRequestStatus.ON_HOLD
 
 
+def test_a_hold_stands_when_the_event_later_drops_to_one_venue(
+    db_session: Session, multi_venue_event: EventRequest, multi_venue_request: VenueBookingRequest
+) -> None:
+    """AC10: eligibility is checked when the hold is placed, not again afterwards."""
+    second = services.list_active_arrangements(multi_venue_event.id, session=db_session)[1]
+    place_hold(multi_venue_request.id, hours_from_now(48), db_session)
+    services.withdraw_arrangement(
+        multi_venue_event.reference, second.id, coordinator_id=COORDINATOR_ID, session=db_session
+    )
+
+    status_after_move = change_expiry(multi_venue_request.id, hours_from_now(72), db_session).status
+    approved = decide(multi_venue_request.id, "approved", db_session)
+
+    assert status_after_move is BookingRequestStatus.ON_HOLD
+    assert approved.status is BookingRequestStatus.APPROVED
+
+
 @pytest.mark.parametrize("status", ["approved", "rejected", "on_hold"])
 def test_only_a_request_still_waiting_can_be_held(
     db_session: Session, multi_venue_request: VenueBookingRequest, status: str
