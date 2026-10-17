@@ -14,13 +14,7 @@ export function periodFieldName(index: number, part: PeriodPart): string {
 
 /** Every value sent for a field that appears more than once: the layout checkboxes. */
 function allTexts(form: FormData, name: string): string[] {
-  const texts: string[] = []
-  for (const value of form.getAll(name)) {
-    if (typeof value === 'string') {
-      texts.push(value)
-    }
-  }
-  return texts
+  return form.getAll(name).filter((value): value is string => typeof value === 'string')
 }
 
 /** A list typed one item per line. Empty lines are dropped; every other line goes as typed. */
