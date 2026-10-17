@@ -55,6 +55,8 @@ describe('SCRUM-42 booking mock: raising a request', () => {
       event_id: APPROVED_EVENT.id,
       venue_id: ROOMY_VENUE.id,
       status: 'pending',
+      // The backend sends it on every request; null until Venue Staff hold it (SCRUM-75).
+      hold_expires_at: null,
       purpose: 'Keynote',
       expected_occupancy: APPROVED_EVENT.expected_attendance,
       required_layout: null,
