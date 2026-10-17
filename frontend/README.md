@@ -42,10 +42,15 @@ INTEGRATION_STAFF_EMAIL=you@connectsphere.test INTEGRATION_STAFF_PASSWORD=<its p
   BACKEND_URL=http://localhost:5055 npm run test:integration
 ```
 
+The safety checks (SCRUM-97, SCRUM-98) also need a Lead, Venue Staff and a Safety Officer, made
+the same way with `--role event_coordinator_lead`, `venue_staff` and `safety_officer`. Pass them as
+`INTEGRATION_LEAD_EMAIL` / `_PASSWORD`, `INTEGRATION_VENUE_STAFF_EMAIL` / `_PASSWORD` and
+`INTEGRATION_SAFETY_OFFICER_EMAIL` / `_PASSWORD`; the checks that need them skip without them.
+
 ## Accounts
 
 - **Event Organisers and Attendees** sign up at `/signup`. An Organiser needs the organisation
   ID ConnectSphere staff gave them (ADR-0013).
-- **Staff** (Event Coordinator Lead, Event Coordinator, Venue Staff, Technical Support Staff) can't sign up. Their
+- **Staff** (Event Coordinator Lead, Event Coordinator, Venue Staff, Technical Support Staff, Safety Officer) can't sign up. Their
   accounts are created with `flask create-staff-user` (ADR-0023), and they log in at
   `/staff/login`.
