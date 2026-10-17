@@ -9,6 +9,7 @@ import type { Clarification, CoordinatorContact, Decision, EventRecord } from '.
 import { formatSchedule } from '../formatSchedule'
 
 import { RecordSection } from './RecordSection'
+import { ReviewActions } from './ReviewActions'
 
 interface DecisionStyle {
   label: string
@@ -124,10 +125,6 @@ function ClarificationExchange({ clarification }: { clarification: Clarification
 
 /** Where the event's assigned coordinator plans it next. Only they may open these pages. */
 function CoordinatorLinks({ reference }: { reference: string }) {
-  const viewer = useAppSelector(selectSessionUser)
-  if (viewer?.role !== ROLE.EVENT_COORDINATOR) {
-    return null
-  }
   return (
     <div className="mt-8 flex flex-wrap gap-3">
       <ButtonLink to={venueRequestsPath(reference)} variant="secondary">
@@ -143,9 +140,12 @@ function CoordinatorLinks({ reference }: { reference: string }) {
 /**
  * An event request's record, with the sections the backend sent: its details, its coordinator,
  * and its decision, clarifications and programme notes once there are any (SCRUM-24 AC9,
- * ADR-0056). Which record a viewer may open is the backend's call.
+ * ADR-0056). Which record a viewer may open is the backend's call. Its assigned coordinator
+ * also gets links on and the review actions (SCRUM-31, ADR-0049).
  */
 export function EventRecordView({ record }: { record: EventRecord }) {
+  const viewer = useAppSelector(selectSessionUser)
+  const isCoordinator = viewer?.role === ROLE.EVENT_COORDINATOR
   return (
     <PageContainer title={record.name}>
       <p className="text-flare mt-3 font-medium">{formatSchedule(record)}</p>
@@ -153,7 +153,8 @@ export function EventRecordView({ record }: { record: EventRecord }) {
         <StatusChip status={record.status} />
         <span className="text-ink-muted text-sm">{record.reference}</span>
       </div>
-      <CoordinatorLinks reference={record.reference} />
+      {isCoordinator && <CoordinatorLinks reference={record.reference} />}
+      {isCoordinator && <ReviewActions request={record} />}
 
       <RecordSection title="About the event">
         <AboutTheEvent record={record} />

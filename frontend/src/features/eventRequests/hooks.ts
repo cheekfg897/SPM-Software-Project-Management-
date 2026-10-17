@@ -3,16 +3,18 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { selectSessionUser, useAppSelector } from '@/store'
 
 import {
+  decideEventRequest,
   eventRequestKeys,
   fetchAssignedEventRequests,
   fetchEventRequest,
   fetchMyEventRequests,
   saveDraftEventRequest,
+  startEventRequestReview,
   submitDraftEventRequest,
   submitEventRequest,
   updateDraftEventRequest,
 } from './api'
-import type { EventRequestDetails } from './api'
+import type { DecisionChoice, EventRequestDetails } from './api'
 
 /** The signed-in organiser's event requests, read for whoever is signed in. */
 export function useMyEventRequests() {
@@ -83,6 +85,21 @@ export function useSubmitDraftEventRequest() {
       await updateDraftEventRequest(reference, changes)
       return submitDraftEventRequest(reference)
     },
+    onSuccess: refresh,
+  })
+}
+
+/** Move a submitted request assigned to the coordinator to under review (SCRUM-31 AC3). */
+export function useStartReview(reference: string) {
+  const refresh = useRefreshEventRequests()
+  return useMutation({ mutationFn: () => startEventRequestReview(reference), onSuccess: refresh })
+}
+
+/** Approve or reject a request assigned to the coordinator, or change its decision (SCRUM-31). */
+export function useDecideEventRequest(reference: string) {
+  const refresh = useRefreshEventRequests()
+  return useMutation({
+    mutationFn: (decision: DecisionChoice) => decideEventRequest(reference, decision),
     onSuccess: refresh,
   })
 }
