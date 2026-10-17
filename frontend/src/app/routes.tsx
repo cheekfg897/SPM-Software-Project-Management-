@@ -35,6 +35,8 @@ import { EditEquipmentTypePage } from '@/features/equipmentCatalogue/pages/EditE
 import { EquipmentCataloguePage } from '@/features/equipmentCatalogue/pages/EquipmentCataloguePage'
 import { EquipmentTypePage } from '@/features/equipmentCatalogue/pages/EquipmentTypePage'
 import { NewEquipmentTypePage } from '@/features/equipmentCatalogue/pages/NewEquipmentTypePage'
+import { EditVenuePage } from '@/features/venues/pages/EditVenuePage'
+import { NewVenuePage } from '@/features/venues/pages/NewVenuePage'
 import { VenuePage } from '@/features/venues/pages/VenuePage'
 import { VenuesPage } from '@/features/venues/pages/VenuesPage'
 
@@ -250,6 +252,22 @@ export const appRoutes: RouteObject[] = [
         element: (
           <RequireRole allowedRoles={INTERNAL_ROLES} loginRoute={ROUTES.STAFF_LOGIN}>
             <VenuePage />
+          </RequireRole>
+        ),
+      },
+      {
+        path: ROUTES.NEW_VENUE,
+        element: (
+          <RequireRole allowedRoles={VENUE_STAFF_ROLES} loginRoute={ROUTES.STAFF_LOGIN}>
+            <NewVenuePage />
+          </RequireRole>
+        ),
+      },
+      {
+        path: ROUTES.EDIT_VENUE,
+        element: (
+          <RequireRole allowedRoles={VENUE_STAFF_ROLES} loginRoute={ROUTES.STAFF_LOGIN}>
+            <EditVenuePage />
           </RequireRole>
         ),
       },
