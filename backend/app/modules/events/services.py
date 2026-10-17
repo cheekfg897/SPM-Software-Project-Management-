@@ -3592,6 +3592,22 @@ def _equipment_gaps(event_id: int, session: Session) -> list[str]:
     return gaps
 
 
+def _arrangement_gaps(event_id: int, session: Session) -> dict[str, list[str]]:
+    """The venue and equipment gaps that hold the event back, by area.
+
+    Shared by the Safety Review gate (SCRUM-97) and confirmation (SCRUM-49), which ask
+    the same of the venues and equipment. An area with no gap is left out.
+    """
+    held_back = {}
+    venue_gaps = _venue_gaps(event_id, session)
+    if venue_gaps:
+        held_back["venue_arrangements"] = venue_gaps
+    equipment_gaps = _equipment_gaps(event_id, session)
+    if equipment_gaps:
+        held_back["equipment"] = equipment_gaps
+    return held_back
+
+
 def _notify_safety_officers(event_request: EventRequest, session: Session) -> None:
     """Tell every Safety Officer the event has entered Safety Review (SCRUM-97 AC4).
 
@@ -3633,13 +3649,7 @@ def submit_for_safety_review(
     if event_request.status is not EventRequestStatus.APPROVED:
         raise SafetyReviewNotAllowedError(NOT_APPROVED_FOR_SAFETY_REVIEW_MESSAGE)
 
-    held_back = {}
-    venue_gaps = _venue_gaps(event_request.id, sess)
-    if venue_gaps:
-        held_back["venue_arrangements"] = venue_gaps
-    equipment_gaps = _equipment_gaps(event_request.id, sess)
-    if equipment_gaps:
-        held_back["equipment"] = equipment_gaps
+    held_back = _arrangement_gaps(event_request.id, sess)
     if held_back:
         raise SafetyReviewNotAllowedError(SAFETY_REVIEW_NOT_READY_MESSAGE, details=held_back)
 
