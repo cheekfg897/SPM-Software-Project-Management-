@@ -4,6 +4,7 @@ import { editVenuePath } from '@/config/routes'
 
 import type { Venue } from '../api'
 import { VenueProfile } from '../components/VenueProfile'
+import { VenueStatusAction } from '../components/VenueStatusAction'
 import { WithVenue } from '../components/WithVenue'
 import { useIsVenueStaff } from '../hooks'
 
@@ -21,6 +22,7 @@ function VenueContent({ venue }: { venue: Venue }) {
         </div>
       )}
       <VenueProfile venue={venue} />
+      {isVenueStaff && <VenueStatusAction venue={venue} />}
     </PageContainer>
   )
 }
