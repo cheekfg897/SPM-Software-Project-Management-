@@ -1,0 +1,297 @@
+"""Unit tests for SCRUM-98 "Record the operational safety check outcome".
+
+AC1: the Safety Officer records Approve, Reject or Request Changes against an event in
+Safety Review. AC2, AC3: with a checklist of seven items, each with a note. AC4: a
+reason is required for Reject and Request Changes. AC5: an Approve leaves the event in
+Safety Review, approved, so SCRUM-49 can confirm it and SCRUM-84/85 can prepare it
+(``has_safety_approval``). AC6: Reject and Request Changes return it to planning
+(``approved``), never to Rejected. AC7: every outcome is kept in the history with the
+officer, the time, the checklist and the reason. AC8: the assigned coordinator is told
+the outcome and any reason (ADR-0047).
+
+Runs against ``db_session`` with ``saved_users`` and ``saved_event_request``
+(``EVR-AAAAAAAA``, assigned to Event Coordinator 3).
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from datetime import datetime, timedelta, timezone
+from typing import Any
+
+import pytest
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.common.errors import NotFoundError, ValidationError
+from app.modules.auth.models import User
+from app.modules.auth.permissions import Role
+from app.modules.events.models import (
+    EventHistoryEntry,
+    EventHistoryKind,
+    EventRequest,
+    EventRequestStatus,
+)
+from app.modules.events.services import (
+    ALREADY_SAFETY_APPROVED_MESSAGE,
+    NOT_IN_SAFETY_REVIEW_MESSAGE,
+    SafetyOutcomeNotAllowedError,
+    has_safety_approval,
+    list_events_awaiting_safety_review,
+    record_event_history,
+    record_safety_outcome,
+)
+from app.modules.notifications.services import NotificationKind, list_notifications_for_recipient
+
+pytestmark = pytest.mark.scrum_98
+
+HistoryOf = Callable[[int], list[tuple[EventHistoryKind, int | None, dict[str, Any] | None]]]
+ReloadEventRequest = Callable[[int], EventRequest]
+NotificationsOf = Callable[[int], list[tuple[Any, ...]]]
+
+REFERENCE = "EVR-AAAAAAAA"
+#: The Event Coordinator ``saved_event_request`` is assigned to.
+COORDINATOR_ID = 3
+SAFETY_OFFICER_ID = 20
+#: Everyone in ``saved_users`` but the assigned coordinator.
+OTHER_USER_IDS = [9, 4, 7, 5, 2]
+RECORDED_AT = datetime(2026, 10, 17, 2, 30, tzinfo=timezone.utc)
+REASON = "The fire exit on the east side is blocked by the stage."
+#: The seven checklist items of AC2, each with the officer's note.
+CHECKLIST = {
+    "attendance_vs_capacity": "80 expected in a hall for 300.",
+    "venue_layout": "Theatre layout, aisles clear.",
+    "emergency_access": "Two exits, both signed.",
+    "accessibility": "Step-free entrance confirmed.",
+    "equipment_placement": "Projector cables taped down.",
+    "crowd_movement": "One-way flow at the doors.",
+    "venue_restrictions": "No open flames.",
+}
+NOT_APPROVED_OUTCOMES = ["rejected", "changes_requested"]
+
+
+@pytest.fixture()
+def in_review(
+    saved_users: list[User],
+    saved_event_request: EventRequest,
+    make_user: Callable[..., User],
+    save: Callable[..., None],
+) -> EventRequest:
+    """``saved_event_request`` in Safety Review, with a Safety Officer saved."""
+    officer = make_user(
+        email="safety@example.com", role=Role.SAFETY_OFFICER, user_id=SAFETY_OFFICER_ID
+    )
+    saved_event_request.status = EventRequestStatus.SAFETY_REVIEW
+    save(officer, saved_event_request)
+    return saved_event_request
+
+
+def _record(
+    session: Session, outcome: str, reason: str | None = REASON, **changes: Any
+) -> EventRequest:
+    payload = {"outcome": outcome, "checklist": CHECKLIST, "reason": reason, **changes}
+    return record_safety_outcome(
+        SAFETY_OFFICER_ID, REFERENCE, payload, session=session, now=RECORDED_AT
+    )
+
+
+def _field_errors(session: Session, outcome: str, **changes: Any) -> dict[str, Any]:
+    with pytest.raises(ValidationError) as exc_info:
+        _record(session, outcome, **changes)
+    return exc_info.value.details
+
+
+def _refusal(session: Session) -> SafetyOutcomeNotAllowedError:
+    with pytest.raises(SafetyOutcomeNotAllowedError) as exc_info:
+        _record(session, "approved")
+    refused = exc_info.value
+    assert (refused.status_code, refused.error_code) == (409, "safety_outcome_not_allowed")
+    return refused
+
+
+# --------------------------------------------------------------------------
+# AC1, AC5, AC6 — each outcome and where it leaves the event
+# --------------------------------------------------------------------------
+
+
+def test_an_approval_leaves_the_event_in_safety_review_and_approved(
+    db_session: Session, in_review: EventRequest, reload_event_request: ReloadEventRequest
+) -> None:
+    assert has_safety_approval(in_review.id, session=db_session) is False
+
+    _record(db_session, "approved", reason=None)
+
+    assert reload_event_request(in_review.id).status is EventRequestStatus.SAFETY_REVIEW
+    assert has_safety_approval(in_review.id, session=db_session) is True
+
+
+@pytest.mark.parametrize("outcome", NOT_APPROVED_OUTCOMES)
+def test_reject_and_request_changes_return_the_event_to_planning(
+    db_session: Session,
+    in_review: EventRequest,
+    reload_event_request: ReloadEventRequest,
+    outcome: str,
+) -> None:
+    returned = _record(db_session, outcome)
+
+    assert returned.status is EventRequestStatus.APPROVED
+    assert reload_event_request(in_review.id).status is EventRequestStatus.APPROVED
+    assert has_safety_approval(in_review.id, session=db_session) is False
+
+
+def test_an_approval_is_void_once_the_event_is_sent_for_review_again(
+    db_session: Session, in_review: EventRequest
+) -> None:
+    _record(db_session, "approved")
+
+    record_event_history(
+        in_review,
+        EventHistoryKind.SAFETY_REVIEW_REQUESTED,
+        actor_id=COORDINATOR_ID,
+        session=db_session,
+        now=RECORDED_AT + timedelta(hours=1),
+    )
+    db_session.commit()
+
+    assert has_safety_approval(in_review.id, session=db_session) is False
+
+
+def test_an_approved_event_leaves_the_safety_officers_list(
+    db_session: Session, in_review: EventRequest
+) -> None:
+    assert len(list_events_awaiting_safety_review(session=db_session)) == 1
+
+    _record(db_session, "approved")
+
+    assert list_events_awaiting_safety_review(session=db_session) == []
+
+
+# --------------------------------------------------------------------------
+# AC2, AC3, AC4 — the checklist and the reason
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("outcome", NOT_APPROVED_OUTCOMES)
+def test_a_reason_is_required_to_reject_or_request_changes(
+    db_session: Session, in_review: EventRequest, outcome: str
+) -> None:
+    errors = _field_errors(db_session, outcome, reason=None)
+
+    assert list(errors) == ["reason"]
+
+
+@pytest.mark.parametrize("item", sorted(CHECKLIST))
+def test_every_checklist_item_needs_a_note(
+    db_session: Session, in_review: EventRequest, item: str
+) -> None:
+    checklist = {**CHECKLIST}
+    del checklist[item]
+
+    errors = _field_errors(db_session, "approved", checklist=checklist)
+
+    assert list(errors["checklist"]) == [item]
+
+
+def test_a_blank_checklist_note_is_refused(db_session: Session, in_review: EventRequest) -> None:
+    errors = _field_errors(db_session, "approved", checklist={**CHECKLIST, "crowd_movement": "  "})
+
+    assert list(errors["checklist"]) == ["crowd_movement"]
+
+
+# --------------------------------------------------------------------------
+# AC7 — every outcome is kept in the history
+# --------------------------------------------------------------------------
+
+
+def test_the_outcome_is_kept_in_the_history_with_the_officer_checklist_and_reason(
+    db_session: Session, in_review: EventRequest, history_of: HistoryOf
+) -> None:
+    _record(db_session, "changes_requested")
+
+    assert history_of(in_review.id) == [
+        (
+            EventHistoryKind.SAFETY_OUTCOME_RECORDED,
+            SAFETY_OFFICER_ID,
+            {"outcome": "changes_requested", "checklist": CHECKLIST, "reason": REASON},
+        )
+    ]
+    entry = db_session.scalar(select(EventHistoryEntry))
+    assert entry.occurred_at.astimezone(timezone.utc) == RECORDED_AT
+
+
+# --------------------------------------------------------------------------
+# AC1 — only an event in Safety Review, and only once approved
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "status",
+    [EventRequestStatus.APPROVED, EventRequestStatus.CONFIRMED],
+    ids=lambda status: status.value,
+)
+def test_only_an_event_in_safety_review_can_get_an_outcome(
+    db_session: Session,
+    in_review: EventRequest,
+    save: Callable[..., None],
+    history_of: HistoryOf,
+    status: EventRequestStatus,
+) -> None:
+    in_review.status = status
+    save(in_review)
+
+    refused = _refusal(db_session)
+
+    assert refused.message == NOT_IN_SAFETY_REVIEW_MESSAGE
+    assert history_of(in_review.id) == []
+
+
+def test_an_approved_event_cannot_get_another_outcome(
+    db_session: Session, in_review: EventRequest
+) -> None:
+    _record(db_session, "approved")
+
+    refused = _refusal(db_session)
+
+    assert refused.message == ALREADY_SAFETY_APPROVED_MESSAGE
+
+
+def test_an_unknown_event_is_not_found(db_session: Session, in_review: EventRequest) -> None:
+    with pytest.raises(NotFoundError):
+        record_safety_outcome(
+            SAFETY_OFFICER_ID,
+            "EVR-ZZZZZZZZ",
+            {"outcome": "approved", "checklist": CHECKLIST},
+            session=db_session,
+        )
+
+
+# --------------------------------------------------------------------------
+# AC8 — the assigned coordinator is told the outcome and any reason
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("outcome", "kind"),
+    [
+        ("approved", NotificationKind.SAFETY_CHECK_APPROVED),
+        ("rejected", NotificationKind.SAFETY_CHECK_REJECTED),
+        ("changes_requested", NotificationKind.SAFETY_CHANGES_REQUESTED),
+    ],
+)
+def test_the_assigned_coordinator_is_told_the_outcome_and_reason(
+    db_session: Session,
+    in_review: EventRequest,
+    notifications_of: NotificationsOf,
+    outcome: str,
+    kind: NotificationKind,
+) -> None:
+    _record(db_session, outcome)
+
+    unread = None
+    assert notifications_of(COORDINATOR_ID) == [
+        (in_review.id, REFERENCE, in_review.name, kind, unread)
+    ]
+    [notice] = list_notifications_for_recipient(COORDINATOR_ID)
+    assert notice.detail == REASON
+    for user_id in OTHER_USER_IDS:
+        assert notifications_of(user_id) == []

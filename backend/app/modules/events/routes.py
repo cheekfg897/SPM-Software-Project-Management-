@@ -53,6 +53,7 @@ from app.modules.events.services import (
     list_unassigned_requests,
     reassign_coordinator,
     record_equipment_outcome,
+    record_safety_outcome,
     remove_equipment_line,
     request_clarification,
     resubmit_event_request,
@@ -580,3 +581,23 @@ def list_events_awaiting_review() -> tuple[Response, int]:
     awaiting = list_events_awaiting_safety_review()
     listed = _awaiting_safety_review_schema.dump(awaiting, many=True)
     return jsonify(_event_list_body(listed, NO_SAFETY_REVIEW_EVENTS_MESSAGE, "events")), 200
+
+
+# --------------------------------------------------------------------------
+# SCRUM-98 — record the operational safety check outcome
+# --------------------------------------------------------------------------
+
+
+@bp.post("/requests/<reference>/safety-outcome")
+@requires_role(Role.SAFETY_OFFICER)
+def record_request_safety_outcome(reference: str) -> tuple[Response, int]:
+    """Record the Safety Officer's outcome for an event in Safety Review (SCRUM-98).
+
+    The body is the ``outcome``, the ``checklist`` and, unless approving, a
+    ``reason``. Returns ``200`` with the request in the status the outcome leaves it
+    in: Safety Review on an approval, back in planning (``approved``) otherwise.
+    """
+    event_request = record_safety_outcome(
+        g.current_user_id, reference, request.get_json(silent=True)
+    )
+    return jsonify(_event_request_schema.dump(event_request)), 200
