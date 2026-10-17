@@ -8,6 +8,7 @@ clash rules against other bookings and holds are in ``test_hold_clashes.py``.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime, timedelta
 
 import pytest
@@ -334,10 +335,14 @@ def test_an_expired_hold_is_off_the_calendar_and_back_in_search(
 
 
 @pytest.mark.scrum_44  # "Approving a request that is On Hold does not conflict with its own hold"
-def test_final_approval_turns_the_hold_into_the_confirmed_booking(
-    db_session: Session, multi_venue_request: VenueBookingRequest
+def test_final_approval_just_before_the_expiry_turns_the_hold_into_the_confirmed_booking(
+    db_session: Session,
+    multi_venue_request: VenueBookingRequest,
+    pin_now: Callable[[datetime], None],
 ) -> None:
-    place_hold(multi_venue_request.id, hours_from_now(48), db_session)
+    expires_at = hours_from_now(48)
+    place_hold(multi_venue_request.id, expires_at, db_session)
+    pin_now(expires_at - timedelta(microseconds=1))
 
     approved = decide(multi_venue_request.id, "approved", db_session)
 
@@ -360,11 +365,22 @@ def test_rejecting_a_hold_releases_the_venue_at_once(
     assert multi_venue_request.venue_id in _venue_ids_found(db_session)
 
 
-def test_final_approval_after_the_expiry_is_refused(
-    db_session: Session, multi_venue_request: VenueBookingRequest
+@pytest.mark.parametrize(
+    "after_expiry",
+    [
+        pytest.param(timedelta(0), id="at the expiry"),
+        pytest.param(timedelta(microseconds=1), id="just after the expiry"),
+    ],
+)
+def test_final_approval_from_the_instant_the_hold_expires_is_refused(
+    db_session: Session,
+    multi_venue_request: VenueBookingRequest,
+    pin_now: Callable[[datetime], None],
+    after_expiry: timedelta,
 ) -> None:
-    place_hold(multi_venue_request.id, hours_from_now(48), db_session)
-    _expire(multi_venue_request, db_session)
+    expires_at = hours_from_now(48)
+    place_hold(multi_venue_request.id, expires_at, db_session)
+    pin_now(expires_at + after_expiry)
 
     with pytest.raises(ConflictError) as refusal:
         decide(multi_venue_request.id, "approved", db_session)

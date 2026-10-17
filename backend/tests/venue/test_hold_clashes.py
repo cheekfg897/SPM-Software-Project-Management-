@@ -10,7 +10,7 @@ against it. Whether the hold itself is accepted is in ``test_tentative_holds.py`
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 from sqlalchemy.orm import Session
@@ -29,6 +29,7 @@ from tests.venue.conftest import (
     at,
     decide,
     hours_from_now,
+    locked_venue_reads,
     period,
     place_hold,
     raise_booking,
@@ -225,3 +226,83 @@ def test_a_cancelled_booking_does_not_block_a_hold(
     held = place_hold(multi_venue_request.id, hours_from_now(48), db_session)
 
     assert held.status is BookingRequestStatus.ON_HOLD
+
+
+def test_a_hold_that_ends_as_the_approval_starts_does_not_block_it(
+    db_session: Session, multi_venue_request: VenueBookingRequest, saved_event: SavedEvent
+) -> None:
+    """With no setup or turnaround, a hold to 12:00 leaves the venue free from 12:00."""
+    place_hold(multi_venue_request.id, hours_from_now(48), db_session)
+    other = _other_event_request(multi_venue_request, db_session, saved_event, at(12), at(14))
+
+    decided = decide(other.id, "approved", db_session)
+
+    assert decided.status is BookingRequestStatus.APPROVED
+
+
+# --------------------------------------------------------------------------
+# A hold stops counting at the instant it expires, decided when it is read
+# --------------------------------------------------------------------------
+
+
+def test_a_hold_still_blocks_an_approval_just_before_it_expires(
+    db_session: Session,
+    multi_venue_request: VenueBookingRequest,
+    saved_event: SavedEvent,
+    tentative_hold: SaveBooking,
+    pin_now: Callable[[datetime], None],
+) -> None:
+    expires_at = hours_from_now(1)
+    hold = tentative_hold(
+        _venue_of(multi_venue_request, db_session), at(9), at(12), hold_expires_at=expires_at
+    )
+    other = _other_event_request(multi_venue_request, db_session, saved_event, at(11), at(14))
+    pin_now(expires_at - timedelta(microseconds=1))
+
+    refusal = _refused(lambda: decide(other.id, "approved", db_session))
+
+    assert refusal.details["booking_id"] == hold.id
+
+
+@pytest.mark.parametrize(
+    "after_expiry",
+    [
+        pytest.param(timedelta(0), id="at the expiry"),
+        pytest.param(timedelta(microseconds=1), id="just after the expiry"),
+    ],
+)
+def test_a_hold_no_longer_blocks_an_approval_from_the_instant_it_expires(
+    db_session: Session,
+    multi_venue_request: VenueBookingRequest,
+    saved_event: SavedEvent,
+    tentative_hold: SaveBooking,
+    pin_now: Callable[[datetime], None],
+    after_expiry: timedelta,
+) -> None:
+    expires_at = hours_from_now(1)
+    tentative_hold(
+        _venue_of(multi_venue_request, db_session), at(9), at(12), hold_expires_at=expires_at
+    )
+    other = _other_event_request(multi_venue_request, db_session, saved_event, at(11), at(14))
+    pin_now(expires_at + after_expiry)
+
+    decided = decide(other.id, "approved", db_session)
+
+    assert decided.status is BookingRequestStatus.APPROVED
+
+
+# --------------------------------------------------------------------------
+# A hold and an approval at one venue take turns — the venue row is locked
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.scrum_75
+def test_placing_a_hold_locks_the_venue_row_before_checking_for_a_clash(
+    db_session: Session, multi_venue_request: VenueBookingRequest
+) -> None:
+    """A hold and an approval for one venue at once must queue, as two approvals do."""
+    reads = locked_venue_reads(
+        db_session, lambda: place_hold(multi_venue_request.id, hours_from_now(48), db_session)
+    )
+
+    assert len(reads) == 1

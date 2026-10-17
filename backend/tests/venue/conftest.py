@@ -7,6 +7,8 @@ from datetime import UTC, date, datetime, time, timedelta, timezone
 from typing import Any
 
 import pytest
+from sqlalchemy import event as sqlalchemy_event
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Session
 
 from app.common.clock import app_timezone, local_today
@@ -121,6 +123,25 @@ def change_expiry(request_id: int, expires_at: datetime, session: Session) -> Ve
         request_id, {"expires_at": expires_at.isoformat()}, session=session
     )
     return shown.request
+
+
+def locked_venue_reads(session: Session, action: Callable[[], object]) -> list[str]:
+    """The reads of ``venues`` under ``FOR UPDATE`` that ``action`` sends (ADR-0045).
+
+    SQLite ignores ``FOR UPDATE``, so each statement is compiled as Postgres would get
+    it; that shows the venue is read under a lock, not that two callers really queue.
+    """
+    sent: list[str] = []
+
+    def _record(connection: object, clause: object, *args: object) -> None:
+        sent.append(str(clause.compile(dialect=postgresql.dialect())))  # type: ignore[attr-defined]
+
+    sqlalchemy_event.listen(session.get_bind(), "before_execute", _record)
+    try:
+        action()
+    finally:
+        sqlalchemy_event.remove(session.get_bind(), "before_execute", _record)
+    return [sql for sql in sent if "FROM venues" in sql and "FOR UPDATE" in sql]
 
 
 SECOND_PERIOD = {
@@ -353,3 +374,13 @@ def multi_venue_request(
 ) -> VenueBookingRequest:
     """The multi-venue event's first request: 09:00-12:00 on 1 November 2026."""
     return services.list_active_arrangements(multi_venue_event.id, session=db_session)[0]
+
+
+@pytest.fixture()
+def pin_now(monkeypatch: pytest.MonkeyPatch) -> Callable[[datetime], None]:
+    """Fix the instant the venue services compare a hold's expiry with."""
+
+    def _pin(moment: datetime) -> None:
+        monkeypatch.setattr(services, "_utc_now", lambda: moment)
+
+    return _pin

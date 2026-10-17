@@ -12,8 +12,7 @@ from __future__ import annotations
 from datetime import datetime
 
 import pytest
-from sqlalchemy import event as sqlalchemy_event, select
-from sqlalchemy.dialects import postgresql
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.common.errors import ConflictError
@@ -31,6 +30,7 @@ from tests.venue.conftest import (
     VenueWithBuffers,
     at,
     decide,
+    locked_venue_reads,
     period,
     raise_booking,
 )
@@ -338,23 +338,10 @@ def test_an_approval_locks_the_venue_row_before_checking_for_a_clash(
     saved_event: SavedEvent,
     saved_users: list[object],
 ) -> None:
-    """Two approvals for one venue at once must queue, so the second sees the first.
-
-    SQLite ignores ``FOR UPDATE``, so this cannot show the two really queue; it shows
-    the venue is read under a lock, in the SQL Postgres is sent (ADR-0045).
-    """
+    """Two approvals for one venue at once must queue, so the second sees the first."""
     venue = venue_with_buffers(0, 0)
     request = _request_for(venue, saved_event(), db_session, at(9), at(12))
-    sent: list[str] = []
 
-    def _record(connection: object, clause: object, *args: object) -> None:
-        sent.append(str(clause.compile(dialect=postgresql.dialect())))  # type: ignore[attr-defined]
+    reads = locked_venue_reads(db_session, lambda: decide(request.id, "approved", db_session))
 
-    sqlalchemy_event.listen(db_session.get_bind(), "before_execute", _record)
-    try:
-        decide(request.id, "approved", db_session)
-    finally:
-        sqlalchemy_event.remove(db_session.get_bind(), "before_execute", _record)
-
-    locked_venue_reads = [sql for sql in sent if "FROM venues" in sql and "FOR UPDATE" in sql]
-    assert len(locked_venue_reads) == 1
+    assert len(reads) == 1
