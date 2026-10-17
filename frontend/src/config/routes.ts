@@ -36,6 +36,12 @@ export const ROUTES = {
   /** A route pattern: `:equipmentTypeId` is the equipment type's id. */
   EQUIPMENT_TYPE: '/staff/equipment/:equipmentTypeId',
   EDIT_EQUIPMENT_TYPE: '/staff/equipment/:equipmentTypeId/edit',
+  /** The venue catalogue: every staff role browses it, Venue Staff keep it (SCRUM-25). */
+  VENUES: '/venues',
+  NEW_VENUE: '/venues/new',
+  /** A route pattern: `:venueId` is the venue's id. */
+  VENUE: '/venues/:venueId',
+  EDIT_VENUE: '/venues/:venueId/edit',
 } as const
 
 export type RoutePath = (typeof ROUTES)[keyof typeof ROUTES]
@@ -90,4 +96,14 @@ export function equipmentTypePath(equipmentTypeId: number): string {
 /** The page for changing one equipment type, by its id. */
 export function editEquipmentTypePath(equipmentTypeId: number): string {
   return ROUTES.EDIT_EQUIPMENT_TYPE.replace(':equipmentTypeId', String(equipmentTypeId))
+}
+
+/** One venue's page, by its id. */
+export function venuePath(venueId: number): string {
+  return ROUTES.VENUE.replace(':venueId', String(venueId))
+}
+
+/** The page for changing one venue's details, by its id. */
+export function editVenuePath(venueId: number): string {
+  return ROUTES.EDIT_VENUE.replace(':venueId', String(venueId))
 }

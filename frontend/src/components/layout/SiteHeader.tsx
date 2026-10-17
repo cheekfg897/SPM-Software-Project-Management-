@@ -64,8 +64,8 @@ function SessionActions() {
 
 /**
  * The main links: the catalogue for everyone, their own events for an Attendee, and for staff
- * the client organisations (SCRUM-66, as "Clients") and the equipment catalogue, which every
- * member of staff reads (SCRUM-27, ADR-0066).
+ * the client organisations (SCRUM-66, as "Clients"), the equipment catalogue, which every
+ * member of staff reads (SCRUM-27, ADR-0066), and the venue catalogue (ADR-0053).
  */
 function MainNav() {
   const user = useAppSelector(selectSessionUser)
@@ -100,6 +100,9 @@ function MainNav() {
           </NavLink>
           <NavLink to={ROUTES.EQUIPMENT_CATALOGUE} className={NAV_LINK_CLASSES}>
             Equipment
+          </NavLink>
+          <NavLink to={ROUTES.VENUES} className={NAV_LINK_CLASSES}>
+            Venues
           </NavLink>
         </>
       )}
