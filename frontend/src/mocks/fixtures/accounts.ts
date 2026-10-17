@@ -129,6 +129,13 @@ export const MOCK_ACCOUNTS = {
     email: 'aisha@connectsphere.test',
     full_name: 'Aisha Karim',
   },
+  /** A second Event Coordinator, assigned no mock event, to sign in after the first (SCRUM-6). */
+  idleCoordinator: {
+    ...BASE_ACCOUNTS.coordinator,
+    id: 40,
+    email: 'colin@connectsphere.test',
+    full_name: 'Colin Tay',
+  },
 } as const satisfies Record<string, MockAccount>
 
 const MOCK_TOKEN_PREFIX = 'mock-token-'
