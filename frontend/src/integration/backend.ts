@@ -63,3 +63,14 @@ export async function refusal(call: Promise<unknown>): Promise<ApiError> {
   }
   return error
 }
+
+/** A sign-up for a new Event Organiser of `organisationId` (null to leave it out, SCRUM-66). */
+export function newOrganiser(organisationId: number | null) {
+  return {
+    full_name: 'Integration Organiser',
+    email: uniqueEmail('organiser'),
+    password: VALID_PASSWORD,
+    role: ROLE.EVENT_ORGANISER,
+    organisation_id: organisationId,
+  }
+}
