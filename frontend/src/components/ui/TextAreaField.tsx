@@ -7,7 +7,7 @@ interface TextAreaFieldProps extends TextareaHTMLAttributes<HTMLTextAreaElement>
   name: string
   /** The backend's messages for this field, e.g. `fieldErrorsOf(error).description`. */
   errors?: string[] | undefined
-  hint?: string
+  hint?: string | undefined
 }
 
 /** A labelled multi-line text box that shows the backend's validation messages under it. */
