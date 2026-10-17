@@ -15,17 +15,20 @@ Runs against ``db_session`` with ``saved_users`` and ``saved_event_request``
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import pytest
 from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.common.errors import NotFoundError, ValidationError
 from app.modules.auth.models import User
 from app.modules.auth.permissions import Role
+from app.modules.events import services
 from app.modules.events.models import (
     EventHistoryEntry,
     EventHistoryKind,
@@ -491,3 +494,31 @@ def test_the_assigned_coordinator_is_told_the_outcome_and_reason(
     assert notice.detail == REASON
     for user_id in OTHER_USER_IDS:
         assert notifications_of(user_id) == []
+
+
+def test_the_outcome_is_saved_even_if_the_notice_is_not(
+    db_session: Session,
+    in_review: EventRequest,
+    reload_event_request: ReloadEventRequest,
+    history_of: HistoryOf,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The outcome is committed before the notice is written (ADR-0015)."""
+
+    def _lost_connection(*_: Any, **__: Any) -> None:
+        raise OperationalError("INSERT INTO notifications ...", {}, Exception("gone"))
+
+    monkeypatch.setattr(services, "notify_users", _lost_connection)
+
+    with caplog.at_level(logging.WARNING, logger="connectsphere.events"):
+        returned = _record(db_session, "rejected")
+
+    assert returned.status is EventRequestStatus.APPROVED
+    assert reload_event_request(in_review.id).status is EventRequestStatus.APPROVED
+    assert [kind for kind, _, _ in history_of(in_review.id)] == [
+        EventHistoryKind.SAFETY_OUTCOME_RECORDED
+    ]
+    assert [record.getMessage() for record in caplog.records] == [
+        "event_request_notification_failed reference=EVR-AAAAAAAA kind=safety_check_rejected"
+    ]
