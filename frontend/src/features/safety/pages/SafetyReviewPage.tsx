@@ -1,5 +1,6 @@
 import { PageContainer } from '@/components/layout'
 
+import { LatestOutcomeNotice } from '../components/LatestOutcomeNotice'
 import { SafetyReviewList } from '../components/SafetyReviewList'
 
 /** The Safety Officer's home: the events awaiting the safety check (SCRUM-97, SCRUM-98). */
@@ -9,7 +10,8 @@ export function SafetyReviewPage() {
       title="Safety review"
       description="Events whose venues and equipment are settled, soonest first. Check each one and record whether it is safe to go ahead: approve, reject or request changes."
     >
-      <div className="mt-10">
+      <div className="mt-10 space-y-6">
+        <LatestOutcomeNotice />
         <SafetyReviewList />
       </div>
     </PageContainer>

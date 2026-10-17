@@ -1,4 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react'
+import type { BoundFunctions, queries } from '@testing-library/react'
+import type { UserEvent } from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 
 import { ROUTES } from '@/config/routes'
@@ -10,7 +12,8 @@ import { renderApp } from '@/test/render'
 
 /**
  * SCRUM-97 AC5, AC6 and SCRUM-24 AC6, AC8, AC11: the Safety Officer's list of events awaiting
- * the safety check (docs/adr/0071).
+ * the safety check. SCRUM-98 AC1-AC4: recording the outcome with its checklist and reason, and
+ * seeing what happened (docs/adr/0071).
  */
 
 const LIST_URL = '/api/events/requests/awaiting-safety-review'
@@ -18,6 +21,32 @@ const OFFICER = mockSessionFor(MOCK_ACCOUNTS.safetyOfficer)
 const GALA = MOCK_GALA.event.name
 const FAIR = MOCK_FAIR.event.name
 const TOWN_HALL = 'Year-End Town Hall'
+const OPEN_FORM = 'Record safety check'
+const REASON_REQUIRED = 'A reason is required to reject the event or request changes.'
+
+/** SCRUM-98 AC2's seven items, in its order and its words. */
+const CHECKLIST_LABELS = [
+  'Expected attendance versus venue capacity',
+  'Venue layout',
+  'Emergency access',
+  'Accessibility requirements',
+  'Equipment placement',
+  'Crowd movement',
+  'Known venue restrictions',
+]
+/** SCRUM-98 AC3: the items the system holds no data for. */
+const NOT_HELD_ITEMS = [
+  'Emergency access',
+  'Equipment placement',
+  'Crowd movement',
+  'Known venue restrictions',
+]
+const NOT_HELD_HINT = 'ConnectSphere holds no data on this. Record your own assessment.'
+
+/** The note typed into each item, so the body sent can be checked against it. */
+function noteFor(label: string): string {
+  return `Checked: ${label}.`
+}
 
 function renderList() {
   return renderApp(ROUTES.SAFETY_REVIEW, { session: OFFICER })
@@ -26,6 +55,35 @@ function renderList() {
 /** An event's card, found by the name its heading gives it. */
 async function findEvent(name: string) {
   return within(await screen.findByRole('article', { name }))
+}
+
+/** Open an event's outcome form; the card it sits in is returned. */
+async function openForm(user: UserEvent, name: string) {
+  const card = await findEvent(name)
+  await user.click(card.getByRole('button', { name: OPEN_FORM }))
+  return card
+}
+
+async function fillChecklist(user: UserEvent, card: BoundFunctions<typeof queries>) {
+  for (const label of CHECKLIST_LABELS) {
+    await user.click(card.getByLabelText(label))
+    await user.paste(noteFor(label))
+  }
+}
+
+/** The checklist body the backend should get when every note was typed with `noteFor`. */
+const SENT_CHECKLIST = {
+  attendance_vs_capacity: noteFor('Expected attendance versus venue capacity'),
+  venue_layout: noteFor('Venue layout'),
+  emergency_access: noteFor('Emergency access'),
+  accessibility: noteFor('Accessibility requirements'),
+  equipment_placement: noteFor('Equipment placement'),
+  crowd_movement: noteFor('Crowd movement'),
+  venue_restrictions: noteFor('Known venue restrictions'),
+}
+
+function outcomePosts(requests: Request[]) {
+  return requests.filter((request) => request.method === 'POST')
 }
 
 function listReads(requests: Request[]) {
@@ -199,5 +257,199 @@ describe('SCRUM-97 and SCRUM-24 AC6 the Safety Officer list', () => {
     expect(
       within(screen.getByRole('banner')).queryByRole('link', { name: 'Safety review' }),
     ).not.toBeInTheDocument()
+  })
+})
+
+describe('SCRUM-98 recording the safety check outcome', () => {
+  it('opens a form with the seven checklist items in the AC wording, and a reason', async () => {
+    const { user } = renderList()
+    const gala = await findEvent(GALA)
+    const toggle = gala.getByRole('button', { name: OPEN_FORM })
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(gala.queryByLabelText('Venue layout')).not.toBeInTheDocument()
+
+    await user.click(toggle)
+
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    const form = within(gala.getByRole('form', { name: `Safety check for ${GALA}` }))
+    expect(form.getAllByRole('textbox')).toHaveLength(8)
+    for (const label of CHECKLIST_LABELS) {
+      expect(form.getByLabelText(label)).toBeInTheDocument()
+    }
+    expect(form.getByLabelText('Reason')).toHaveAccessibleDescription(
+      'Required to reject or request changes.',
+    )
+    for (const label of NOT_HELD_ITEMS) {
+      expect(form.getByLabelText(label)).toHaveAccessibleDescription(NOT_HELD_HINT)
+    }
+    expect(form.getByLabelText('Venue layout')).not.toHaveAccessibleDescription()
+    expect(form.getByRole('button', { name: `Approve ${GALA}` })).toBeInTheDocument()
+    expect(form.getByRole('button', { name: `Reject ${GALA}` })).toBeInTheDocument()
+    expect(form.getByRole('button', { name: `Request changes ${GALA}` })).toBeInTheDocument()
+  })
+
+  it('closes the form again', async () => {
+    const { user } = renderList()
+    const gala = await openForm(user, GALA)
+
+    await user.click(gala.getByRole('button', { name: OPEN_FORM }))
+
+    expect(gala.queryByRole('form')).not.toBeInTheDocument()
+  })
+
+  it.each([
+    [
+      'Approve',
+      'approved',
+      'Safety review',
+      'It stays in Safety review until its coordinator confirms it.',
+    ],
+    [
+      'Reject',
+      'rejected',
+      'Approved',
+      'It goes back to its coordinator at Approved, the planning stage.',
+    ],
+    [
+      'Request changes',
+      'changes_requested',
+      'Approved',
+      'It goes back to its coordinator at Approved, the planning stage.',
+    ],
+  ])(
+    '%s sends the outcome, notes and reason, then the event leaves the list and the page says what happened',
+    async (action, outcome, statusAfter, nextStep) => {
+      const requests = recordRequests()
+      const { user } = renderList()
+      const gala = await openForm(user, GALA)
+      await fillChecklist(user, gala)
+      await user.type(gala.getByLabelText('Reason'), 'Second exit is blocked.')
+
+      await user.click(gala.getByRole('button', { name: `${action} ${GALA}` }))
+
+      await waitFor(() =>
+        expect(screen.queryByRole('article', { name: GALA })).not.toBeInTheDocument(),
+      )
+      const [post] = outcomePosts(requests)
+      expect(new URL(post?.url ?? '').pathname).toBe(
+        '/api/events/requests/EVR-SAFE0002/safety-outcome',
+      )
+      expect(await post?.json()).toEqual({
+        outcome,
+        checklist: SENT_CHECKLIST,
+        reason: 'Second exit is blocked.',
+      })
+      expect(listReads(requests)).toHaveLength(2)
+      const notice = within(screen.getByRole('status'))
+      expect(notice.getByText(`Safety check recorded for ${GALA}: ${action}.`)).toBeInTheDocument()
+      expect(notice.getByText(statusAfter)).toBeInTheDocument()
+      expect(notice.getByText(nextStep)).toBeInTheDocument()
+      expect(notice.getByText('Its coordinator has been notified.')).toBeInTheDocument()
+      expect(screen.getByRole('article', { name: FAIR })).toBeInTheDocument()
+    },
+  )
+
+  it('sends no reason with an approval when none was typed', async () => {
+    const requests = recordRequests()
+    const { user } = renderList()
+    const gala = await openForm(user, GALA)
+    await fillChecklist(user, gala)
+
+    await user.click(gala.getByRole('button', { name: `Approve ${GALA}` }))
+
+    await waitFor(() => expect(outcomePosts(requests)).toHaveLength(1))
+    expect(await outcomePosts(requests)[0]?.json()).toEqual({
+      outcome: 'approved',
+      checklist: SENT_CHECKLIST,
+    })
+  })
+
+  it("shows the backend's reason message under Reason, moves there, and keeps the event", async () => {
+    const { user } = renderList()
+    const gala = await openForm(user, GALA)
+    await fillChecklist(user, gala)
+
+    await user.click(gala.getByRole('button', { name: `Reject ${GALA}` }))
+
+    const reason = gala.getByLabelText('Reason')
+    await waitFor(() => expect(reason).toHaveAccessibleDescription(REASON_REQUIRED))
+    expect(reason).toBeInvalid()
+    expect(reason).toHaveFocus()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.getByRole('article', { name: GALA })).toBeInTheDocument()
+    expect(screen.queryByText(/^Safety check recorded/)).not.toBeInTheDocument()
+  })
+
+  it("shows the backend's message under every checklist note left blank, and moves to the first", async () => {
+    const { user } = renderList()
+    const gala = await openForm(user, GALA)
+    await user.type(gala.getByLabelText('Venue layout'), '   ')
+
+    await user.click(gala.getByRole('button', { name: `Approve ${GALA}` }))
+
+    const first = gala.getByLabelText(CHECKLIST_LABELS[0] ?? '')
+    await waitFor(() => expect(first).toHaveAccessibleDescription('Must not be blank.'))
+    expect(first).toHaveFocus()
+    for (const label of CHECKLIST_LABELS) {
+      expect(gala.getByLabelText(label)).toHaveAccessibleDescription('Must not be blank.')
+    }
+    expect(gala.getByLabelText('Reason')).toBeValid()
+  })
+
+  it("shows the backend's message in an alert when it refuses the outcome, and keeps the event", async () => {
+    server.use(
+      http.post('/api/events/requests/:reference/safety-outcome', () =>
+        HttpResponse.json(
+          {
+            error: 'safety_outcome_not_allowed',
+            message: 'The Safety Officer has already approved this event.',
+          },
+          { status: 409 },
+        ),
+      ),
+    )
+    const { user } = renderList()
+    const gala = await openForm(user, GALA)
+    await fillChecklist(user, gala)
+
+    await user.click(gala.getByRole('button', { name: `Approve ${GALA}` }))
+
+    expect(await gala.findByRole('alert')).toHaveTextContent(
+      'The Safety Officer has already approved this event.',
+    )
+    expect(screen.getByRole('article', { name: GALA })).toBeInTheDocument()
+    expect(screen.queryByText(/^Safety check recorded/)).not.toBeInTheDocument()
+  })
+
+  it("keeps one event's refusal on that event's form only", async () => {
+    const { user } = renderList()
+    const gala = await openForm(user, GALA)
+    const fair = await openForm(user, FAIR)
+    await fillChecklist(user, gala)
+
+    await user.click(gala.getByRole('button', { name: `Reject ${GALA}` }))
+
+    await waitFor(() =>
+      expect(gala.getByLabelText('Reason')).toHaveAccessibleDescription(REASON_REQUIRED),
+    )
+    expect(fair.getByLabelText('Reason')).toBeValid()
+    expect(fair.getByRole('button', { name: `Reject ${FAIR}` })).toBeEnabled()
+  })
+
+  it('keeps saying what was recorded last once no event is left waiting', async () => {
+    const { user } = renderList()
+    for (const name of [FAIR, TOWN_HALL, GALA]) {
+      const card = await openForm(user, name)
+      await fillChecklist(user, card)
+      await user.click(card.getByRole('button', { name: `Approve ${name}` }))
+      await waitFor(() => expect(screen.queryByRole('article', { name })).not.toBeInTheDocument())
+    }
+
+    expect(
+      await screen.findByText('No events are waiting for a safety review.'),
+    ).toBeInTheDocument()
+    expect(
+      within(screen.getByRole('status')).getByText(`Safety check recorded for ${GALA}: Approve.`),
+    ).toBeInTheDocument()
   })
 })
