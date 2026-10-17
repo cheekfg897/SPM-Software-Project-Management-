@@ -12,6 +12,7 @@ const GARDEN = MOCK_VENUES.gardenPavilion
 /** Garden Pavilion's pages, written out so a wrong path builder can't agree with itself. */
 const GARDEN_PAGE = '/venues/27'
 const GARDEN_EDIT_PAGE = '/venues/27/edit'
+const OTHER_STAFF = [MOCK_ACCOUNTS.coordinator, MOCK_ACCOUNTS.lead, MOCK_ACCOUNTS.technicalSupport]
 
 function openEditForm() {
   return renderApp(GARDEN_EDIT_PAGE, { session: VENUE_STAFF })
@@ -115,17 +116,17 @@ describe('SCRUM-25 who may edit a venue (AC4)', () => {
     expect(router.state.location.pathname).toBe(GARDEN_EDIT_PAGE)
   })
 
-  it.each([MOCK_ACCOUNTS.coordinator, MOCK_ACCOUNTS.lead, MOCK_ACCOUNTS.technicalSupport])(
-    'shows $full_name the venue read-only, and sends them away from the form',
-    async (account) => {
-      const session = mockSessionFor(account)
-      renderApp(GARDEN_PAGE, { session })
-      await screen.findByRole('heading', { level: 1, name: 'Garden Pavilion' })
+  it.each(OTHER_STAFF)('shows $full_name the venue read-only', async (account) => {
+    renderApp(GARDEN_PAGE, { session: mockSessionFor(account) })
+    await screen.findByRole('heading', { level: 1, name: 'Garden Pavilion' })
 
-      expect(screen.queryByRole('link', { name: 'Edit venue' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Edit venue' })).not.toBeInTheDocument()
+  })
 
-      const { router } = renderApp(GARDEN_EDIT_PAGE, { session })
-      expect(router.state.location.pathname).not.toBe(GARDEN_EDIT_PAGE)
-    },
-  )
+  it.each(OTHER_STAFF)('sends $full_name away from the form', (account) => {
+    const { router } = renderApp(GARDEN_EDIT_PAGE, { session: mockSessionFor(account) })
+
+    expect(router.state.location.pathname).not.toBe(GARDEN_EDIT_PAGE)
+    expect(screen.queryByRole('button', { name: 'Save changes' })).not.toBeInTheDocument()
+  })
 })
