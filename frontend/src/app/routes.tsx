@@ -5,6 +5,7 @@ import { EQUIPMENT_READER_ROLES, INTERNAL_ROLES, ROLE } from '@/config/roles'
 import type { Role } from '@/config/roles'
 import { ROUTES } from '@/config/routes'
 import { RequireRole } from '@/features/auth/components/RequireRole'
+import { SignedOutOnly } from '@/features/auth/components/SignedOutOnly'
 import { LoginPage } from '@/features/auth/pages/LoginPage'
 import { OrganiserHomePage } from '@/features/auth/pages/OrganiserHomePage'
 import { SignUpPage } from '@/features/auth/pages/SignUpPage'
@@ -43,7 +44,15 @@ export const appRoutes: RouteObject[] = [
   {
     element: <SiteLayout />,
     children: [
-      { path: ROUTES.HOME, element: <LandingPage /> },
+      {
+        // The front page is for visitors; someone signed in is taken to their role's home (SCRUM-6).
+        path: ROUTES.HOME,
+        element: (
+          <SignedOutOnly>
+            <LandingPage />
+          </SignedOutOnly>
+        ),
+      },
       { path: ROUTES.EVENTS, element: <CataloguePage /> },
       {
         path: ROUTES.MY_EVENTS,

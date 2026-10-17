@@ -1,4 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
+import { flushSync } from 'react-dom'
 import { NavLink, useNavigate } from 'react-router'
 
 import { NotificationBell } from '@/features/notifications/components/NotificationBell'
@@ -30,12 +31,13 @@ function SessionActions() {
   }
 
   // Logging out only forgets the token on this device; the backend can't revoke it yet (SCRUM-89).
-  // Leave first: a page only signed-in users may see would otherwise send them to log in the
-  // moment the session goes.
+  // Forget the session first, then leave: the front page sends anyone still signed in to their
+  // home (SCRUM-6). A page only signed-in users may see starts sending them to log in as the
+  // session goes; the router keeps only the latest navigation, so the front page wins.
   async function logOut() {
-    await navigate(ROUTES.HOME, { flushSync: true })
-    dispatch(signedOut())
+    flushSync(() => dispatch(signedOut()))
     queryClient.clear()
+    await navigate(ROUTES.HOME)
   }
 
   return (
