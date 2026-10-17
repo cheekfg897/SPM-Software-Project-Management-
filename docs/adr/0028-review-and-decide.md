@@ -1,6 +1,6 @@
 # ADR-0028: The assigned coordinator reviews and decides a request; `approved` is an eighth status; decisions live in the event history
 
-- **Status:** Accepted; `approved` as the last status added superseded by [ADR-0029](0029-clarification-requests.md) (a ninth, `awaiting_clarification`); the decidable statuses and the TODO for SCRUM-32 extended by [ADR-0029](0029-clarification-requests.md)
+- **Status:** Accepted; `approved` as the last status added superseded by [ADR-0029](0029-clarification-requests.md) (a ninth, `awaiting_clarification`); the decidable statuses and the TODO for SCRUM-32 extended by [ADR-0029](0029-clarification-requests.md); the count of statuses superseded by [ADR-0048](0048-ten-event-statuses.md), which lists ten
 - **Date:** 2026-09-27
 - **Story:** SCRUM-31 Review and decide a submitted request
 - **Supersedes:** part of [ADR-0012](0012-event-status-model.md): "no `approved` value yet"; [ADR-0019](0019-event-equipment-lines.md) decision 3: "awaiting review" as the statuses in which equipment may change
