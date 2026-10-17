@@ -1,4 +1,4 @@
-# ADR-0054: The equipment catalogue screens: a staff list, a page per type, and one form for adding and editing
+# ADR-0066: The equipment catalogue screens: a staff list, a page per type, and one form for adding and editing
 
 - **Status:** Accepted; where the pages live, the header link, entering a venue by its number
   and the empty-list wording are defaults to review with the team
