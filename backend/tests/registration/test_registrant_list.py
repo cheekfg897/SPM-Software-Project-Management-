@@ -22,6 +22,7 @@ from app.common.errors import NotFoundError
 from app.modules.auth.models import User
 from app.modules.auth.permissions import Role
 from app.modules.events.models import EventRequest, EventRequestStatus
+from app.modules.events.services import OrganiserWithoutOrganisationError
 from app.modules.registration.models import Registration, RegistrationStatus
 from app.modules.registration.services import Registrant, RegistrantList, list_registrants
 
@@ -164,6 +165,22 @@ def test_a_coordinator_the_event_is_not_assigned_to_is_refused(
 
     assert exc_info.value.status_code == 404
     assert exc_info.value.message == NOT_FOUND_MESSAGE
+
+
+def test_an_organiser_with_no_organisation_is_refused_with_a_403(
+    registrants: ListRegistrants,
+    open_event: EventRequest,
+    make_user: Callable[..., User],
+    save: Callable[..., None],
+) -> None:
+    """An account from before organisations existed gets a 403, not a 500 (ADR-0020)."""
+    save(make_user(email="organiser12@example.com", role=Role.EVENT_ORGANISER, user_id=12))
+
+    with pytest.raises(OrganiserWithoutOrganisationError) as exc_info:
+        registrants(12, Role.EVENT_ORGANISER, open_event.reference)
+
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.error_code == "organiser_without_organisation"
 
 
 def test_an_unknown_reference_is_a_404(registrants: ListRegistrants) -> None:
