@@ -134,11 +134,14 @@ class RequirementKind(str, enum.Enum):
 class BookingRequestStatus(str, enum.Enum):
     """Where a venue booking request stands (SCRUM-42, SCRUM-93, SCRUM-43).
 
-    SCRUM-75 adds holding. Nothing cancels a request yet: SCRUM-93 withdraws one and
-    SCRUM-43 decides one, so a ``CANCELLED`` value waits for the story that needs it.
+    Nothing cancels a request yet: SCRUM-93 withdraws one and SCRUM-43 decides one, so a
+    ``CANCELLED`` value waits for the story that needs it. SCRUM-94 adds ``EXPIRED``.
     """
 
     PENDING = "pending"
+    #: Venue Staff approved the venue and are holding it tentatively until the
+    #: coordinator finalises the event's arrangements (SCRUM-75, ADR-0045).
+    ON_HOLD = "on_hold"
     #: The coordinator retracted the arrangement before Venue Staff decided it
     #: (SCRUM-93 AC6). The row stays so SCRUM-75 can ignore it when counting venues.
     WITHDRAWN = "withdrawn"
@@ -164,9 +167,19 @@ class BookingDecision(str, enum.Enum):
     REJECTED = "rejected"
 
 
-#: Statuses Venue Staff can still decide (SCRUM-43, SCRUM-44). A Conflicting request is
-#: one of them, or nothing could ever settle it.
+#: Statuses Venue Staff can still decide (SCRUM-43, SCRUM-44, SCRUM-75). A Conflicting
+#: request is one of them, or nothing could ever settle it, and so is a request On Hold:
+#: the final approval turns its hold into the booking, a rejection releases the venue.
 DECIDABLE_REQUEST_STATUSES = frozenset(
+    {
+        BookingRequestStatus.PENDING,
+        BookingRequestStatus.CONFLICTING,
+        BookingRequestStatus.ON_HOLD,
+    }
+)
+
+#: Statuses Venue Staff can place a hold on (SCRUM-75): a request not yet approved.
+HOLDABLE_REQUEST_STATUSES = frozenset(
     {BookingRequestStatus.PENDING, BookingRequestStatus.CONFLICTING}
 )
 
@@ -324,6 +337,10 @@ class Booking(db.Model):  # type: ignore[name-defined]
         nullable=False,
         default=BookingStatus.TENTATIVE,
     )
+    #: When a tentative hold stops holding the venue (SCRUM-75). Venue Staff choose it.
+    #: ``None`` on a confirmed booking, and on a tentative booking made before holds had
+    #: an expiry, which is treated as not expiring.
+    hold_expires_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
 
 
 class VenueBlock(db.Model):  # type: ignore[name-defined]
@@ -417,6 +434,12 @@ class VenueBookingRequest(db.Model):  # type: ignore[name-defined]
         default=PreparationStatus.NOT_STARTED,
     )
     preparation_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: The tentative booking that holds the venue while the request is On Hold, and the
+    #: confirmed booking it becomes (SCRUM-75). ``None`` until a hold is placed.
+    booking_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("bookings.id"), nullable=True
+    )
+    booking: Mapped[Booking | None] = relationship()
     requested_by: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
