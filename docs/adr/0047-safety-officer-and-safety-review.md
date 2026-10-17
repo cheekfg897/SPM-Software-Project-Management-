@@ -1,8 +1,8 @@
 # ADR-0047: The Safety Officer is an internal role, and the assigned coordinator sends a settled, approved event to Safety Review
 
-- **Status:** Accepted (parts A and B of SCRUM-97)
-- **Date:** 2026-10-16
-- **Story:** SCRUM-97 Submit an event for operational safety check; the list is also SCRUM-24 AC6 (See the events my role is involved in)
+- **Status:** Accepted (parts A and B of SCRUM-97; SCRUM-98)
+- **Date:** 2026-10-16, amended 2026-10-17 for SCRUM-98
+- **Stories:** SCRUM-97 Submit an event for operational safety check; SCRUM-98 Record the operational safety check outcome; the list is also SCRUM-24 AC6 (See the events my role is involved in)
 
 ## Context
 Customer change #6 adds an Operational Safety Check. SCRUM-97 adds the Safety Officer role and a Safety Review status: an event goes there once every active venue arrangement is Approved and every equipment request has an outcome from Technical Support (AC1), with equipment optional (AC2). SCRUM-98 records the Safety Officer's outcome and SCRUM-49 lets the coordinator confirm once venue, equipment and safety are all in. SCRUM-22's status list is to be reconciled with SCRUM-31 (Approved) and SCRUM-68.
@@ -28,10 +28,23 @@ The ACs say the event "moves to" Safety Review but not who or what moves it, and
 13. **Safety Officers are notified with a new `safety_review_requested` notification kind** (AC4): every Safety Officer, once, and nobody else. It is raised after the move is saved, in a second write like the other notices (ADR-0015): if it can't be saved only the notice is lost and a warning is logged, the event is still in Safety Review. A refused submission notifies no one. The organiser is not told: the story asks for the Safety Officer only. `notification_kind` is a Postgres enum, so migration `0030_add_safety_review_notification_kind` adds the value outside the transaction; its downgrade deletes those notifications and rebuilds the type, like 0019's.
 14. **Defaults to review (not agreed with the team), part B:** decision 10's ordering tie-breakers and keeping past-dated events listed, and decision 11's extra fields (venue name and period, equipment outcomes).
 
+SCRUM-98 records the Safety Officer's outcome. Decisions 15-21 cover it.
+
+15. **`POST /api/events/requests/<reference>/safety-outcome`, for Safety Officers only** (SCRUM-98 AC9). Any other role gets `403`. Like the list, there is no per-event "not yours" `404`; an unknown reference or a draft is `404`. The body is `outcome` (`approved`, `rejected` or `changes_requested`), `checklist` and `reason`.
+16. **The checklist is seven required notes**, one per AC2 item: `attendance_vs_capacity`, `venue_layout`, `emergency_access`, `accessibility`, `equipment_placement`, `crowd_movement`, `venue_restrictions`. A missing or blank note is a `400` naming it, with every outcome, since AC2 says "each with a note". The items the system holds no data for are notes like the rest (AC3). Notes and the reason are trimmed.
+17. **Where each outcome leaves the event.** "Planning" is `approved`: that is where venues and equipment are arranged, and where `submit_for_safety_review` sends the event from. Reject and Request Changes both move it back there (AC6), never to `rejected`. Approve leaves it in `safety_review` for the coordinator to confirm (SCRUM-49, see Still owed), so there is no new status.
+18. **An approval is read from the history, by `has_safety_approval(event_id)`**, for SCRUM-49 and SCRUM-84/85. The newest `safety_review_requested` or `safety_outcome_recorded` entry decides: it is an approval only if it is an outcome entry whose `outcome` is `approved`. An approval therefore lasts through confirmation and preparation, and is void once the event is sent to Safety Review again. An approved event is left out of the Safety Officer's list (decision 10), and a second outcome on it is `409 safety_outcome_not_allowed`, as is any outcome on an event not in `safety_review`.
+19. **Every outcome is a `safety_outcome_recorded` history entry** (AC7): the officer as actor, the time, and `details` of `outcome`, `checklist` and `reason` (`null` on an approval without one), saved in the same commit as the status. It is internal-only, like the equipment outcome (ADR-0040): the organiser sees the status change, not the checklist.
+20. **The assigned coordinator is told** (AC8) with one of three new notification kinds, `safety_check_approved`, `safety_check_rejected` and `safety_changes_requested`, and the reason as the `detail`, after the commit (ADR-0015). Nobody else is told. Migration `0032_add_safety_outcome` adds the history kind and the three notification kinds outside the transaction; its downgrade deletes those rows and rebuilds both types. An event an outcome sent back to planning stays `approved`.
+21. **Defaults to review (not agreed with the team), SCRUM-98:** decision 16 (every note required, even on Reject), decision 17's "planning is `approved`" and Approve keeping `safety_review`, decision 18's "a fresh submission voids an approval", and decision 19's internal-only history entry.
+
 ## Still owed
 - **Frontend:** a Safety Officer's page for the list, and the new notification kind's message and link. The backend is ready.
-- **SCRUM-98:** recording Approve, Reject or Request Changes with the checklist; Reject and Request Changes return the event to planning. Also ADR-0040's deferred AC6: a revised equipment outcome after the check forces a new one.
-- **SCRUM-49:** confirming the event only from `safety_review` after a safety Approve (AC3, "cannot reach Confirmed without passing through Safety Review"). Nothing moves an event to `confirmed` yet, so nothing skips Safety Review today.
+- **ADR-0040's deferred AC6:** a revised equipment outcome after the check forces a new one. SCRUM-98 does not do this.
+- **SCRUM-99:** flagging the arrangements the Safety Officer names, showing the reasons beside them, re-entering Safety Review once they are resolved, and telling Venue Staff and Technical Support. SCRUM-98 only returns the event to `approved`, from where the coordinator can already send it again.
+- **SCRUM-49:** confirming the event only from `safety_review` when `has_safety_approval` is true (AC3, "cannot reach Confirmed without passing through Safety Review"). Nothing moves an event to `confirmed` yet, so nothing skips Safety Review today.
+- **SCRUM-84/85:** refusing preparation details until `has_safety_approval` is true.
+- **Frontend:** the Safety Officer's outcome form, and the three new notification kinds' messages.
 - **Open:** an event in Safety Review can't be edited, nor its equipment changed, because `safety_review` is in neither `EDITABLE_STATUSES` nor `EQUIPMENT_EDITABLE_STATUSES`. SCRUM-98's Request Changes is the way back to editing. Venue arrangements are not blocked yet: the coordinator could still withdraw or change one during review, or raise a new one, which the list would then show beside the approved ones without its status. SCRUM-98 or SCRUM-49 should decide.
 
 ## Consequences
