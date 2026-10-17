@@ -26,11 +26,13 @@ from app.modules.equipment.models import (
     EquipmentReservation,
     EquipmentType,
     OutOfServiceReason,
+    PreparationStatus,
 )
 from app.modules.equipment.schemas import (
     EditEquipmentTypeSchema,
     EquipmentUnitsSchema,
     MarkOutOfServiceSchema,
+    UpdatePreparationSchema,
 )
 
 # The module, not its names: events.services imports this module too (to check a
@@ -39,6 +41,11 @@ from app.modules.events import services as events_services
 from app.modules.venue.services import get_venue
 
 EQUIPMENT_TYPE_NOT_FOUND_MESSAGE = "Equipment type not found."
+RESERVATION_NOT_FOUND_MESSAGE = "Equipment reservation not found."
+PREPARATION_NEEDS_SAFETY_APPROVAL_MESSAGE = (
+    "Preparation details can't be recorded until the Safety Officer has approved"
+    " the event's Operational Safety Check."
+)
 
 
 class EquipmentNotReservableError(AppError):
@@ -80,6 +87,9 @@ class ReservationAsShown:
     created_at: datetime
     #: Units out of service have left the type short of what is reserved (SCRUM-47 AC3).
     needs_attention: bool
+    #: Technical Support's progress and notes on the units (SCRUM-85).
+    preparation_status: PreparationStatus
+    preparation_notes: str | None
 
 
 @dataclass(frozen=True)
@@ -193,6 +203,8 @@ def _as_shown(
                 reserved_by=names.get(reservation.reserved_by),
                 created_at=reservation.created_at,
                 needs_attention=reservation.needs_attention,
+                preparation_status=reservation.preparation_status,
+                preparation_notes=reservation.preparation_notes,
             )
         )
     return shown
@@ -670,3 +682,59 @@ def list_out_of_service(
         .order_by(EquipmentOutOfService.recorded_at, EquipmentOutOfService.id)
     )
     return _out_of_service_as_shown(list(sess.scalars(statement)), sess)
+
+
+def update_preparation_details(
+    reservation_id: int,
+    payload: Mapping[str, Any] | None,
+    *,
+    updated_by: int,
+    session: Session | None = None,
+) -> ReservationAsShown:
+    """Record the preparation status and notes of an equipment reservation (SCRUM-85).
+
+    AC1-AC5. Any Technical Support member may record them for any reservation: units
+    are not assigned to particular staff (ADR-0050). Each update replaces the status
+    and notes, and the event's history gets an entry naming the user and the time in
+    the same commit (AC4). Nothing else of the reservation changes (AC3). The Safety
+    Officer must have approved the event first (AC5, ADR-0047).
+
+    Args:
+        reservation_id: The reservation's id.
+        payload: Decoded JSON body: ``status`` and optional ``notes``.
+        updated_by: The Technical Support user's id, taken from their token.
+        session: Database session; defaults to ``db.session``.
+
+    Returns:
+        The reservation, as the event record shows it.
+
+    Raises:
+        ValidationError: 400 - payload invalid, or it names a field other than these.
+        NotFoundError: 404 - no such reservation.
+        ConflictError: 409 - the Safety Officer hasn't approved the event.
+    """
+    data = load_or_raise(UpdatePreparationSchema(), payload)
+    sess = resolve_session(session)
+    reservation = sess.get(EquipmentReservation, reservation_id)
+    if reservation is None:
+        raise NotFoundError(RESERVATION_NOT_FOUND_MESSAGE)
+    if not events_services.has_safety_approval(reservation.event_id, session=sess):
+        raise ConflictError(PREPARATION_NEEDS_SAFETY_APPROVAL_MESSAGE)
+
+    reservation.preparation_status = data["status"]
+    reservation.preparation_notes = data["notes"]
+    events_services.record_equipment_preparation_updated(
+        reservation.event_id,
+        {
+            "reservation_id": reservation.id,
+            "equipment_type_id": reservation.equipment_type_id,
+            "equipment_type_name": reservation.equipment_type.name,
+            "status": data["status"].value,
+            "notes": data["notes"],
+        },
+        actor_id=updated_by,
+        session=sess,
+    )
+    sess.commit()
+    (shown,) = _as_shown([reservation], sess)
+    return shown

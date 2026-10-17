@@ -130,3 +130,13 @@ def return_to_service(entry_id: int) -> tuple[Response, int]:
     """Put units back in service so they count as available again (SCRUM-47 AC1)."""
     entry = services.return_to_service(entry_id, resolved_by=g.current_user_id)
     return jsonify(_out_of_service_schema.dump(entry)), 200
+
+
+@bp.put("/reservations/<int:reservation_id>/preparation")
+@requires_role(Role.TECHNICAL_SUPPORT_STAFF)
+def update_preparation_details(reservation_id: int) -> tuple[Response, int]:
+    """Record the preparation status and notes of a reservation (SCRUM-85 AC1)."""
+    reservation = services.update_preparation_details(
+        reservation_id, request.get_json(silent=True), updated_by=int(g.current_user_id)
+    )
+    return jsonify(_reservation_schema.dump(reservation)), 200

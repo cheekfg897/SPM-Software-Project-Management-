@@ -1999,6 +1999,7 @@ INTERNAL_ONLY_KINDS: frozenset[EventHistoryKind] = frozenset(
         EventHistoryKind.EQUIPMENT_OUTCOME_RECORDED,
         EventHistoryKind.SAFETY_OUTCOME_RECORDED,
         EventHistoryKind.VENUE_PREPARATION_UPDATED,
+        EventHistoryKind.EQUIPMENT_PREPARATION_UPDATED,
     }
 )
 
@@ -2517,6 +2518,37 @@ def record_equipment_reserved(
     record_event_history(
         event_request,
         EventHistoryKind.EQUIPMENT_RESERVED,
+        actor_id=actor_id,
+        details=dict(details),
+        session=sess,
+    )
+
+
+def record_equipment_preparation_updated(
+    event_id: int,
+    details: Mapping[str, Any],
+    *,
+    actor_id: int,
+    session: Session | None = None,
+) -> None:
+    """Record in the event's history that a reservation's preparation was updated.
+
+    The audit trail of an update (SCRUM-85 AC4, ADR-0050), uncommitted: the entry rides
+    in the update's transaction, so it is saved with the update or not at all.
+    Organisers never see it (:func:`_shown_to_organiser`).
+
+    Args:
+        event_id: The event's id, from the reservation.
+        details: ``reservation_id``, ``equipment_type_id``, ``equipment_type_name``,
+            ``status`` and ``notes``.
+        actor_id: Who recorded the preparation.
+        session: Database session; defaults to ``db.session``.
+    """
+    sess = resolve_session(session)
+    event_request = sess.get(EventRequest, event_id)
+    record_event_history(
+        event_request,
+        EventHistoryKind.EQUIPMENT_PREPARATION_UPDATED,
         actor_id=actor_id,
         details=dict(details),
         session=sess,

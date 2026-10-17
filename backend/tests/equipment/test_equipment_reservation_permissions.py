@@ -24,6 +24,7 @@ from flask import Flask
 from app.common.errors import AuthenticationError, AuthorizationError
 from app.modules.auth.permissions import ALL_ROLES, Role
 from app.modules.equipment import services
+from app.modules.equipment.models import PreparationStatus
 
 pytestmark = pytest.mark.scrum_46
 
@@ -92,6 +93,8 @@ SHOWN_RESERVATION = services.ReservationAsShown(
     reserved_by="Alice Example",
     created_at=datetime(2026, 10, 1, 8, 0, tzinfo=timezone.utc),
     needs_attention=False,
+    preparation_status=PreparationStatus.NOT_STARTED,
+    preparation_notes=None,
 )
 RESERVATION_JSON = {
     "id": 12,
@@ -103,6 +106,8 @@ RESERVATION_JSON = {
     "reserved_by": "Alice Example",
     "created_at": "2026-10-01T16:00:00+08:00",
     "needs_attention": False,
+    "preparation_status": "not_started",
+    "preparation_notes": None,
 }
 AVAILABILITY = services.EquipmentAvailability(
     equipment_type_id=2,
