@@ -1,0 +1,81 @@
+name: Expire Tentative Holds
+
+# SCRUM-94 (ADR-0052): tentative venue holds expire on their own, and the coordinator
+# is warned 24 hours before. The app has no scheduler, so this workflow runs
+# `flask expire-holds` against the deployed database once an hour. The command
+# expires the holds that have run out, then sends the warnings that are due; running
+# it twice repeats nothing, so a late or doubled run does no harm.
+#
+# There is no deployed database yet. Until a DATABASE_URL repository secret exists,
+# every run stops after its first step, without checking anything out. The venue is
+# released at the expiry instant either way, because an expired hold is ignored when
+# bookings are read (ADR-0045); only the Expired status and the notices wait for this.
+#
+# Both `schedule` and `workflow_dispatch` only run from the default branch, so this
+# goes live only once it is merged into main.
+on:
+  schedule:
+    # Minute 7 of every hour, UTC. Off the hour, when GitHub's queue is busiest.
+    - cron: "7 * * * *"
+
+  # Lets someone run it by hand, e.g. once the database secret has been added.
+  workflow_dispatch: {}
+
+# Narrower than the default token scope. This job only reads the repository.
+permissions:
+  contents: read
+
+# Two runs at once could each warn about the same hold before either saved that it
+# had, so a run waits for the one before it to finish.
+concurrency:
+  group: expire-holds
+  cancel-in-progress: false
+
+jobs:
+  expire-holds:
+    name: Expire tentative holds and send the warnings
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    env:
+      FLASK_APP: wsgi
+      FLASK_ENV: production
+      # Referenced by NAME, as daily-standup.yml does its secrets; GitHub substitutes
+      # the value on the runner. Empty when the secret has not been added.
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Check a database is configured
+        id: database
+        working-directory: .
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::notice::No DATABASE_URL secret is set, so there is no database to expire holds in. Skipping."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check out
+        if: steps.database.outputs.configured == 'true'
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        if: steps.database.outputs.configured == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: backend/.python-version
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        if: steps.database.outputs.configured == 'true'
+        run: pip install -r requirements.txt
+
+      - name: Expire holds and send the warnings
+        if: steps.database.outputs.configured == 'true'
+        run: flask expire-holds
