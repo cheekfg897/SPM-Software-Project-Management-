@@ -13,7 +13,7 @@ Runs against ``db_session``, so the counts are real SQL.
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
 import pytest
@@ -112,11 +112,13 @@ def test_an_attendee_withdraws_their_registration(
 
 
 def test_the_withdrawal_is_stamped_with_the_real_time_when_none_is_given(
-    db_session: Session, register: Act, open_event: EventRequest
+    db_session: Session, register: Act, make_open_event: Callable[..., EventRequest]
 ) -> None:
-    register(ATTENDEE, open_event.id)
+    """The real clock decides, so the event is far off: open whenever this runs."""
+    far_off = make_open_event(day=date(2099, 1, 1))
+    register(ATTENDEE, far_off.id)
 
-    registration = withdraw_registration(ATTENDEE, open_event.id, session=db_session)
+    registration = withdraw_registration(ATTENDEE, far_off.id, session=db_session)
 
     assert abs(registration.withdrawn_at - datetime.now(timezone.utc)) < timedelta(minutes=1)
 
