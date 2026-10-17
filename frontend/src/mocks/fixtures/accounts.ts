@@ -86,6 +86,14 @@ export const MOCK_ACCOUNTS = {
     email: 'ben@example.com',
     full_name: 'Ben Koh',
   },
+  /** A Safety Officer (SCRUM-97). Otherwise like Venue Staff: internal, no organisation. */
+  safetyOfficer: {
+    ...BASE_ACCOUNTS.venueStaff,
+    id: 9,
+    email: 'sana@connectsphere.test',
+    full_name: 'Sana Iyer',
+    role: ROLE.SAFETY_OFFICER,
+  },
 } as const satisfies Record<string, MockAccount>
 
 const MOCK_TOKEN_PREFIX = 'mock-token-'
