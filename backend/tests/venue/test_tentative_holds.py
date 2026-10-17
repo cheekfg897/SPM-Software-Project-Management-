@@ -303,6 +303,48 @@ def test_an_expiry_just_before_the_event_starts_is_accepted(
     assert held.status is BookingRequestStatus.ON_HOLD
 
 
+def test_an_expiry_at_the_current_instant_is_refused(
+    db_session: Session,
+    multi_venue_request: VenueBookingRequest,
+    pin_now: Callable[[datetime], None],
+) -> None:
+    """AC3 "in the future" is strict: an expiry of now has already been reached."""
+    now = hours_from_now(1)
+    pin_now(now)
+
+    with pytest.raises(ValidationError) as refusal:
+        place_hold(multi_venue_request.id, now, db_session)
+
+    assert refusal.value.details == {"expires_at": ["The expiry must be in the future."]}
+
+
+def test_an_expiry_just_after_the_current_instant_is_accepted(
+    db_session: Session,
+    multi_venue_request: VenueBookingRequest,
+    pin_now: Callable[[datetime], None],
+) -> None:
+    now = hours_from_now(1)
+    pin_now(now)
+
+    held = place_hold(multi_venue_request.id, now + timedelta(microseconds=1), db_session)
+
+    assert held.status is BookingRequestStatus.ON_HOLD
+
+
+def test_an_expiry_with_no_offset_is_read_as_business_time(
+    db_session: Session, multi_venue_request: VenueBookingRequest
+) -> None:
+    """ADR-0009: 17:00 with no offset is 17:00 in Singapore, not 17:00 UTC."""
+    expected = event_starts_at().replace(hour=17) - timedelta(days=1)
+    no_offset = expected.replace(tzinfo=None).isoformat()
+
+    services.place_booking_hold(
+        multi_venue_request.id, {"expires_at": no_offset}, session=db_session
+    )
+
+    assert _hold_of(multi_venue_request, db_session).hold_expires_at == expected
+
+
 def test_a_hold_needs_an_expiry(
     db_session: Session, multi_venue_request: VenueBookingRequest
 ) -> None:
