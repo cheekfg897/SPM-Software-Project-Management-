@@ -27,7 +27,9 @@ function EventVenueRequests({ reference }: { reference: string }) {
             Loading venue requests
           </p>
         )}
-        {requests.data !== undefined && <BookingRequestList requests={requests.data} />}
+        {requests.data !== undefined && (
+          <BookingRequestList reference={reference} requests={requests.data} />
+        )}
       </section>
       <section className="mt-12 max-w-xl space-y-4" aria-labelledby="raise-heading">
         <h2 id="raise-heading" className="text-xl font-semibold">
