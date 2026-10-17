@@ -8,15 +8,16 @@ interface ChipStyle {
 
 /**
  * Every status's label and colour. Typed over every status, so one the backend adds later is a
- * type error here until it gets its own. "Answer needed" is the one asking the organiser to act;
- * an Attendee only ever sees confirmed, completed and cancelled (ADR-0044).
+ * type error here until it gets its own. Each label is the status's own name, as Jira and the
+ * backend call it, so organisers and staff read the same word; an Attendee only ever sees
+ * confirmed, completed and cancelled (ADR-0044).
  */
 const CHIP_BY_STATUS: Record<EventRequestStatus, ChipStyle> = {
   draft: { label: 'Draft', tone: 'border-dashed border-line text-ink-faint' },
   submitted: { label: 'Submitted', tone: 'border-flare/30 bg-flare/10 text-flare' },
   under_review: { label: 'Under review', tone: 'border-nebula/50 bg-nebula/15 text-ink' },
   awaiting_clarification: {
-    label: 'Answer needed',
+    label: 'Awaiting clarification',
     tone: 'border-ember/50 bg-ember/15 text-corona',
   },
   approved: { label: 'Approved', tone: 'border-success/30 bg-success/10 text-success' },

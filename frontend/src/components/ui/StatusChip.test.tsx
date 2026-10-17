@@ -10,7 +10,7 @@ const LABELS: [EventRequestStatus, string][] = [
   ['draft', 'Draft'],
   ['submitted', 'Submitted'],
   ['under_review', 'Under review'],
-  ['awaiting_clarification', 'Answer needed'],
+  ['awaiting_clarification', 'Awaiting clarification'],
   ['approved', 'Approved'],
   ['safety_review', 'Safety review'],
   ['confirmed', 'Confirmed'],

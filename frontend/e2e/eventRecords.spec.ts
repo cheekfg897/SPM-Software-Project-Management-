@@ -48,7 +48,7 @@ test("SCRUM-24: an organiser opens a request and sees the coordinator's open que
 
   await expect(page).toHaveURL('/organiser/requests/EVR-B6YF2K8V')
   await expect(page.getByRole('heading', { level: 1, name: 'Customer Roadshow' })).toBeVisible()
-  await expect(page.getByText('Answer needed')).toBeVisible()
+  await expect(page.getByText('Awaiting clarification')).toBeVisible()
   await expect(page.getByRole('region', { name: 'Coordinator' })).toContainText('Chloe Lim')
   await expect(page.getByText('Waiting for an answer.')).toBeVisible()
   await expect(page.getByRole('link', { name: 'Venue requests' })).toHaveCount(0)
