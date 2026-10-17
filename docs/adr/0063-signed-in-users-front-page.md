@@ -1,4 +1,4 @@
-# ADR-0057: The front page is for visitors; a signed-in user who opens it, or clicks the logo, goes to their role's home
+# ADR-0063: The front page is for visitors; a signed-in user who opens it, or clicks the logo, goes to their role's home
 
 - **Status:** Accepted; sending signed-in users away from the front page is a default to review
 - **Date:** 2026-10-17
