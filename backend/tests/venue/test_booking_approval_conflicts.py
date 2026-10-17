@@ -210,23 +210,35 @@ def test_a_request_far_enough_after_a_booking_for_its_padding_is_approved(
     assert len(_bookings(db_session)) == 2
 
 
+@pytest.mark.parametrize(
+    ("setup", "turnaround", "request_start"),
+    [
+        pytest.param(30, 30, _at(12, 45), id="AC4: 12:45 is too soon"),
+        pytest.param(20, 40, _at(12, 30), id="setup and turnaround differ"),
+        pytest.param(30, 30, _at(12), id="starting as the booking ends"),
+    ],
+)
 def test_a_request_inside_the_padding_is_refused_and_the_buffer_is_named(
     db_session: Session,
     venue_with_buffers: VenueWithBuffers,
     confirmed_booking: SaveBooking,
     saved_event: SavedEvent,
     saved_users: list[object],
+    setup: int,
+    turnaround: int,
+    request_start: datetime,
 ) -> None:
-    """AC4: 30 minutes setup and turnaround, booking ends 12:00, 12:45 is too soon."""
-    venue = venue_with_buffers(30, 30)
+    """AC4: a booking ends at 12:00; the request starts inside its padding."""
+    venue = venue_with_buffers(setup, turnaround)
     existing = confirmed_booking(venue, _at(9), _at(12))
-    request = _request_for(venue, saved_event(), db_session, _at(12, 45), _at(15))
+    request = _request_for(venue, saved_event(), db_session, request_start, _at(15))
 
     refusal = _refused_approval(request, db_session)
 
     assert refusal.message == (
         f"Cannot approve: the requested period is too close to booking #{existing.id}; this "
-        "venue needs 30 minutes of setup and 30 minutes of turnaround around each event."
+        f"venue needs {setup} minutes of setup and {turnaround} minutes of turnaround around "
+        "each event."
     )
     assert refusal.details["in_buffer"] is True
     assert refusal.details["booking_id"] == existing.id
@@ -270,9 +282,10 @@ def test_a_request_that_only_touches_the_padding_is_approved(
         pytest.param(False, 1, BookingStatus.CONFIRMED, id="another venue"),
         pytest.param(True, 2, BookingStatus.CONFIRMED, id="another day"),
         pytest.param(True, 1, BookingStatus.CANCELLED, id="a cancelled booking"),
+        pytest.param(True, 1, BookingStatus.TENTATIVE, id="a tentative booking (ADR-0045)"),
     ],
 )
-def test_a_booking_that_is_elsewhere_or_cancelled_does_not_block_an_approval(
+def test_a_booking_that_is_elsewhere_cancelled_or_tentative_does_not_block_an_approval(
     db_session: Session,
     venue_with_buffers: VenueWithBuffers,
     confirmed_booking: SaveBooking,
