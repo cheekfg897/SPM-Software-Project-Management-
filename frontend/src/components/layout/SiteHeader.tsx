@@ -4,7 +4,7 @@ import { NavLink, useNavigate } from 'react-router'
 
 import { NotificationBell } from '@/features/notifications/components/NotificationBell'
 import { Button, ButtonLink } from '@/components/ui'
-import { ROLE } from '@/config/roles'
+import { INTERNAL_ROLES, ROLE } from '@/config/roles'
 import { ROUTES } from '@/config/routes'
 import { selectSessionUser, signedOut, useAppDispatch, useAppSelector } from '@/store'
 
@@ -53,7 +53,10 @@ function SessionActions() {
   )
 }
 
-/** The main links: the catalogue for everyone, and their own events for an Attendee. */
+/**
+ * The main links: the catalogue for everyone, their own events for an Attendee, and the client
+ * organisations for staff (SCRUM-66), as "Clients" so the header still fits a 320px phone.
+ */
 function MainNav() {
   const user = useAppSelector(selectSessionUser)
 
@@ -76,6 +79,11 @@ function MainNav() {
       {user?.role === ROLE.EVENT_COORDINATOR && (
         <NavLink to={ROUTES.VENUE_SEARCH} className={NAV_LINK_CLASSES}>
           Find a venue
+        </NavLink>
+      )}
+      {user !== null && INTERNAL_ROLES.includes(user.role) && (
+        <NavLink to={ROUTES.ORGANISATIONS} className={NAV_LINK_CLASSES}>
+          Clients
         </NavLink>
       )}
     </nav>

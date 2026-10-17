@@ -29,6 +29,7 @@ import { VenueSearchPage } from '@/features/venueSearch/pages/VenueSearchPage'
 import { EquipmentEventRequests } from '@/features/eventRequests/components/EquipmentEventRequests'
 import { EquipmentQueue } from '@/features/techSupport/components/EquipmentQueue'
 import { OversightPage } from '@/features/lead/pages/OversightPage'
+import { OrganisationsPage } from '@/features/organisations/pages/OrganisationsPage'
 
 import { NotFoundPage } from './NotFoundPage'
 
@@ -180,6 +181,14 @@ export const appRoutes: RouteObject[] = [
         element: (
           <RequireRole allowedRoles={LEAD_ROLES} loginRoute={ROUTES.STAFF_LOGIN}>
             <OversightPage />
+          </RequireRole>
+        ),
+      },
+      {
+        path: ROUTES.ORGANISATIONS,
+        element: (
+          <RequireRole allowedRoles={INTERNAL_ROLES} loginRoute={ROUTES.STAFF_LOGIN}>
+            <OrganisationsPage />
           </RequireRole>
         ),
       },

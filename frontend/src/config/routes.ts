@@ -28,6 +28,8 @@ export const ROUTES = {
   VENUE_SEARCH: '/staff/venue-search',
   /** The Lead's workload and active events, where an event is reassigned (SCRUM-96). */
   LEAD_OVERSIGHT: '/staff/oversight',
+  /** Staff record and list client organisations (SCRUM-66). */
+  ORGANISATIONS: '/staff/organisations',
 } as const
 
 export type RoutePath = (typeof ROUTES)[keyof typeof ROUTES]
