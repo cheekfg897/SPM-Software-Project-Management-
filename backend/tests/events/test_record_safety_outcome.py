@@ -50,6 +50,8 @@ ReloadEventRequest = Callable[[int], EventRequest]
 NotificationsOf = Callable[[int], list[tuple[Any, ...]]]
 
 REFERENCE = "EVR-AAAAAAAA"
+#: A second event in Safety Review, for the tests that one event's outcome is its own.
+OTHER_REFERENCE = "EVR-BBBBBBBB"
 #: The Event Coordinator ``saved_event_request`` is assigned to.
 COORDINATOR_ID = 3
 SAFETY_OFFICER_ID = 20
@@ -109,6 +111,14 @@ def _refusal(session: Session) -> SafetyOutcomeNotAllowedError:
     return refused
 
 
+def _add_history(
+    session: Session, event_request: EventRequest, kind: EventHistoryKind, at: datetime
+) -> None:
+    """Save a history entry of ``kind`` for ``event_request``, by its coordinator."""
+    record_event_history(event_request, kind, actor_id=COORDINATOR_ID, session=session, now=at)
+    session.commit()
+
+
 # --------------------------------------------------------------------------
 # AC1, AC5, AC6 — each outcome and where it leaves the event
 # --------------------------------------------------------------------------
@@ -144,16 +154,80 @@ def test_an_approval_is_void_once_the_event_is_sent_for_review_again(
 ) -> None:
     _record(db_session, "approved")
 
-    record_event_history(
+    _add_history(
+        db_session,
         in_review,
         EventHistoryKind.SAFETY_REVIEW_REQUESTED,
-        actor_id=COORDINATOR_ID,
-        session=db_session,
-        now=RECORDED_AT + timedelta(hours=1),
+        RECORDED_AT + timedelta(hours=1),
     )
-    db_session.commit()
 
     assert has_safety_approval(in_review.id, session=db_session) is False
+
+
+def test_a_later_entry_of_another_kind_leaves_the_approval_in_place(
+    db_session: Session, in_review: EventRequest
+) -> None:
+    """Only a new request for review voids an approval, not any newer entry."""
+    _record(db_session, "approved")
+
+    _add_history(
+        db_session,
+        in_review,
+        EventHistoryKind.COORDINATOR_REASSIGNED,
+        RECORDED_AT + timedelta(hours=1),
+    )
+
+    assert has_safety_approval(in_review.id, session=db_session) is True
+
+
+def test_the_newest_entry_decides_whatever_order_they_were_saved_in(
+    db_session: Session, in_review: EventRequest
+) -> None:
+    """The request for review is saved first but happened after the approval."""
+    _add_history(
+        db_session,
+        in_review,
+        EventHistoryKind.SAFETY_REVIEW_REQUESTED,
+        RECORDED_AT + timedelta(hours=1),
+    )
+
+    _record(db_session, "approved")
+
+    assert has_safety_approval(in_review.id, session=db_session) is False
+
+
+def test_of_two_entries_at_the_same_instant_the_one_saved_last_decides(
+    db_session: Session, in_review: EventRequest
+) -> None:
+    _add_history(db_session, in_review, EventHistoryKind.SAFETY_REVIEW_REQUESTED, RECORDED_AT)
+
+    _record(db_session, "approved")
+
+    assert has_safety_approval(in_review.id, session=db_session) is True
+
+
+def test_another_events_approval_does_not_count_for_this_one(
+    db_session: Session,
+    in_review: EventRequest,
+    make_event_request: Callable[..., EventRequest],
+    save: Callable[..., None],
+) -> None:
+    other = make_event_request(
+        reference=OTHER_REFERENCE, status=EventRequestStatus.SAFETY_REVIEW, coordinator_id=9
+    )
+    save(other)
+
+    record_safety_outcome(
+        SAFETY_OFFICER_ID,
+        OTHER_REFERENCE,
+        {"outcome": "approved", "checklist": CHECKLIST},
+        session=db_session,
+        now=RECORDED_AT,
+    )
+
+    assert has_safety_approval(in_review.id, session=db_session) is False
+    waiting = list_events_awaiting_safety_review(session=db_session)
+    assert [event.event_request.reference for event in waiting] == [REFERENCE]
 
 
 def test_an_approved_event_leaves_the_safety_officers_list(
