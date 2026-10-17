@@ -1,6 +1,6 @@
 # ADR-0029: The coordinator asks the organiser for clarification; `awaiting_clarification` is a ninth status; the exchange lives in the event history
 
-- **Status:** Accepted
+- **Status:** Accepted; `awaiting_clarification` as the ninth and last status superseded by [ADR-0048](0048-ten-event-statuses.md), which lists ten
 - **Date:** 2026-09-27
 - **Story:** SCRUM-32 Ask the Organiser for clarification
 - **Supersedes:** part of [ADR-0028](0028-review-and-decide.md): `approved` as the eighth and last status added. There are now nine.
