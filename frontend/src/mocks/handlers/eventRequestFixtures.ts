@@ -24,6 +24,8 @@ export interface MockEventRequest {
   coordinator: MockCoordinator | null
   request: EventRequest
   record: MockRecordSections
+  /** The event has an equipment request, so its decision can't change (SCRUM-31 AC7). */
+  hasEquipmentRequest?: true
 }
 
 /** A record with nothing on it yet beyond the request: no note, decision or question. */
@@ -53,6 +55,15 @@ const MARCUS: MockCoordinator = {
   email: 'marcus@connectsphere.test',
 }
 
+/** A coordinator who can log in, whose events are all another organisation's (ADR-0049). */
+const PRIYA: MockCoordinator = {
+  id: MOCK_ACCOUNTS.reviewingCoordinator.id,
+  full_name: MOCK_ACCOUNTS.reviewingCoordinator.full_name,
+  email: MOCK_ACCOUNTS.reviewingCoordinator.email,
+}
+/** The organiser of another organisation who can log in, and wrote Priya's events. */
+const SARA = MOCK_ACCOUNTS.otherOrganiser
+
 /** The details every request shares unless it says otherwise. */
 const DETAILS = {
   purpose: null,
@@ -71,6 +82,10 @@ const DETAILS = {
  * Chloe, the mock coordinator, has two of the organiser's requests and three of another
  * organisation's, which the booking and equipment mocks also hold, so her links lead somewhere.
  * Marcus has two of the organiser's, one dated between hers, so a list that leaks it shows it.
+ * Priya has four of Sara's (submitted, under review, approved and rejected), so reviewing and
+ * deciding them changes nothing the organiser's or Chloe's lists show (ADR-0049). The one under
+ * review and the approved one have an equipment request, so the approved one's decision is
+ * locked; a first decision never is (ADR-0028).
  */
 export const MOCK_EVENT_REQUESTS: readonly MockEventRequest[] = [
   {
@@ -313,6 +328,97 @@ export const MOCK_EVENT_REQUESTS: readonly MockEventRequest[] = [
       expected_attendance: 80,
       accessibility_needs: 'Step-free access',
       created_at: '2026-09-27T03:00:00+00:00',
+    },
+  },
+  {
+    organiserId: SARA.id,
+    organisationId: SARA.organisation_id,
+    coordinator: PRIYA,
+    record: NOTHING_RECORDED,
+    request: {
+      ...DETAILS,
+      reference: 'EVR-RV4K8N2P',
+      status: 'submitted',
+      name: 'Community Hackathon',
+      purpose: 'Two days of building tools for local charities.',
+      proposed_date: '2026-11-26',
+      end_date: '2026-11-26',
+      start_time: '10:00:00',
+      end_time: '18:00:00',
+      expected_attendance: 150,
+      created_at: '2026-10-02T03:00:00+00:00',
+    },
+  },
+  {
+    organiserId: SARA.id,
+    organisationId: SARA.organisation_id,
+    coordinator: PRIYA,
+    hasEquipmentRequest: true,
+    record: NOTHING_RECORDED,
+    request: {
+      ...DETAILS,
+      reference: 'EVR-RV2D5F8J',
+      status: 'under_review',
+      name: 'Design Sprint Showcase',
+      proposed_date: '2026-11-18',
+      end_date: '2026-11-18',
+      start_time: '14:00:00',
+      end_time: '17:00:00',
+      expected_attendance: 70,
+      created_at: '2026-09-30T03:00:00+00:00',
+    },
+  },
+  {
+    organiserId: SARA.id,
+    organisationId: SARA.organisation_id,
+    coordinator: PRIYA,
+    hasEquipmentRequest: true,
+    record: {
+      ...NOTHING_RECORDED,
+      decision: {
+        outcome: 'approved',
+        reason: null,
+        decided_by: 'Priya Nair',
+        decided_at: '2026-09-28T16:00:00+08:00',
+      },
+    },
+    request: {
+      ...DETAILS,
+      reference: 'EVR-RV7T3M5Q',
+      status: 'approved',
+      name: 'Sustainability Forum',
+      proposed_date: '2026-12-08',
+      end_date: '2026-12-08',
+      start_time: '09:30:00',
+      end_time: '13:00:00',
+      expected_attendance: 90,
+      created_at: '2026-09-24T03:00:00+00:00',
+    },
+  },
+  {
+    organiserId: SARA.id,
+    organisationId: SARA.organisation_id,
+    coordinator: PRIYA,
+    record: {
+      ...NOTHING_RECORDED,
+      decision: {
+        outcome: 'rejected',
+        reason: 'The atrium is closed for the national holiday.',
+        decided_by: 'Priya Nair',
+        decided_at: '2026-09-23T10:45:00+08:00',
+      },
+    },
+    request: {
+      ...DETAILS,
+      reference: 'EVR-RV9H6C1W',
+      status: 'rejected',
+      name: 'Alumni Mixer',
+      proposed_date: '2026-11-03',
+      end_date: '2026-11-03',
+      start_time: '18:00:00',
+      end_time: '21:00:00',
+      expected_attendance: 110,
+      created_at: '2026-09-22T03:00:00+00:00',
     },
   },
 ]

@@ -4,13 +4,15 @@ import type { RequestHandler } from 'msw'
 import { ROLE } from '@/config/roles'
 import type { Role } from '@/config/roles'
 import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
-import type { EventRequest } from '@/features/eventRequests/api'
+import type { EventRequestStatus } from '@/config/eventStatus'
+import type { Decision, EventRequest } from '@/features/eventRequests/api'
 import { isRecord } from '@/lib/isRecord'
 
 import type { MockAccount } from '../fixtures/accounts'
 import { errorResponse, notAllowed, notAuthenticated, validationError } from '../responses'
 
 import { accountForRequest } from './auth'
+import { MOCK_NOW } from './catalogueFixtures'
 import {
   DETAIL_FIELDS,
   draftChangeErrors,
@@ -20,13 +22,16 @@ import {
 } from './eventRequestRules'
 import { MOCK_EVENT_REQUESTS, NOTHING_RECORDED } from './eventRequestFixtures'
 import type { MockEventRequest } from './eventRequestFixtures'
+import { loadDecision } from './eventReviewRules'
+import type { LoadedDecision } from './eventReviewRules'
 
 /**
  * Event requests: an organiser's list (SCRUM-7, SCRUM-24, ADR-0020), submitting one
  * (SCRUM-19), saving, changing and submitting a draft (SCRUM-20, ADR-0024), a coordinator's
- * list of the events assigned to them, and opening one's record as either (SCRUM-24 AC2, AC9,
- * AC10; ADR-0056). Who sees what, the order, and every check are decided here as the backend
- * decides them, never in the UI.
+ * list of the events assigned to them, opening one's record as either (SCRUM-24 AC2, AC9,
+ * AC10; ADR-0056), and the coordinator starting a review and deciding (SCRUM-31, ADR-0028,
+ * ADR-0049). Who sees what, the order, and every check are decided here as the backend
+ * decides them, never in the UI. A decision is made at the mock's "now", MOCK_NOW.
  */
 
 const MY_REQUESTS_PATH = '/api/events/requests'
@@ -37,6 +42,32 @@ const NO_REQUESTS_MESSAGE = 'Your organisation has no event requests yet.'
 const NO_ASSIGNED_MESSAGE = 'No event requests are assigned to you yet.'
 const NOT_FOUND_MESSAGE = 'Event request not found.'
 const NOT_A_DRAFT_MESSAGE = 'Only a draft event request can be changed or submitted this way.'
+const NOT_AN_OBJECT_MESSAGE = 'Request body must be a JSON object.'
+const NOT_REVIEWABLE_MESSAGE = 'Only a submitted event request can be moved to under review.'
+const NOT_DECIDABLE_MESSAGE =
+  'Only a submitted, under-review, awaiting-clarification, approved or rejected event ' +
+  'request can be decided.'
+const REASON_REQUIRED_MESSAGE = 'A reason is required to reject a request or to change a decision.'
+const DECISION_LOCKED_MESSAGE =
+  "The decision can't be changed once the event has an equipment request or a venue " +
+  'booking request.'
+const CLARIFICATION_OUTSTANDING_MESSAGE =
+  "The request can't be approved until the organiser has answered the clarification request."
+/** Statuses a request awaits its first decision in (ADR-0028, ADR-0029). */
+const AWAITING_DECISION_STATUSES: readonly EventRequestStatus[] = [
+  EVENT_REQUEST_STATUS.SUBMITTED,
+  EVENT_REQUEST_STATUS.UNDER_REVIEW,
+  EVENT_REQUEST_STATUS.AWAITING_CLARIFICATION,
+]
+/** Statuses a request has been decided in, and may be decided again in, with a reason. */
+const DECIDED_STATUSES: readonly EventRequestStatus[] = [
+  EVENT_REQUEST_STATUS.APPROVED,
+  EVENT_REQUEST_STATUS.REJECTED,
+]
+const STATUS_BY_OUTCOME: Record<Decision['outcome'], EventRequestStatus> = {
+  approved: EVENT_REQUEST_STATUS.APPROVED,
+  rejected: EVENT_REQUEST_STATUS.REJECTED,
+}
 /** Just after the newest fixture, so a request made in the mock lists first, as it would. */
 const FIRST_NEW_CREATED_AT = Date.parse('2026-10-08T02:00:00+00:00')
 
@@ -202,6 +233,62 @@ function assignedRequest(coordinatorId: number, reference: unknown) {
   )
 }
 
+/**
+ * The calling coordinator and their own assigned request, or the refusal: anyone but a
+ * coordinator is refused by role, and another's request is "not found" (SCRUM-31 AC5).
+ */
+function assignedOrRefusal(request: Request, reference: unknown) {
+  const found = callerOrRefusal(request, [ROLE.EVENT_COORDINATOR])
+  if ('refusal' in found) {
+    return { refusal: found.refusal }
+  }
+  const stored = assignedRequest(found.caller.id, reference)
+  if (stored === undefined) {
+    return { refusal: errorResponse(404, 'not_found', NOT_FOUND_MESSAGE) }
+  }
+  return { coordinator: found.caller, stored }
+}
+
+/** The body, if it is a JSON object; anything else is refused before its fields are read. */
+async function objectBodyOrRefusal(request: Request) {
+  const body: unknown = await request.json().catch(() => null)
+  if (!isRecord(body)) {
+    return { refusal: errorResponse(400, 'validation_error', NOT_AN_OBJECT_MESSAGE) }
+  }
+  return { body }
+}
+
+/**
+ * Whether a decision may be made in the request's state: not once the event is past its
+ * decision, and not a new one once it has an equipment request (SCRUM-31 AC7, ADR-0028).
+ */
+function undecidableRefusal(stored: MockEventRequest) {
+  const { status } = stored.request
+  const isDecided = DECIDED_STATUSES.includes(status)
+  if (!isDecided && !AWAITING_DECISION_STATUSES.includes(status)) {
+    return errorResponse(409, 'request_not_decidable', NOT_DECIDABLE_MESSAGE)
+  }
+  if (isDecided && stored.hasEquipmentRequest === true) {
+    return errorResponse(409, 'decision_locked', DECISION_LOCKED_MESSAGE)
+  }
+  return null
+}
+
+/**
+ * Whether the decision is refused for what it says: a rejection or a change of decision with no
+ * reason (SCRUM-31 AC4, AC6), or an approval while a question is outstanding (SCRUM-32 AC3).
+ */
+function decisionRefusal(status: EventRequestStatus, decision: LoadedDecision) {
+  const needsReason = decision.outcome === 'rejected' || DECIDED_STATUSES.includes(status)
+  if (decision.reason === null && needsReason) {
+    return validationError({ reason: [REASON_REQUIRED_MESSAGE] })
+  }
+  if (decision.outcome === 'approved' && status === EVENT_REQUEST_STATUS.AWAITING_CLARIFICATION) {
+    return errorResponse(409, 'clarification_outstanding', CLARIFICATION_OUTSTANDING_MESSAGE)
+  }
+  return null
+}
+
 export const eventRequestHandlers: RequestHandler[] = [
   http.get(MY_REQUESTS_PATH, ({ request }) => {
     const caller = organiserOrRefusal(request)
@@ -325,5 +412,51 @@ export const eventRequestHandlers: RequestHandler[] = [
       return errorResponse(404, 'not_found', NOT_FOUND_MESSAGE)
     }
     return HttpResponse.json(recordOf(stored))
+  }),
+
+  http.post(`${MY_REQUESTS_PATH}/:reference/review`, ({ request, params }) => {
+    const found = assignedOrRefusal(request, params.reference)
+    if ('refusal' in found) {
+      return found.refusal
+    }
+    const reviewed = found.stored.request
+    if (reviewed.status !== EVENT_REQUEST_STATUS.SUBMITTED) {
+      return errorResponse(409, 'request_not_reviewable', NOT_REVIEWABLE_MESSAGE)
+    }
+
+    reviewed.status = EVENT_REQUEST_STATUS.UNDER_REVIEW
+    return HttpResponse.json(reviewed)
+  }),
+
+  http.post(`${MY_REQUESTS_PATH}/:reference/decide`, async ({ request, params }) => {
+    const found = assignedOrRefusal(request, params.reference)
+    if ('refusal' in found) {
+      return found.refusal
+    }
+    const { coordinator, stored } = found
+    const undecidable = undecidableRefusal(stored)
+    if (undecidable !== null) {
+      return undecidable
+    }
+    const payload = await objectBodyOrRefusal(request)
+    if ('refusal' in payload) {
+      return payload.refusal
+    }
+    const loaded = loadDecision(payload.body)
+    if ('errors' in loaded) {
+      return validationError(loaded.errors)
+    }
+    const { decision } = loaded
+    const refused = decisionRefusal(stored.request.status, decision)
+    if (refused !== null) {
+      return refused
+    }
+
+    stored.request.status = STATUS_BY_OUTCOME[decision.outcome]
+    stored.record = {
+      ...stored.record,
+      decision: { ...decision, decided_by: coordinator.full_name, decided_at: MOCK_NOW },
+    }
+    return HttpResponse.json(stored.request)
   }),
 ]

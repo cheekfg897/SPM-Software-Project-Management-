@@ -160,3 +160,28 @@ export function fetchAssignedEventRequests(): Promise<EventRequestList> {
 export function fetchEventRequest(reference: string): Promise<EventRecord> {
   return apiRequest<EventRecord>(requestPath(reference))
 }
+
+/** Move a submitted request assigned to the coordinator to under review (SCRUM-31 AC3). */
+export function startEventRequestReview(reference: string): Promise<EventRequest> {
+  return apiRequest<EventRequest>(`${requestPath(reference)}/review`, { method: 'POST' })
+}
+
+/**
+ * The coordinator's ruling. `reason` is left out of a first approval that has none; the backend
+ * says when one is needed (SCRUM-31 AC4, AC6; ADR-0028).
+ */
+export interface DecisionChoice {
+  outcome: Decision['outcome']
+  reason?: string
+}
+
+/** Approve or reject a request assigned to the coordinator, or change its decision (SCRUM-31). */
+export function decideEventRequest(
+  reference: string,
+  decision: DecisionChoice,
+): Promise<EventRequest> {
+  return apiRequest<EventRequest>(`${requestPath(reference)}/decide`, {
+    method: 'POST',
+    body: decision,
+  })
+}
