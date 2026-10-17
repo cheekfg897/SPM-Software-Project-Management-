@@ -142,6 +142,9 @@ class EventHistoryKind(str, enum.Enum):
     #: ``outcome``, the ``checklist`` of notes and the ``reason`` (``None`` on an
     #: approval without one), and ``actor_id`` is the Safety Officer (SCRUM-98 AC7).
     SAFETY_OUTCOME_RECORDED = "safety_outcome_recorded"
+    #: The assigned coordinator confirmed the event; ``details`` is ``None`` and
+    #: ``actor_id`` is the coordinator (SCRUM-49 AC1, ADR-0051).
+    EVENT_CONFIRMED = "event_confirmed"
 
 
 class SafetyOutcome(str, enum.Enum):

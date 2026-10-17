@@ -76,6 +76,9 @@ class NotificationKind(str, enum.Enum):
     SAFETY_CHECK_APPROVED = "safety_check_approved"
     SAFETY_CHECK_REJECTED = "safety_check_rejected"
     SAFETY_CHANGES_REQUESTED = "safety_changes_requested"
+    #: Tells the organiser who submitted the request that the coordinator confirmed the
+    #: event (SCRUM-49 AC12, ADR-0051).
+    EVENT_CONFIRMED = "event_confirmed"
 
 
 class Notification(db.Model):  # type: ignore[name-defined]
