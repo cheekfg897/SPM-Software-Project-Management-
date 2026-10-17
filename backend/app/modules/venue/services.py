@@ -50,6 +50,7 @@ from app.modules.venue.schemas import (
     DecideBookingRequestSchema,
     EditVenueSchema,
     RaiseBookingRequestSchema,
+    UpdatePreparationSchema,
     VenueSearchSchema,
     VenueSuitabilitySchema,
 )
@@ -1548,4 +1549,79 @@ def decide_booking_request(
         detail=reason,
         session=session,
     )
+    return show_booking_request(request, event)
+
+
+# --------------------------------------------------------------------------
+# SCRUM-84 — Venue Staff record a booking's preparation details
+# --------------------------------------------------------------------------
+
+PREPARATION_NOT_APPROVED_MESSAGE = (
+    "Preparation can only be recorded for an approved booking; this one is {status}."
+)
+PREPARATION_NEEDS_SAFETY_APPROVAL_MESSAGE = (
+    "Preparation details can't be recorded until the Safety Officer has approved"
+    " the event's Operational Safety Check."
+)
+
+
+def update_preparation_details(
+    request_id: int,
+    payload: Mapping[str, Any] | None,
+    *,
+    updated_by: int,
+    session: Session | None = None,
+) -> BookingRequestAsShown:
+    """Record the preparation status and notes of an approved booking (SCRUM-84).
+
+    AC1-AC5. Any Venue Staff member may record them for any booking (ADR-0035
+    decision 1). Each update replaces the status and notes, and the event's history
+    gets an entry naming the user and the time in the same commit (AC4). Nothing else
+    of the booking changes (AC3). The Safety Officer must have approved the event
+    first (AC5, ADR-0047).
+
+    Args:
+        request_id: The booking request's id.
+        payload: Decoded JSON body: ``status`` and optional ``notes``.
+        updated_by: The Venue Staff user's id, taken from their token.
+        session: Database session; defaults to ``db.session``.
+
+    Returns:
+        The booking request, with its event's details beside it.
+
+    Raises:
+        ValidationError: 400 — payload invalid, or it names a field other than these.
+        NotFoundError: 404 — no such booking request.
+        ConflictError: 409 — the request isn't approved, or the Safety Officer hasn't
+            approved the event.
+    """
+    from app.modules.events import services as event_services  # circular at import time
+
+    data = load_or_raise(UpdatePreparationSchema(), payload)
+    sess = resolve_session(session)
+    request = sess.get(VenueBookingRequest, request_id)
+    if request is None:
+        raise NotFoundError(BOOKING_REQUEST_NOT_FOUND_MESSAGE)
+    if request.status is not BookingRequestStatus.APPROVED:
+        raise ConflictError(PREPARATION_NOT_APPROVED_MESSAGE.format(status=request.status.value))
+    if not event_services.has_safety_approval(request.event_id, session=sess):
+        raise ConflictError(PREPARATION_NEEDS_SAFETY_APPROVAL_MESSAGE)
+
+    request.preparation_status = data["status"]
+    request.preparation_notes = data["notes"]
+    event_services.record_venue_preparation_updated(
+        request.event_id,
+        actor_id=updated_by,
+        details={
+            "venue_booking_request_id": request.id,
+            "venue_id": request.venue_id,
+            "status": data["status"].value,
+            "notes": data["notes"],
+        },
+        session=sess,
+    )
+    sess.commit()
+    event = event_services.get_events_for_booking([request.event_id], session=sess)[
+        request.event_id
+    ]
     return show_booking_request(request, event)

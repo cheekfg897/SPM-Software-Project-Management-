@@ -30,10 +30,12 @@ from app.modules.venue.models import (
     LIST_ITEM_MAX_LENGTH,
     LIST_MAX_ITEMS,
     LIST_SEPARATOR,
+    PREPARATION_NOTES_MAX_LENGTH,
     BookingDecision,
     BookingRequestStatus,
     CalendarEntryKind,
     LayoutType,
+    PreparationStatus,
     RequirementKind,
     Venue,
     VenueBookingRequest,
@@ -490,6 +492,41 @@ class DecideBookingRequestSchema(Schema):
         return data
 
 
+class UpdatePreparationSchema(Schema):
+    """Payload for ``PUT /api/venues/booking-requests/<id>/preparation`` (SCRUM-84 AC1).
+
+    Each update states the whole picture: the ``status``, and the ``notes`` if there are
+    any (left out, they are cleared). Nothing else of the booking can be sent (AC3):
+    marshmallow rejects an unknown field. Notes that are sent must not be blank, and
+    are trimmed.
+    """
+
+    status = fields.Enum(
+        PreparationStatus,
+        by_value=True,
+        required=True,
+        error_messages={"unknown": "Status must be not_started, in_progress or ready."},
+    )
+    notes = fields.String(allow_none=True, load_default=None, validate=not_blank)
+
+    @validates("notes")
+    def _notes_fit(self, value: str | None, **_: Any) -> None:
+        # Marshmallow also runs this on the default of notes left out.
+        if value is None:
+            return
+        # Measured once trimmed, since that's what is stored.
+        if len(value.strip()) > PREPARATION_NOTES_MAX_LENGTH:
+            raise MarshmallowValidationError(
+                f"Notes must be at most {PREPARATION_NOTES_MAX_LENGTH} characters."
+            )
+
+    @post_load
+    def _trim_notes(self, data: dict[str, Any], **_: Any) -> dict[str, Any]:
+        if data["notes"] is not None:
+            data["notes"] = data["notes"].strip()
+        return data
+
+
 class VenueBookingRequestSchema(Schema):
     """A booking request as Venue Staff see it, in business time (AC4, ADR-0009)."""
 
@@ -506,6 +543,10 @@ class VenueBookingRequestSchema(Schema):
         BookingRequestStatus, by_value=True, attribute="request.status", dump_only=True
     )
     decision_reason = fields.String(attribute="request.decision_reason", dump_only=True)
+    preparation_status = fields.Enum(
+        PreparationStatus, by_value=True, attribute="request.preparation_status", dump_only=True
+    )
+    preparation_notes = fields.String(attribute="request.preparation_notes", dump_only=True)
     event_proposed_date = fields.Date(attribute="proposed_date", dump_only=True)
     event_end_date = fields.Date(attribute="end_date", dump_only=True)
     event_start_time = fields.Time(attribute="start_time", dump_only=True)

@@ -9,7 +9,12 @@ from typing import Any
 import pytest
 from sqlalchemy.orm import Session
 
-from app.modules.events.models import EventRequest, EventRequestStatus
+from app.modules.events.models import (
+    EventHistoryEntry,
+    EventHistoryKind,
+    EventRequest,
+    EventRequestStatus,
+)
 from app.modules.venue import services
 from app.modules.venue.models import (
     Booking,
@@ -73,6 +78,19 @@ def decide(
         request_id, payload, decided_by=VENUE_STAFF_ID, session=session
     )
     return shown.request
+
+
+def approve_safety(event: EventRequest, session: Session) -> None:
+    """Record the Safety Officer approving the event, as the history holds it."""
+    approval = EventHistoryEntry(
+        event_request=event,
+        kind=EventHistoryKind.SAFETY_OUTCOME_RECORDED,
+        actor_id=None,
+        details={"outcome": "approved"},
+        occurred_at=datetime.now(UTC),
+    )
+    session.add(approval)
+    session.commit()
 
 
 SECOND_PERIOD = {

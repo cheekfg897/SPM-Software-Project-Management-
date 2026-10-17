@@ -280,3 +280,18 @@ def decide_booking_request(request_id: int) -> tuple[Response, int]:
         request_id, request.get_json(silent=True), decided_by=int(g.current_user_id)
     )
     return jsonify(_booking_request_schema.dump(shown)), 200
+
+
+# --------------------------------------------------------------------------
+# SCRUM-84 — Venue Staff record a booking's preparation details
+# --------------------------------------------------------------------------
+
+
+@bp.put("/booking-requests/<int:request_id>/preparation")
+@requires_role(Role.VENUE_STAFF)
+def update_preparation_details(request_id: int) -> tuple[Response, int]:
+    """Record the preparation status and notes of an approved booking."""
+    shown = services.update_preparation_details(
+        request_id, request.get_json(silent=True), updated_by=int(g.current_user_id)
+    )
+    return jsonify(_booking_request_schema.dump(shown)), 200

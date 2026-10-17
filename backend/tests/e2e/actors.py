@@ -34,6 +34,10 @@ class Actor:
         """Send a ``POST`` as this user, with an optional JSON body."""
         return self._call("POST", path, body)
 
+    def put(self, path: str, body: dict[str, Any]) -> TestResponse:
+        """Send a ``PUT`` with a JSON body as this user."""
+        return self._call("PUT", path, body)
+
     def patch(self, path: str, body: dict[str, Any]) -> TestResponse:
         """Send a ``PATCH`` with a JSON body as this user."""
         return self._call("PATCH", path, body)

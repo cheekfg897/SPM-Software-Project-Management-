@@ -1220,6 +1220,28 @@ def record_venue_arrangement_changed(
     )
 
 
+def record_venue_preparation_updated(
+    event_id: int,
+    *,
+    actor_id: int,
+    details: dict[str, Any],
+    session: Session | None = None,
+) -> EventHistoryEntry:
+    """Add the history entry for venue preparation, without committing (SCRUM-84).
+
+    The entry rides in the caller's transaction, so it is saved with the update it
+    records or not at all (ADR-0018).
+    """
+    event_request = resolve_session(session).get(EventRequest, event_id)
+    return record_event_history(
+        event_request,
+        EventHistoryKind.VENUE_PREPARATION_UPDATED,
+        actor_id=actor_id,
+        details=details,
+        session=session,
+    )
+
+
 def _event_request_with_editable_equipment(
     coordinator_id: int | str, reference: str, session: Session
 ) -> EventRequest:
@@ -1976,6 +1998,7 @@ INTERNAL_ONLY_KINDS: frozenset[EventHistoryKind] = frozenset(
         EventHistoryKind.EQUIPMENT_RESERVED,
         EventHistoryKind.EQUIPMENT_OUTCOME_RECORDED,
         EventHistoryKind.SAFETY_OUTCOME_RECORDED,
+        EventHistoryKind.VENUE_PREPARATION_UPDATED,
     }
 )
 

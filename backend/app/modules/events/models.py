@@ -145,6 +145,11 @@ class EventHistoryKind(str, enum.Enum):
     #: The assigned coordinator confirmed the event; ``details`` is ``None`` and
     #: ``actor_id`` is the coordinator (SCRUM-49 AC1, ADR-0051).
     EVENT_CONFIRMED = "event_confirmed"
+    #: Venue Staff recorded the preparation of an approved venue booking; ``details``
+    #: holds ``venue_booking_request_id``, ``venue_id``, ``status`` and ``notes``
+    #: (``None`` when none were given), and ``actor_id`` is the Venue Staff user
+    #: (SCRUM-84 AC4, ADR-0049).
+    VENUE_PREPARATION_UPDATED = "venue_preparation_updated"
 
 
 class SafetyOutcome(str, enum.Enum):

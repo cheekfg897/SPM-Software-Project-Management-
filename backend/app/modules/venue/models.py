@@ -45,6 +45,9 @@ LIST_MAX_ITEMS = (LIST_COLUMN_LENGTH + len(LIST_SEPARATOR)) // (
 #: Longest reason a block may carry (SCRUM-34, ADR-0016). The column is ``Text``, so
 #: this is an API rule rather than a column length: a reason is a short note.
 BLOCK_REASON_MAX_LENGTH = 500
+#: Longest preparation note (SCRUM-84, ADR-0049). The column is ``Text``, so this is an
+#: API rule, as for a block's reason.
+PREPARATION_NOTES_MAX_LENGTH = 1000
 
 
 def join_list_field(items: list[str]) -> str:
@@ -169,6 +172,19 @@ class BookingDecision(str, enum.Enum):
 DECIDABLE_REQUEST_STATUSES = frozenset(
     {BookingRequestStatus.PENDING, BookingRequestStatus.CONFLICTING}
 )
+
+
+class PreparationStatus(str, enum.Enum):
+    """How far Venue Staff have got in setting up a booking (SCRUM-84, ADR-0049).
+
+    The equipment module has its own, with the same values: a module never imports
+    another module's models.
+    """
+
+    NOT_STARTED = "not_started"
+    IN_PROGRESS = "in_progress"
+    READY = "ready"
+
 
 #: Statuses that take an arrangement out of an event's venue count (SCRUM-93).
 #: ``REJECTED`` stays out, because SCRUM-49 and SCRUM-97 gate on every active
@@ -390,6 +406,20 @@ class VenueBookingRequest(db.Model):  # type: ignore[name-defined]
         nullable=False,
         default=BookingRequestStatus.PENDING,
     )
+    #: How far Venue Staff have got in preparing the venue, and their notes (SCRUM-84).
+    #: Who recorded each update and when are in the event's history entries, as for a
+    #: decision.
+    preparation_status: Mapped[PreparationStatus] = mapped_column(
+        Enum(
+            PreparationStatus,
+            name="venue_preparation_status",
+            # Store the enum *values* (snake_case), not the member names.
+            values_callable=lambda enum_cls: [m.value for m in enum_cls],
+        ),
+        nullable=False,
+        default=PreparationStatus.NOT_STARTED,
+    )
+    preparation_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     requested_by: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
