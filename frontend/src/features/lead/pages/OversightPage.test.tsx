@@ -11,7 +11,7 @@ import { renderApp } from '@/test/render'
 /**
  * SCRUM-96 AC1 and SCRUM-24 AC3 (every active event with its status and coordinator), AC3 (each
  * coordinator's workload) and AC4 (only the Lead reassigns), as the Lead's oversight page shows
- * them (docs/adr/0052).
+ * them (docs/adr/0062).
  */
 
 const ACTIVE_URL = '/api/events/requests/active'
