@@ -60,8 +60,9 @@ OTHER_REFERENCE = "EVR-BBBBBBBB"
 #: The Event Coordinator ``saved_event_request`` is assigned to.
 COORDINATOR_ID = 3
 SAFETY_OFFICER_ID = 20
-#: Everyone in ``saved_users`` but the assigned coordinator.
-OTHER_USER_IDS = [9, 4, 7, 5, 2]
+#: Everyone saved but the assigned coordinator, the Safety Officer who records the
+#: outcome included: only the coordinator is told (AC8).
+OTHER_USER_IDS = [9, 4, 7, 5, 2, SAFETY_OFFICER_ID]
 RECORDED_AT = datetime(2026, 10, 17, 2, 30, tzinfo=timezone.utc)
 REASON = "The fire exit on the east side is blocked by the stage."
 #: The seven checklist items of AC2, each with the officer's note.
