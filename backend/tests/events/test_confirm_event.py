@@ -17,6 +17,7 @@ equipment checks are real SQL.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -26,6 +27,7 @@ from sqlalchemy.orm import Session
 
 from app.common.errors import NotFoundError
 from app.modules.auth.models import User
+from app.modules.events import services as events_services
 from app.modules.events.models import EventHistoryKind, EventRequest, EventRequestStatus
 from app.modules.events.services import (
     CONFIRMATION_NOT_READY_MESSAGE,
@@ -37,7 +39,7 @@ from app.modules.events.services import (
 )
 from app.modules.notifications.services import NotificationKind
 from app.modules.venue.models import Booking, BookingRequestStatus, BookingStatus, Venue
-from tests.events.cases import AddLine, Arrange
+from tests.events.cases import LOST_CONNECTION, AddLine, Arrange
 
 pytestmark = pytest.mark.scrum_49
 
@@ -199,6 +201,31 @@ def test_the_organiser_is_notified_once_and_nobody_else(
     ]
     for user_id in NON_ORGANISER_IDS:
         assert notifications_of(user_id) == []
+
+
+def test_a_lost_notification_does_not_lose_the_confirmation(
+    db_session: Session,
+    ready_event: EventRequest,
+    reload_event_request: ReloadEventRequest,
+    history_of: HistoryOf,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """ADR-0015: the confirmation is committed before the organiser is told."""
+
+    def _fail(*_: Any, **__: Any) -> None:
+        raise LOST_CONNECTION
+
+    monkeypatch.setattr(events_services, "notify_users", _fail)
+
+    with caplog.at_level(logging.WARNING, logger="connectsphere.events"):
+        _confirm(db_session)
+
+    assert reload_event_request(ready_event.id).status is EventRequestStatus.CONFIRMED
+    assert history_of(ready_event.id)[-1][0] is EventHistoryKind.EVENT_CONFIRMED
+    assert [record.getMessage() for record in caplog.records] == [
+        f"event_request_notification_failed reference={REFERENCE} kind=event_confirmed"
+    ]
 
 
 # --------------------------------------------------------------------------
