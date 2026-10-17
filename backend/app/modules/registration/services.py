@@ -510,6 +510,8 @@ def list_registrants(
 
     Raises:
         NotFoundError: 404 — no such event, or none among the viewer's own (ADR-0012).
+        OrganiserWithoutOrganisationError: 403 — the organiser has no client
+            organisation (ADR-0020).
     """
     sess = resolve_session(session)
     event = get_event_capacity_for_viewer(
