@@ -126,7 +126,7 @@ function ClarificationExchange({ clarification }: { clarification: Clarification
   )
 }
 
-/** The organiser's answer to the open question (SCRUM-32 AC2, ADR-0049). */
+/** The organiser's answer to the open question (SCRUM-32 AC2, ADR-0060). */
 function AnswerClarification({ reference }: { reference: string }) {
   const answer = useAnswerClarification(reference)
   return (
@@ -160,7 +160,7 @@ function CoordinatorLinks({ reference }: { reference: string }) {
  * and its decision, clarifications and programme notes once there are any (SCRUM-24 AC9,
  * ADR-0056). Which record a viewer may open is the backend's call. Its assigned coordinator
  * also gets links on and the review actions, and an organiser answers an open question here
- * (SCRUM-31, SCRUM-32, ADR-0049).
+ * (SCRUM-31, SCRUM-32, ADR-0060).
  */
 export function EventRecordView({ record }: { record: EventRecord }) {
   const viewer = useAppSelector(selectSessionUser)

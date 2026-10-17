@@ -14,7 +14,7 @@ import { findRegion, serveRecordInStatus, statusShownFor } from '../test/recordP
 /**
  * SCRUM-31 AC3, AC4, AC6, AC7: the assigned coordinator starts a review and decides a request
  * from its page, each action shown only in the statuses it can apply to, with the backend's
- * refusals shown as they come (ADR-0049). The mock in src/mocks/handlers/eventRequests.ts holds
+ * refusals shown as they come (ADR-0060). The mock in src/mocks/handlers/eventRequests.ts holds
  * Priya's EVR-RV4K8N2P (submitted), EVR-RV7T3M5Q (approved, decision locked) and EVR-RV9H6C1W
  * (rejected), and Chloe's EVR-B6YF2K8V (awaiting clarification). Its "now" is 5 Oct, 12:00 pm.
  */

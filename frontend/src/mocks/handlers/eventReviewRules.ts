@@ -107,7 +107,7 @@ export function loadDecision(
  * A body holding one required text field and nothing else, loaded (trimmed), or what it is
  * refused for: a question's `message` or an answer's `response`. The backend also takes
  * amendments with an answer (ADR-0029), which the web app never sends, so the mock calls any
- * other field unknown (ADR-0049).
+ * other field unknown (ADR-0060).
  */
 export function loadText(
   body: Record<string, unknown>,

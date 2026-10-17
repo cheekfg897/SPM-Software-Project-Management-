@@ -25,7 +25,7 @@ import {
  * The mock of a coordinator asking the organiser a question and an organiser answering it
  * (POST /api/events/requests/<reference>/request-clarification and /resubmit), pinned to what
  * the backend does: who may, from which status, its check order, codes, messages and field
- * messages (SCRUM-32 AC1, AC2, AC4; ADR-0029, ADR-0049). The mock's "now" is MOCK_NOW. The
+ * messages (SCRUM-32 AC1, AC2, AC4; ADR-0029, ADR-0060). The mock's "now" is MOCK_NOW. The
  * integration tests check the same contract against the backend.
  *
  * Priya coordinates EVR-RV2D5F8J (under review), which Sara's colleague wrote, and Sara's

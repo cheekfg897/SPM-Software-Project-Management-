@@ -13,7 +13,7 @@ import { findRegion, serveRecordInStatus, statusShownFor } from '../test/recordP
 
 /**
  * SCRUM-32 AC1, AC2, AC4: the assigned coordinator asks the organiser a question from the
- * event's page, and the organiser answers it on theirs; both stay on the record (ADR-0049). The
+ * event's page, and the organiser answers it on theirs; both stay on the record (ADR-0060). The
  * mock in src/mocks/handlers/eventRequests.ts holds Priya's EVR-RV2D5F8J (under review) and
  * Omar's EVR-B6YF2K8V, which Chloe coordinates, awaiting an answer to its second question. Its
  * "now" is 5 Oct, 12:00 pm.

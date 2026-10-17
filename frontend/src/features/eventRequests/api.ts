@@ -196,7 +196,7 @@ export function requestClarification(reference: string, message: string): Promis
 
 /**
  * Answer the open question, which sends the request back to review (SCRUM-32 AC2). Only the
- * response is sent: organisers no longer amend a submitted request (ADR-0049).
+ * response is sent: organisers no longer amend a submitted request (ADR-0060).
  */
 export function answerClarification(reference: string, response: string): Promise<EventRequest> {
   return apiRequest<EventRequest>(`${requestPath(reference)}/resubmit`, {
