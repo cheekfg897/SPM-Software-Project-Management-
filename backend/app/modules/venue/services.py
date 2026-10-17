@@ -1340,6 +1340,18 @@ def list_pending_booking_requests(*, session: Session | None = None) -> list[Boo
     return [show_booking_request(request, event) for event, request in waiting]
 
 
+def _event_of(request: VenueBookingRequest, session: Session | None) -> EventForBooking:
+    """The event ``request`` is for, with the details a booking needs.
+
+    The request's ``event_id`` is a foreign key, so the event is always there.
+    """
+    from app.modules.events import services as event_services  # circular at import time
+
+    return event_services.get_events_for_booking([request.event_id], session=session)[
+        request.event_id
+    ]
+
+
 def _locked_request(request_id: int, session: Session | None) -> VenueBookingRequest:
     """The request ``request_id`` names, read under a row lock.
 
@@ -1595,8 +1607,6 @@ def decide_booking_request(
             a booking or live hold (the body names it), or its hold has expired.
         ValidationError: 400 — payload invalid, or a rejection without a reason.
     """
-    from app.modules.events import services as event_services  # circular at import time
-
     request = _request_to_decide(request_id, session)
     data = load_or_raise(DecideBookingRequestSchema(), payload)
     decision = data["outcome"]
@@ -1606,10 +1616,7 @@ def decide_booking_request(
             "Invalid request.", details={"reason": [REJECTION_REASON_REQUIRED_MESSAGE]}
         )
 
-    # The request's event_id is a foreign key, so the event is always there.
-    event = event_services.get_events_for_booking([request.event_id], session=session)[
-        request.event_id
-    ]
+    event = _event_of(request, session)
     booking = None
     if decision is BookingDecision.APPROVED:
         booking = _booking_to_approve(request, session)
@@ -1716,6 +1723,7 @@ EXPIRY_NOT_BEFORE_EVENT_MESSAGE = "The expiry must be before the event starts."
 
 
 def _expiry_error(message: str) -> ValidationError:
+    """The 400 for an expiry that breaks one of AC3's limits, keyed on the field."""
     return ValidationError("Invalid request.", details={"expires_at": [message]})
 
 
@@ -1744,13 +1752,9 @@ def _event_to_hold_for(request: VenueBookingRequest, session: Session | None) ->
     Raises:
         ConflictError: 409 — the event has only this venue.
     """
-    from app.modules.events import services as event_services  # circular at import time
-
     if count_active_arrangements(request.event_id, session=session) < 2:
         raise ConflictError(SINGLE_VENUE_HOLD_MESSAGE)
-    return event_services.get_events_for_booking([request.event_id], session=session)[
-        request.event_id
-    ]
+    return _event_of(request, session)
 
 
 def _notify_hold(
@@ -1832,17 +1836,13 @@ def change_hold_expiry(
         ValidationError: 400 — the expiry is missing, has passed or is not before the
             event starts.
     """
-    from app.modules.events import services as event_services  # circular at import time
-
     request = _locked_request(request_id, session)
     if request.status is not BookingRequestStatus.ON_HOLD:
         raise ConflictError(NOT_ON_HOLD_MESSAGE.format(status=request.status.value))
     if _hold_has_expired(request.booking):
         raise ConflictError(HOLD_EXPIRED_MESSAGE)
     data = load_or_raise(HoldBookingRequestSchema(), payload)
-    event = event_services.get_events_for_booking([request.event_id], session=session)[
-        request.event_id
-    ]
+    event = _event_of(request, session)
     _require_valid_expiry(data["expires_at"], event)
 
     request.booking.hold_expires_at = data["expires_at"]
