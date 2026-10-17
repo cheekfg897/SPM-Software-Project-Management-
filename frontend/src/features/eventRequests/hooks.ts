@@ -33,8 +33,11 @@ export function useAssignedEventRequests() {
   })
 }
 
-/** Read the organiser's list again once a request is saved or submitted. */
-function useRefreshMyRequests() {
+/**
+ * Read every event-request query again after a change: the record and both role lists. Each
+ * shows the change because the backend says so, not because the cache was edited here.
+ */
+function useRefreshEventRequests() {
   const queryClient = useQueryClient()
   return () => queryClient.invalidateQueries({ queryKey: eventRequestKeys.all })
 }
@@ -44,13 +47,13 @@ function useRefreshMyRequests() {
  * request, its status and reference come from the backend.
  */
 export function useSubmitEventRequest() {
-  const refresh = useRefreshMyRequests()
+  const refresh = useRefreshEventRequests()
   return useMutation({ mutationFn: submitEventRequest, onSuccess: refresh })
 }
 
 /** Save a new draft (SCRUM-20 AC1). */
 export function useSaveDraftEventRequest() {
-  const refresh = useRefreshMyRequests()
+  const refresh = useRefreshEventRequests()
   return useMutation({ mutationFn: saveDraftEventRequest, onSuccess: refresh })
 }
 
@@ -61,7 +64,7 @@ interface DraftChanges {
 
 /** Save the changes made to one of the organiser's drafts (SCRUM-20 AC3). */
 export function useUpdateDraftEventRequest() {
-  const refresh = useRefreshMyRequests()
+  const refresh = useRefreshEventRequests()
   return useMutation({
     mutationFn: ({ reference, changes }: DraftChanges) =>
       updateDraftEventRequest(reference, changes),
@@ -74,7 +77,7 @@ export function useUpdateDraftEventRequest() {
  * the changes go first; a refusal of either shows as it comes back (SCRUM-20, ADR-0024).
  */
 export function useSubmitDraftEventRequest() {
-  const refresh = useRefreshMyRequests()
+  const refresh = useRefreshEventRequests()
   return useMutation({
     mutationFn: async ({ reference, changes }: DraftChanges) => {
       await updateDraftEventRequest(reference, changes)

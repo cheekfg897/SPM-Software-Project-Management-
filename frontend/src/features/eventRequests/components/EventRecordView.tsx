@@ -1,6 +1,3 @@
-import { useId } from 'react'
-import type { ReactNode } from 'react'
-
 import { PageContainer } from '@/components/layout'
 import { ButtonLink, StatusChip } from '@/components/ui'
 import { ROLE } from '@/config/roles'
@@ -10,6 +7,8 @@ import { selectSessionUser, useAppSelector } from '@/store'
 
 import type { Clarification, CoordinatorContact, Decision, EventRecord } from '../api'
 import { formatSchedule } from '../formatSchedule'
+
+import { RecordSection } from './RecordSection'
 
 interface DecisionStyle {
   label: string
@@ -32,19 +31,6 @@ function attributed(action: string, name: string | null, at: string): string {
     return `${action} ${when}`
   }
   return `${action} by ${name}, ${when}`
-}
-
-/** A heading and what goes under it; the heading names the section for screen readers. */
-function RecordSection({ title, children }: { title: string; children: ReactNode }) {
-  const headingId = useId()
-  return (
-    <section aria-labelledby={headingId} className="mt-12">
-      <h2 id={headingId} className="font-display text-xl font-semibold tracking-tight">
-        {title}
-      </h2>
-      <div className="mt-4">{children}</div>
-    </section>
-  )
 }
 
 /** The organiser's answers, each against its label, leaving out the ones not given. */
