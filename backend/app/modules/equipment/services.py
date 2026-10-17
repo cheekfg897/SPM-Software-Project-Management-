@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.common.database import resolve_session
 from app.common.errors import AppError, ConflictError, NotFoundError, ValidationError
+from app.common.preparation import PREPARATION_NEEDS_SAFETY_APPROVAL_MESSAGE
 from app.common.validation import load_or_raise
 from app.modules.auth.permissions import Role
 from app.modules.auth.services import get_user_full_names
@@ -42,10 +43,6 @@ from app.modules.venue.services import get_venue
 
 EQUIPMENT_TYPE_NOT_FOUND_MESSAGE = "Equipment type not found."
 RESERVATION_NOT_FOUND_MESSAGE = "Equipment reservation not found."
-PREPARATION_NEEDS_SAFETY_APPROVAL_MESSAGE = (
-    "Preparation details can't be recorded until the Safety Officer has approved"
-    " the event's Operational Safety Check."
-)
 
 
 class EquipmentNotReservableError(AppError):

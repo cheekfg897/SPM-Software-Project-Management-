@@ -24,13 +24,13 @@ from marshmallow import (
 
 from app.common.clock import as_utc, local_today, to_business_time
 from app.common.fields import BusinessDateTime
+from app.common.preparation import PreparationNotesSchema
 from app.common.validation import TimeRangeSchema, not_blank
 from app.modules.venue.models import (
     BLOCK_REASON_MAX_LENGTH,
     LIST_ITEM_MAX_LENGTH,
     LIST_MAX_ITEMS,
     LIST_SEPARATOR,
-    PREPARATION_NOTES_MAX_LENGTH,
     BookingDecision,
     BookingRequestStatus,
     CalendarEntryKind,
@@ -492,13 +492,12 @@ class DecideBookingRequestSchema(Schema):
         return data
 
 
-class UpdatePreparationSchema(Schema):
+class UpdatePreparationSchema(PreparationNotesSchema):
     """Payload for ``PUT /api/venues/booking-requests/<id>/preparation`` (SCRUM-84 AC1).
 
     Each update states the whole picture: the ``status``, and the ``notes`` if there are
     any (left out, they are cleared). Nothing else of the booking can be sent (AC3):
-    marshmallow rejects an unknown field. Notes that are sent must not be blank, and
-    are trimmed.
+    marshmallow rejects an unknown field. The notes rules are the shared ones.
     """
 
     status = fields.Enum(
@@ -507,24 +506,6 @@ class UpdatePreparationSchema(Schema):
         required=True,
         error_messages={"unknown": "Status must be not_started, in_progress or ready."},
     )
-    notes = fields.String(allow_none=True, load_default=None, validate=not_blank)
-
-    @validates("notes")
-    def _notes_fit(self, value: str | None, **_: Any) -> None:
-        # Marshmallow also runs this on the default of notes left out.
-        if value is None:
-            return
-        # Measured once trimmed, since that's what is stored.
-        if len(value.strip()) > PREPARATION_NOTES_MAX_LENGTH:
-            raise MarshmallowValidationError(
-                f"Notes must be at most {PREPARATION_NOTES_MAX_LENGTH} characters."
-            )
-
-    @post_load
-    def _trim_notes(self, data: dict[str, Any], **_: Any) -> dict[str, Any]:
-        if data["notes"] is not None:
-            data["notes"] = data["notes"].strip()
-        return data
 
 
 class VenueBookingRequestSchema(Schema):

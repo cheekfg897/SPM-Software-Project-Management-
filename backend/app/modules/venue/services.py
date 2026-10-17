@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from app.common.clock import to_business_time
 from app.common.database import resolve_session
 from app.common.errors import ConflictError, NotFoundError, ValidationError
+from app.common.preparation import PREPARATION_NEEDS_SAFETY_APPROVAL_MESSAGE
 from app.common.validation import load_or_raise
 from app.modules.auth.permissions import Role
 from app.modules.auth.services import list_user_ids_with_role
@@ -1558,10 +1559,6 @@ def decide_booking_request(
 
 PREPARATION_NOT_APPROVED_MESSAGE = (
     "Preparation can only be recorded for an approved booking; this one is {status}."
-)
-PREPARATION_NEEDS_SAFETY_APPROVAL_MESSAGE = (
-    "Preparation details can't be recorded until the Safety Officer has approved"
-    " the event's Operational Safety Check."
 )
 
 
