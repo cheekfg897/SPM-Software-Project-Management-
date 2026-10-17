@@ -204,3 +204,31 @@ export function answerClarification(reference: string, response: string): Promis
     body: { response },
   })
 }
+
+/**
+ * A row of a staff list that carries only the backend's `EVENT_LIST_FIELDS`: the event's
+ * reference, name, dates, times and status (SCRUM-24 AC8, ADR-0026).
+ */
+export type EventListRow = Pick<
+  EventRequest,
+  'reference' | 'name' | 'proposed_date' | 'end_date' | 'start_time' | 'end_time' | 'status'
+>
+
+/** A staff list of those rows. `message` is there only when the list is empty (SCRUM-24 AC11). */
+export interface EventListRows {
+  event_requests: EventListRow[]
+  message?: string
+}
+
+const WITH_EQUIPMENT_PATH = `${EVENT_REQUEST_PATHS.MINE}/with-equipment`
+
+/**
+ * Technical Support's list of the events with an equipment request. The same for every one of
+ * them, and nobody else may read it, so the viewer isn't part of the key (ADR-0051).
+ */
+export const WITH_EQUIPMENT_KEY = [...eventRequestKeys.all, 'withEquipment'] as const
+
+/** Every event with an equipment request, newest first, for Technical Support (SCRUM-24 AC5). */
+export function fetchEventRequestsWithEquipment(): Promise<EventListRows> {
+  return apiRequest<EventListRows>(WITH_EQUIPMENT_PATH)
+}
