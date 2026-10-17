@@ -94,9 +94,12 @@ def test_an_attendee_registers_for_an_open_event(
 
 
 def test_the_registration_is_stamped_with_the_real_time_when_none_is_given(
-    db_session: Session, open_event: EventRequest
+    db_session: Session, make_open_event: Callable[..., EventRequest]
 ) -> None:
-    registration = register_for_event(ATTENDEE, open_event.id, session=db_session)
+    # With the real clock, the event must still be ahead whenever the suite runs.
+    far_off = make_open_event(day=date(2099, 1, 1))
+
+    registration = register_for_event(ATTENDEE, far_off.id, session=db_session)
 
     assert abs(registration.registered_at - datetime.now(timezone.utc)) < timedelta(minutes=1)
 
