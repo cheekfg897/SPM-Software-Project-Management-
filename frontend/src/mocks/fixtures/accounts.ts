@@ -132,7 +132,7 @@ export const MOCK_ACCOUNTS = {
   /** A second Event Coordinator, assigned no mock event, to sign in after the first (SCRUM-6). */
   idleCoordinator: {
     ...BASE_ACCOUNTS.coordinator,
-    id: 40,
+    id: 14,
     email: 'colin@connectsphere.test',
     full_name: 'Colin Tay',
   },
