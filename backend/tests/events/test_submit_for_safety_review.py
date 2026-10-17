@@ -15,11 +15,14 @@ checks are real SQL.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Any
+from unittest.mock import patch
 
 import pytest
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.common.errors import NotFoundError
@@ -445,6 +448,44 @@ def test_nobody_but_the_safety_officers_is_notified(
 
     for user_id in OTHER_USER_IDS:
         assert notifications_of(user_id) == []
+
+
+def test_a_lost_notice_leaves_the_event_in_safety_review_and_is_logged(
+    db_session: Session,
+    approved_event: EventRequest,
+    arrange: Arrange,
+    safety_officers: list[User],
+    reload_event_request: ReloadEventRequest,
+    history_of: HistoryOf,
+    notifications_of: NotificationsOf,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    arrange(BookingRequestStatus.APPROVED)
+    real_commit = db_session.commit
+    commits: list[str] = []
+
+    def commit_unless_notifying() -> None:
+        # The first commit saves the move and its history; the second is the notices'.
+        commits.append("commit")
+        if len(commits) == 2:
+            raise OperationalError("INSERT", {}, Exception("database down"))
+        real_commit()
+
+    with (
+        patch.object(db_session, "commit", side_effect=commit_unless_notifying),
+        caplog.at_level(logging.WARNING, logger="connectsphere.events"),
+    ):
+        _submit(db_session)
+
+    assert reload_event_request(approved_event.id).status is EventRequestStatus.SAFETY_REVIEW
+    assert history_of(approved_event.id) == [
+        (EventHistoryKind.SAFETY_REVIEW_REQUESTED, COORDINATOR_ID, None)
+    ]
+    for officer_id in SAFETY_OFFICER_IDS:
+        assert notifications_of(officer_id) == []
+    assert [record.getMessage() for record in caplog.records] == [
+        f"event_request_notification_failed reference={REFERENCE} kind=safety_review_requested"
+    ]
 
 
 def test_a_refused_submission_notifies_no_safety_officer(
