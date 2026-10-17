@@ -18,7 +18,7 @@ function artSeed(reference: string): number {
 
 /**
  * The second line: the reference, and the attendance once there is one. Technical Support's list
- * doesn't carry attendance at all (ADR-0051).
+ * doesn't carry attendance at all (ADR-0061).
  */
 function detailsOf(request: ListedRequest): string {
   const attendance = request.expected_attendance ?? null

@@ -10,7 +10,7 @@ import { renderApp } from '@/test/render'
 
 /**
  * SCRUM-24 AC5, AC8, AC11: Technical Support's Staff home lists every event with an equipment
- * request, each opening its Equipment page (ADR-0051). The rows come from the mock in
+ * request, each opening its Equipment page (ADR-0061). The rows come from the mock in
  * src/mocks/handlers/techSupport.ts.
  */
 

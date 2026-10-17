@@ -12,7 +12,7 @@ import { withEquipmentBody } from './techSupport'
  * The mock of Technical Support's two lists, pinned to what the backend sends: the equipment
  * awaiting action (GET /api/events/requests/awaiting-equipment; SCRUM-38, ADR-0022) and the
  * events with equipment (GET /api/events/requests/with-equipment; SCRUM-24 AC5, AC11), and of
- * the equipment types their lines are named from (GET /api/equipment/types; ADR-0051). The
+ * the equipment types their lines are named from (GET /api/equipment/types; ADR-0061). The
  * integration tests check the same shapes against the running backend.
  */
 

@@ -6,7 +6,7 @@ import { logIn } from './logIn'
 
 /**
  * SCRUM-38 and SCRUM-24 AC5: Technical Support find the equipment awaiting them and the events
- * with equipment on Staff home, and open an event's Equipment page from either (ADR-0051).
+ * with equipment on Staff home, and open an event's Equipment page from either (ADR-0061).
  * Against the mock backend.
  */
 

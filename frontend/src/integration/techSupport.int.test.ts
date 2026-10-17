@@ -7,7 +7,7 @@ import { refusal, signInAs, signInAsNewAttendee, staffAccount } from './backend'
 /**
  * Technical Support's two lists against the running backend: the equipment awaiting action
  * (SCRUM-38, ADR-0022) and the events with equipment (SCRUM-24 AC5, AC11), and the equipment
- * types the queue's lines are named from (ADR-0051).
+ * types the queue's lines are named from (ADR-0061).
  *
  * The staff account CI makes is an Event Coordinator, and only Technical Support Staff may read
  * either list, so here the lists are checked as refused to everyone else. What Technical Support

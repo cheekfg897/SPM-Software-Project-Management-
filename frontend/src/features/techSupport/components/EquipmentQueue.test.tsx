@@ -12,7 +12,7 @@ import type { EquipmentAwaitingAction } from '../api'
 
 /**
  * SCRUM-38: Technical Support's Staff home lists the equipment still awaiting them, soonest event
- * first as the backend sends it, each event opening its Equipment page (ADR-0022, ADR-0051).
+ * first as the backend sends it, each event opening its Equipment page (ADR-0022, ADR-0061).
  * Unless a test says otherwise, the rows come from the mock in src/mocks/handlers/techSupport.ts.
  */
 
