@@ -30,7 +30,8 @@ The user stories and acceptance criteria it exercises (SCRUM-51 AC5):
 
 A second journey, SCRUM-75's, has a multi-venue event hold one venue tentatively: the
 hold shows as Tentative, refuses a clashing approval, and is turned into the confirmed
-booking by Venue Staff's final approval.
+booking by Venue Staff's final approval. A third lets the same hold expire and shows
+it stops blocking the clashing request at once, with nothing run to expire it.
 
 Each step's banner comment names the ones it covers. It runs with the rest of the suite
 in CI, so a broken journey fails the backend check (SCRUM-51 AC4).
@@ -39,7 +40,8 @@ in CI, so a broken journey fails the backend check (SCRUM-51 AC4).
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import datetime, time, timedelta
+from dataclasses import dataclass
+from datetime import UTC, datetime, time, timedelta
 from typing import Any
 from urllib.parse import urlencode
 
@@ -51,6 +53,7 @@ from app.common.clock import app_timezone, local_today
 from app.modules.auth.permissions import Role
 from app.modules.auth.services import create_staff_user
 from app.modules.events.models import EventRequest, EventRequestStatus
+from app.modules.venue import services as venue_services
 from tests.e2e.actors import Actor, SignIn
 
 pytestmark = [pytest.mark.scrum_51, pytest.mark.e2e]
@@ -275,14 +278,22 @@ def test_a_clashing_venue_request_is_marked_conflicting_and_refused(
     assert after["available"] == 6
 
 
-@pytest.mark.scrum_75
-@pytest.mark.scrum_44
-def test_a_held_venue_refuses_a_clashing_approval_until_the_hold_is_confirmed(
-    coordinator: Actor,
-    venue_staff: Actor,
-    two_approved_events: None,
-    event_day: datetime,
-) -> None:
+@dataclass(frozen=True)
+class HeldHall:
+    """What the hold journeys share once Venue Staff hold the first event's hall."""
+
+    held_request_id: int
+    clashing_request_id: int
+    calendar_path: str
+    expires_at: datetime
+
+
+def _hold_the_hall(coordinator: Actor, venue_staff: Actor, event_day: datetime) -> HeldHall:
+    """Steps 1 to 3 of both hold journeys, up to Venue Staff holding the hall.
+
+    The first event asks for two venues, so is multi-venue; the second asks for the
+    hall at a time that clashes with the first.
+    """
     held_period = {
         "starts_at": _on_event_day(event_day, 9),
         "ends_at": _on_event_day(event_day, 12),
@@ -299,7 +310,6 @@ def test_a_held_venue_refuses_a_clashing_approval_until_the_hold_is_confirmed(
     # --- 1. Venue Staff set up two venues (SCRUM-25 AC3) ---
     hall = _body(venue_staff.post("/api/venues", VENUE), 201)
     side_room = _body(venue_staff.post("/api/venues", {**VENUE, "name": "Side Room"}), 201)
-    calendar_path = f"/api/venues/{hall['id']}/calendar?{calendar_query}"
 
     # --- 2. The first event asks for both venues, so is multi-venue (SCRUM-75) ---
     first_path = f"/api/venues/events/{FIRST_EVENT}/booking-requests"
@@ -332,35 +342,77 @@ def test_a_held_venue_refuses_a_clashing_approval_until_the_hold_is_confirmed(
         200,
     )
     assert (held["status"], held["hold_expires_at"]) == ("on_hold", expires_at.isoformat())
+    return HeldHall(
+        held_request_id=hall_request["id"],
+        clashing_request_id=clashing_request["id"],
+        calendar_path=f"/api/venues/{hall['id']}/calendar?{calendar_query}",
+        expires_at=expires_at,
+    )
+
+
+def _approve(venue_staff: Actor, request_id: int, expected_status: int) -> Any:
+    """Venue Staff approve a booking request; the body, once its status is expected."""
+    return _body(
+        venue_staff.post(
+            f"/api/venues/booking-requests/{request_id}/decision", {"outcome": "approved"}
+        ),
+        expected_status,
+    )
+
+
+@pytest.mark.scrum_75
+@pytest.mark.scrum_44
+def test_a_held_venue_refuses_a_clashing_approval_until_the_hold_is_confirmed(
+    coordinator: Actor,
+    venue_staff: Actor,
+    two_approved_events: None,
+    event_day: datetime,
+) -> None:
+    held = _hold_the_hall(coordinator, venue_staff, event_day)
 
     # --- 4. The hold shows as Tentative, and the coordinator sees it (AC6, AC9) ---
-    calendar = _body(venue_staff.get(calendar_path), 200)
+    calendar = _body(venue_staff.get(held.calendar_path), 200)
     assert [entry["kind"] for entry in calendar] == ["tentative_hold"]
-    listed = _body(coordinator.get(first_path), 200)
+    listed = _body(coordinator.get(f"/api/venues/events/{FIRST_EVENT}/booking-requests"), 200)
     assert [(row["status"], row["hold_expires_at"]) for row in listed] == [
-        ("on_hold", expires_at.isoformat()),
+        ("on_hold", held.expires_at.isoformat()),
         ("pending", None),
     ]
 
     # --- 5. Approving the clashing request is refused, naming the hold (SCRUM-44) ---
-    refused = _body(
-        venue_staff.post(
-            f"/api/venues/booking-requests/{clashing_request['id']}/decision",
-            {"outcome": "approved"},
-        ),
-        409,
-    )
+    refused = _approve(venue_staff, held.clashing_request_id, 409)
     assert refused["details"]["in_buffer"] is False
     assert f"#{refused['details']['booking_id']}" in refused["message"]
 
     # --- 6. Final approval turns the hold into the confirmed booking (SCRUM-75 AC7) ---
-    approved = _body(
-        venue_staff.post(
-            f"/api/venues/booking-requests/{hall_request['id']}/decision",
-            {"outcome": "approved"},
-        ),
-        200,
-    )
+    approved = _approve(venue_staff, held.held_request_id, 200)
     assert (approved["status"], approved["hold_expires_at"]) == ("approved", None)
-    calendar = _body(venue_staff.get(calendar_path), 200)
+    calendar = _body(venue_staff.get(held.calendar_path), 200)
     assert [entry["kind"] for entry in calendar] == ["confirmed_booking"]
+
+
+@pytest.mark.scrum_75
+@pytest.mark.scrum_44
+def test_an_expired_hold_no_longer_blocks_a_clashing_approval(
+    coordinator: Actor,
+    venue_staff: Actor,
+    two_approved_events: None,
+    event_day: datetime,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    held = _hold_the_hall(coordinator, venue_staff, event_day)
+
+    # --- 4. While the hold is live, the clashing approval is refused (SCRUM-44) ---
+    _approve(venue_staff, held.clashing_request_id, 409)
+
+    # --- 5. The clock passes the expiry; nothing runs, the hold just stops counting ---
+    # Expiring holds is SCRUM-94's job; until then an expired hold is ignored when read.
+    just_after_expiry = held.expires_at.astimezone(UTC) + timedelta(seconds=1)
+    monkeypatch.setattr(venue_services, "_utc_now", lambda: just_after_expiry)
+    assert _body(venue_staff.get(held.calendar_path), 200) == []
+
+    # --- 6. The clashing request can now be approved, and the hold cannot be (AC7) ---
+    approved = _approve(venue_staff, held.clashing_request_id, 200)
+    assert approved["status"] == "approved"
+    refused = _approve(venue_staff, held.held_request_id, 409)
+    assert refused["message"] == "This hold has expired."
