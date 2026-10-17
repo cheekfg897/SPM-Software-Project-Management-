@@ -37,6 +37,7 @@ from app.modules.events.services import (
     add_equipment_line,
     assign_coordinator_to_request,
     complete_event_request,
+    confirm_event_request,
     decide_event_request,
     equipment_lines_as_shown,
     get_event_record_for_coordinator,
@@ -600,4 +601,23 @@ def record_request_safety_outcome(reference: str) -> tuple[Response, int]:
     event_request = record_safety_outcome(
         g.current_user_id, reference, request.get_json(silent=True)
     )
+    return jsonify(_event_request_schema.dump(event_request)), 200
+
+
+# --------------------------------------------------------------------------
+# SCRUM-49 — confirm an event once its arrangements are in place
+# --------------------------------------------------------------------------
+
+
+@bp.post("/requests/<reference>/confirm")
+@requires_role(Role.EVENT_COORDINATOR)
+def confirm_request(reference: str) -> tuple[Response, int]:
+    """Confirm the caller's event in Safety Review (SCRUM-49, ADR-0051).
+
+    Only the event's assigned coordinator may; the service answers anyone else with
+    the equipment routes' "not yours" 404, and refuses an event whose approvals
+    aren't all in with a ``409`` naming each gap. Returns ``200`` with the request,
+    now confirmed.
+    """
+    event_request = confirm_event_request(g.current_user_id, reference)
     return jsonify(_event_request_schema.dump(event_request)), 200

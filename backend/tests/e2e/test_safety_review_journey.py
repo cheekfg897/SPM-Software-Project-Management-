@@ -6,8 +6,10 @@ Technical Support record the equipment outcome, and the coordinator sends the ev
 is then in the Safety Officer's awaiting list with its venue and equipment (AC5, AC6),
 and the Safety Officer has the notification (AC4). SCRUM-98: the Safety Officer
 requests changes, which sends the event back to planning; the coordinator sends it
-again and the Safety Officer approves it, which takes it off their list. Every call
-goes through the real routes with Flask's test client (ADR-0031).
+again and the Safety Officer approves it, which takes it off their list. SCRUM-49: the
+coordinator can't confirm the event before that approval; once it is in, they confirm
+it and the event is confirmed. Every call goes through the real routes with Flask's test
+client (ADR-0031).
 
 Nothing here walks the request to approval: the event is saved as approved, with its
 coordinator, and that journey is test_request_to_approval_journey.py.
@@ -29,7 +31,7 @@ from app.modules.auth.services import create_staff_user
 from app.modules.events.models import EventRequest, EventRequestStatus
 from tests.e2e.actors import Actor, SignIn
 
-pytestmark = [pytest.mark.scrum_97, pytest.mark.scrum_98, pytest.mark.e2e]
+pytestmark = [pytest.mark.scrum_97, pytest.mark.scrum_98, pytest.mark.scrum_49, pytest.mark.e2e]
 
 PASSWORD = "Password123"
 COORDINATOR_ACCOUNT = {"full_name": "Cara Coordinator", "email": "cara@example.com"}
@@ -213,8 +215,15 @@ def test_a_settled_event_reaches_the_safety_officer(
     assert returned["status"] == "approved"
     assert _latest_notification_kind(coordinator) == "safety_changes_requested"
 
-    # --- The coordinator sends it again, and the Safety Officer approves (AC1, AC5) ---
+    # --- The coordinator sends it again; until the Safety Officer approves, it can't be
+    # --- confirmed (SCRUM-49 AC8) ---
+    confirm_path = f"/api/events/requests/{EVENT}/confirm"
     _body(coordinator.post(safety_review_path), 200)
+    unconfirmed = _body(coordinator.post(confirm_path), 409)
+    assert unconfirmed["error"] == "confirmation_not_allowed"
+    assert unconfirmed["details"].keys() == {"safety_check"}
+
+    # --- The Safety Officer approves (SCRUM-98 AC1, AC5) ---
     approval = {"outcome": "approved", "checklist": CHECKLIST}
     approved = _body(safety_officer.post(outcome_path, approval), 200)
     assert approved["status"] == "safety_review"
@@ -224,3 +233,9 @@ def test_a_settled_event_reaches_the_safety_officer(
     assert _body(safety_officer.post(outcome_path, approval), 409)["error"] == (
         "safety_outcome_not_allowed"
     )
+
+    # --- The coordinator confirms the event (SCRUM-49 AC1) ---
+    confirmed = _body(coordinator.post(confirm_path), 200)
+    assert confirmed["status"] == "confirmed"
+    # Confirmed once is enough: it is no longer in Safety Review to confirm again.
+    assert _body(coordinator.post(confirm_path), 409)["error"] == "confirmation_not_allowed"

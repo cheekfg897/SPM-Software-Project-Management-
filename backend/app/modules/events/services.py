@@ -3940,3 +3940,77 @@ def get_event_capacity_for_viewer(
     belongs_to = _events_the_viewer_runs(viewer_id, viewer_role, sess)
     event_request = _event_request_by_reference(reference, sess, belongs_to=belongs_to)
     return EventCapacity(id=event_request.id, capacity=event_request.registration_capacity)
+
+
+# --------------------------------------------------------------------------
+# SCRUM-49 — confirm an event once its arrangements are in place
+# --------------------------------------------------------------------------
+
+NOT_IN_SAFETY_REVIEW_FOR_CONFIRMATION_MESSAGE = "Only an event in Safety Review can be confirmed."
+CONFIRMATION_NOT_READY_MESSAGE = (
+    "The event can be confirmed once the Safety Officer has approved it, every venue "
+    "arrangement is approved and every equipment request has an outcome from Technical "
+    "Support."
+)
+SAFETY_NOT_APPROVED_GAP = "The Safety Officer has not approved the event."
+
+
+class EventConfirmationNotAllowedError(AppError):
+    """The event isn't in Safety Review, or its approvals aren't all in (409)."""
+
+    status_code = 409
+    error_code = "confirmation_not_allowed"
+
+
+def confirm_event_request(
+    coordinator_id: int | str, reference: str, *, session: Session | None = None
+) -> EventRequest:
+    """Confirm an event once its venue, equipment and safety are approved (SCRUM-49).
+
+    Only the event's assigned coordinator may, and only by asking: nothing confirms an
+    event on its own (AC3). The event must be in Safety Review with the Safety
+    Officer's approval (``has_safety_approval``), have at least one venue arranged,
+    every active arrangement Approved (a Withdrawn one is ignored) and every equipment
+    request an outcome; an event with no equipment requests passes that check (AC2).
+    The ``confirmed`` status and an ``event_confirmed`` history entry naming the
+    coordinator are saved in one commit. The organiser who submitted the request is
+    told afterwards (AC12, ADR-0015).
+
+    Args:
+        coordinator_id: The caller's user id, taken from their token.
+        reference: The ``EVR-…`` reference; case and surrounding spaces are ignored.
+        session: Database session; defaults to ``db.session``.
+
+    Returns:
+        The request, now ``confirmed``.
+
+    Raises:
+        NotFoundError: 404 — no such request among the coordinator's own.
+        EventConfirmationNotAllowedError: 409 — the event isn't in Safety Review, or
+            an approval is missing; ``details`` names each gap under ``safety_check``,
+            ``venue_arrangements`` and ``equipment``.
+    """
+    sess = resolve_session(session)
+    event_request = _event_request_assigned_to(coordinator_id, reference, sess)
+    if event_request.status is not EventRequestStatus.SAFETY_REVIEW:
+        raise EventConfirmationNotAllowedError(NOT_IN_SAFETY_REVIEW_FOR_CONFIRMATION_MESSAGE)
+
+    held_back = {}
+    if not has_safety_approval(event_request.id, session=sess):
+        held_back["safety_check"] = [SAFETY_NOT_APPROVED_GAP]
+    held_back.update(_arrangement_gaps(event_request.id, sess))
+    if held_back:
+        raise EventConfirmationNotAllowedError(CONFIRMATION_NOT_READY_MESSAGE, details=held_back)
+
+    event_request.status = EventRequestStatus.CONFIRMED
+    record_event_history(
+        event_request,
+        EventHistoryKind.EVENT_CONFIRMED,
+        actor_id=int(coordinator_id),
+        session=sess,
+    )
+    sess.commit()
+    _raise_notifications(
+        [event_request.organiser_id], event_request, NotificationKind.EVENT_CONFIRMED, sess
+    )
+    return event_request
