@@ -28,7 +28,7 @@ function numberOrNull(typed: string): number | null {
 }
 
 /**
- * The fields that differ from `original`, for the backend to check (ADR-0050). Adding compares
+ * The fields that differ from `original`, for the backend to check (ADR-0065). Adding compares
  * with the empty form, so a field left blank isn't sent and the backend says it is missing; a
  * change sends only the fields that were touched.
  */

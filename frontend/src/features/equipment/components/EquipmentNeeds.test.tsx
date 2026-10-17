@@ -14,7 +14,7 @@ import { renderApp } from '@/test/render'
 /**
  * SCRUM-37 on the Equipment page: the assigned coordinator adds, changes and removes the event's
  * equipment lines (AC1, AC2), a quantity below 1 is refused in the backend's words (AC3), and
- * staff see each line and its status (AC5). ADR-0050.
+ * staff see each line and its status (AC5). ADR-0065.
  */
 
 const COORDINATOR = mockSessionFor(MOCK_ACCOUNTS.coordinator)

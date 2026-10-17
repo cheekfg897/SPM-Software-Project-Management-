@@ -11,7 +11,7 @@ interface RemoveLineConfirmProps {
   onDone: () => void
 }
 
-/** Ask before removing a line (ADR-0050): a removal can't be undone and loses its notes. */
+/** Ask before removing a line (ADR-0065): a removal can't be undone and loses its notes. */
 export function RemoveLineConfirm({ reference, line, lineName, onDone }: RemoveLineConfirmProps) {
   const remove = useRemoveEquipmentLine(reference)
 

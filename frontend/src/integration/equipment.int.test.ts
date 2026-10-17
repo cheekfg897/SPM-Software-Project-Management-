@@ -12,7 +12,7 @@ import { refusal, signInAs, signInAsNewAttendee, staffAccount } from './backend'
 
 /**
  * SCRUM-37's equipment lines and SCRUM-27's equipment types against the running backend: the
- * paths, roles, refusals and wording the equipment page relies on (ADR-0019, ADR-0050).
+ * paths, roles, refusals and wording the equipment page relies on (ADR-0019, ADR-0065).
  *
  * The staff account is an Event Coordinator with no event assigned: CI has no Event Coordinator
  * Lead to assign one, nor a Technical Support account, so what needs an assigned event is a todo.
