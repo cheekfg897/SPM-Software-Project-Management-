@@ -14,8 +14,11 @@ export function errorResponse(status: number, error: string, message: string) {
   return HttpResponse.json({ error, message }, { status })
 }
 
-/** A 400 with per-field messages, as the backend's load_or_raise sends it. */
-export function validationError(details: FieldErrors) {
+/**
+ * A 400 with per-field messages, as the backend's load_or_raise sends it. A nested schema's
+ * messages sit under its field, as marshmallow nests them.
+ */
+export function validationError(details: Record<string, string[] | FieldErrors>) {
   return HttpResponse.json(
     { error: 'validation_error', message: 'Invalid request.', details },
     { status: 400 },
