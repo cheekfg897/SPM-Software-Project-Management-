@@ -18,7 +18,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from app.common.errors import AuthorizationError
+from app.common.errors import AuthenticationError, AuthorizationError
 from app.modules.auth.permissions import ALL_ROLES, Role
 from app.modules.events import routes
 from app.modules.events.models import EventRequest, EventRequestStatus
@@ -57,6 +57,16 @@ def test_other_roles_cannot_record_a_safety_outcome(
         call_route(ENDPOINT, "POST", PATH, VIEW_KWARGS, token_for(role=role), body=BODY)
 
     assert exc_info.value.status_code == 403
+    outcome_service.assert_not_called()
+
+
+def test_recording_a_safety_outcome_without_a_token_is_401(
+    call_route: CallRoute, outcome_service: MagicMock
+) -> None:
+    with pytest.raises(AuthenticationError) as exc_info:
+        call_route(ENDPOINT, "POST", PATH, VIEW_KWARGS, None, body=BODY)
+
+    assert exc_info.value.status_code == 401
     outcome_service.assert_not_called()
 
 
