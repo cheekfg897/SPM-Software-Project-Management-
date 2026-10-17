@@ -387,7 +387,9 @@ def test_the_expiry_is_recorded_in_the_events_history_by_the_system(
     held_request: VenueBookingRequest,
     expires_at: datetime,
 ) -> None:
-    _expire(expires_at + timedelta(hours=1), db_session)
+    """The entry is dated at the run that expired the hold, not by the server clock."""
+    run_at = expires_at + timedelta(hours=1)
+    _expire(run_at, db_session)
 
     history = list_event_history(
         COORDINATOR_ID,
@@ -398,6 +400,7 @@ def test_the_expiry_is_recorded_in_the_events_history_by_the_system(
 
     (entry,) = [entry for entry in history if entry.kind is EventHistoryKind.VENUE_HOLD_EXPIRED]
     assert entry.actor_name is None
+    assert entry.occurred_at == run_at
     assert entry.details == {
         "venue_booking_request_id": held_request.id,
         "venue_id": held_request.venue_id,
