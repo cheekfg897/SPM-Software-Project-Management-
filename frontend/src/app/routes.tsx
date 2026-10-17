@@ -30,6 +30,8 @@ import { EquipmentEventRequests } from '@/features/eventRequests/components/Equi
 import { EquipmentQueue } from '@/features/techSupport/components/EquipmentQueue'
 import { OversightPage } from '@/features/lead/pages/OversightPage'
 import { OrganisationsPage } from '@/features/organisations/pages/OrganisationsPage'
+import { EquipmentCataloguePage } from '@/features/equipmentCatalogue/pages/EquipmentCataloguePage'
+import { EquipmentTypePage } from '@/features/equipmentCatalogue/pages/EquipmentTypePage'
 
 import { NotFoundPage } from './NotFoundPage'
 
@@ -189,6 +191,22 @@ export const appRoutes: RouteObject[] = [
         element: (
           <RequireRole allowedRoles={INTERNAL_ROLES} loginRoute={ROUTES.STAFF_LOGIN}>
             <OrganisationsPage />
+          </RequireRole>
+        ),
+      },
+      {
+        path: ROUTES.EQUIPMENT_CATALOGUE,
+        element: (
+          <RequireRole allowedRoles={INTERNAL_ROLES} loginRoute={ROUTES.STAFF_LOGIN}>
+            <EquipmentCataloguePage />
+          </RequireRole>
+        ),
+      },
+      {
+        path: ROUTES.EQUIPMENT_TYPE,
+        element: (
+          <RequireRole allowedRoles={INTERNAL_ROLES} loginRoute={ROUTES.STAFF_LOGIN}>
+            <EquipmentTypePage />
           </RequireRole>
         ),
       },

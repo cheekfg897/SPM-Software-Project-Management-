@@ -213,10 +213,10 @@ describe('SCRUM-24 AC9, AC10 event record: what a coordinator sees', () => {
       'href',
       '/events/EVR-BOOK0101/venue-requests',
     )
-    expect(screen.getByRole('link', { name: 'Equipment' })).toHaveAttribute(
-      'href',
-      '/events/EVR-BOOK0101/equipment',
-    )
+    // Within the page: the header has an Equipment link too, to the catalogue (SCRUM-27).
+    expect(
+      within(screen.getByRole('main')).getByRole('link', { name: 'Equipment' }),
+    ).toHaveAttribute('href', '/events/EVR-BOOK0101/equipment')
   })
 
   it('shows what the organiser asked for, registration included', async () => {
