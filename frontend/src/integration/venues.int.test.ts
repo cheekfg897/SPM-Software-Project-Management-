@@ -1,9 +1,13 @@
 import {
+  blockVenue,
   createVenue,
   deactivateVenue,
   fetchVenue,
+  fetchVenueBlocks,
+  fetchVenueCalendar,
   fetchVenues,
   reactivateVenue,
+  removeVenueBlock,
   updateVenue,
 } from '@/features/venues/api'
 import type { Deactivation, VenueDetails } from '@/features/venues/api'
@@ -238,4 +242,135 @@ describe.skipIf(!hasVenueStaff)('SCRUM-25 and SCRUM-67 Venue Staff keep the cata
   })
 
   it.todo('reports bookings a longer turnaround now overlaps (needs seeded confirmed bookings)')
+})
+
+/** A whole business day far enough ahead that no "before today" rule refuses it. */
+const FUTURE_DAY = { range_start: '2099-03-02T00:00:00', range_end: '2099-03-03T00:00:00' }
+const FUTURE_BLOCK = {
+  start_time: '2099-03-02T10:00',
+  end_time: '2099-03-02T12:00',
+  reason: '  Integration maintenance  ',
+}
+
+describe('SCRUM-26 a venue calendar against the backend', () => {
+  it('refuses the calendar without a token (401)', async () => {
+    const error = await refusal(fetchVenueCalendar(UNKNOWN_VENUE_ID, FUTURE_DAY))
+
+    expect(error).toMatchObject({ status: 401, code: 'authentication_error' })
+  })
+
+  it('refuses an attendee the calendar (403, AC4)', async () => {
+    await signInAsNewAttendee()
+
+    const error = await refusal(fetchVenueCalendar(UNKNOWN_VENUE_ID, FUTURE_DAY))
+
+    expect(error).toMatchObject({ status: 403, code: 'authorization_error' })
+  })
+
+  it('files a range that ends where it starts under range_end', async () => {
+    await signInAs(staffAccount())
+
+    const error = await refusal(
+      fetchVenueCalendar(UNKNOWN_VENUE_ID, { ...FUTURE_DAY, range_end: FUTURE_DAY.range_start }),
+    )
+
+    expect(error).toMatchObject({ status: 400, code: 'validation_error' })
+    expect(error.fieldErrors).toEqual({ range_end: ['range_end must be after range_start.'] })
+  })
+
+  it('answers 404 for a venue that does not exist once the range is valid', async () => {
+    await signInAs(staffAccount())
+
+    const error = await refusal(fetchVenueCalendar(UNKNOWN_VENUE_ID, FUTURE_DAY))
+
+    expect(error).toMatchObject({ status: 404, message: 'Venue not found.' })
+  })
+})
+
+describe('SCRUM-34 only Venue Staff see and change blocks', () => {
+  it('refuses blocks without a token (401)', async () => {
+    const error = await refusal(fetchVenueBlocks(UNKNOWN_VENUE_ID))
+
+    expect(error).toMatchObject({ status: 401, code: 'authentication_error' })
+  })
+
+  it('refuses a coordinator listing, adding or removing blocks (403)', async () => {
+    await signInAs(staffAccount())
+
+    for (const call of [
+      fetchVenueBlocks(UNKNOWN_VENUE_ID),
+      blockVenue(UNKNOWN_VENUE_ID, FUTURE_BLOCK),
+      removeVenueBlock(UNKNOWN_VENUE_ID, UNKNOWN_VENUE_ID),
+    ]) {
+      const error = await refusal(call)
+      expect(error).toMatchObject({ status: 403, code: 'authorization_error' })
+    }
+  })
+})
+
+describe.skipIf(!hasVenueStaff)('SCRUM-34 and SCRUM-26 Venue Staff block a venue', () => {
+  it('blocks a venue, which its calendar then shows to each role as it may be told, then removes it', async () => {
+    await signInAsVenueStaff()
+    const venue = await createVenue(uniqueVenue())
+
+    const created = await blockVenue(venue.id, FUTURE_BLOCK)
+    const listed = await fetchVenueBlocks(venue.id)
+    const staffCalendar = await fetchVenueCalendar(venue.id, FUTURE_DAY)
+    await signInAs(staffAccount())
+    const coordinatorCalendar = await fetchVenueCalendar(venue.id, FUTURE_DAY)
+    await signInAsVenueStaff()
+    await removeVenueBlock(venue.id, created.id)
+    const afterRemoval = await fetchVenueCalendar(venue.id, FUTURE_DAY)
+
+    expect(created).toMatchObject({
+      venue_id: venue.id,
+      start_time: '2099-03-02T10:00:00+08:00',
+      end_time: '2099-03-02T12:00:00+08:00',
+      reason: 'Integration maintenance',
+      conflicting_bookings: [],
+    })
+    expect(listed.map((block) => block.id)).toEqual([created.id])
+    expect(staffCalendar).toEqual([
+      {
+        start_time: '2099-03-02T10:00:00+08:00',
+        end_time: '2099-03-02T12:00:00+08:00',
+        event_start: null,
+        event_end: null,
+        kind: 'block',
+        reason: 'Integration maintenance',
+      },
+    ])
+    expect(coordinatorCalendar.map((entry) => entry.reason)).toEqual(['maintenance'])
+    expect(afterRemoval).toEqual([])
+  })
+
+  it('refuses a block that ended before today, and a blank reason, by field', async () => {
+    await signInAsVenueStaff()
+    const venue = await createVenue(uniqueVenue())
+
+    const past = await refusal(
+      blockVenue(venue.id, {
+        ...FUTURE_BLOCK,
+        start_time: '2000-01-01T09:00',
+        end_time: '2000-01-01T10:00',
+      }),
+    )
+    const blank = await refusal(blockVenue(venue.id, { ...FUTURE_BLOCK, reason: '   ' }))
+
+    expect(past.fieldErrors).toEqual({ end_time: ['Block cannot end before today.'] })
+    expect(blank.fieldErrors).toEqual({ reason: ['Must not be blank.'] })
+  })
+
+  it('answers 404 for a block that belongs to another venue', async () => {
+    await signInAsVenueStaff()
+    const blocked = await createVenue(uniqueVenue())
+    const other = await createVenue(uniqueVenue())
+    const block = await blockVenue(blocked.id, FUTURE_BLOCK)
+
+    const error = await refusal(removeVenueBlock(other.id, block.id))
+
+    expect(error).toMatchObject({ status: 404, message: 'Block not found.' })
+  })
+
+  it.todo('lists the confirmed bookings a block cuts into (needs seeded confirmed bookings)')
 })
