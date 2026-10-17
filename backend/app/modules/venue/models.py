@@ -135,7 +135,7 @@ class BookingRequestStatus(str, enum.Enum):
     """Where a venue booking request stands (SCRUM-42, SCRUM-93, SCRUM-43).
 
     Nothing cancels a request yet: SCRUM-93 withdraws one and SCRUM-43 decides one, so a
-    ``CANCELLED`` value waits for the story that needs it. SCRUM-94 adds ``EXPIRED``.
+    ``CANCELLED`` value waits for the story that needs it.
     """
 
     PENDING = "pending"
@@ -152,6 +152,10 @@ class BookingRequestStatus(str, enum.Enum):
     #: A Pending request that clashes with one Venue Staff approved (SCRUM-44). They can
     #: still reject it, and nothing clears the status on its own (ADR-0045).
     CONFLICTING = "conflicting"
+    #: The request's hold ran out before Venue Staff gave their final approval, so the
+    #: venue is free again (SCRUM-94, ADR-0052). Like a rejected request, it stays one
+    #: of the event's arrangements until the coordinator withdraws it.
+    EXPIRED = "expired"
 
 
 class BookingDecision(str, enum.Enum):
@@ -341,6 +345,10 @@ class Booking(db.Model):  # type: ignore[name-defined]
     #: ``None`` on a confirmed booking, and on a tentative booking made before holds had
     #: an expiry, which is treated as not expiring.
     hold_expires_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    #: When the coordinator was warned that the hold is about to expire (SCRUM-94). Set
+    #: once per expiry, so the warning is never sent twice, and cleared when Venue Staff
+    #: change the expiry, so the warning follows the new time (ADR-0052).
+    hold_warning_sent_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
 
 
 class VenueBlock(db.Model):  # type: ignore[name-defined]
