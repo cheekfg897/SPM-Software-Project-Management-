@@ -1,9 +1,10 @@
 import type { BookingRequestStatus } from './api'
 
-/** How each status reads on screen. The backend adds `on_hold` with SCRUM-75. */
+/** How each status reads on screen. */
 export const STATUS_LABELS: Record<BookingRequestStatus, string> = {
   pending: 'Pending',
   conflicting: 'Conflicting',
+  on_hold: 'On hold',
   approved: 'Approved',
   rejected: 'Rejected',
 }
