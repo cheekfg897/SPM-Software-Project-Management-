@@ -4,7 +4,10 @@ import { PageContainer } from '@/components/layout'
 
 import { EquipmentContent } from '../components/EquipmentContent'
 
-/** Equipment for one event (SCRUM-45, SCRUM-46): what is free for its period, and what is held. */
+/**
+ * Equipment for one event: what it needs (SCRUM-37), what is free for its period (SCRUM-45),
+ * and what is held (SCRUM-46).
+ */
 export function EventEquipmentPage() {
   // The route always supplies it; useParams just types it as possibly missing.
   const { reference = '' } = useParams()
@@ -12,7 +15,7 @@ export function EventEquipmentPage() {
   return (
     <PageContainer
       title={`Equipment for ${reference}`}
-      description="What is free of each equipment type for this event's own start and end, against what it asks for."
+      description="What this event needs, and what is free of each equipment type for its own start and end against that."
     >
       <div className="mt-8">
         <EquipmentContent reference={reference} />
