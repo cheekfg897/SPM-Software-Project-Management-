@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-16
-- **Story:** SCRUM-44 Prevent the same venue being booked twice (the approval clauses and, from decision 7, the Conflicting status)
+- **Story:** SCRUM-44 Prevent the same venue being booked twice (the approval clauses and, from decision 7, the Conflicting status); SCRUM-75 Place a tentative hold on a venue (from decision 13, the hold clauses)
 - **Extends:** ADR-0011, ADR-0042
 
 ## Context
@@ -17,6 +17,7 @@ the others are separate pull requests.
    Conflicting, and every booking whose period a buffer change makes overlap is marked
    Conflicting and listed for Venue Staff. Decisions 7 to 12 below.
 3. **Holds.** The ACs about tentative holds wait for SCRUM-75, which creates the hold.
+   Decisions 13 to 19 are SCRUM-75's, and settle decision 3's wait.
 
 ## Decision
 
@@ -32,7 +33,7 @@ the others are separate pull requests.
    clash. No buffer arithmetic was written for this slice.
 
 3. **Only confirmed bookings count.** A cancelled booking holds nothing. A tentative booking
-   is a hold, and the hold ACs, including that an expired one does not count, are SCRUM-75's.
+   is a hold; this slice left holds to SCRUM-75, whose decisions 13 to 19 count a live one.
 
 4. **The refusal is a 409 that names the booking.** The message says whether the requested
    period overlaps the booking itself or only its padding, and in the second case names the
@@ -98,6 +99,60 @@ the others are separate pull requests.
     overlap, the booking stays Conflicting until a story says how Venue Staff resolve it. The
     AC says only that the booking is marked and listed.
 
+13. **A hold is a tentative booking, and its request is On Hold (SCRUM-75).** Placing one
+    makes a `tentative` booking for the request's venue and period, with the expiry in
+    `bookings.hold_expires_at`, and links it from the request (`booking_id`). The request
+    moves to `on_hold`, a new `booking_request_status` value (migration 0036). The
+    expiry lives only on the booking, so there is one place to change it and SCRUM-94 has
+    one place to look for holds that have run out. The request shows it as
+    `hold_expires_at`, and as `null` unless it is On Hold.
+
+14. **A hold is a second step after the venue is judged available, on a multi-venue
+    event.** It is placed with `POST /api/venues/booking-requests/<id>/hold` on a Pending
+    or Conflicting request, not as a third outcome of the decision route: the ACs say the
+    hold follows approval of the venue, and it needs an expiry no decision has. The event
+    is multi-venue when it has more than one active arrangement
+    (`count_active_arrangements`); a Rejected one is still active. This is checked when
+    the hold is placed, so a hold stands if the event later drops to one venue.
+
+15. **A hold is checked exactly as an approval is.** `_refuse_clash` runs for both, so a
+    hold is refused by a confirmed booking, a Conflicting one or another live hold, with
+    decision 2's padding and decision 4's 409 naming the booking. The refusal reuses the
+    approval's wording ("Cannot approve: ...") rather than a second set of messages;
+    **default to review**.
+
+16. **The expiry is Venue Staff's to set, within two limits.** It must be in the future
+    and before the event starts (the event's date and start time, in business time). The
+    system sets no length. A time with no offset is read as business time (ADR-0009).
+    `PATCH` on the same route changes it, under the same limits, and only while the hold
+    is live; a hold that has run out cannot be extended. Both notify the coordinator who
+    raised the request, with the expiry as the notice's detail
+    (`venue_hold_placed`, `venue_hold_expiry_changed`). **No event-history entry is
+    written for a hold**; the ACs do not ask for one, and it can follow with SCRUM-94's
+    expiry; **default to review**.
+
+17. **A live hold occupies the venue like a booking; an expired one does not, decided
+    when it is read.** `_booking_is_live` is the one rule: a booking holds the venue
+    unless it is cancelled or is a tentative hold whose expiry has passed. The approval
+    and hold checks (decision 1 and 15), the calendar and venue search all use it, so a
+    hold stops counting at the moment it expires, with no job running. Marking the hold
+    and its request Expired, and the warnings, are SCRUM-94's. A tentative booking with
+    no expiry, made before holds had one, never lapses.
+
+18. **Final approval and rejection decide a request that is On Hold (SCRUM-43's deferred
+    ACs).** Approving it turns its own hold into the confirmed booking (status
+    `confirmed`, no expiry), so it is not checked against itself and still marks the
+    Pending requests it clashes with Conflicting, as any approval does (decision 8).
+    Approving after the expiry is refused with a 409 and leaves the request On Hold.
+    Rejecting cancels the hold, which releases the venue at once.
+
+19. **What the hold clauses leave undone.** SCRUM-44's "a Pending request that overlaps an
+    active hold is shown as Conflicting, and is re-evaluated when the hold ends" is not
+    built: placing a hold marks nothing, because nothing clears a Conflicting status
+    (decision 9) and a request marked by a hold that is later rejected or expires would
+    stay marked. A buffer change's report (decision 10) still looks at confirmed bookings
+    only.
+
 ## Consequences
 
 - Venue Staff can no longer double-book a venue by approving. ADR-0042's consequence that "the
@@ -118,6 +173,11 @@ the others are separate pull requests.
 
 - A Conflicting request or booking should clear itself, or be resolved by Venue Staff
   (decisions 9 and 12).
-- **SCRUM-75** adds the hold: an active hold counts as a clash, an expired one does not, and
-  approving a request does not clash with its own hold (decision 3).
 - Venue blocks should refuse an approval too (Consequences).
+- **SCRUM-94** expires holds: it marks the hold and its request Expired and sends the
+  24-hour warning. Until then an expired hold only stops counting (decision 17), and its
+  request stays On Hold.
+- A Pending request that overlaps a hold should be marked Conflicting, and cleared when
+  the hold ends (decision 19), once something can clear a Conflicting status.
+- The frontend gets a screen to hold a request and change its expiry. Its types and
+  fixtures know `on_hold` and `hold_expires_at`; no mock handler serves the hold routes.
