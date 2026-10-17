@@ -6,10 +6,13 @@ Create Date: 2026-10-16
 
 SCRUM-44 "Prevent the same venue being booked twice" (ADR-0045):
 
-* ``booking_request_status`` gains ``conflicting``, for a request raised while another
-  Pending request at the venue overlaps it.
+* ``booking_request_status`` gains ``conflicting``, for a Pending request that clashes
+  with one Venue Staff approved.
 * ``booking_status`` gains ``conflicting``, for a confirmed booking that a change to the
   venue's setup or turnaround time made overlap another booking or a block.
+* ``uq_venue_booking_requests_pending`` covers Conflicting requests as well as Pending
+  ones, so a coordinator can't raise a second request for the same event, venue and
+  period while the first is Conflicting (SCRUM-42 AC6).
 
 The values are added outside the migration's transaction, with ``IF NOT EXISTS``, as
 0025 does. Postgres can't remove an enum value, so downgrading puts every Conflicting
@@ -34,6 +37,26 @@ PREVIOUS_REQUEST_STATUS_VALUES = ("pending", "withdrawn", "approved", "rejected"
 
 #: What migration 0004 left. Downgrade rebuilds ``booking_status`` with just this.
 PREVIOUS_BOOKING_STATUS_VALUES = ("tentative", "confirmed", "cancelled")
+
+
+#: Which requests the index counts. The first is what migrations 0020 and 0023 left,
+#: which downgrade restores; the second is what this migration makes it.
+PENDING_ONLY = "status = 'pending'"
+PENDING_OR_CONFLICTING = "status IN ('pending', 'conflicting')"
+
+
+def _drop_pending_index() -> None:
+    op.drop_index("uq_venue_booking_requests_pending", table_name="venue_booking_requests")
+
+
+def _create_pending_index(predicate: str) -> None:
+    op.create_index(
+        "uq_venue_booking_requests_pending",
+        "venue_booking_requests",
+        ["event_id", "venue_id", "starts_at", "ends_at"],
+        unique=True,
+        postgresql_where=sa.text(predicate),
+    )
 
 
 def _add_conflicting(type_name: str) -> None:
@@ -62,24 +85,23 @@ def upgrade() -> None:
     with op.get_context().autocommit_block():
         _add_conflicting("booking_request_status")
         _add_conflicting("booking_status")
+    # The new value is committed by now, so the index can name it.
+    _drop_pending_index()
+    _create_pending_index(PENDING_OR_CONFLICTING)
 
 
 def downgrade() -> None:
-    # The pending index's predicate (status = 'pending') can't be re-created against
-    # the renamed enum type, so it is dropped around the rebuild, as 0025 does.
-    op.drop_index("uq_venue_booking_requests_pending", table_name="venue_booking_requests")
+    # The pending index's predicate can't be re-created against the renamed enum type,
+    # so it is dropped around the rebuild, as 0025 does. The wider index means no
+    # Conflicting request shares its event, venue and period with a Pending one, so
+    # turning them back into Pending ones cannot break the narrower index.
+    _drop_pending_index()
     op.execute(
         sa.text("UPDATE venue_booking_requests SET status='pending' WHERE status = 'conflicting'")
     )
     _rebuild_without_conflicting(
         "booking_request_status", "venue_booking_requests", PREVIOUS_REQUEST_STATUS_VALUES
     )
-    op.create_index(
-        "uq_venue_booking_requests_pending",
-        "venue_booking_requests",
-        ["event_id", "venue_id", "starts_at", "ends_at"],
-        unique=True,
-        postgresql_where=sa.text("status = 'pending'"),
-    )
+    _create_pending_index(PENDING_ONLY)
     op.execute(sa.text("UPDATE bookings SET status='confirmed' WHERE status = 'conflicting'"))
     _rebuild_without_conflicting("booking_status", "bookings", PREVIOUS_BOOKING_STATUS_VALUES)
