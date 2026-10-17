@@ -30,8 +30,11 @@ import { EquipmentEventRequests } from '@/features/eventRequests/components/Equi
 import { EquipmentQueue } from '@/features/techSupport/components/EquipmentQueue'
 import { OversightPage } from '@/features/lead/pages/OversightPage'
 import { OrganisationsPage } from '@/features/organisations/pages/OrganisationsPage'
+import { EQUIPMENT_CATALOGUE_EDITOR_ROLES } from '@/features/equipmentCatalogue/constants'
+import { EditEquipmentTypePage } from '@/features/equipmentCatalogue/pages/EditEquipmentTypePage'
 import { EquipmentCataloguePage } from '@/features/equipmentCatalogue/pages/EquipmentCataloguePage'
 import { EquipmentTypePage } from '@/features/equipmentCatalogue/pages/EquipmentTypePage'
+import { NewEquipmentTypePage } from '@/features/equipmentCatalogue/pages/NewEquipmentTypePage'
 
 import { NotFoundPage } from './NotFoundPage'
 
@@ -207,6 +210,28 @@ export const appRoutes: RouteObject[] = [
         element: (
           <RequireRole allowedRoles={INTERNAL_ROLES} loginRoute={ROUTES.STAFF_LOGIN}>
             <EquipmentTypePage />
+          </RequireRole>
+        ),
+      },
+      {
+        path: ROUTES.NEW_EQUIPMENT_TYPE,
+        element: (
+          <RequireRole
+            allowedRoles={EQUIPMENT_CATALOGUE_EDITOR_ROLES}
+            loginRoute={ROUTES.STAFF_LOGIN}
+          >
+            <NewEquipmentTypePage />
+          </RequireRole>
+        ),
+      },
+      {
+        path: ROUTES.EDIT_EQUIPMENT_TYPE,
+        element: (
+          <RequireRole
+            allowedRoles={EQUIPMENT_CATALOGUE_EDITOR_ROLES}
+            loginRoute={ROUTES.STAFF_LOGIN}
+          >
+            <EditEquipmentTypePage />
           </RequireRole>
         ),
       },
