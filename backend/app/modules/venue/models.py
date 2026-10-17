@@ -187,6 +187,12 @@ HOLDABLE_REQUEST_STATUSES = frozenset(
     {BookingRequestStatus.PENDING, BookingRequestStatus.CONFLICTING}
 )
 
+#: Statuses of a request that has a hold, live or run out, whose expiry is shown
+#: (SCRUM-75 AC9, SCRUM-94 AC6).
+REQUEST_STATUSES_WITH_A_HOLD = frozenset(
+    {BookingRequestStatus.ON_HOLD, BookingRequestStatus.EXPIRED}
+)
+
 
 class PreparationStatus(str, enum.Enum):
     """How far Venue Staff have got in setting up a booking (SCRUM-84, ADR-0049).
