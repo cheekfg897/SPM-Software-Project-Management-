@@ -245,6 +245,22 @@ def test_a_full_event_has_no_places_left(
     assert (listing.capacity, listing.registered_count, listing.places_left) == (2, 2, 0)
 
 
+def test_places_left_never_goes_below_zero(
+    registrants: ListRegistrants,
+    make_open_event: MakeOpenEvent,
+    make_attendee: MakeAttendee,
+    make_registration: MakeRegistration,
+) -> None:
+    """A third registration at capacity 2 is only possible straight in the table."""
+    event = make_open_event(capacity=2)
+    for user_id, name in [(21, "Alice Tan"), (22, "Bob Ong"), (23, "Carol Lim")]:
+        make_registration(event, make_attendee(user_id, name).id)
+
+    listing = registrants(ORGANISER, Role.EVENT_ORGANISER, event.reference)
+
+    assert (listing.capacity, listing.registered_count, listing.places_left) == (2, 3, 0)
+
+
 def test_an_event_that_never_had_a_capacity_shows_none_and_no_places_left_figure(
     registrants: ListRegistrants, make_open_event: MakeOpenEvent, save: Callable[..., None]
 ) -> None:
