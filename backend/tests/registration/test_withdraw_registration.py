@@ -27,10 +27,12 @@ from app.modules.auth.permissions import Role
 from app.modules.events.models import EventRequest
 from app.modules.registration import routes
 from app.modules.registration.models import Registration, RegistrationStatus
+from app.modules.registration.schemas import MyEventsWindow
 from app.modules.registration.services import (
     AlreadyWithdrawnError,
     EventFullError,
     MyRegistration,
+    MyRegistrationList,
     WithdrawalClosedError,
     count_registered,
     list_catalogue,
@@ -475,3 +477,35 @@ def test_withdrawing_without_a_token_is_401(
         call_route(WITHDRAW_ENDPOINT, "DELETE", WITHDRAW_PATH, WITHDRAW_KWARGS, None)
 
     withdraw_service.assert_not_called()
+
+
+# --------------------------------------------------------------------------
+# GET /api/events/registrations — a withdrawn row, as the attendee's list sends it
+# --------------------------------------------------------------------------
+
+
+def test_my_list_sends_when_a_registration_was_withdrawn_in_business_time(
+    call_route: CallRoute,
+    replace_services: Callable[..., dict[str, MagicMock]],
+    now: datetime,
+    attendee_token: str,
+) -> None:
+    row = MyRegistration(
+        event_id=41,
+        name="Jazz by the Bay",
+        starts_at=EVENT_STARTS,
+        ends_at=EVENT_ENDS,
+        event_status="confirmed",
+        status=RegistrationStatus.WITHDRAWN,
+        registered_at=now - timedelta(days=1),
+        withdrawn_at=now,
+    )
+    listing = MyRegistrationList(when=MyEventsWindow.UPCOMING, registrations=[row])
+    replace_services(routes, {"list_my_registrations": listing})
+
+    response = call_route(
+        "registration.view_my_registrations", "GET", "/api/events/registrations", {}, attendee_token
+    )
+
+    shown = response.get_json()["registrations"][0]
+    assert (shown["status"], shown["withdrawn_at"]) == ("withdrawn", "2026-10-14T12:00:00+08:00")
