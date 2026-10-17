@@ -1,38 +1,15 @@
-import { Button, ErrorAlert, Spinner } from '@/components/ui'
+import { EmptyState } from '@/components/ui'
 
+import type { UnassignedQueue as QueueBody } from '../api'
 import { useUnassignedQueue } from '../hooks'
 
+import { QueryResult } from './QueryResult'
 import { QueuedRequestCard } from './QueuedRequestCard'
 
-/** The requests waiting for a coordinator, oldest first, or why there are none to show. */
-export function UnassignedQueue() {
-  const queue = useUnassignedQueue()
-
-  if (queue.isPending) {
-    return (
-      <p role="status" className="text-ink-muted flex items-center gap-3">
-        <Spinner />
-        Loading unassigned requests…
-      </p>
-    )
-  }
-  if (queue.isError) {
-    return (
-      <div className="space-y-4">
-        <ErrorAlert error={queue.error} />
-        <Button variant="secondary" onClick={() => void queue.refetch()}>
-          Try again
-        </Button>
-      </div>
-    )
-  }
-  const { event_requests: requests, message } = queue.data
-  if (requests.length === 0) {
-    return (
-      <p className="border-line text-ink-muted rounded-2xl border border-dashed px-6 py-16 text-center">
-        {message}
-      </p>
-    )
+function QueueList({ event_requests: requests, message }: QueueBody) {
+  // The backend sends a message only with an empty queue (SCRUM-24 AC11, ADR-0036).
+  if (message !== undefined) {
+    return <EmptyState message={message} />
   }
   return (
     <ul className="space-y-5">
@@ -42,5 +19,16 @@ export function UnassignedQueue() {
         </li>
       ))}
     </ul>
+  )
+}
+
+/** The requests waiting for a coordinator, oldest first, or why there are none to show. */
+export function UnassignedQueue() {
+  const queue = useUnassignedQueue()
+
+  return (
+    <QueryResult query={queue} loadingLabel="Loading unassigned requests…">
+      {(body) => <QueueList {...body} />}
+    </QueryResult>
   )
 }
