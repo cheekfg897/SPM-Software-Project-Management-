@@ -204,22 +204,22 @@ describe('SCRUM-44 booking mock: approving a request that clashes', () => {
     })
   }
 
-  /** Raise a second request at the roomy venue that overlaps the one already waiting there. */
-  async function raiseOverlappingRequest(): Promise<number> {
+  /** The period request 9001 waits for at the roomy venue is 09:00 to 12:00 on 20 November. */
+  const OVERLAPPING_9001 = {
+    starts_at: '2026-11-20T11:00:00+08:00',
+    ends_at: '2026-11-20T14:00:00+08:00',
+  }
+
+  /** Raise a second request, with ``overrides`` to the payload, as the coordinator would. */
+  async function raiseRequest(overrides: Record<string, unknown>): Promise<number> {
     sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.coordinator))
-    const raised = await raise(
-      APPROVED_EVENT.reference,
-      validPayload({
-        starts_at: '2026-11-20T11:00:00+08:00',
-        ends_at: '2026-11-20T14:00:00+08:00',
-      }),
-    )
+    const raised = await raise(APPROVED_EVENT.reference, validPayload(overrides))
     sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.venueStaff))
     return Number(raised.id)
   }
 
   it('refuses an approval that overlaps an approved request at the same venue', async () => {
-    const overlapping = await raiseOverlappingRequest()
+    const overlapping = await raiseRequest(OVERLAPPING_9001)
     await decide(WAITING_AT_ROOMY_VENUE, 'approved')
 
     const error = await errorOf(decide(overlapping, 'approved'))
@@ -231,11 +231,38 @@ describe('SCRUM-44 booking mock: approving a request that clashes', () => {
   })
 
   it('still lets the overlapping request be rejected', async () => {
-    const overlapping = await raiseOverlappingRequest()
+    const overlapping = await raiseRequest(OVERLAPPING_9001)
     await decide(WAITING_AT_ROOMY_VENUE, 'approved')
 
     const rejected = await decide(overlapping, 'rejected')
 
     expect(rejected.status).toBe('rejected')
+  })
+
+  it.each([
+    [
+      'at another venue',
+      {
+        venue_id: TINY_VENUE.id,
+        expected_occupancy: 10,
+        starts_at: '2026-11-20T09:00:00+08:00',
+        ends_at: '2026-11-20T12:00:00+08:00',
+      },
+    ],
+    [
+      'ending as the approved one starts',
+      { starts_at: '2026-11-20T06:00:00+08:00', ends_at: '2026-11-20T09:00:00+08:00' },
+    ],
+    [
+      'starting as the approved one ends',
+      { starts_at: '2026-11-20T12:00:00+08:00', ends_at: '2026-11-20T14:00:00+08:00' },
+    ],
+  ])('approves a request %s', async (_name, overrides) => {
+    const clear = await raiseRequest(overrides)
+    await decide(WAITING_AT_ROOMY_VENUE, 'approved')
+
+    const approved = await decide(clear, 'approved')
+
+    expect(approved.status).toBe('approved')
   })
 })
