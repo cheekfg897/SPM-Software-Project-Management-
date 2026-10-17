@@ -7,14 +7,10 @@ import type { MockAccount } from '@/mocks/fixtures/accounts'
 import { server } from '@/mocks/server'
 import { renderApp } from '@/test/render'
 
+import { OTHER_STAFF } from '../test/staff'
+
 const TYPES_URL = '/api/equipment/types'
 
-/** Staff who may read the catalogue but not change it (SCRUM-27 AC3). */
-const OTHER_STAFF: [string, MockAccount][] = [
-  ['an Event Coordinator', MOCK_ACCOUNTS.coordinator],
-  ['the Event Coordinator Lead', MOCK_ACCOUNTS.lead],
-  ['Venue Staff', MOCK_ACCOUNTS.venueStaff],
-]
 const EVERY_STAFF_ROLE: [string, MockAccount][] = [
   ...OTHER_STAFF,
   ['Technical Support', MOCK_ACCOUNTS.technicalSupport],

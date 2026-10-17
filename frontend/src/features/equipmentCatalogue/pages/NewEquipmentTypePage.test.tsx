@@ -9,13 +9,8 @@ import { server } from '@/mocks/server'
 import { recordRequests } from '@/test/recordRequests'
 import { renderApp } from '@/test/render'
 
+import { OTHER_STAFF } from '../test/staff'
 import { bodySent, FIELD, fillIn } from '../test/equipmentTypeForm'
-
-const OTHER_STAFF: [string, MockAccount][] = [
-  ['an Event Coordinator', MOCK_ACCOUNTS.coordinator],
-  ['the Event Coordinator Lead', MOCK_ACCOUNTS.lead],
-  ['Venue Staff', MOCK_ACCOUNTS.venueStaff],
-]
 
 function openFormAs(account: MockAccount) {
   return renderApp(ROUTES.NEW_EQUIPMENT_TYPE, { session: mockSessionFor(account) })

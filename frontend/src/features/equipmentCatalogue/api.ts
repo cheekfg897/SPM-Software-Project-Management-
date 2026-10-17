@@ -29,7 +29,7 @@ export interface EquipmentTypeInput {
   store_name: string | null
 }
 
-export interface EquipmentTypeChange {
+interface EquipmentTypeChange {
   equipmentTypeId: string
   changes: EquipmentTypeInput
 }
