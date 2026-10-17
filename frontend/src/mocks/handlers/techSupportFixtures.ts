@@ -4,7 +4,7 @@ import type { EquipmentLine } from '@/features/techSupport/api'
 import { MOCK_CLOSED_EVENT_REFERENCE, MOCK_OPEN_EVENT_REFERENCE } from './equipmentFixtures'
 
 /**
- * The events Technical Support's two lists are read from (SCRUM-38, SCRUM-24 AC5; ADR-0051),
+ * The events Technical Support's two lists are read from (SCRUM-38, SCRUM-24 AC5; ADR-0061),
  * with their equipment lines. Projector is equipment type 1 and Microphone type 2, as in the
  * equipment mock. The queue's "today" is the mock's, MOCK_TODAY (2026-10-05).
  */

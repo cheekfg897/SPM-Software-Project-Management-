@@ -25,7 +25,7 @@ import type { MockEquipmentEvent } from './techSupportFixtures'
  * Technical Support's two lists, as backend/app/modules/events/routes.py answers them: the
  * equipment awaiting action (SCRUM-38, ADR-0022) and the events with equipment (SCRUM-24 AC5,
  * ADR-0026), both for Technical Support only; and the equipment types their lines are named from,
- * as backend/app/modules/equipment/routes.py answers them for any staff role (ADR-0051).
+ * as backend/app/modules/equipment/routes.py answers them for any staff role (ADR-0061).
  */
 
 const AWAITING_EQUIPMENT_PATH = '/api/events/requests/awaiting-equipment'

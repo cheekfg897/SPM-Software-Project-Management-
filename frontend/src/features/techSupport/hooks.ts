@@ -10,7 +10,7 @@ export function useEquipmentAwaitingAction() {
   })
 }
 
-/** Every equipment type, to name the queue's lines by (ADR-0022, ADR-0051). */
+/** Every equipment type, to name the queue's lines by (ADR-0022, ADR-0061). */
 export function useEquipmentTypes() {
   return useQuery({
     queryKey: techSupportKeys.equipmentTypes(),

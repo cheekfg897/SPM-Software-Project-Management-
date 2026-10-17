@@ -9,7 +9,7 @@ import { RequestListSection } from './RequestListSection'
 
 const TITLE = 'Events with equipment'
 
-/** Technical Support can't open an event's record, but may open its Equipment page (ADR-0051). */
+/** Technical Support can't open an event's record, but may open its Equipment page (ADR-0061). */
 function pathFor(request: EventListRow): string {
   return eventEquipmentPath(request.reference)
 }
@@ -21,7 +21,7 @@ function EquipmentList() {
 
 /**
  * On Staff home, every event with an equipment request, newest first, for Technical Support
- * (SCRUM-24 AC5, AC8, AC11; ADR-0051). Other roles see none, and nothing is asked for.
+ * (SCRUM-24 AC5, AC8, AC11; ADR-0061). Other roles see none, and nothing is asked for.
  */
 export function EquipmentEventRequests() {
   const viewer = useAppSelector(selectSessionUser)

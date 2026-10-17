@@ -25,7 +25,7 @@ function daysLeft(days: number): string {
 
 /**
  * e.g. "Projector × 2, Microphone × 4". A type the catalogue doesn't list yet is named by its id,
- * so its line still shows (ADR-0051).
+ * so its line still shows (ADR-0061).
  */
 function equipmentOf(lines: EquipmentLine[], typeNames: ReadonlyMap<number, string>): string {
   const named: string[] = []
@@ -39,7 +39,7 @@ function equipmentOf(lines: EquipmentLine[], typeNames: ReadonlyMap<number, stri
 
 /**
  * One event in the queue: when it is, what it is, the equipment still to arrange and how long is
- * left. It opens the event's Equipment page (SCRUM-38 AC2, ADR-0051).
+ * left. It opens the event's Equipment page (SCRUM-38 AC2, ADR-0061).
  */
 export function EquipmentQueueRow({ item, typeNames }: EquipmentQueueRowProps) {
   const { event } = item

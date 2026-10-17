@@ -52,7 +52,7 @@ export interface EquipmentType {
 
 /**
  * Both answers are the same for every Technical Support member and nobody else asks, so the
- * viewer isn't part of either key; signing out clears the cache (ADR-0051).
+ * viewer isn't part of either key; signing out clears the cache (ADR-0061).
  */
 export const techSupportKeys = {
   all: ['techSupport'] as const,

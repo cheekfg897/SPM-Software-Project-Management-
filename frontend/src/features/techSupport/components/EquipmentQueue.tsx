@@ -10,7 +10,7 @@ import { useEquipmentAwaitingAction, useEquipmentTypes } from '../hooks'
 import { EquipmentQueueRow } from './EquipmentQueueRow'
 
 const TITLE = 'Equipment awaiting action'
-/** The web app's own words: the backend sends no message with an empty queue (ADR-0051). */
+/** The web app's own words: the backend sends no message with an empty queue (ADR-0061). */
 const NOTHING_AWAITING = 'No equipment requests are awaiting action.'
 
 function namesById(types: EquipmentType[]): Map<number, string> {
@@ -78,7 +78,7 @@ function QueueSection() {
 
 /**
  * On Staff home, Technical Support's queue: every upcoming event's equipment still awaiting
- * them, soonest first, each opening the event's Equipment page (SCRUM-38, ADR-0022, ADR-0051).
+ * them, soonest first, each opening the event's Equipment page (SCRUM-38, ADR-0022, ADR-0061).
  * Other roles see nothing, and nothing is asked for.
  */
 export function EquipmentQueue() {

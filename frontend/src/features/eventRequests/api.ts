@@ -224,7 +224,7 @@ const WITH_EQUIPMENT_PATH = `${EVENT_REQUEST_PATHS.MINE}/with-equipment`
 
 /**
  * Technical Support's list of the events with an equipment request. The same for every one of
- * them, and nobody else may read it, so the viewer isn't part of the key (ADR-0051).
+ * them, and nobody else may read it, so the viewer isn't part of the key (ADR-0061).
  */
 export const WITH_EQUIPMENT_KEY = [...eventRequestKeys.all, 'withEquipment'] as const
 

@@ -1,4 +1,4 @@
-# ADR-0051: Technical Support's two lists on Staff home, each event opening its Equipment page
+# ADR-0061: Technical Support's two lists on Staff home, each event opening its Equipment page
 
 - **Status:** Accepted; the wording of days remaining, the empty queue's message and the name
   shown for an equipment type the catalogue doesn't list are defaults to review
