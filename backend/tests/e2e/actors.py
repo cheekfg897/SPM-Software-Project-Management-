@@ -42,6 +42,10 @@ class Actor:
         """Send a ``PATCH`` with a JSON body as this user."""
         return self._call("PATCH", path, body)
 
+    def delete(self, path: str) -> TestResponse:
+        """Send a ``DELETE`` as this user."""
+        return self._call("DELETE", path, None)
+
 
 #: What the ``sign_in`` fixture returns: takes an email and password, gives an Actor.
 SignIn = Callable[[str, str], Actor]
