@@ -217,6 +217,21 @@ def test_each_registrant_shows_name_email_date_and_status_oldest_first(
     ]
 
 
+def test_registrations_made_at_the_same_moment_are_listed_in_the_order_saved(
+    registrants: ListRegistrants,
+    open_event: EventRequest,
+    make_attendee: MakeAttendee,
+    make_registration: MakeRegistration,
+) -> None:
+    """Saved Bob before Alice, so an alphabetical or reversed tie-break shows."""
+    make_registration(open_event, make_attendee(22, "Bob Ong").id)
+    make_registration(open_event, make_attendee(21, "Alice Tan").id)
+
+    listing = registrants(ORGANISER, Role.EVENT_ORGANISER, open_event.reference)
+
+    assert [row.name for row in listing.items] == ["Bob Ong", "Alice Tan"]
+
+
 def test_another_events_registrations_are_not_included(
     registrants: ListRegistrants,
     make_open_event: MakeOpenEvent,
