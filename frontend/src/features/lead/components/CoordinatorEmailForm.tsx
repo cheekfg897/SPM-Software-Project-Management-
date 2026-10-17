@@ -11,8 +11,8 @@ interface CoordinatorEmailFormProps {
   reference: string
   /** The event's name, so the field and button say which event they belong to. */
   name: string
-  /** What the button does: "Assign" in the queue. */
-  verb: 'Assign'
+  /** What the button does: "Assign" in the queue, "Reassign" on the oversight page. */
+  verb: 'Assign' | 'Reassign'
   /** The mutation the form sends, one per card so each shows its own refusal. */
   mutation: UseMutationResult<AssignedRequest, Error, CoordinatorChoice>
 }
@@ -32,7 +32,8 @@ export function CoordinatorEmailForm({
 
   function submit(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault()
-    mutation.mutate({ reference, coordinator_email: email })
+    // The field empties once the backend accepts, since a reassigned event stays on the page.
+    mutation.mutate({ reference, coordinator_email: email }, { onSuccess: () => setEmail('') })
   }
 
   return (
