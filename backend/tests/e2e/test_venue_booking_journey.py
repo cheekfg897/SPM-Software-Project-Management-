@@ -31,7 +31,10 @@ The user stories and acceptance criteria it exercises (SCRUM-51 AC5):
 A second journey, SCRUM-75's, has a multi-venue event hold one venue tentatively: the
 hold shows as Tentative, refuses a clashing approval, and is turned into the confirmed
 booking by Venue Staff's final approval. A third lets the same hold expire and shows
-it stops blocking the clashing request at once, with nothing run to expire it.
+it stops blocking the clashing request at once, with nothing run to expire it. A fourth,
+SCRUM-94's, runs ``flask expire-holds`` as the scheduled workflow does: first a day
+before the expiry, which warns the coordinator, then after it, which marks the hold
+Expired, tells the coordinator and records it in the event's history.
 
 Each step's banner comment names the ones it covers. It runs with the rest of the suite
 in CI, so a broken journey fails the backend check (SCRUM-51 AC4).
@@ -46,6 +49,7 @@ from typing import Any
 from urllib.parse import urlencode
 
 import pytest
+from flask import Flask
 from sqlalchemy.orm import Session
 from werkzeug.test import TestResponse
 
@@ -406,7 +410,8 @@ def test_an_expired_hold_no_longer_blocks_a_clashing_approval(
     _approve(venue_staff, held.clashing_request_id, 409)
 
     # --- 5. The clock passes the expiry; nothing runs, the hold just stops counting ---
-    # Expiring holds is SCRUM-94's job; until then an expired hold is ignored when read.
+    # Marking it Expired is ``flask expire-holds``'s job (SCRUM-94); until that runs,
+    # an expired hold is ignored when read.
     just_after_expiry = held.expires_at.astimezone(UTC) + timedelta(seconds=1)
     monkeypatch.setattr(venue_services, "_utc_now", lambda: just_after_expiry)
     assert _body(venue_staff.get(held.calendar_path), 200) == []
@@ -416,3 +421,79 @@ def test_an_expired_hold_no_longer_blocks_a_clashing_approval(
     assert approved["status"] == "approved"
     refused = _approve(venue_staff, held.held_request_id, 409)
     assert refused["message"] == "This hold has expired."
+
+
+def _run_expiry_at(moment: datetime, app: Flask, monkeypatch: pytest.MonkeyPatch) -> str:
+    """Run ``flask expire-holds`` as the scheduled workflow does; return its output.
+
+    The venue services read the clock as ``moment`` while it runs.
+    """
+    monkeypatch.setattr(venue_services, "_utc_now", lambda: moment.astimezone(UTC))
+    result = app.test_cli_runner().invoke(args=["expire-holds"])
+    assert result.exit_code == 0, result.output
+    return result.output
+
+
+def _notices(actor: Actor) -> list[tuple[str, str, str | None]]:
+    """The kind, message and detail of each of the actor's notices, oldest first."""
+    notifications = _body(actor.get("/api/notifications"), 200)["notifications"]
+    return [(row["kind"], row["message"], row["detail"]) for row in reversed(notifications)]
+
+
+@pytest.mark.scrum_94
+@pytest.mark.scrum_75
+@pytest.mark.scrum_44
+def test_a_hold_left_to_run_out_is_expired_and_the_coordinator_warned_then_told(
+    app: Flask,
+    coordinator: Actor,
+    venue_staff: Actor,
+    two_approved_events: None,
+    event_day: datetime,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    held = _hold_the_hall(coordinator, venue_staff, event_day)
+    expiry = held.expires_at.isoformat()
+
+    # --- 4. A day before the expiry, the scheduled run warns the coordinator (AC3) ---
+    printed = _run_expiry_at(held.expires_at - timedelta(hours=23), app, monkeypatch)
+    assert printed == "Expired 0 hold(s); warned about 1 hold(s).\n"
+    assert _notices(coordinator)[-1] == (
+        "venue_hold_expiring",
+        "A tentative venue hold on your event expires within 24 hours.",
+        expiry,
+    )
+
+    # --- 5. After the expiry, the next run marks the hold Expired (AC1, AC2, AC3) ---
+    printed = _run_expiry_at(held.expires_at + timedelta(minutes=5), app, monkeypatch)
+    assert printed == "Expired 1 hold(s); warned about 0 hold(s).\n"
+    assert _notices(coordinator)[-1] == (
+        "venue_hold_expired",
+        "A tentative venue hold on your event has expired, so the venue was released.",
+        expiry,
+    )
+
+    # --- 6. The expired hold stays on the event, with its expiry (AC6) ---
+    listed = _body(coordinator.get(f"/api/venues/events/{FIRST_EVENT}/booking-requests"), 200)
+    assert [(row["status"], row["hold_expires_at"]) for row in listed] == [
+        ("expired", expiry),
+        ("pending", None),
+    ]
+    history = _body(coordinator.get(f"/api/events/requests/{FIRST_EVENT}/history"), 200)
+    (expired_entry,) = [
+        entry for entry in history["history"] if entry["kind"] == "venue_hold_expired"
+    ]
+    assert (expired_entry["actor_name"], expired_entry["details"]["venue_booking_request_id"]) == (
+        None,
+        held.held_request_id,
+    )
+
+    # --- 7. The venue is free: the clashing request is approved (AC2, AC5) ---
+    assert _body(venue_staff.get(held.calendar_path), 200) == []
+    approved = _approve(venue_staff, held.clashing_request_id, 200)
+    assert approved["status"] == "approved"
+
+    # --- 8. Running again changes and sends nothing more (ADR-0052) ---
+    notices_before = _notices(coordinator)
+    printed = _run_expiry_at(held.expires_at + timedelta(hours=1), app, monkeypatch)
+    assert printed == "Expired 0 hold(s); warned about 0 hold(s).\n"
+    assert _notices(coordinator) == notices_before
