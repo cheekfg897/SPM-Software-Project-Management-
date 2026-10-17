@@ -2,7 +2,6 @@ import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
 import type { EventRequestStatus } from '@/config/eventStatus'
 import {
   addEquipmentLine,
-  fetchEquipmentTypes,
   fetchEventAvailability,
   fetchEventEquipmentLines,
   removeEquipmentLine,
@@ -23,8 +22,8 @@ import {
 
 /**
  * The equipment line mock mirrors backend/app/modules/events/routes.py (SCRUM-37, ADR-0019,
- * ADR-0028) and the equipment types list (SCRUM-27): the same bodies, refusals, wording and
- * order of checks.
+ * ADR-0028): the same bodies, refusals, wording and order of checks. The equipment types list
+ * it names lines from is pinned in techSupport.test.ts.
  */
 
 const PROJECTOR_LINE_ID = 41
@@ -665,49 +664,5 @@ describe('SCRUM-37 equipment line mock: removing (AC2)', () => {
     await expect(
       removeEquipmentLine(MOCK_OPEN_EVENT_REFERENCE, PROJECTOR_LINE_ID),
     ).rejects.toMatchObject({ status: 401 })
-  })
-})
-
-describe('SCRUM-27 equipment types mock', () => {
-  it('lists every type by name, as the catalogue shows it', async () => {
-    signInAs(MOCK_ACCOUNTS.coordinator)
-
-    const types = await fetchEquipmentTypes()
-
-    expect(types.map((type) => type.name)).toEqual(['Lectern', 'Microphone', 'Projector'])
-    expect(types[2]).toEqual({
-      id: PROJECTOR_TYPE_ID,
-      name: 'Projector',
-      description: 'Full HD, with HDMI and USB-C.',
-      total_quantity: 10,
-      venue_id: null,
-      store_name: 'Main store',
-    })
-  })
-
-  it.each([
-    MOCK_ACCOUNTS.coordinator,
-    MOCK_ACCOUNTS.lead,
-    MOCK_ACCOUNTS.venueStaff,
-    MOCK_ACCOUNTS.technicalSupport,
-  ])('lets $role read it', async (account) => {
-    signInAs(account)
-
-    await expect(fetchEquipmentTypes()).resolves.toHaveLength(3)
-  })
-
-  it.each([MOCK_ACCOUNTS.organiser, MOCK_ACCOUNTS.attendee])(
-    'refuses $role with a 403',
-    async (account) => {
-      signInAs(account)
-
-      await expect(fetchEquipmentTypes()).rejects.toMatchObject({ status: 403 })
-    },
-  )
-
-  it('refuses a visitor with a 401', async () => {
-    sendRequestsAs(null)
-
-    await expect(fetchEquipmentTypes()).rejects.toMatchObject({ status: 401 })
   })
 })
