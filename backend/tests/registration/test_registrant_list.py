@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 from app.common.errors import NotFoundError
 from app.modules.auth.models import User
 from app.modules.auth.permissions import Role
-from app.modules.events.models import EventRequest
+from app.modules.events.models import EventRequest, EventRequestStatus
 from app.modules.registration.models import Registration, RegistrationStatus
 from app.modules.registration.services import Registrant, RegistrantList, list_registrants
 
@@ -35,6 +35,8 @@ ListRegistrants = Callable[..., RegistrantList]
 #: ``saved_users`` gives organiser 7 (organisation 3) and coordinators 3 and 9; every
 #: event ``make_open_event`` saves is organiser 7's and assigned to coordinator 3.
 ORGANISER = 7
+#: Organiser 7's colleague in organisation 3, who wrote none of the events.
+COLLEAGUE_ORGANISER = 11
 OTHER_ORGANISATION_ORGANISER = 8
 COORDINATOR = 3
 OTHER_COORDINATOR = 9
@@ -46,14 +48,20 @@ NOT_FOUND_MESSAGE = "Event request not found."
 def _staff(
     saved_users: list[User], make_user: Callable[..., User], save: Callable[..., None]
 ) -> None:
-    """The people running the events, and an organiser of a different organisation."""
+    """The people running the events, a colleague, and an organiser elsewhere."""
     save(
+        make_user(
+            email="organiser11@example.com",
+            role=Role.EVENT_ORGANISER,
+            organisation_id=3,
+            user_id=COLLEAGUE_ORGANISER,
+        ),
         make_user(
             email="organiser8@example.com",
             role=Role.EVENT_ORGANISER,
             organisation_id=4,
             user_id=OTHER_ORGANISATION_ORGANISER,
-        )
+        ),
     )
 
 
@@ -85,17 +93,34 @@ def registrants(db_session: Session) -> ListRegistrants:
 # --------------------------------------------------------------------------
 
 
+@pytest.mark.parametrize(
+    "organiser_id", [ORGANISER, COLLEAGUE_ORGANISER], ids=["who-submitted-it", "a-colleague"]
+)
 def test_an_organiser_of_the_events_organisation_sees_its_registrants(
     registrants: ListRegistrants,
     open_event: EventRequest,
     make_attendee: MakeAttendee,
     make_registration: MakeRegistration,
+    organiser_id: int,
 ) -> None:
     make_registration(open_event, make_attendee(21, "Alice Tan").id)
 
-    listing = registrants(ORGANISER, Role.EVENT_ORGANISER, open_event.reference)
+    listing = registrants(organiser_id, Role.EVENT_ORGANISER, open_event.reference)
 
     assert [row.name for row in listing.items] == ["Alice Tan"]
+
+
+def test_a_colleagues_draft_is_not_found(
+    registrants: ListRegistrants, make_open_event: MakeOpenEvent
+) -> None:
+    """A draft is its author's alone, even within the organisation (ADR-0024)."""
+    draft = make_open_event(status=EventRequestStatus.DRAFT)
+
+    with pytest.raises(NotFoundError) as exc_info:
+        registrants(COLLEAGUE_ORGANISER, Role.EVENT_ORGANISER, draft.reference)
+
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.message == NOT_FOUND_MESSAGE
 
 
 def test_an_organiser_of_another_organisation_is_refused(
