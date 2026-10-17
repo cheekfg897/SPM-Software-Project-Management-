@@ -35,6 +35,8 @@ import { EditEquipmentTypePage } from '@/features/equipmentCatalogue/pages/EditE
 import { EquipmentCataloguePage } from '@/features/equipmentCatalogue/pages/EquipmentCataloguePage'
 import { EquipmentTypePage } from '@/features/equipmentCatalogue/pages/EquipmentTypePage'
 import { NewEquipmentTypePage } from '@/features/equipmentCatalogue/pages/NewEquipmentTypePage'
+import { VenuePage } from '@/features/venues/pages/VenuePage'
+import { VenuesPage } from '@/features/venues/pages/VenuesPage'
 
 import { NotFoundPage } from './NotFoundPage'
 
@@ -232,6 +234,22 @@ export const appRoutes: RouteObject[] = [
             loginRoute={ROUTES.STAFF_LOGIN}
           >
             <EditEquipmentTypePage />
+          </RequireRole>
+        ),
+      },
+      {
+        path: ROUTES.VENUES,
+        element: (
+          <RequireRole allowedRoles={INTERNAL_ROLES} loginRoute={ROUTES.STAFF_LOGIN}>
+            <VenuesPage />
+          </RequireRole>
+        ),
+      },
+      {
+        path: ROUTES.VENUE,
+        element: (
+          <RequireRole allowedRoles={INTERNAL_ROLES} loginRoute={ROUTES.STAFF_LOGIN}>
+            <VenuePage />
           </RequireRole>
         ),
       },
