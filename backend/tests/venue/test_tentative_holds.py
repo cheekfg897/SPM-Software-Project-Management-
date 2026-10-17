@@ -469,6 +469,27 @@ def test_rejecting_a_hold_releases_the_venue_at_once(
     assert multi_venue_request.venue_id in _venue_ids_found(db_session)
 
 
+@pytest.mark.parametrize("outcome", ["approved", "rejected"])
+def test_a_decided_hold_no_longer_shows_an_expiry(
+    db_session: Session,
+    multi_venue_event: EventRequest,
+    multi_venue_request: VenueBookingRequest,
+    outcome: str,
+) -> None:
+    """A rejected hold's cancelled booking keeps its expiry; the request hides it."""
+    place_hold(multi_venue_request.id, hours_from_now(48), db_session)
+    decide(multi_venue_request.id, outcome, db_session, reason="Decided")
+
+    shown = services.list_booking_requests_for_event(
+        multi_venue_event.reference, coordinator_id=COORDINATOR_ID, session=db_session
+    )
+
+    assert [(entry.request.status, entry.hold_expires_at) for entry in shown] == [
+        (BookingRequestStatus(outcome), None),
+        (BookingRequestStatus.PENDING, None),
+    ]
+
+
 @pytest.mark.parametrize(
     "after_expiry",
     [
