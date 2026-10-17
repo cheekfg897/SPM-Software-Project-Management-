@@ -1,4 +1,4 @@
-# ADR-0050: The assigned coordinator records an event's equipment lines on its Equipment page
+# ADR-0065: The assigned coordinator records an event's equipment lines on its Equipment page
 
 - **Status:** Accepted; decisions 2 to 6 are defaults to review with the team
 - **Date:** 2026-10-17

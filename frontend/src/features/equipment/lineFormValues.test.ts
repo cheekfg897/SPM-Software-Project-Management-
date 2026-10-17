@@ -1,7 +1,7 @@
 import type { EquipmentLine } from './api'
 import { changedFields, EMPTY_LINE_VALUES, valuesOfLine } from './lineFormValues'
 
-/** SCRUM-37 (ADR-0050): what the equipment line form sends. */
+/** SCRUM-37 (ADR-0065): what the equipment line form sends. */
 
 const LINE: EquipmentLine = {
   id: 58,

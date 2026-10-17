@@ -15,11 +15,11 @@ import { RemoveLineConfirm } from './RemoveLineConfirm'
 
 /**
  * Only coordinators record equipment (SCRUM-37, ADR-0019). The backend shows a coordinator only
- * the lines of an event assigned to them, so one who sees the lines is that event's (ADR-0050).
+ * the lines of an event assigned to them, so one who sees the lines is that event's (ADR-0065).
  */
 const EQUIPMENT_LINE_EDITOR_ROLES: readonly Role[] = [ROLE.EVENT_COORDINATOR]
 
-/** Each status in words, so it does not depend on colour to be read (ADR-0050). */
+/** Each status in words, so it does not depend on colour to be read (ADR-0065). */
 const STATUS_TEXT: Record<EquipmentLineStatus, { label: string; tone: string }> = {
   requested: { label: 'Awaiting Technical Support', tone: 'text-flare' },
   fulfilled: { label: 'Fulfilled', tone: 'text-success' },
