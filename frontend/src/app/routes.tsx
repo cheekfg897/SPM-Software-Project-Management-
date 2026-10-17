@@ -21,6 +21,7 @@ import { NewEventRequestPage } from '@/features/eventRequests/pages/NewEventRequ
 import { LandingPage } from '@/features/landing/pages/LandingPage'
 import { NotificationsPage } from '@/features/notifications/pages/NotificationsPage'
 import { UnassignedQueuePage } from '@/features/lead/pages/UnassignedQueuePage'
+import { SafetyReviewPage } from '@/features/safety/pages/SafetyReviewPage'
 
 import { NotFoundPage } from './NotFoundPage'
 
@@ -29,6 +30,7 @@ const COORDINATOR_ROLES: readonly Role[] = [ROLE.EVENT_COORDINATOR]
 const VENUE_STAFF_ROLES: readonly Role[] = [ROLE.VENUE_STAFF]
 const LEAD_ROLES: readonly Role[] = [ROLE.EVENT_COORDINATOR_LEAD]
 const ATTENDEE_ROLES: readonly Role[] = [ROLE.ATTENDEE]
+const SAFETY_OFFICER_ROLES: readonly Role[] = [ROLE.SAFETY_OFFICER]
 
 /** The page tree. The browser router (App) and the test router (renderApp) both use it. */
 export const appRoutes: RouteObject[] = [
@@ -119,6 +121,14 @@ export const appRoutes: RouteObject[] = [
         element: (
           <RequireRole allowedRoles={LEAD_ROLES} loginRoute={ROUTES.STAFF_LOGIN}>
             <UnassignedQueuePage />
+          </RequireRole>
+        ),
+      },
+      {
+        path: ROUTES.SAFETY_REVIEW,
+        element: (
+          <RequireRole allowedRoles={SAFETY_OFFICER_ROLES} loginRoute={ROUTES.STAFF_LOGIN}>
+            <SafetyReviewPage />
           </RequireRole>
         ),
       },
