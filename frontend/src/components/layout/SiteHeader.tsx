@@ -65,6 +65,11 @@ function MainNav() {
           My events
         </NavLink>
       )}
+      {user?.role === ROLE.SAFETY_OFFICER && (
+        <NavLink to={ROUTES.SAFETY_REVIEW} className={NAV_LINK_CLASSES}>
+          Safety review
+        </NavLink>
+      )}
     </nav>
   )
 }

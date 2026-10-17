@@ -18,6 +18,8 @@ export const ROUTES = {
   LEAD_QUEUE: '/staff/queue',
   /** Venue Staff's queue of booking requests waiting for a decision (SCRUM-43). */
   BOOKING_DECISIONS: '/staff/venue-requests',
+  /** The Safety Officer's events awaiting the safety check (SCRUM-97, SCRUM-98). */
+  SAFETY_REVIEW: '/staff/safety-review',
 } as const
 
 export type RoutePath = (typeof ROUTES)[keyof typeof ROUTES]

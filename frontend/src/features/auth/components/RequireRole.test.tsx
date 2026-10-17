@@ -54,7 +54,7 @@ describe('SCRUM-6 pages only a role may open', () => {
 })
 
 describe('SCRUM-97 the Safety Officer is staff', () => {
-  it('lets a Safety Officer into the staff home, where they land', async () => {
+  it('lets a Safety Officer into the staff home', async () => {
     const { router } = renderApp(ROUTES.STAFF_HOME, {
       session: mockSessionFor(MOCK_ACCOUNTS.safetyOfficer),
     })
