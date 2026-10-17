@@ -1,4 +1,4 @@
-# ADR-0056: Staff record and list client organisations on one page; sign-up keeps its typed organisation ID
+# ADR-0064: Staff record and list client organisations on one page; sign-up keeps its typed organisation ID
 
 - **Status:** Accepted; the choices in decision 6 are defaults to review with the team
 - **Date:** 2026-10-17
