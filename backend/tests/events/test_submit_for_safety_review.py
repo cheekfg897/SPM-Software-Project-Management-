@@ -5,7 +5,8 @@ an outcome from Technical Support, the assigned coordinator moves the approved e
 to Safety Review. A Pending or Rejected arrangement holds it back; a Withdrawn one is
 ignored. AC2: an event with no equipment requests passes the equipment check. An
 event with no venue arranged at all is held back (ADR-0047). The move is written to
-the event history; a refusal changes nothing.
+the event history; a refusal changes nothing. Once in Safety Review, the event can't
+be edited nor its equipment changed (ADR-0047).
 
 Runs against ``db_session`` with ``saved_users`` and ``saved_event_request``
 (``EVR-AAAAAAAA``, assigned to Event Coordinator 3), so the venue and equipment
@@ -32,10 +33,16 @@ from app.modules.events.models import (
     EventRequestStatus,
 )
 from app.modules.events.services import (
+    EQUIPMENT_NOT_EDITABLE_MESSAGE,
     NOT_APPROVED_FOR_SAFETY_REVIEW_MESSAGE,
+    NOT_EDITABLE_MESSAGE,
     SAFETY_REVIEW_NOT_READY_MESSAGE,
+    EquipmentNotEditableError,
+    RequestNotEditableError,
     SafetyReviewNotAllowedError,
+    add_equipment_line,
     submit_for_safety_review,
+    update_event_request,
 )
 from app.modules.venue.models import BookingRequestStatus, Venue, VenueBookingRequest
 
@@ -336,3 +343,44 @@ def test_a_coordinator_not_assigned_to_the_event_gets_a_404(
         _submit(db_session, OTHER_COORDINATOR_ID)
 
     _assert_still_approved(approved_event, reload_event_request, history_of)
+
+
+# --------------------------------------------------------------------------
+# ADR-0047 "Open" — an event in Safety Review can't be edited, nor its equipment
+# changed, until SCRUM-98 sends it back to approved
+# --------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def event_in_review(approved_event: EventRequest, save: Callable[..., None]) -> EventRequest:
+    """``approved_event``, now in Safety Review."""
+    approved_event.status = EventRequestStatus.SAFETY_REVIEW
+    save(approved_event)
+    return approved_event
+
+
+def test_an_event_in_safety_review_cannot_be_edited(
+    db_session: Session, event_in_review: EventRequest, history_of: HistoryOf
+) -> None:
+    with pytest.raises(RequestNotEditableError) as exc_info:
+        update_event_request(
+            COORDINATOR_ID, REFERENCE, {"description": "Revised"}, session=db_session
+        )
+
+    assert exc_info.value.message == NOT_EDITABLE_MESSAGE
+    assert history_of(event_in_review.id) == []
+
+
+def test_the_equipment_of_an_event_in_safety_review_cannot_be_changed(
+    db_session: Session,
+    event_in_review: EventRequest,
+    valid_equipment_line_payload: dict[str, Any],
+    reload_event_request: ReloadEventRequest,
+) -> None:
+    with pytest.raises(EquipmentNotEditableError) as exc_info:
+        add_equipment_line(
+            COORDINATOR_ID, REFERENCE, valid_equipment_line_payload, session=db_session
+        )
+
+    assert exc_info.value.message == EQUIPMENT_NOT_EDITABLE_MESSAGE
+    assert reload_event_request(event_in_review.id).equipment_lines == []
