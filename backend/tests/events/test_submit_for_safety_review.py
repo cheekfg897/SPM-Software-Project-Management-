@@ -238,6 +238,40 @@ def test_an_equipment_request_without_an_outcome_holds_the_event_back(
     _assert_still_approved(approved_event, reload_event_request, history_of)
 
 
+def test_one_refusal_names_every_venue_and_equipment_gap(
+    db_session: Session,
+    approved_event: EventRequest,
+    arrange: Arrange,
+    add_line: AddLine,
+    make_equipment_type: Callable[..., EquipmentType],
+    save: Callable[..., None],
+    reload_event_request: ReloadEventRequest,
+    history_of: HistoryOf,
+) -> None:
+    # A type no request uses, so no request's id equals its equipment type's id.
+    save(make_equipment_type(name="Unused"))
+    arrange(BookingRequestStatus.APPROVED)
+    pending = arrange(BookingRequestStatus.PENDING)
+    rejected = arrange(BookingRequestStatus.REJECTED)
+    add_line(2)
+    first_waiting = add_line(None)
+    second_waiting = add_line(None)
+
+    refused = _refusal(db_session)
+
+    assert refused.details == {
+        "venue_arrangements": [
+            f"Venue arrangement {pending.id} is pending.",
+            f"Venue arrangement {rejected.id} is rejected.",
+        ],
+        "equipment": [
+            f"Equipment request {first_waiting.id} has no outcome from Technical Support.",
+            f"Equipment request {second_waiting.id} has no outcome from Technical Support.",
+        ],
+    }
+    _assert_still_approved(approved_event, reload_event_request, history_of)
+
+
 # --------------------------------------------------------------------------
 # AC2 — equipment is optional; ADR-0047 — a venue is not
 # --------------------------------------------------------------------------
