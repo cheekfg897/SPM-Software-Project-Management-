@@ -2,7 +2,7 @@ import { useId, useState } from 'react'
 import type { ReactNode } from 'react'
 
 import { Button, StatusChip } from '@/components/ui'
-import { LAYOUT_OPTIONS } from '@/features/booking/constants'
+import { LAYOUT_OPTIONS } from '@/config/roomLayouts'
 import { formatSchedule } from '@/features/eventRequests/formatSchedule'
 import { formatShortDate, formatTimeRange } from '@/lib/formatDate'
 
