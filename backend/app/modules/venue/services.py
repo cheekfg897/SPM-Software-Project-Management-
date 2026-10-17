@@ -1290,8 +1290,9 @@ def _clash_error(venue: Venue, request: VenueBookingRequest, booking: Booking) -
     It says whether the periods themselves overlap or only the setup and turnaround
     around them do, and gives the period the booking holds the venue for.
     """
-    # Periods that only touch don't overlap, as in ``_overlaps``.
-    periods_overlap = booking.start_time < request.ends_at and request.starts_at < booking.end_time
+    booked = (booking.start_time, booking.end_time)
+    asked_for = (request.starts_at, request.ends_at)
+    periods_overlap = _shared_period(booked, asked_for) is not None
     if periods_overlap:
         message = APPROVAL_OVERLAP_MESSAGE.format(booking_id=booking.id)
     else:
