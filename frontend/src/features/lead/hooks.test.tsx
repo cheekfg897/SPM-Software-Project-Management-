@@ -7,7 +7,13 @@ import { ApiError, fieldErrorsOf } from '@/lib/api'
 import { recordRequests } from '@/test/recordRequests'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
 
-import { useAssignCoordinator, useUnassignedQueue } from './hooks'
+import {
+  useActiveEvents,
+  useAssignCoordinator,
+  useCoordinatorWorkload,
+  useReassignCoordinator,
+  useUnassignedQueue,
+} from './hooks'
 
 function wrapper({ children }: { children: ReactNode }) {
   const client = new QueryClient({
@@ -22,6 +28,92 @@ function renderQueueAndAssign() {
     wrapper,
   })
 }
+
+/** Every Lead query and both actions on one query client, as moving between the two pages would. */
+function renderEveryLeadHook() {
+  return renderHook(
+    () => ({
+      queue: useUnassignedQueue(),
+      active: useActiveEvents(),
+      workload: useCoordinatorWorkload(),
+      assign: useAssignCoordinator(),
+      reassign: useReassignCoordinator(),
+    }),
+    { wrapper },
+  )
+}
+
+/** How many times each Lead list was read, by its path. */
+function readsOf(requests: Request[]) {
+  const reads: Record<string, number> = {}
+  for (const request of requests) {
+    if (request.method === 'GET') {
+      const path = new URL(request.url).pathname
+      reads[path] = (reads[path] ?? 0) + 1
+    }
+  }
+  return reads
+}
+
+/** Render every hook as the Lead and wait until each list has been read once. */
+async function renderEveryLeadHookLoaded() {
+  sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.lead))
+  const requests = recordRequests()
+  const rendered = renderEveryLeadHook()
+  await waitFor(() => {
+    expect(rendered.result.current.queue.isSuccess).toBe(true)
+    expect(rendered.result.current.active.isSuccess).toBe(true)
+    expect(rendered.result.current.workload.isSuccess).toBe(true)
+  })
+  return { ...rendered, requests }
+}
+
+const QUEUE_PATH = '/api/events/requests/unassigned'
+const ACTIVE_PATH = '/api/events/requests/active'
+const WORKLOAD_PATH = '/api/events/coordinators/workload'
+
+describe('SCRUM-96 the Lead oversight hooks', () => {
+  it('posts a reassignment by email, then reads the active list and the workload again, not the queue', async () => {
+    const { result, requests } = await renderEveryLeadHookLoaded()
+
+    result.current.reassign.mutate({
+      reference: 'EVR-LEAD0003',
+      coordinator_email: MOCK_ACCOUNTS.otherCoordinator.email,
+    })
+
+    await waitFor(() => expect(result.current.reassign.isSuccess).toBe(true))
+    const post = requests.find((request) => request.method === 'POST')
+    expect(new URL(post?.url ?? '').pathname).toBe('/api/events/requests/EVR-LEAD0003/reassign')
+    expect(await post?.json()).toEqual({ coordinator_email: MOCK_ACCOUNTS.otherCoordinator.email })
+    await waitFor(() =>
+      expect(readsOf(requests)).toEqual({ [QUEUE_PATH]: 1, [ACTIVE_PATH]: 2, [WORKLOAD_PATH]: 2 }),
+    )
+    const moved = result.current.active.data?.event_requests.find(
+      (row) => row.reference === 'EVR-LEAD0003',
+    )
+    expect(moved?.coordinator).toBe(MOCK_ACCOUNTS.otherCoordinator.full_name)
+  })
+
+  it('reads the queue, the active list and the workload again after an assignment from the queue', async () => {
+    const { result, requests } = await renderEveryLeadHookLoaded()
+
+    result.current.assign.mutate({
+      reference: 'EVR-MOCK0001',
+      coordinator_email: MOCK_ACCOUNTS.otherCoordinator.email,
+    })
+
+    await waitFor(() =>
+      expect(readsOf(requests)).toEqual({ [QUEUE_PATH]: 2, [ACTIVE_PATH]: 2, [WORKLOAD_PATH]: 2 }),
+    )
+    const names = result.current.workload.data?.coordinators.map((entry) => entry.coordinator)
+    expect(names).toEqual([
+      MOCK_ACCOUNTS.otherCoordinator.full_name,
+      MOCK_ACCOUNTS.coordinator.full_name,
+    ])
+    const heldByAisha = result.current.workload.data?.coordinators[0]?.event_requests ?? []
+    expect(heldByAisha.map((row) => row.reference)).toContain('EVR-MOCK0001')
+  })
+})
 
 describe('SCRUM-95 the Lead queue hooks', () => {
   it('returns the unassigned requests, oldest first, for the Lead', async () => {

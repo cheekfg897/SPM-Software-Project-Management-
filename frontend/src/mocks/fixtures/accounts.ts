@@ -119,6 +119,16 @@ export const MOCK_ACCOUNTS = {
     full_name: 'Sara Lee',
     organisation_id: 2,
   },
+  /**
+   * A second Event Coordinator, for the Lead to move events between (SCRUM-96). Her name sorts
+   * before Chloe's while her id is higher, so a list ordered by id instead of name shows it.
+   */
+  otherCoordinator: {
+    ...BASE_ACCOUNTS.coordinator,
+    id: 25,
+    email: 'aisha@connectsphere.test',
+    full_name: 'Aisha Karim',
+  },
 } as const satisfies Record<string, MockAccount>
 
 const MOCK_TOKEN_PREFIX = 'mock-token-'
