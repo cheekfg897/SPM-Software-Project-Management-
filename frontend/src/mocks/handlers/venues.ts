@@ -1,9 +1,12 @@
 import { http, HttpResponse } from 'msw'
 import type { RequestHandler } from 'msw'
 
-import { ROLE } from '@/config/roles'
+import { INTERNAL_ROLES, ROLE } from '@/config/roles'
+import type { Role } from '@/config/roles'
 import type {
   BlockOverlapWarning,
+  CalendarEntry,
+  ConflictingBooking,
   OpeningPeriod,
   OverlapWarning,
   Venue,
@@ -16,12 +19,15 @@ import { errorResponse, notAllowed, notAuthenticated, validationError } from '..
 import { accountForRequest } from './auth'
 import { MOCK_VENUE_BLOCKS, MOCK_VENUE_BOOKINGS, MOCK_VENUES } from './venueFixtures'
 import type { MockVenueBlock, MockVenueBooking } from './venueFixtures'
+import { blockErrors, calendarRangeErrors, instantOf } from './venueBlockRules'
 import { deactivationErrors, newVenueErrors, venueChangeErrors } from './venueRules'
 
 /**
  * The venue catalogue routes (SCRUM-25, SCRUM-67), answering as backend/app/modules/venue/
  * routes.py does: anyone signed in reads, only Venue Staff write, the body is checked before the
  * venue is looked for, and a change to setup or turnaround reports what now overlaps (ADR-0033).
+ * Venue Staff block a venue and list and remove its blocks (SCRUM-34, ADR-0016); every staff role
+ * reads its calendar, told as much of each reason as its role may be (SCRUM-26).
  */
 
 const VENUES_PATH = '/api/venues'
@@ -33,11 +39,14 @@ const STANDARD_BUFFER_MINUTES = 30
 const MINUTE_MS = 60_000
 const BUSINESS_OFFSET_MS = 8 * 60 * MINUTE_MS
 const FIRST_NEW_VENUE_ID = 900
+const FIRST_NEW_BLOCK_ID = 800
+const BLOCK_NOT_FOUND_MESSAGE = 'Block not found.'
 
 let venues: Venue[] = []
 let bookings: MockVenueBooking[] = []
 let blocks: MockVenueBlock[] = []
 let nextVenueId = FIRST_NEW_VENUE_ID
+let nextBlockId = FIRST_NEW_BLOCK_ID
 
 /** Put the venues, bookings and blocks back as they started. Runs after every test. */
 export function resetMockVenues(): void {
@@ -45,6 +54,7 @@ export function resetMockVenues(): void {
   bookings = MOCK_VENUE_BOOKINGS.map((booking) => ({ ...booking }))
   blocks = MOCK_VENUE_BLOCKS.map((block) => ({ ...block }))
   nextVenueId = FIRST_NEW_VENUE_ID
+  nextBlockId = FIRST_NEW_BLOCK_ID
 }
 
 resetMockVenues()
@@ -204,6 +214,91 @@ function blockOverlaps(venue: Venue): BlockOverlapWarning[] {
   return warnings
 }
 
+/** Whether a period from `start` to `end` overlaps another; periods that only touch don't. */
+function overlaps([start, end]: [number, number], [otherStart, otherEnd]: [number, number]) {
+  return start < otherEnd && end > otherStart
+}
+
+/** The venue's confirmed bookings whose padded period a block cuts into (_bookings_cut_by). */
+function bookingsCutBy(venue: Venue, blocked: [number, number]): ConflictingBooking[] {
+  const conflicts: ConflictingBooking[] = []
+  for (const booking of confirmedBookingsOf(venue)) {
+    const held = heldPeriod(venue, booking)
+    if (overlaps(held, blocked)) {
+      const [start, end] = held
+      conflicts.push({
+        booking_id: booking.id,
+        event_id: booking.event_id,
+        start_time: businessIso(start),
+        end_time: businessIso(end),
+      })
+    }
+  }
+  return conflicts
+}
+
+/** What a booking's reason says: Venue Staff see which event holds the venue (SCRUM-26 AC3). */
+function bookingReason(booking: MockVenueBooking, role: Role): string {
+  if (role !== ROLE.VENUE_STAFF) {
+    return 'booking'
+  }
+  return booking.event_id === null ? 'Booking (no linked event)' : `Event #${booking.event_id}`
+}
+
+/** What a block's reason says: Venue Staff see why the venue is blocked (SCRUM-26 AC3). */
+function blockReason(block: MockVenueBlock, role: Role): string {
+  return role === ROLE.VENUE_STAFF ? block.reason : 'maintenance'
+}
+
+const CALENDAR_KIND = { confirmed: 'confirmed_booking', tentative: 'tentative_hold' } as const
+
+/** The venue's bookings that aren't cancelled and hold it at some time in `range`. */
+function bookingEntries(venue: Venue, range: [number, number], role: Role): CalendarEntry[] {
+  const entries: CalendarEntry[] = []
+  for (const booking of bookings) {
+    const held = heldPeriod(venue, booking)
+    if (booking.venue_id !== venue.id || booking.status === 'cancelled' || !overlaps(held, range)) {
+      continue
+    }
+    const [start, end] = held
+    entries.push({
+      start_time: businessIso(start),
+      end_time: businessIso(end),
+      event_start: booking.start_time,
+      event_end: booking.end_time,
+      kind: CALENDAR_KIND[booking.status],
+      reason: bookingReason(booking, role),
+    })
+  }
+  return entries
+}
+
+/** The venue's blocks that overlap `range`; a block isn't padded (ADR-0011). */
+function blockEntries(venue: Venue, range: [number, number], role: Role): CalendarEntry[] {
+  const entries: CalendarEntry[] = []
+  for (const block of blocks) {
+    const blocked: [number, number] = [Date.parse(block.start_time), Date.parse(block.end_time)]
+    if (block.venue_id === venue.id && overlaps(blocked, range)) {
+      entries.push({
+        start_time: block.start_time,
+        end_time: block.end_time,
+        event_start: null,
+        event_end: null,
+        kind: 'block',
+        reason: blockReason(block, role),
+      })
+    }
+  }
+  return entries
+}
+
+/** The venue's unavailable periods in `range`, in time order (get_venue_calendar). */
+function calendarOf(venue: Venue, range: [number, number], role: Role): CalendarEntry[] {
+  const entries = [...bookingEntries(venue, range, role), ...blockEntries(venue, range, role)]
+  // Stable, as Python's sorted is: of two periods starting together, the booking comes first.
+  return entries.sort((left, right) => Date.parse(left.start_time) - Date.parse(right.start_time))
+}
+
 /** Setting `is_active` on a venue, once the request has been let through. */
 function setActive(venueId: unknown, isActive: boolean) {
   const venue = findVenue(venueId)
@@ -312,5 +407,99 @@ export const venueHandlers: RequestHandler[] = [
   http.post(`${VENUE_PATH}/reactivate`, ({ request, params }) => {
     const refusal = checkVenueStaff(request)
     return refusal ?? setActive(params.venueId, true)
+  }),
+
+  http.post(`${VENUE_PATH}/blocks`, async ({ request, params }) => {
+    const refusal = checkVenueStaff(request)
+    if (refusal !== null) {
+      return refusal
+    }
+    const body = await readObject(request)
+    if (body === null) {
+      return errorResponse(400, 'validation_error', NOT_AN_OBJECT_MESSAGE)
+    }
+    const errors = blockErrors(body)
+    if (Object.keys(errors).length > 0) {
+      return validationError(errors)
+    }
+    const venue = findVenue(params.venueId)
+    if (venue === undefined) {
+      return venueNotFound()
+    }
+
+    // The rules accepted both times and the reason, so none of these is null or missing.
+    const start = instantOf(body.start_time) as number
+    const end = instantOf(body.end_time) as number
+    const block: MockVenueBlock = {
+      id: nextBlockId,
+      venue_id: venue.id,
+      start_time: businessIso(start),
+      end_time: businessIso(end),
+      reason: String(body.reason).trim(),
+    }
+    nextBlockId += 1
+    blocks.push(block)
+    return HttpResponse.json(
+      { ...block, conflicting_bookings: bookingsCutBy(venue, [start, end]) },
+      { status: 201 },
+    )
+  }),
+
+  http.get(`${VENUE_PATH}/blocks`, ({ request, params }) => {
+    const refusal = checkVenueStaff(request)
+    if (refusal !== null) {
+      return refusal
+    }
+    const venue = findVenue(params.venueId)
+    if (venue === undefined) {
+      return venueNotFound()
+    }
+    const venueBlocks = blocks.filter((block) => block.venue_id === venue.id)
+    return HttpResponse.json(venueBlocks.sort(byStartThenId))
+  }),
+
+  http.delete(`${VENUE_PATH}/blocks/:blockId`, ({ request, params }) => {
+    const refusal = checkVenueStaff(request)
+    if (refusal !== null) {
+      return refusal
+    }
+    const venue = findVenue(params.venueId)
+    if (venue === undefined) {
+      return venueNotFound()
+    }
+    const block = blocks.find(
+      (each) => each.id === Number(params.blockId) && each.venue_id === venue.id,
+    )
+    if (block === undefined) {
+      return errorResponse(404, 'not_found', BLOCK_NOT_FOUND_MESSAGE)
+    }
+    blocks = blocks.filter((each) => each !== block)
+    return new HttpResponse(null, { status: 204 })
+  }),
+
+  http.get(`${VENUE_PATH}/calendar`, ({ request, params }) => {
+    // Every staff role reads a calendar; Organisers and Attendees may not (SCRUM-26 AC4).
+    const user = accountForRequest(request)
+    if (user === undefined) {
+      return notAuthenticated()
+    }
+    if (!INTERNAL_ROLES.includes(user.role)) {
+      return notAllowed()
+    }
+    const query = new URL(request.url).searchParams
+    const errors = calendarRangeErrors(query)
+    if (Object.keys(errors).length > 0) {
+      return validationError(errors)
+    }
+    const venue = findVenue(params.venueId)
+    if (venue === undefined) {
+      return venueNotFound()
+    }
+    // The rules accepted both instants, so neither is null.
+    const range: [number, number] = [
+      instantOf(query.get('range_start')) as number,
+      instantOf(query.get('range_end')) as number,
+    ]
+    return HttpResponse.json(calendarOf(venue, range, user.role))
   }),
 ]

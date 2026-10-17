@@ -3,12 +3,15 @@ import { apiRequest } from '@/lib/api'
 
 import type { Weekday } from './constants'
 
-/** The venue module's catalogue endpoints (SCRUM-25, SCRUM-67). */
+/** The venue module's catalogue (SCRUM-25, SCRUM-67), block (SCRUM-34) and calendar (SCRUM-26) endpoints. */
 const VENUE_PATHS = {
   VENUES: '/api/venues',
   venue: (venueId: number) => `/api/venues/${venueId}`,
   deactivate: (venueId: number) => `/api/venues/${venueId}/deactivate`,
   reactivate: (venueId: number) => `/api/venues/${venueId}/reactivate`,
+  blocks: (venueId: number) => `/api/venues/${venueId}/blocks`,
+  block: (venueId: number, blockId: number) => `/api/venues/${venueId}/blocks/${blockId}`,
+  calendar: (venueId: number) => `/api/venues/${venueId}/calendar`,
 } as const
 
 /** One end of an opening period: a weekday and a 24-hour `HH:MM` time (ADR-0008). */
@@ -78,11 +81,71 @@ export interface UpdatedVenue extends Venue {
   block_overlap_warnings: BlockOverlapWarning[]
 }
 
-/** Nothing about a venue depends on who reads it, so its keys don't name the viewer. */
+/** A period a venue is blocked for maintenance or internal use (SCRUM-34), in business time. */
+export interface VenueBlock {
+  id: number
+  venue_id: number
+  start_time: string
+  end_time: string
+  reason: string
+}
+
+/**
+ * What the block form sends. The times are as a date-time input holds them, with no offset,
+ * which the backend reads as business time (ADR-0009, ADR-0058).
+ */
+export interface NewBlock {
+  start_time: string
+  end_time: string
+  reason: string
+}
+
+/** A confirmed booking a new block cuts into, as the period it holds the venue (ADR-0016). */
+export interface ConflictingBooking {
+  booking_id: number
+  event_id: number | null
+  start_time: string
+  end_time: string
+}
+
+/** A saved block, and the confirmed bookings it cuts into (SCRUM-34 AC2). */
+export interface CreatedBlock extends VenueBlock {
+  conflicting_bookings: ConflictingBooking[]
+}
+
+export type CalendarEntryKind = 'confirmed_booking' | 'tentative_hold' | 'block'
+
+/**
+ * One period a venue is unavailable (SCRUM-26). A booking is shown as the period it holds the
+ * venue, padded by setup and turnaround, with its event's own times beside it; a block has none.
+ * How much `reason` says depends on who asks (AC3).
+ */
+export interface CalendarEntry {
+  start_time: string
+  end_time: string
+  event_start: string | null
+  event_end: string | null
+  kind: CalendarEntryKind
+  reason: string
+}
+
+/** The two instants the calendar route takes, here without an offset (business time). */
+export interface CalendarRange {
+  range_start: string
+  range_end: string
+}
+
+/**
+ * A venue's details and blocks are the same for every staff member who reads them; the
+ * calendar's reasons are not (SCRUM-26 AC3), so its key names the viewer.
+ */
 export const venueKeys = {
   all: ['venues'] as const,
   list: () => [...venueKeys.all, 'list'] as const,
   detail: (venueId: number) => [...venueKeys.all, 'detail', venueId] as const,
+  blocks: (venueId: number) => [...venueKeys.all, 'blocks', venueId] as const,
+  calendar: (venueId: number, range: CalendarRange, viewerId: number | null) =>
+    [...venueKeys.all, 'calendar', venueId, viewerId, range] as const,
 }
 
 /** The active venues, in the backend's order (by name). */
@@ -121,4 +184,26 @@ export function deactivateVenue(venueId: number, deactivation: Deactivation): Pr
 
 export function reactivateVenue(venueId: number): Promise<Venue> {
   return apiRequest<Venue>(VENUE_PATHS.reactivate(venueId), { method: 'POST' })
+}
+
+/** The venue's blocks with their ids and reasons, in start order (Venue Staff only). */
+export function fetchVenueBlocks(venueId: number): Promise<VenueBlock[]> {
+  return apiRequest<VenueBlock[]>(VENUE_PATHS.blocks(venueId))
+}
+
+export function blockVenue(venueId: number, block: NewBlock): Promise<CreatedBlock> {
+  return apiRequest<CreatedBlock>(VENUE_PATHS.blocks(venueId), { method: 'POST', body: block })
+}
+
+/** Remove a block; the backend answers 204 with no body. */
+export function removeVenueBlock(venueId: number, blockId: number): Promise<void> {
+  return apiRequest<undefined>(VENUE_PATHS.block(venueId, blockId), { method: 'DELETE' })
+}
+
+/** The venue's unavailable periods that touch the range, in time order (SCRUM-26). */
+export function fetchVenueCalendar(
+  venueId: number,
+  range: CalendarRange,
+): Promise<CalendarEntry[]> {
+  return apiRequest<CalendarEntry[]>(VENUE_PATHS.calendar(venueId), { query: { ...range } })
 }
