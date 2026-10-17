@@ -77,8 +77,9 @@ does: the same roles, scope (only the assigned coordinator; any organiser of the
 check order, status changes, error codes and messages, field messages and trimming. A decision
 or question appears on the record with the caller's name and the mock's "now". Two accounts
 are added so the actions have data no other test reads: Priya Nair (id 10), a coordinator, and
-Sara Lee (id 11), an organiser of organisation 2. One of Priya's approved events has an
-equipment request, so its decision is locked.
+Sara Lee (id 11), an organiser of organisation 2. Two of Priya's events have an equipment
+request: the approved one's decision can't be changed, while the one under review can still
+get its first decision.
 
 ## Consequences
 - A coordinator can take a request from Submitted to a decision in the web app, and an
