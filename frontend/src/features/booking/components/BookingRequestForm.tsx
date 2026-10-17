@@ -4,9 +4,9 @@ import { Button, ErrorAlert, SelectField, TextField } from '@/components/ui'
 import { LAYOUT_OPTIONS } from '@/config/roomLayouts'
 import { formText } from '@/features/auth/formText'
 import { fieldErrorsOf } from '@/lib/api'
+import { toBusinessTimeIso } from '@/lib/businessTime'
 
 import type { RaiseBookingRequest } from '../api'
-import { toBusinessTimeIso } from '../businessTime'
 import { useRaiseBookingRequest } from '../hooks'
 
 /** The request for the backend; fields left empty are left out so it can fill them in. */
