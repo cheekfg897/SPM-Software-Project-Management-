@@ -12,18 +12,21 @@ SCRUM-41's journey.
 
 The user stories and acceptance criteria it exercises (SCRUM-51 AC5):
 
-- SCRUM-25 "update venue catalogue": AC3. Venue Staff create the venue.
+- SCRUM-25 "update venue catalogue": no AC of its own; Venue Staff create the venue the
+  journey books, through its route.
 - SCRUM-35 "search and filter venues against event requirements": AC1, AC2, AC4. The
-  venue is found while it is free and left out once the approval has booked it.
+  venue is found while it is free, and left out with the no-match message once the
+  approval has booked it.
 - SCRUM-36 "check whether a venue suits an event": AC1, AC3.
 - SCRUM-37 "record what equipment an event needs": AC1.
-- SCRUM-42 "request a venue booking for an approved event": AC1, AC5.
-- SCRUM-43 "approve, hold or reject a venue booking": AC3, AC6.
+- SCRUM-42 "request a venue for an event": AC1, AC6 (a new request is Pending).
+- SCRUM-43 "approve, hold or reject a venue booking": AC1 (the Venue Staff queue), AC3.
 - SCRUM-44 "prevent the same venue being booked twice": AC1, AC2 (the setup and
-  turnaround padding), AC5 (the second request is marked Conflicting).
+  turnaround padding), AC4 (the refusal names it), AC5 (the second request is marked
+  Conflicting).
 - SCRUM-45 "check whether enough equipment is free": AC1.
 - SCRUM-46 "reserve equipment": AC1.
-- SCRUM-67 "record setup and turnaround time for a venue": AC1.
+- SCRUM-67 "record setup and turnaround time for a venue": AC1, AC3.
 
 Each step's banner comment names the ones it covers. It runs with the rest of the suite
 in CI, so a broken journey fails the backend check (SCRUM-51 AC4).
@@ -163,7 +166,7 @@ def test_a_clashing_venue_request_is_marked_conflicting_and_refused(
         "ends_at": _on_event_day(event_day, 15),
     }
 
-    # --- 1. Venue Staff set up the venue (SCRUM-25 AC3, SCRUM-67 AC1) ---
+    # --- 1. Venue Staff set up the venue (SCRUM-67 AC1) ---
     venue = _body(venue_staff.post("/api/venues", VENUE), 201)
     venue_id = venue["id"]
     assert (venue["setup_minutes"], venue["turnaround_minutes"]) == (30, 30)
@@ -189,7 +192,7 @@ def test_a_clashing_venue_request_is_marked_conflicting_and_refused(
     assert [reason["requirement"] for reason in unsuitable["reasons"]] == ["capacity"]
 
     # --- 4. Each event requests the venue, and both wait for a decision ---
-    # (SCRUM-42 AC1, AC5; SCRUM-43 AC6). Raising a request marks nothing, so the
+    # (SCRUM-42 AC1, AC6; SCRUM-43 AC1). Raising a request marks nothing, so the
     # second one is Pending until the first is approved.
     first_request = _body(
         coordinator.post(
@@ -222,16 +225,18 @@ def test_a_clashing_venue_request_is_marked_conflicting_and_refused(
     assert approved["status"] == "approved"
     assert _queue(venue_staff) == [(second_request["id"], "conflicting")]
 
-    # --- 6. The booking now holds the venue, so search leaves it out (SCRUM-35 AC4) ---
+    # --- 6. The booking now holds the venue, so search leaves it out ---
+    # (SCRUM-35 AC2, AC4; SCRUM-67 AC3: the padding reaches the second period)
     clashing_search = {
         **search,
         "start_time": second_period["starts_at"],
         "end_time": second_period["ends_at"],
     }
     left_out = _body(coordinator.post("/api/venues/search", clashing_search), 200)
-    assert left_out["results"] == []
+    assert left_out == {"results": [], "message": "No venues match your search criteria."}
 
-    # --- 7. Approving the second is refused, naming the clash (SCRUM-44 AC1, AC2) ---
+    # --- 7. Approving the second is refused, naming the clash ---
+    # (SCRUM-44 AC1, AC2, AC4: the setup and turnaround are named)
     refused = _body(
         venue_staff.post(
             f"/api/venues/booking-requests/{second_request['id']}/decision",
