@@ -173,8 +173,10 @@ def test_venue_staff_placing_or_changing_a_hold_gets_200_with_the_request(
     view_kwargs: dict[str, Any],
     service: str,
 ) -> None:
-    response, status = call_route(endpoint, method, path, view_kwargs, venue_staff_token)
+    body = {"expires_at": "2026-11-20T17:30:00+08:00"}
+
+    response, status = call_route(endpoint, method, path, view_kwargs, venue_staff_token, body=body)
 
     assert status == 200
     assert response.get_json()["id"] == REQUEST_ID
-    mock_services[service].assert_called_once_with(REQUEST_ID, {})
+    mock_services[service].assert_called_once_with(REQUEST_ID, body)
