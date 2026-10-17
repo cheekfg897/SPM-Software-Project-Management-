@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import UTC, date, datetime, time
+from datetime import UTC, date, datetime, time, timezone
 from types import ModuleType
 from typing import Any
 from unittest.mock import MagicMock
@@ -47,7 +47,8 @@ from app.modules.notifications.services import (
     NotificationKind,
     list_notifications_for_recipient,
 )
-from tests.events.cases import DRAFT_REFERENCE, LEAD_ID
+from app.modules.venue.models import BookingRequestStatus, Venue, VenueBookingRequest
+from tests.events.cases import DRAFT_REFERENCE, LEAD_ID, AddLine, Arrange
 
 #: Every role but the Lead, so a role added later is refused unless a test says not.
 NON_LEAD_ROLES = sorted(ALL_ROLES - {Role.EVENT_COORDINATOR_LEAD}, key=lambda role: role.value)
@@ -729,3 +730,58 @@ def record_entry(saved_event_request: EventRequest, db_session: Session) -> Call
         db_session.commit()
 
     return _record
+
+
+@pytest.fixture()
+def arrange(saved_event_request: EventRequest, venue: Venue, save: Callable[..., None]) -> Arrange:
+    """Save a venue arrangement for ``saved_event_request`` with the given status.
+
+    Each one starts an hour after the last, so two Pending ones never share a period.
+    """
+    arranged: list[VenueBookingRequest] = []
+
+    def _arrange(status: BookingRequestStatus) -> VenueBookingRequest:
+        hour = 9 + len(arranged)
+        arrangement = VenueBookingRequest(
+            event_id=saved_event_request.id,
+            venue_id=venue.id,
+            starts_at=datetime(2026, 11, 1, hour, tzinfo=timezone.utc),
+            ends_at=datetime(2026, 11, 1, hour, 30, tzinfo=timezone.utc),
+            purpose="Main session",
+            expected_occupancy=80,
+            status=status,
+            requested_by=saved_event_request.coordinator_id,
+        )
+        save(arrangement)
+        arranged.append(arrangement)
+        return arrangement
+
+    return _arrange
+
+
+@pytest.fixture()
+def add_line(
+    saved_event_request: EventRequest,
+    make_equipment_type: Callable[..., EquipmentType],
+    make_equipment_line: Callable[..., EventEquipmentLine],
+    save: Callable[..., None],
+) -> AddLine:
+    """Save a request for 2 units on ``saved_event_request`` with the given outcome.
+
+    The argument is the ``provided_quantity``; ``None`` means Technical Support has
+    not recorded an outcome yet (ADR-0040). Each request is for its own equipment type.
+    """
+    added: list[EventEquipmentLine] = []
+
+    def _add(provided_quantity: int | None) -> EventEquipmentLine:
+        equipment_type = make_equipment_type(name=f"Item {len(added)}")
+        save(equipment_type)
+        line = make_equipment_line(saved_event_request, equipment_type)
+        if provided_quantity is not None:
+            line.provided_quantity = provided_quantity
+            line.status = EquipmentLineStatus.FULFILLED
+        save(line)
+        added.append(line)
+        return line
+
+    return _add
