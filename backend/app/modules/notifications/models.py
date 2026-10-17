@@ -83,6 +83,10 @@ class NotificationKind(str, enum.Enum):
     #: or changed its expiry; the expiry is the notification's ``detail`` (SCRUM-75).
     VENUE_HOLD_PLACED = "venue_hold_placed"
     VENUE_HOLD_EXPIRY_CHANGED = "venue_hold_expiry_changed"
+    #: The coordinator's hold expires within 24 hours, or has expired; the expiry is the
+    #: notification's ``detail`` (SCRUM-94, ADR-0052).
+    VENUE_HOLD_EXPIRING = "venue_hold_expiring"
+    VENUE_HOLD_EXPIRED = "venue_hold_expired"
 
 
 class Notification(db.Model):  # type: ignore[name-defined]

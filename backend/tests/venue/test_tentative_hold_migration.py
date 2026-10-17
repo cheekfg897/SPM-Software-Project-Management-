@@ -48,8 +48,9 @@ def test_the_migrations_value_lists_are_the_models_values(load_migration: LoadMi
         *migration.PREVIOUS_NOTIFICATION_KIND_VALUES,
         *migration.ADDED_NOTIFICATION_KIND_VALUES,
     }
-    assert request_values == {status.value for status in BookingRequestStatus}
-    assert notification_values == {kind.value for kind in NotificationKind}
+    # Subset, not equality: 0037 (SCRUM-94) adds further values this one doesn't know.
+    assert request_values <= {status.value for status in BookingRequestStatus}
+    assert notification_values <= {kind.value for kind in NotificationKind}
 
 
 def test_the_revision_follows_0031_and_fits_alembics_version_column(

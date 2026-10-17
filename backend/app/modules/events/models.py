@@ -155,6 +155,11 @@ class EventHistoryKind(str, enum.Enum):
     #: and ``notes`` (``None`` when none were given), and ``actor_id`` is the Technical
     #: Support user (SCRUM-85 AC4, ADR-0050).
     EQUIPMENT_PREPARATION_UPDATED = "equipment_preparation_updated"
+    #: A tentative hold on one of the event's venues ran out before Venue Staff's final
+    #: approval; ``details`` holds ``venue_booking_request_id``, ``venue_id``,
+    #: ``booking_id`` and ``expires_at`` (an ISO string), and ``actor_id`` is NULL,
+    #: because the system expired it (SCRUM-94 AC6, ADR-0052).
+    VENUE_HOLD_EXPIRED = "venue_hold_expired"
 
 
 class SafetyOutcome(str, enum.Enum):

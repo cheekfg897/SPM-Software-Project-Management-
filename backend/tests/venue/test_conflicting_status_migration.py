@@ -24,8 +24,6 @@ AssertInOrder = Callable[[str, list[str]], None]
 MIGRATION = "0028_add_conflicting_status.py"
 #: The migration that left ``booking_request_status`` as it was before this one.
 REQUEST_STATUS_MIGRATION_BELOW = "0025_add_booking_request_decisions.py"
-#: The migration that adds a request status after this one.
-REQUEST_STATUS_MIGRATION_ABOVE = "0036_add_tentative_holds.py"
 
 
 def test_the_previous_request_statuses_are_what_exists_after_the_migrations_below(
@@ -43,9 +41,9 @@ def test_the_migrations_value_lists_are_the_models_values(load_migration: LoadMi
 
     request_values = (*migration.PREVIOUS_REQUEST_STATUS_VALUES, "conflicting")
     booking_values = (*migration.PREVIOUS_BOOKING_STATUS_VALUES, "conflicting")
-    # The values a later migration (0036, SCRUM-75) adds are not this one's to list.
-    added_later = set(load_migration(REQUEST_STATUS_MIGRATION_ABOVE).ADDED_REQUEST_STATUS_VALUES)
-    assert set(request_values) == {status.value for status in BookingRequestStatus} - added_later
+    # Subset, not equality: later migrations (0036 SCRUM-75, 0037 SCRUM-94) add request
+    # statuses that are not this one's to list.
+    assert set(request_values) <= {status.value for status in BookingRequestStatus}
     assert set(booking_values) == {status.value for status in BookingStatus}
 
 

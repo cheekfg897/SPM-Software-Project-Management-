@@ -40,6 +40,12 @@ MESSAGE_BY_KIND: dict[NotificationKind, str] = {
     NotificationKind.VENUE_HOLD_EXPIRY_CHANGED: (
         "The expiry of a tentative venue hold on your event has changed."
     ),
+    NotificationKind.VENUE_HOLD_EXPIRING: (
+        "A tentative venue hold on your event expires within 24 hours."
+    ),
+    NotificationKind.VENUE_HOLD_EXPIRED: (
+        "A tentative venue hold on your event has expired, so the venue was released."
+    ),
     NotificationKind.EQUIPMENT_RESERVED: "Equipment was reserved for an event.",
     NotificationKind.REQUEST_QUEUED_FOR_LEAD: (
         "A new event request is waiting in the unassigned queue."
