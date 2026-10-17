@@ -26,6 +26,7 @@ import { UnassignedQueuePage } from '@/features/lead/pages/UnassignedQueuePage'
 import { SafetyReviewPage } from '@/features/safety/pages/SafetyReviewPage'
 import { VenueSearchPage } from '@/features/venueSearch/pages/VenueSearchPage'
 import { EquipmentEventRequests } from '@/features/eventRequests/components/EquipmentEventRequests'
+import { EquipmentQueue } from '@/features/techSupport/components/EquipmentQueue'
 
 import { NotFoundPage } from './NotFoundPage'
 
@@ -94,6 +95,7 @@ export const appRoutes: RouteObject[] = [
           <RequireRole allowedRoles={INTERNAL_ROLES} loginRoute={ROUTES.STAFF_LOGIN}>
             <StaffHomePage>
               <AssignedEventRequests />
+              <EquipmentQueue />
               <EquipmentEventRequests />
             </StaffHomePage>
           </RequireRole>
