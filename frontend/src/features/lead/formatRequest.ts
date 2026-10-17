@@ -34,6 +34,14 @@ export function formatProposedDate(date: string): string {
   return PLAIN_DATE_FORMAT.format(new Date(date))
 }
 
+/** e.g. "14 Dec 2026 – 15 Dec 2026" for an event that ends on a later day, else one date. */
+export function formatEventDates(proposedDate: string, endDate: string | null): string {
+  if (endDate === null) {
+    return formatProposedDate(proposedDate)
+  }
+  return `${formatProposedDate(proposedDate)} – ${formatProposedDate(endDate)}`
+}
+
 /** e.g. "9:00 am – 5:00 pm" from "09:00:00" and "17:00:00". */
 export function formatProposedTimes(startTime: string, endTime: string): string {
   const start = PLAIN_TIME_FORMAT.format(new Date(`1970-01-01T${startTime}Z`))

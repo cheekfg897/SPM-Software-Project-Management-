@@ -26,6 +26,8 @@ export const ROUTES = {
   SAFETY_REVIEW: '/staff/safety-review',
   /** A coordinator's venue search and suitability check (SCRUM-35, SCRUM-36). */
   VENUE_SEARCH: '/staff/venue-search',
+  /** The Lead's workload and active events, where an event is reassigned (SCRUM-96). */
+  LEAD_OVERSIGHT: '/staff/oversight',
 } as const
 
 export type RoutePath = (typeof ROUTES)[keyof typeof ROUTES]

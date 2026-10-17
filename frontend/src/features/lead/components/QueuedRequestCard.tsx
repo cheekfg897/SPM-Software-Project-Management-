@@ -2,22 +2,13 @@ import { useId } from 'react'
 
 import type { UnassignedRequest } from '../api'
 import { formatProposedDate, formatProposedTimes, formatSubmittedAt } from '../formatRequest'
-
 import { useAssignCoordinator } from '../hooks'
 
 import { CoordinatorEmailForm } from './CoordinatorEmailForm'
+import { Detail } from './Detail'
 
 interface QueuedRequestCardProps {
   request: UnassignedRequest
-}
-
-function Detail({ term, children }: { term: string; children: string | number }) {
-  return (
-    <div>
-      <dt className="text-ink-faint text-xs tracking-wide uppercase">{term}</dt>
-      <dd className="text-ink mt-0.5">{children}</dd>
-    </div>
-  )
 }
 
 /** One request waiting in the queue: what it is, when it is for, and the form to assign it. */

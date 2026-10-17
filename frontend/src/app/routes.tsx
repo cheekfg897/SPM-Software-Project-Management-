@@ -27,6 +27,7 @@ import { SafetyReviewPage } from '@/features/safety/pages/SafetyReviewPage'
 import { VenueSearchPage } from '@/features/venueSearch/pages/VenueSearchPage'
 import { EquipmentEventRequests } from '@/features/eventRequests/components/EquipmentEventRequests'
 import { EquipmentQueue } from '@/features/techSupport/components/EquipmentQueue'
+import { OversightPage } from '@/features/lead/pages/OversightPage'
 
 import { NotFoundPage } from './NotFoundPage'
 
@@ -162,6 +163,14 @@ export const appRoutes: RouteObject[] = [
         element: (
           <RequireRole allowedRoles={COORDINATOR_ROLES} loginRoute={ROUTES.STAFF_LOGIN}>
             <VenueSearchPage />
+          </RequireRole>
+        ),
+      },
+      {
+        path: ROUTES.LEAD_OVERSIGHT,
+        element: (
+          <RequireRole allowedRoles={LEAD_ROLES} loginRoute={ROUTES.STAFF_LOGIN}>
+            <OversightPage />
           </RequireRole>
         ),
       },
