@@ -32,6 +32,7 @@ from app.modules.events.models import (
     EventRequest,
     EventRequestStatus,
 )
+from app.modules.events.schemas import SAFETY_REASON_REQUIRED_MESSAGE
 from app.modules.events.services import (
     ALREADY_SAFETY_APPROVED_MESSAGE,
     NOT_IN_SAFETY_REVIEW_MESSAGE,
@@ -70,6 +71,7 @@ CHECKLIST = {
     "venue_restrictions": "No open flames.",
 }
 NOT_APPROVED_OUTCOMES = ["rejected", "changes_requested"]
+UNKNOWN_OUTCOME_MESSAGE = "Outcome must be approved, rejected or changes_requested."
 #: Every status but Safety Review, built from the enum so a status added later is
 #: refused here too. A draft is left out: staff can't see one, so it is a 404.
 NOT_IN_SAFETY_REVIEW = [
@@ -258,7 +260,7 @@ def test_a_reason_is_required_to_reject_or_request_changes(
 ) -> None:
     errors = _field_errors(db_session, outcome, reason=None)
 
-    assert list(errors) == ["reason"]
+    assert errors == {"reason": [SAFETY_REASON_REQUIRED_MESSAGE]}
 
 
 @pytest.mark.parametrize("item", sorted(CHECKLIST))
@@ -273,10 +275,107 @@ def test_every_checklist_item_needs_a_note(
     assert list(errors["checklist"]) == [item]
 
 
-def test_a_blank_checklist_note_is_refused(db_session: Session, in_review: EventRequest) -> None:
-    errors = _field_errors(db_session, "approved", checklist={**CHECKLIST, "crowd_movement": "  "})
+@pytest.mark.parametrize("item", sorted(CHECKLIST))
+def test_a_blank_checklist_note_is_refused(
+    db_session: Session, in_review: EventRequest, item: str
+) -> None:
+    errors = _field_errors(db_session, "approved", checklist={**CHECKLIST, item: "  "})
 
-    assert list(errors["checklist"]) == ["crowd_movement"]
+    assert errors == {"checklist": {item: ["Must not be blank."]}}
+
+
+@pytest.mark.parametrize(
+    ("payload", "details"),
+    [
+        (
+            {"checklist": CHECKLIST},
+            {"outcome": ["Missing data for required field."]},
+        ),
+        (
+            {"outcome": "maybe", "checklist": CHECKLIST},
+            {"outcome": [UNKNOWN_OUTCOME_MESSAGE]},
+        ),
+        (
+            {"outcome": True, "checklist": CHECKLIST},
+            {"outcome": [UNKNOWN_OUTCOME_MESSAGE]},
+        ),
+        (
+            {"outcome": "rejected", "reason": REASON},
+            {"checklist": ["Missing data for required field."]},
+        ),
+        (
+            {"outcome": "rejected", "checklist": ["No notes."], "reason": REASON},
+            {"checklist": {"_schema": ["Invalid input type."]}},
+        ),
+        (
+            {
+                "outcome": "rejected",
+                "checklist": {**CHECKLIST, "venue_layout": 5},
+                "reason": REASON,
+            },
+            {"checklist": {"venue_layout": ["Not a valid string."]}},
+        ),
+        (
+            {
+                "outcome": "rejected",
+                "checklist": {**CHECKLIST, "fire_drill": "Done."},
+                "reason": REASON,
+            },
+            {"checklist": {"fire_drill": ["Unknown field."]}},
+        ),
+        (
+            {"outcome": "rejected", "checklist": CHECKLIST, "reason": "   "},
+            {"reason": ["Must not be blank."]},
+        ),
+        (
+            {"outcome": "rejected", "checklist": CHECKLIST, "reason": 5},
+            {"reason": ["Not a valid string."]},
+        ),
+        (
+            {"outcome": "approved", "checklist": CHECKLIST, "status": "confirmed"},
+            {"status": ["Unknown field."]},
+        ),
+    ],
+    ids=[
+        "no-outcome",
+        "unknown-outcome",
+        "outcome-a-boolean",
+        "no-checklist",
+        "checklist-a-list",
+        "note-a-number",
+        "unknown-checklist-item",
+        "blank-reason",
+        "reason-a-number",
+        "status-sent",
+    ],
+)
+def test_an_invalid_payload_is_refused_and_nothing_is_recorded(
+    db_session: Session,
+    in_review: EventRequest,
+    reload_event_request: ReloadEventRequest,
+    history_of: HistoryOf,
+    payload: dict[str, Any],
+    details: dict[str, Any],
+) -> None:
+    with pytest.raises(ValidationError) as exc_info:
+        record_safety_outcome(SAFETY_OFFICER_ID, REFERENCE, payload, session=db_session)
+
+    assert exc_info.value.details == details
+    assert reload_event_request(in_review.id).status is EventRequestStatus.SAFETY_REVIEW
+    assert history_of(in_review.id) == []
+
+
+def test_the_notes_and_the_reason_are_trimmed(
+    db_session: Session, in_review: EventRequest, history_of: HistoryOf
+) -> None:
+    padded_checklist = {}
+    for item, note in CHECKLIST.items():
+        padded_checklist[item] = f"  {note}\n"
+
+    _record(db_session, "rejected", reason=f"  {REASON}\n", checklist=padded_checklist)
+
+    [(_, _, details)] = history_of(in_review.id)
+    assert details == {"outcome": "rejected", "checklist": CHECKLIST, "reason": REASON}
 
 
 # --------------------------------------------------------------------------
