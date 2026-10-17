@@ -1,12 +1,24 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
+import { selectSessionUser, useAppSelector } from '@/store'
+
 import {
+  addEquipmentLine,
   equipmentKeys,
+  fetchEquipmentTypes,
   fetchEventAvailability,
+  fetchEventEquipmentLines,
   fetchEventReservations,
+  removeEquipmentLine,
   reserveEquipment,
+  updateEquipmentLine,
 } from './api'
-import type { ReserveEquipmentBody } from './api'
+import type { EquipmentLineBody, EquipmentLineChange, ReserveEquipmentBody } from './api'
+
+/** Every equipment type in the catalogue, by name: where an equipment line's name comes from. */
+export function useEquipmentTypes() {
+  return useQuery({ queryKey: equipmentKeys.types(), queryFn: fetchEquipmentTypes })
+}
 
 /** What is free of each equipment type for the event's period, with any shortfall. */
 export function useEventAvailability(reference: string) {
@@ -24,15 +36,58 @@ export function useEventReservations(reference: string) {
   })
 }
 
+/** The event's equipment lines, read for whoever is signed in. */
+export function useEventEquipmentLines(reference: string) {
+  const viewer = useAppSelector(selectSessionUser)
+  return useQuery({
+    queryKey: equipmentKeys.lines(reference, viewer?.id ?? null),
+    queryFn: () => fetchEventEquipmentLines(reference),
+  })
+}
+
 /**
- * Reserve equipment for the event. Afterwards availability and the reservation list are read
- * again, so what is left comes from the backend rather than being worked out here. That happens
- * after a refusal too: "Only N available" means someone else may have reserved meanwhile.
+ * Read all of the event's equipment again: its lines, availability (whose "requested" is the
+ * lines' quantities) and reservations. Used after a change, refused or not: a refusal such as
+ * "Only N available" or "already has a line for that equipment type" means someone else
+ * changed it meanwhile, so the screen shows what the backend has now rather than a guess.
  */
-export function useReserveEquipment(reference: string) {
+function useRefreshEventEquipment(reference: string) {
   const queryClient = useQueryClient()
+  return () => queryClient.invalidateQueries({ queryKey: equipmentKeys.event(reference) })
+}
+
+/** Reserve equipment for the event (SCRUM-46). */
+export function useReserveEquipment(reference: string) {
+  const refresh = useRefreshEventEquipment(reference)
   return useMutation({
     mutationFn: (body: ReserveEquipmentBody) => reserveEquipment(reference, body),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: equipmentKeys.event(reference) }),
+    onSettled: refresh,
+  })
+}
+
+/** Add an equipment line to the event (SCRUM-37 AC1). */
+export function useAddEquipmentLine(reference: string) {
+  const refresh = useRefreshEventEquipment(reference)
+  return useMutation({
+    mutationFn: (body: EquipmentLineBody) => addEquipmentLine(reference, body),
+    onSettled: refresh,
+  })
+}
+
+/** Change one of the event's equipment lines (SCRUM-37 AC2). */
+export function useUpdateEquipmentLine(reference: string) {
+  const refresh = useRefreshEventEquipment(reference)
+  return useMutation({
+    mutationFn: (change: EquipmentLineChange) => updateEquipmentLine(reference, change),
+    onSettled: refresh,
+  })
+}
+
+/** Remove one of the event's equipment lines (SCRUM-37 AC2). */
+export function useRemoveEquipmentLine(reference: string) {
+  const refresh = useRefreshEventEquipment(reference)
+  return useMutation({
+    mutationFn: (lineId: number) => removeEquipmentLine(reference, lineId),
+    onSettled: refresh,
   })
 }
