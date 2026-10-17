@@ -7,6 +7,7 @@ export const STATUS_LABELS: Record<BookingRequestStatus, string> = {
   on_hold: 'On hold',
   approved: 'Approved',
   rejected: 'Rejected',
+  withdrawn: 'Withdrawn',
   expired: 'Expired',
   released: 'Released',
 }

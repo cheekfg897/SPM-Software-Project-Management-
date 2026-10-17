@@ -35,8 +35,9 @@ const APPROVED_EVENT: MockBookingEvent = {
 }
 
 /**
- * Five events: one the coordinator can book for, one already confirmed, one assigned
- * elsewhere, and two whose requests are waiting for Venue Staff (SCRUM-43). The waiting
+ * Seven events: one the coordinator can book for, one already confirmed, one assigned
+ * elsewhere, two whose requests are waiting for Venue Staff (SCRUM-43), and two of the
+ * coordinator's with several venue arrangements already decided (SCRUM-93). The waiting
  * two run on different dates, so the queue's order is visible.
  */
 export const MOCK_BOOKING_EVENTS = {
@@ -55,6 +56,18 @@ export const MOCK_BOOKING_EVENTS = {
     id: 105,
     reference: 'EVR-BOOK0105',
     proposed_date: '2026-11-20',
+  },
+  multiVenue: {
+    ...APPROVED_EVENT,
+    id: 106,
+    reference: 'EVR-BOOK0106',
+    proposed_date: '2026-11-25',
+  },
+  booked: {
+    ...APPROVED_EVENT,
+    id: 107,
+    reference: 'EVR-BOOK0107',
+    proposed_date: '2026-11-26',
   },
 } as const satisfies Record<string, MockBookingEvent>
 
@@ -118,3 +131,85 @@ export const MOCK_PENDING_DECISIONS = [
     accessibility_needs: MOCK_BOOKING_EVENTS.earlierWorkshop.accessibility_needs,
   },
 ] as const satisfies readonly BookingRequest[]
+
+/** A decided or withdrawn arrangement of `event`: the event's own details, as the backend adds them. */
+function arrangementOf(
+  event: MockBookingEvent,
+  arrangement: Pick<
+    BookingRequest,
+    'id' | 'venue_id' | 'starts_at' | 'ends_at' | 'purpose' | 'status' | 'decision_reason'
+  >,
+): BookingRequest {
+  return {
+    ...arrangement,
+    event_id: event.id,
+    expected_occupancy: 10,
+    required_layout: null,
+    justification: null,
+    preparation_status: 'not_started',
+    preparation_notes: null,
+    hold_expires_at: null,
+    needs_alternative_venue: false,
+    unavailability: [],
+    replaces_request_id: null,
+    event_proposed_date: event.proposed_date,
+    event_end_date: event.end_date,
+    event_start_time: event.start_time,
+    event_end_time: event.end_time,
+    accessibility_needs: event.accessibility_needs,
+  }
+}
+
+/**
+ * Arrangements no longer waiting for Venue Staff, so the queue never shows them (SCRUM-93).
+ * The multi-venue event has two rejected and one withdrawn; the booked event has an approved
+ * one, which nothing can withdraw, and a rejected one. Each event's are saved out of period
+ * order, and two start together, so the list's order (period, then id) is visible.
+ */
+export const MOCK_ARRANGEMENTS = {
+  rejectedMain: arrangementOf(MOCK_BOOKING_EVENTS.multiVenue, {
+    id: 9101,
+    venue_id: MOCK_BOOKING_VENUES.roomy.id,
+    starts_at: '2026-11-25T13:00:00+08:00',
+    ends_at: '2026-11-25T17:00:00+08:00',
+    purpose: 'Main programme',
+    status: 'rejected',
+    decision_reason: 'Hall closed for repairs',
+  }),
+  rejectedBreakout: arrangementOf(MOCK_BOOKING_EVENTS.multiVenue, {
+    id: 9103,
+    venue_id: MOCK_BOOKING_VENUES.tiny.id,
+    starts_at: '2026-11-25T09:00:00+08:00',
+    ends_at: '2026-11-25T11:00:00+08:00',
+    purpose: 'Breakout session',
+    status: 'rejected',
+    decision_reason: 'Double-booked',
+  }),
+  withdrawnOverflow: arrangementOf(MOCK_BOOKING_EVENTS.multiVenue, {
+    id: 9102,
+    venue_id: MOCK_BOOKING_VENUES.roomy.id,
+    starts_at: '2026-11-25T09:00:00+08:00',
+    ends_at: '2026-11-25T12:00:00+08:00',
+    purpose: 'Overflow room',
+    status: 'withdrawn',
+    decision_reason: null,
+  }),
+  bookedHall: arrangementOf(MOCK_BOOKING_EVENTS.booked, {
+    id: 9104,
+    venue_id: MOCK_BOOKING_VENUES.roomy.id,
+    starts_at: '2026-11-26T13:00:00+08:00',
+    ends_at: '2026-11-26T17:00:00+08:00',
+    purpose: 'Main hall',
+    status: 'approved',
+    decision_reason: 'Booked',
+  }),
+  bookedSideRoom: arrangementOf(MOCK_BOOKING_EVENTS.booked, {
+    id: 9105,
+    venue_id: MOCK_BOOKING_VENUES.tiny.id,
+    starts_at: '2026-11-26T09:00:00+08:00',
+    ends_at: '2026-11-26T11:00:00+08:00',
+    purpose: 'Side room',
+    status: 'rejected',
+    decision_reason: 'Too small',
+  }),
+} as const satisfies Record<string, BookingRequest>

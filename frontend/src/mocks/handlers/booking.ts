@@ -2,7 +2,8 @@ import { http, HttpResponse } from 'msw'
 import type { RequestHandler } from 'msw'
 
 import { ROLE } from '@/config/roles'
-import type { BookingRequest, Unavailability } from '@/features/booking/api'
+import type { BookingRequest, BookingRequestStatus, Unavailability } from '@/features/booking/api'
+import { LAYOUT_OPTIONS } from '@/config/roomLayouts'
 import type { FieldErrors } from '@/lib/api'
 
 import {
@@ -14,15 +15,23 @@ import {
 } from '../responses'
 
 import { accountForRequest } from './auth'
-import { MOCK_BOOKING_EVENTS, MOCK_BOOKING_VENUES, MOCK_PENDING_DECISIONS } from './bookingFixtures'
+import {
+  MOCK_ARRANGEMENTS,
+  MOCK_BOOKING_EVENTS,
+  MOCK_BOOKING_VENUES,
+  MOCK_PENDING_DECISIONS,
+} from './bookingFixtures'
 import type { MockBookingEvent } from './bookingFixtures'
 
 /**
- * The venue module's booking request endpoints (SCRUM-42), answering as
+ * The venue module's booking request endpoints (SCRUM-42, SCRUM-43, SCRUM-93), answering as
  * backend/app/modules/venue/routes.py does, error bodies included.
  */
 
 const BOOKING_PATH = '/api/venues/events/:reference/booking-requests'
+const ARRANGEMENT_PATH = `${BOOKING_PATH}/:arrangementId`
+const WITHDRAW_PATH = `${ARRANGEMENT_PATH}/withdraw`
+const CANCEL_ALL_PATH = `${BOOKING_PATH}/cancel-all`
 const PENDING_PATH = '/api/venues/booking-requests'
 const DECISION_PATH = `${PENDING_PATH}/:requestId/decision`
 const REQUIRED_FIELDS = ['venue_id', 'starts_at', 'ends_at', 'purpose'] as const
@@ -40,14 +49,35 @@ const OUTCOME_ERROR_MESSAGE = 'Outcome must be approved or rejected.'
 function clashMessage(bookingId: number): string {
   return `Cannot approve: booking #${bookingId} already holds this venue during the requested period.`
 }
+/** The backend's messages for an event's arrangements (venue/services.py, SCRUM-93). */
+const ARRANGEMENT_NOT_FOUND_MESSAGE = 'Venue arrangement not found.'
+/**
+ * As the backend (SCRUM-44): a rejected arrangement stays active until withdrawn, and a
+ * conflicting one may be withdrawn like a pending one; an approved one has made a booking.
+ */
+const WITHDRAWABLE_STATUSES: readonly BookingRequestStatus[] = [
+  'pending',
+  'conflicting',
+  'rejected',
+]
+/** What ChangeArrangementSchema accepts; the venue and the period are not among them. */
+const CHANGEABLE_FIELDS = ['purpose', 'expected_occupancy', 'required_layout', 'justification']
+const LAYOUT_ERROR_MESSAGE = `Must be one of: ${LAYOUT_OPTIONS.map((option) => option.value).join(', ')}.`
 
 const events: MockBookingEvent[] = Object.values(MOCK_BOOKING_EVENTS)
 const venues = Object.values(MOCK_BOOKING_VENUES)
 let requests: BookingRequest[] = []
 
-/** Forget the requests raised since, and put the waiting ones back. Runs after every test. */
+/**
+ * Forget the requests raised since, and put back the waiting ones and the decided
+ * arrangements. Runs after every test.
+ */
 export function resetMockBooking(): void {
-  requests = MOCK_PENDING_DECISIONS.map((waiting) => ({ ...waiting }))
+  const startingRequests: readonly BookingRequest[] = [
+    ...MOCK_PENDING_DECISIONS,
+    ...Object.values(MOCK_ARRANGEMENTS),
+  ]
+  requests = startingRequests.map((existing) => ({ ...existing }))
 }
 
 resetMockBooking()
@@ -152,9 +182,11 @@ function toRequest(event: MockBookingEvent, body: Record<string, unknown>, id: n
   } as BookingRequest // the body was checked above to hold the required fields
 }
 
+/** Only a pending request holds its slot, as the backend's partial unique index does. */
 function isDuplicate(candidate: BookingRequest): boolean {
   return requests.some(
     (existing) =>
+      existing.status === 'pending' &&
       existing.event_id === candidate.event_id &&
       existing.venue_id === candidate.venue_id &&
       existing.starts_at === candidate.starts_at &&
@@ -180,6 +212,91 @@ function findOwnEvent(reference: unknown, coordinatorId: number): MockBookingEve
   )
 }
 
+/** The mock's suitability check: the venue must hold the request's own occupancy. */
+function needsJustification(candidate: BookingRequest): boolean {
+  const venue = venues.find((existing) => existing.id === candidate.venue_id)
+  const tooSmall = venue !== undefined && candidate.expected_occupancy > venue.capacity
+  return tooSmall && candidate.justification === null
+}
+
+/** An event's requests as the backend lists them: earliest period first, then by id. */
+function inPeriodOrder(eventRequests: BookingRequest[]): BookingRequest[] {
+  return [...eventRequests].sort(
+    (left, right) => left.starts_at.localeCompare(right.starts_at) || left.id - right.id,
+  )
+}
+
+function requestsOf(event: MockBookingEvent): BookingRequest[] {
+  return inPeriodOrder(requests.filter((existing) => existing.event_id === event.id))
+}
+
+/** One of the event's own arrangements; an id on another event is as missing as an unknown one. */
+function findArrangement(event: MockBookingEvent, arrangementId: unknown) {
+  return requests.find(
+    (existing) => existing.id === Number(arrangementId) && existing.event_id === event.id,
+  )
+}
+
+function withdrawRefusal(arrangement: BookingRequest) {
+  return errorResponse(
+    409,
+    'conflict',
+    `Only a pending, conflicting or rejected arrangement can be withdrawn; this one is ${arrangement.status}.`,
+  )
+}
+
+/** The backend's message for a text field that must not be blank, or null when it is fine. */
+function textFieldError(value: unknown): string | null {
+  if (value === null) {
+    return 'Field may not be null.'
+  }
+  if (typeof value !== 'string') {
+    return 'Not a valid string.'
+  }
+  return value.trim() === '' ? 'Must not be blank.' : null
+}
+
+function occupancyError(value: unknown): string | null {
+  if (typeof value !== 'number') {
+    return 'Not a valid integer.'
+  }
+  return value < 1 ? 'expected_occupancy must be a positive number.' : null
+}
+
+function layoutError(value: unknown): string | null {
+  const known = value === null || LAYOUT_OPTIONS.some((option) => option.value === value)
+  return known ? null : LAYOUT_ERROR_MESSAGE
+}
+
+/**
+ * ChangeArrangementSchema's message for one field sent, or null when it is fine. A numeric
+ * string, which marshmallow also accepts as an occupancy, is refused here: the web app only
+ * sends numbers.
+ */
+function changeFieldError(field: string, value: unknown): string | null {
+  if (!CHANGEABLE_FIELDS.includes(field)) {
+    return 'Unknown field.'
+  }
+  if (field === 'expected_occupancy') {
+    return occupancyError(value)
+  }
+  if (field === 'required_layout') {
+    return layoutError(value)
+  }
+  return textFieldError(value)
+}
+
+function changeFieldErrors(body: Record<string, unknown>): FieldErrors {
+  const errors: FieldErrors = {}
+  for (const [field, value] of Object.entries(body)) {
+    const message = changeFieldError(field, value)
+    if (message !== null) {
+      errors[field] = [message]
+    }
+  }
+  return errors
+}
+
 export const bookingHandlers: RequestHandler[] = [
   http.get(BOOKING_PATH, ({ request, params }) => {
     const { user, refusal } = checkCoordinator(request)
@@ -190,7 +307,7 @@ export const bookingHandlers: RequestHandler[] = [
     if (event === undefined) {
       return errorResponse(404, 'not_found', EVENT_NOT_FOUND_MESSAGE)
     }
-    return HttpResponse.json(requests.filter((existing) => existing.event_id === event.id))
+    return HttpResponse.json(requestsOf(event))
   }),
 
   http.post(BOOKING_PATH, async ({ request, params }) => {
@@ -221,7 +338,7 @@ export const bookingHandlers: RequestHandler[] = [
     if (venue === undefined) {
       return validationError({ venue_id: ['Venue not found.'] })
     }
-    if (created.expected_occupancy > venue.capacity && created.justification === null) {
+    if (needsJustification(created)) {
       return validationError({ justification: [JUSTIFICATION_REQUIRED_MESSAGE] })
     }
     if (isDuplicate(created)) {
@@ -276,5 +393,84 @@ export const bookingHandlers: RequestHandler[] = [
       markClashingRequestsConflicting(waiting)
     }
     return HttpResponse.json(waiting)
+  }),
+
+  http.post(WITHDRAW_PATH, ({ request, params }) => {
+    const { user, refusal } = checkCoordinator(request)
+    if (refusal !== null || user === undefined) {
+      return refusal
+    }
+    const event = findOwnEvent(params.reference, user.id)
+    if (event === undefined) {
+      return errorResponse(404, 'not_found', EVENT_NOT_FOUND_MESSAGE)
+    }
+    const arrangement = findArrangement(event, params.arrangementId)
+    if (arrangement === undefined) {
+      return errorResponse(404, 'not_found', ARRANGEMENT_NOT_FOUND_MESSAGE)
+    }
+    if (!WITHDRAWABLE_STATUSES.includes(arrangement.status)) {
+      return withdrawRefusal(arrangement)
+    }
+
+    arrangement.status = 'withdrawn'
+    return HttpResponse.json(arrangement)
+  }),
+
+  http.post(CANCEL_ALL_PATH, ({ request, params }) => {
+    const { user, refusal } = checkCoordinator(request)
+    if (refusal !== null || user === undefined) {
+      return refusal
+    }
+    const event = findOwnEvent(params.reference, user.id)
+    if (event === undefined) {
+      return errorResponse(404, 'not_found', EVENT_NOT_FOUND_MESSAGE)
+    }
+    const active = requestsOf(event).filter((existing) => existing.status !== 'withdrawn')
+    // The backend commits once, so one it cannot withdraw means none of them is.
+    const stuck = active.find((existing) => !WITHDRAWABLE_STATUSES.includes(existing.status))
+    if (stuck !== undefined) {
+      return withdrawRefusal(stuck)
+    }
+
+    for (const arrangement of active) {
+      arrangement.status = 'withdrawn'
+    }
+    return HttpResponse.json(active)
+  }),
+
+  http.patch(ARRANGEMENT_PATH, async ({ request, params }) => {
+    const { user, refusal } = checkCoordinator(request)
+    if (refusal !== null || user === undefined) {
+      return refusal
+    }
+    const body = await readBody(request)
+    const invalid = changeFieldErrors(body)
+    if (Object.keys(invalid).length > 0) {
+      return validationError(invalid)
+    }
+
+    const event = findOwnEvent(params.reference, user.id)
+    if (event === undefined) {
+      return errorResponse(404, 'not_found', EVENT_NOT_FOUND_MESSAGE)
+    }
+    const arrangement = findArrangement(event, params.arrangementId)
+    if (arrangement === undefined) {
+      return errorResponse(404, 'not_found', ARRANGEMENT_NOT_FOUND_MESSAGE)
+    }
+    if (arrangement.status !== 'pending') {
+      return errorResponse(
+        409,
+        'conflict',
+        `Only a pending arrangement can be changed; this one is ${arrangement.status}.`,
+      )
+    }
+    // Checked before anything is written, so a refused change leaves the arrangement as it was.
+    const changed = { ...arrangement, ...body }
+    if (needsJustification(changed)) {
+      return validationError({ justification: [JUSTIFICATION_REQUIRED_MESSAGE] })
+    }
+
+    Object.assign(arrangement, body)
+    return HttpResponse.json(arrangement)
   }),
 ]
