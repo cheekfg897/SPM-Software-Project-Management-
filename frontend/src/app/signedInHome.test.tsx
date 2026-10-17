@@ -1,6 +1,7 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 
 import { ROUTES } from '@/config/routes'
+import { logInThroughForm } from '@/features/auth/test/logInThroughForm'
 import { MOCK_ACCOUNTS, mockSessionFor } from '@/mocks/fixtures/accounts'
 import type { MockAccount } from '@/mocks/fixtures/accounts'
 import { renderApp } from '@/test/render'
@@ -69,6 +70,26 @@ describe('SCRUM-6 a signed-in user’s home', () => {
       within(screen.getByRole('banner')).getByRole('link', { name: 'Sign up' }),
     ).toBeInTheDocument()
     expect(logo()).toHaveAttribute('href', ROUTES.HOME)
+  })
+
+  it('forgets what the last user read, so the next one on this device never sees it', async () => {
+    // Venue requests are cached by event, not by viewer: only logging out clears them.
+    const venueRequests = '/events/EVR-BOOK0104/venue-requests'
+    const { user, router } = renderApp(venueRequests, {
+      session: mockSessionFor(MOCK_ACCOUNTS.coordinator),
+    })
+    await screen.findByRole('listitem', { name: 'Main hall' })
+    await user.click(within(screen.getByRole('banner')).getByRole('button', { name: 'Log out' }))
+    await waitFor(() => expect(router.state.location.pathname).toBe(ROUTES.HOME))
+
+    await act(() =>
+      router.navigate(`${ROUTES.STAFF_LOGIN}?next=${encodeURIComponent(venueRequests)}`),
+    )
+    await screen.findByLabelText('Email')
+    await logInThroughForm(user, MOCK_ACCOUNTS.idleCoordinator)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Event request not found.')
+    expect(screen.queryByRole('listitem', { name: 'Main hall' })).not.toBeInTheDocument()
   })
 
   it.each([
