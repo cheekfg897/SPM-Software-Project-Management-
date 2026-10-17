@@ -17,6 +17,7 @@ import {
   updateDraftEventRequest,
 } from './api'
 import type { DecisionChoice, EventRequestDetails } from './api'
+import { fetchEventRequestsWithEquipment, WITH_EQUIPMENT_KEY } from './api'
 
 /** The signed-in organiser's event requests, read for whoever is signed in. */
 export function useMyEventRequests() {
@@ -131,5 +132,13 @@ export function useEventRequest(reference: string) {
     /* v8 ignore next -- its pages are for signed-in organisers and coordinators only (RequireRole), so a viewer is always there */
     queryKey: eventRequestKeys.one(reference, viewer?.id ?? null),
     queryFn: () => fetchEventRequest(reference),
+  })
+}
+
+/** The events with an equipment request, for Technical Support's Staff home (SCRUM-24 AC5). */
+export function useEventRequestsWithEquipment() {
+  return useQuery({
+    queryKey: WITH_EQUIPMENT_KEY,
+    queryFn: fetchEventRequestsWithEquipment,
   })
 }
