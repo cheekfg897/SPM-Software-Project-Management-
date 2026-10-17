@@ -1,9 +1,15 @@
 import type { UnavailabilityCategory } from '@/config/unavailabilityCategories'
 import { apiRequest } from '@/lib/api'
 
-/** The venue module's booking request endpoints (SCRUM-42, SCRUM-43). */
+/** The venue module's booking request endpoints (SCRUM-42, SCRUM-43, SCRUM-93). */
 const BOOKING_PATHS = {
   EVENT_REQUESTS: (reference: string) => `/api/venues/events/${reference}/booking-requests`,
+  /** One of the event's requests, which SCRUM-93 calls a venue arrangement. */
+  arrangement: (reference: string, arrangementId: number) =>
+    `/api/venues/events/${reference}/booking-requests/${arrangementId}`,
+  withdraw: (reference: string, arrangementId: number) =>
+    `/api/venues/events/${reference}/booking-requests/${arrangementId}/withdraw`,
+  cancelAll: (reference: string) => `/api/venues/events/${reference}/booking-requests/cancel-all`,
   /** Venue Staff's queue, across every event. */
   PENDING: '/api/venues/booking-requests',
   decisionFor: (requestId: number) => `/api/venues/booking-requests/${requestId}/decision`,
@@ -29,14 +35,33 @@ export interface RaiseBookingRequest {
 }
 
 /**
+ * What the backend accepts when a coordinator changes a pending arrangement (SCRUM-93). Only
+ * the fields sent change; the venue and the period never do.
+ */
+export interface ArrangementChange {
+  purpose?: string
+  expected_occupancy?: number
+  /** `null` clears the layout. */
+  required_layout?: string | null
+  justification?: string
+}
+
+/**
  * Where a request stands. `conflicting` is a pending request that clashes with one Venue Staff
  * approved (SCRUM-44). `on_hold` is a venue Venue Staff hold tentatively until the request's
- * `hold_expires_at` (SCRUM-75). `expired` is a hold that ran out before Venue Staff's final
- * approval, so the venue was released (SCRUM-94). `released` is one an approved replacement
- * took over from (SCRUM-92).
+ * `hold_expires_at` (SCRUM-75). `withdrawn` is the coordinator's retraction (SCRUM-93).
+ * `expired` is a hold that ran out before Venue Staff's final approval, so the venue was
+ * released (SCRUM-94). `released` is one an approved replacement took over from (SCRUM-92).
  */
 export type BookingRequestStatus =
-  'pending' | 'conflicting' | 'on_hold' | 'approved' | 'rejected' | 'expired' | 'released'
+  | 'pending'
+  | 'conflicting'
+  | 'on_hold'
+  | 'approved'
+  | 'rejected'
+  | 'withdrawn'
+  | 'expired'
+  | 'released'
 
 /** How far Venue Staff have got in setting up an approved booking (SCRUM-84). */
 export type PreparationStatus = 'not_started' | 'in_progress' | 'ready'
@@ -127,4 +152,31 @@ export function decideBookingRequest(
     method: 'POST',
     body: decision,
   })
+}
+
+/** Change a pending arrangement; the backend answers with it as it now is. */
+export function changeArrangement(
+  reference: string,
+  arrangementId: number,
+  change: ArrangementChange,
+): Promise<BookingRequest> {
+  return apiRequest<BookingRequest>(BOOKING_PATHS.arrangement(reference, arrangementId), {
+    method: 'PATCH',
+    body: change,
+  })
+}
+
+/** Withdraw one arrangement; the event's others are left as they are. */
+export function withdrawArrangement(
+  reference: string,
+  arrangementId: number,
+): Promise<BookingRequest> {
+  return apiRequest<BookingRequest>(BOOKING_PATHS.withdraw(reference, arrangementId), {
+    method: 'POST',
+  })
+}
+
+/** Withdraw every arrangement the event still has; answers with the ones it withdrew. */
+export function cancelAllArrangements(reference: string): Promise<BookingRequest[]> {
+  return apiRequest<BookingRequest[]>(BOOKING_PATHS.cancelAll(reference), { method: 'POST' })
 }

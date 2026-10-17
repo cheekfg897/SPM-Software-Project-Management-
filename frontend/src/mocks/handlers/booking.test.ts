@@ -3,11 +3,11 @@ import { sendRequestsAs } from '@/test/sendRequestsAs'
 
 import { MOCK_ACCOUNTS, mockTokenFor } from '../fixtures/accounts'
 
-import { MOCK_BOOKING_EVENTS, MOCK_BOOKING_VENUES } from './bookingFixtures'
+import { MOCK_ARRANGEMENTS, MOCK_BOOKING_EVENTS, MOCK_BOOKING_VENUES } from './bookingFixtures'
 
 /**
- * The booking mock stands in for the venue module's SCRUM-42 endpoints, so these tests pin it
- * to what backend/app/modules/venue/routes.py answers.
+ * The booking mock stands in for the venue module's SCRUM-42 and SCRUM-93 endpoints, so these
+ * tests pin it to what backend/app/modules/venue/routes.py answers.
  */
 
 const APPROVED_EVENT = MOCK_BOOKING_EVENTS.approved
@@ -331,4 +331,363 @@ describe('SCRUM-44 booking mock: approving a request marks the ones it clashes w
 
     expect(statusOf(queue, otherVenue.id)).toBe('pending')
   })
+})
+
+const MULTI_VENUE_EVENT = MOCK_BOOKING_EVENTS.multiVenue
+const ARRANGEMENT_NOT_FOUND = 'Venue arrangement not found.'
+
+function arrangementUrl(reference: string, arrangementId: number): string {
+  return `${bookingUrl(reference)}/${arrangementId}`
+}
+
+function withdraw(reference: string, arrangementId: number) {
+  return apiRequest<Record<string, unknown>>(
+    `${arrangementUrl(reference, arrangementId)}/withdraw`,
+    { method: 'POST' },
+  )
+}
+
+function change(reference: string, arrangementId: number, body: Record<string, unknown>) {
+  return apiRequest<Record<string, unknown>>(arrangementUrl(reference, arrangementId), {
+    method: 'PATCH',
+    body,
+  })
+}
+
+function cancelAll(reference: string) {
+  return apiRequest<Record<string, unknown>[]>(`${bookingUrl(reference)}/cancel-all`, {
+    method: 'POST',
+  })
+}
+
+/** Each of the event's arrangements as `id status`, in the order the list answers with. */
+async function statusesOf(reference: string): Promise<string[]> {
+  const listed = await apiRequest<{ id: number; status: string }[]>(bookingUrl(reference))
+  return listed.map((arrangement) => `${arrangement.id} ${arrangement.status}`)
+}
+
+/** Raise a pending request on the approved event and return its id. */
+async function raisePending(overrides: Record<string, unknown> = {}): Promise<number> {
+  const created = await raise(APPROVED_EVENT.reference, validPayload(overrides))
+  return Number(created.id)
+}
+
+const { rejectedMain, withdrawnOverflow, rejectedBreakout, bookedHall, bookedSideRoom } =
+  MOCK_ARRANGEMENTS
+const BOOKED_EVENT = MOCK_BOOKING_EVENTS.booked
+
+describe('SCRUM-93 booking mock: listing an event with several arrangements', () => {
+  it('lists them earliest period first, then by id, whatever order they were saved in', async () => {
+    expect(await statusesOf(MULTI_VENUE_EVENT.reference)).toEqual([
+      `${withdrawnOverflow.id} withdrawn`,
+      `${rejectedBreakout.id} rejected`,
+      `${rejectedMain.id} rejected`,
+    ])
+  })
+})
+
+describe('SCRUM-93 booking mock: withdrawing an arrangement', () => {
+  it('withdraws a pending arrangement and leaves the event’s other one as it was', async () => {
+    const first = await raisePending()
+    const second = await raisePending({ venue_id: TINY_VENUE.id, expected_occupancy: 5 })
+
+    const withdrawn = await withdraw(APPROVED_EVENT.reference, first)
+
+    expect(withdrawn).toMatchObject({ id: first, status: 'withdrawn', purpose: 'Keynote' })
+    expect(await statusesOf(APPROVED_EVENT.reference)).toEqual([
+      `${first} withdrawn`,
+      `${second} pending`,
+    ])
+  })
+
+  it('withdraws a conflicting arrangement, as the backend does since SCRUM-44', async () => {
+    const overlapping = await raisePending({
+      starts_at: '2026-11-20T11:00:00+08:00',
+      ends_at: '2026-11-20T14:00:00+08:00',
+    })
+    sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.venueStaff))
+    await apiRequest('/api/venues/booking-requests/9001/decision', {
+      method: 'POST',
+      body: { outcome: 'approved' },
+    })
+    sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.coordinator))
+    expect(await statusesOf(APPROVED_EVENT.reference)).toEqual([`${overlapping} conflicting`])
+
+    const withdrawn = await withdraw(APPROVED_EVENT.reference, overlapping)
+
+    expect(withdrawn.status).toBe('withdrawn')
+  })
+
+  it('withdraws a rejected arrangement', async () => {
+    const withdrawn = await withdraw(MULTI_VENUE_EVENT.reference, rejectedBreakout.id)
+
+    expect(withdrawn.status).toBe('withdrawn')
+  })
+
+  it.each([
+    [BOOKED_EVENT.reference, bookedHall.id, 'approved'],
+    [MULTI_VENUE_EVENT.reference, withdrawnOverflow.id, 'withdrawn'],
+  ])(
+    'refuses to withdraw on %s arrangement %i, naming its status (%s)',
+    async (reference, id, status) => {
+      const error = await errorOf(withdraw(reference, id))
+
+      expect(error.status).toBe(409)
+      expect(error.message).toBe(
+        `Only a pending, conflicting or rejected arrangement can be withdrawn; this one is ${status}.`,
+      )
+    },
+  )
+
+  it('answers 404 for an arrangement of another event, or one that does not exist', async () => {
+    const otherEvents = await errorOf(withdraw(MULTI_VENUE_EVENT.reference, 9001))
+    const missing = await errorOf(withdraw(MULTI_VENUE_EVENT.reference, 424242))
+
+    expect([otherEvents.status, otherEvents.message]).toEqual([404, ARRANGEMENT_NOT_FOUND])
+    expect([missing.status, missing.message]).toEqual([404, ARRANGEMENT_NOT_FOUND])
+  })
+
+  it('answers 404 for an event the coordinator does not coordinate', async () => {
+    const error = await errorOf(withdraw(MOCK_BOOKING_EVENTS.someoneElses.reference, 9001))
+
+    expect([error.status, error.message]).toEqual([404, 'Event request not found.'])
+  })
+
+  it('frees the venue and period, so the same request can be raised again', async () => {
+    const first = await raisePending()
+    await withdraw(APPROVED_EVENT.reference, first)
+
+    const again = await raisePending()
+
+    expect(again).not.toBe(first)
+  })
+
+  it('lets a request be raised for the slot of a rejected one: only pending ones clash', async () => {
+    const sameSlot = {
+      venue_id: rejectedBreakout.venue_id,
+      starts_at: rejectedBreakout.starts_at,
+      ends_at: rejectedBreakout.ends_at,
+      purpose: 'Breakout again',
+      expected_occupancy: 5,
+    }
+
+    const created = await raise(MULTI_VENUE_EVENT.reference, sameSlot)
+
+    expect(created.status).toBe('pending')
+  })
+})
+
+describe('SCRUM-93 booking mock: changing an arrangement', () => {
+  it('changes only the fields sent and answers with the arrangement as it now is', async () => {
+    const id = await raisePending({ required_layout: 'theatre', justification: 'Kept' })
+
+    const changed = await change(APPROVED_EVENT.reference, id, {
+      purpose: 'Opening plenary',
+      expected_occupancy: 120,
+    })
+
+    expect(changed).toMatchObject({
+      id,
+      status: 'pending',
+      purpose: 'Opening plenary',
+      expected_occupancy: 120,
+      required_layout: 'theatre',
+      justification: 'Kept',
+      venue_id: ROOMY_VENUE.id,
+    })
+    const listed = await apiRequest<Record<string, unknown>[]>(bookingUrl(APPROVED_EVENT.reference))
+    expect(listed).toEqual([changed])
+  })
+
+  it('clears the layout when it is sent as null', async () => {
+    const id = await raisePending({ required_layout: 'theatre' })
+
+    const changed = await change(APPROVED_EVENT.reference, id, { required_layout: null })
+
+    expect(changed.required_layout).toBeNull()
+  })
+
+  it.each([
+    [BOOKED_EVENT.reference, bookedHall.id, 'approved'],
+    [MULTI_VENUE_EVENT.reference, rejectedBreakout.id, 'rejected'],
+    [MULTI_VENUE_EVENT.reference, withdrawnOverflow.id, 'withdrawn'],
+  ])(
+    'refuses to change on %s arrangement %i, naming its status (%s)',
+    async (reference, id, status) => {
+      const error = await errorOf(change(reference, id, { purpose: 'New' }))
+
+      expect(error.status).toBe(409)
+      expect(error.message).toBe(
+        `Only a pending arrangement can be changed; this one is ${status}.`,
+      )
+    },
+  )
+
+  it('asks for a justification when the changed occupancy outgrows the venue, changing nothing', async () => {
+    const id = await raisePending({ venue_id: TINY_VENUE.id, expected_occupancy: 5 })
+
+    const error = await errorOf(
+      change(APPROVED_EVENT.reference, id, { purpose: 'Bigger', expected_occupancy: 50 }),
+    )
+
+    expect(error.status).toBe(400)
+    expect(error.fieldErrors.justification).toEqual([
+      'A justification is required because the venue is not suitable.',
+    ])
+    expect(await apiRequest(bookingUrl(APPROVED_EVENT.reference))).toMatchObject([
+      { id, purpose: 'Keynote', expected_occupancy: 5 },
+    ])
+  })
+
+  it('needs no justification for an occupancy that exactly fills the venue', async () => {
+    const id = await raisePending({ venue_id: TINY_VENUE.id, expected_occupancy: 5 })
+
+    const changed = await change(APPROVED_EVENT.reference, id, {
+      expected_occupancy: TINY_VENUE.capacity,
+    })
+
+    expect(changed.expected_occupancy).toBe(TINY_VENUE.capacity)
+  })
+
+  it('judges suitability on the stored occupancy when only other fields change', async () => {
+    const id = await raisePending({ venue_id: TINY_VENUE.id, expected_occupancy: 5 })
+
+    const changed = await change(APPROVED_EVENT.reference, id, { purpose: 'Still small' })
+
+    expect(changed.purpose).toBe('Still small')
+  })
+
+  it('accepts an outgrown venue when a justification is sent with the change', async () => {
+    const id = await raisePending({ venue_id: TINY_VENUE.id, expected_occupancy: 5 })
+
+    const changed = await change(APPROVED_EVENT.reference, id, {
+      expected_occupancy: 50,
+      justification: 'Standing room',
+    })
+
+    expect(changed).toMatchObject({ expected_occupancy: 50, justification: 'Standing room' })
+  })
+
+  it('accepts an outgrown venue when the arrangement already has a justification', async () => {
+    const id = await raisePending({
+      venue_id: TINY_VENUE.id,
+      expected_occupancy: 5,
+      justification: 'Only room free',
+    })
+
+    const changed = await change(APPROVED_EVENT.reference, id, { expected_occupancy: 50 })
+
+    expect(changed.expected_occupancy).toBe(50)
+  })
+
+  it.each([
+    ['purpose', { purpose: '   ' }, 'Must not be blank.'],
+    ['justification', { justification: '  ' }, 'Must not be blank.'],
+    [
+      'expected_occupancy',
+      { expected_occupancy: 0 },
+      'expected_occupancy must be a positive number.',
+    ],
+    ['expected_occupancy', { expected_occupancy: true }, 'Not a valid integer.'],
+    ['purpose', { purpose: null }, 'Field may not be null.'],
+    ['justification', { justification: 7 }, 'Not a valid string.'],
+    [
+      'required_layout',
+      { required_layout: 'cabaret' },
+      'Must be one of: classroom, theatre, boardroom, banquet, exhibition, other.',
+    ],
+    ['venue_id', { venue_id: TINY_VENUE.id }, 'Unknown field.'],
+    ['starts_at', { starts_at: '2026-11-10T10:00:00+08:00' }, 'Unknown field.'],
+  ])('refuses %s in %j before looking for the event', async (field, body, message) => {
+    const error = await errorOf(change('EVR-NOSUCH00', 1, body))
+
+    expect(error.status).toBe(400)
+    expect(error.fieldErrors).toEqual({ [field]: [message] })
+  })
+
+  it('accepts an occupancy of 1, the smallest it allows', async () => {
+    const id = await raisePending()
+
+    const changed = await change(APPROVED_EVENT.reference, id, { expected_occupancy: 1 })
+
+    expect(changed.expected_occupancy).toBe(1)
+  })
+
+  it('answers 404 for an arrangement of another event', async () => {
+    const error = await errorOf(change(APPROVED_EVENT.reference, bookedHall.id, { purpose: 'x' }))
+
+    expect([error.status, error.message]).toEqual([404, ARRANGEMENT_NOT_FOUND])
+  })
+})
+
+describe('SCRUM-93 booking mock: cancelling all of an event’s arrangements', () => {
+  it('withdraws every pending one and answers with them, earliest period first', async () => {
+    const later = await raisePending({
+      starts_at: '2026-11-10T13:00:00+08:00',
+      ends_at: '2026-11-10T15:00:00+08:00',
+    })
+    const earlier = await raisePending()
+
+    const cancelled = await cancelAll(APPROVED_EVENT.reference)
+
+    expect(cancelled.map((arrangement) => [arrangement.id, arrangement.status])).toEqual([
+      [earlier, 'withdrawn'],
+      [later, 'withdrawn'],
+    ])
+  })
+
+  it('answers with an empty list when the event has nothing left to cancel', async () => {
+    expect(await cancelAll(APPROVED_EVENT.reference)).toEqual([])
+  })
+
+  it('withdraws the rejected ones too, and leaves out the ones already withdrawn', async () => {
+    const cancelled = await cancelAll(MULTI_VENUE_EVENT.reference)
+
+    expect(cancelled.map((arrangement) => [arrangement.id, arrangement.status])).toEqual([
+      [rejectedBreakout.id, 'withdrawn'],
+      [rejectedMain.id, 'withdrawn'],
+    ])
+  })
+
+  it('refuses while an arrangement is approved, and withdraws none of the others', async () => {
+    const error = await errorOf(cancelAll(BOOKED_EVENT.reference))
+
+    expect(error.status).toBe(409)
+    expect(error.message).toBe(
+      'Only a pending, conflicting or rejected arrangement can be withdrawn; this one is approved.',
+    )
+    expect(await statusesOf(BOOKED_EVENT.reference)).toEqual([
+      `${bookedSideRoom.id} rejected`,
+      `${bookedHall.id} approved`,
+    ])
+  })
+
+  it('answers 404 for an event the coordinator does not coordinate', async () => {
+    const error = await errorOf(cancelAll(MOCK_BOOKING_EVENTS.someoneElses.reference))
+
+    expect(error.status).toBe(404)
+  })
+})
+
+describe('SCRUM-93 booking mock: who may change, withdraw or cancel', () => {
+  const CALLS = {
+    change: () => change(MULTI_VENUE_EVENT.reference, rejectedBreakout.id, { purpose: 'x' }),
+    withdraw: () => withdraw(MULTI_VENUE_EVENT.reference, rejectedBreakout.id),
+    'cancel all': () => cancelAll(MULTI_VENUE_EVENT.reference),
+  }
+
+  it.each(Object.entries(CALLS))('answers %s with 401 without a token', async (_name, call) => {
+    sendRequestsAs(null)
+
+    expect((await errorOf(call())).status).toBe(401)
+  })
+
+  it.each(Object.entries(CALLS))(
+    'answers %s with 403 for Venue Staff, who are not coordinators',
+    async (_name, call) => {
+      sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.venueStaff))
+
+      expect((await errorOf(call())).status).toBe(403)
+    },
+  )
 })

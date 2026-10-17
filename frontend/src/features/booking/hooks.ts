@@ -2,12 +2,24 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import {
   bookingKeys,
+  cancelAllArrangements,
+  changeArrangement,
   decideBookingRequest,
   fetchBookingRequests,
   fetchPendingBookingRequests,
   raiseBookingRequest,
+  withdrawArrangement,
 } from './api'
-import type { BookingDecision, RaiseBookingRequest } from './api'
+import type { ArrangementChange, BookingDecision, RaiseBookingRequest } from './api'
+
+/**
+ * What to run after a change to the event's requests: their list is read again, so it shows
+ * what the backend now holds rather than a copy patched by hand.
+ */
+function useRereadEventRequests(reference: string) {
+  const queryClient = useQueryClient()
+  return () => queryClient.invalidateQueries({ queryKey: bookingKeys.forEvent(reference) })
+}
 
 /** The booking requests raised for one of the coordinator's events. */
 export function useBookingRequests(reference: string) {
@@ -17,12 +29,39 @@ export function useBookingRequests(reference: string) {
   })
 }
 
-/** Raise a request for the event. Afterwards its list is read again, not patched by hand. */
+/** Raise a request for the event. */
 export function useRaiseBookingRequest(reference: string) {
-  const queryClient = useQueryClient()
+  const reread = useRereadEventRequests(reference)
   return useMutation({
     mutationFn: (payload: RaiseBookingRequest) => raiseBookingRequest(reference, payload),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: bookingKeys.forEvent(reference) }),
+    onSuccess: reread,
+  })
+}
+
+/** Change one of the event's pending arrangements (SCRUM-93). */
+export function useChangeArrangement(reference: string, arrangementId: number) {
+  const reread = useRereadEventRequests(reference)
+  return useMutation({
+    mutationFn: (change: ArrangementChange) => changeArrangement(reference, arrangementId, change),
+    onSuccess: reread,
+  })
+}
+
+/** Withdraw one of the event's arrangements, leaving the others as they are (SCRUM-93). */
+export function useWithdrawArrangement(reference: string, arrangementId: number) {
+  const reread = useRereadEventRequests(reference)
+  return useMutation({
+    mutationFn: () => withdrawArrangement(reference, arrangementId),
+    onSuccess: reread,
+  })
+}
+
+/** Withdraw every arrangement the event still has, in one go (SCRUM-93). */
+export function useCancelAllArrangements(reference: string) {
+  const reread = useRereadEventRequests(reference)
+  return useMutation({
+    mutationFn: () => cancelAllArrangements(reference),
+    onSuccess: reread,
   })
 }
 
