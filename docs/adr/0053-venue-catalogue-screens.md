@@ -34,7 +34,8 @@ the API leaves these open for a client:
    their stories needs one. *Default to review.*
 2. **One item per line.** The two list fields are text boxes, one item per line; empty lines are
    dropped, and every other line is sent as typed. The backend trims, lower-cases and checks
-   each item, and its messages for an item show under the box as "Line 2: …".
+   each item, and its messages for an item show under the box as "Item 2: …", counting the
+   items sent, not the lines typed.
 3. **A new venue's form starts with the standard hours filled in**, every day 09:00 to 18:00, and
    always sends `opening_hours`. Both forms then mean the same thing by no periods at all: closed
    all week. *Default to review.*
