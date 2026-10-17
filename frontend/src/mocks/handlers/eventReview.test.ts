@@ -22,7 +22,7 @@ import { MOCK_NOW } from './catalogueFixtures'
  * messages and field messages (SCRUM-31 AC3 to AC7, ADR-0028, ADR-0029, ADR-0049). The mock's
  * "now" is MOCK_NOW. The integration tests check the same contract against the backend.
  *
- * Priya coordinates Sara's EVR-RV4K8N2P (submitted), EVR-RV2D5F8J (under review) and
+ * Priya coordinates organisation 2's EVR-RV4K8N2P (submitted), EVR-RV2D5F8J (under review) and
  * EVR-RV7T3M5Q (approved), both with an equipment request, and EVR-RV9H6C1W (rejected). Chloe
  * coordinates EVR-B6YF2K8V (awaiting clarification) and EVR-BOOK0102 (confirmed).
  */
