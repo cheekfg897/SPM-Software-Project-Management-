@@ -1,9 +1,12 @@
 import { ROLE } from '@/config/roles'
 import {
+  cancelAllArrangements,
+  changeArrangement,
   decideBookingRequest,
   fetchBookingRequests,
   fetchPendingBookingRequests,
   raiseBookingRequest,
+  withdrawArrangement,
 } from '@/features/booking/api'
 import { logIn, register } from '@/features/auth/api'
 import { ApiError } from '@/lib/api'
@@ -166,4 +169,73 @@ describe('SCRUM-43 venue booking decisions against the backend', () => {
 
   it.todo('approves a Pending request and books the venue (needs a seeded pending request)')
   it.todo('refuses a rejection with no reason (400 on `reason`)')
+})
+
+describe('SCRUM-93 changing, withdrawing and cancelling venue arrangements against the backend', () => {
+  /** An id no database has, on an event no database has. */
+  const UNKNOWN_ARRANGEMENT_ID = 99_999_999
+  const CALLS = {
+    change: () =>
+      changeArrangement(UNKNOWN_EVENT_REFERENCE, UNKNOWN_ARRANGEMENT_ID, { purpose: 'Keynote' }),
+    withdraw: () => withdrawArrangement(UNKNOWN_EVENT_REFERENCE, UNKNOWN_ARRANGEMENT_ID),
+    'cancel all': () => cancelAllArrangements(UNKNOWN_EVENT_REFERENCE),
+  }
+
+  it.each(Object.entries(CALLS))('refuses %s without a token (401)', async (_name, call) => {
+    const error = await refusal(call())
+
+    expect(error).toMatchObject({ status: 401, code: 'authentication_error' })
+  })
+
+  it.each(Object.entries(CALLS))(
+    'refuses %s from a role other than the Event Coordinator (403)',
+    async (_name, call) => {
+      await signInAsAttendee()
+
+      const error = await refusal(call())
+
+      expect(error).toMatchObject({ status: 403, code: 'authorization_error' })
+    },
+  )
+
+  it.each(Object.entries(CALLS))(
+    'answers %s with 404 for an event the coordinator has none of',
+    async (_name, call) => {
+      await signInAsCoordinator()
+
+      const error = await refusal(call())
+
+      expect(error).toMatchObject({ status: 404, code: 'not_found', message: NOT_FOUND_MESSAGE })
+    },
+  )
+
+  it('names each field of a change it refuses (400), before looking for the event', async () => {
+    await signInAsCoordinator()
+
+    const error = await refusal(
+      changeArrangement(UNKNOWN_EVENT_REFERENCE, UNKNOWN_ARRANGEMENT_ID, {
+        purpose: '   ',
+        expected_occupancy: 0,
+      }),
+    )
+
+    expect(error).toMatchObject({ status: 400, code: 'validation_error' })
+    expect(error.fieldErrors).toEqual({
+      purpose: ['Must not be blank.'],
+      expected_occupancy: ['expected_occupancy must be a positive number.'],
+    })
+  })
+
+  it.todo(
+    'changes a pending arrangement and lists it with the new values (needs a seeded approved event)',
+  )
+  it.todo(
+    'withdraws a pending arrangement and leaves the event’s others untouched (needs a seeded approved event)',
+  )
+  it.todo(
+    'refuses to withdraw an approved arrangement, naming its status (409; needs a decided request)',
+  )
+  it.todo(
+    'refuses withdraw, change and cancel all once the event is Confirmed, naming its status (lands with SCRUM-93 AC10 on the backend)',
+  )
 })
