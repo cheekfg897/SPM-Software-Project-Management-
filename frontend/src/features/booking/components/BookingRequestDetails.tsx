@@ -1,7 +1,7 @@
+import { LAYOUT_OPTIONS } from '@/config/roomLayouts'
 import { formatShortDate, formatTimeRange } from '@/lib/formatDate'
 
 import type { BookingRequest } from '../api'
-import { LAYOUT_OPTIONS } from '../constants'
 
 function layoutLabel(layout: string | null): string {
   const option = LAYOUT_OPTIONS.find((candidate) => candidate.value === layout)
