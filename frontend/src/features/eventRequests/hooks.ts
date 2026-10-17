@@ -8,6 +8,7 @@ import {
   eventRequestKeys,
   fetchAssignedEventRequests,
   fetchEventRequest,
+  fetchEventRequestsWithEquipment,
   fetchMyEventRequests,
   requestClarification,
   saveDraftEventRequest,
@@ -15,9 +16,9 @@ import {
   submitDraftEventRequest,
   submitEventRequest,
   updateDraftEventRequest,
+  WITH_EQUIPMENT_KEY,
 } from './api'
 import type { DecisionChoice, EventRequestDetails } from './api'
-import { fetchEventRequestsWithEquipment, WITH_EQUIPMENT_KEY } from './api'
 
 /** The signed-in organiser's event requests, read for whoever is signed in. */
 export function useMyEventRequests() {
