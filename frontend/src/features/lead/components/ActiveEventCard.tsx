@@ -26,7 +26,7 @@ function ReassignForm({ event }: { event: ActiveEvent }) {
 
 /**
  * One active event: what it is, when, its status and who holds it, then the way to move it. An
- * event nobody holds can't be reassigned, so it points to the queue instead (docs/adr/0052). It
+ * event nobody holds can't be reassigned, so it points to the queue instead (docs/adr/0062). It
  * doesn't open the event: the backend refuses the Lead an event's record.
  */
 export function ActiveEventCard({ event }: { event: ActiveEvent }) {

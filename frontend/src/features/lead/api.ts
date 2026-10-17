@@ -89,7 +89,7 @@ export interface AssignedRequest {
 
 /**
  * No key names the viewer: every Lead gets the same answers (SCRUM-96's Assumption), any other
- * role is refused, and logging out clears the cache (docs/adr/0052 decision 7).
+ * role is refused, and logging out clears the cache (docs/adr/0062 decision 7).
  */
 export const leadKeys = {
   all: ['lead'] as const,

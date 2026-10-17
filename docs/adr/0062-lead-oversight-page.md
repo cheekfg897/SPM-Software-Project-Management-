@@ -1,4 +1,4 @@
-# ADR-0052: The Lead's oversight page shows the backend's workload and active events, and reassigns by email
+# ADR-0062: The Lead's oversight page shows the backend's workload and active events, and reassigns by email
 
 - **Status:** Accepted; decisions 2, 4, 5 and 7 are defaults to review with the team
 - **Date:** 2026-10-17

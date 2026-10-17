@@ -30,7 +30,7 @@ describe('SCRUM-95 Lead queue contract (ADR-0036)', () => {
  * Event Coordinator (staffAccount) and can sign attendees up, so the refusals run for real. The
  * Lead's own answers need a Lead account and events held by coordinators, which only
  * `flask create-staff-user` and a coordinator's work can make, so those wait as todos and the mock
- * handlers in src/mocks/handlers/lead.ts stand in (docs/adr/0052).
+ * handlers in src/mocks/handlers/lead.ts stand in (docs/adr/0062).
  */
 describe('SCRUM-96 Lead oversight contract (ADR-0041)', () => {
   afterEach(() => sendRequestsAs(null))
