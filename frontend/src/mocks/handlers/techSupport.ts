@@ -112,16 +112,10 @@ export function withEquipmentBody(rows: EventListRow[]) {
   return { event_requests: rows }
 }
 
-/** A type as the catalogue shows it. What is free stands in for the total; the mock has no other. */
+/** An equipment type as the catalogue shows it (EquipmentTypeSchema): not what the mock keeps free. */
 function catalogueEntry(type: MockEquipmentType): EquipmentType {
-  return {
-    id: type.id,
-    name: type.name,
-    description: null,
-    total_quantity: type.free,
-    venue_id: null,
-    store_name: null,
-  }
+  const { id, name, description, total_quantity, venue_id, store_name } = type
+  return { id, name, description, total_quantity, venue_id, store_name }
 }
 
 export const techSupportHandlers: RequestHandler[] = [
