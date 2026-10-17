@@ -1011,16 +1011,19 @@ def list_booking_requests_for_event(
 
 ARRANGEMENT_NOT_FOUND_MESSAGE = "Venue arrangement not found."
 WITHDRAW_NOT_ALLOWED_MESSAGE = (
-    "Only a pending, conflicting or rejected arrangement can be withdrawn; this one is {status}."
+    "Only a pending, conflicting, rejected or expired arrangement can be withdrawn;"
+    " this one is {status}."
 )
 #: A rejected arrangement stays active until its coordinator withdraws it (SCRUM-43), so
-#: it can be withdrawn like a pending one, and so can a Conflicting one (SCRUM-44). An
-#: approved one has made a booking, which withdrawing would leave behind, so it cannot.
+#: it can be withdrawn like a pending one, and so can a Conflicting one (SCRUM-44) and
+#: one whose hold expired (SCRUM-94). An approved one has made a booking, which
+#: withdrawing would leave behind, so it cannot.
 WITHDRAWABLE_REQUEST_STATUSES = frozenset(
     {
         BookingRequestStatus.PENDING,
         BookingRequestStatus.CONFLICTING,
         BookingRequestStatus.REJECTED,
+        BookingRequestStatus.EXPIRED,
     }
 )
 CHANGE_NOT_PENDING_MESSAGE = "Only a pending arrangement can be changed; this one is {status}."
@@ -1312,6 +1315,16 @@ _NOTIFICATION_BY_DECISION = {
 }
 
 
+def _events_of(
+    requests: list[VenueBookingRequest], session: Session | None
+) -> dict[int, EventForBooking]:
+    """The events ``requests`` are for, by id, read in a single query."""
+    from app.modules.events import services as event_services  # circular at import time
+
+    event_ids = {request.event_id for request in requests}
+    return event_services.get_events_for_booking(event_ids, session=session)
+
+
 def list_pending_booking_requests(*, session: Session | None = None) -> list[BookingRequestAsShown]:
     """Every request waiting for a decision, the earliest event first (AC1, AC2).
 
@@ -1323,8 +1336,6 @@ def list_pending_booking_requests(*, session: Session | None = None) -> list[Boo
     through the events service and the ordering is done here, because the date lives in
     the events module and this module may not join across it.
     """
-    from app.modules.events import services as event_services  # circular at import time
-
     requests = list(
         resolve_session(session).scalars(
             select(VenueBookingRequest).where(
@@ -1332,9 +1343,7 @@ def list_pending_booking_requests(*, session: Session | None = None) -> list[Boo
             )
         )
     )
-    events = event_services.get_events_for_booking(
-        {request.event_id for request in requests}, session=session
-    )
+    events = _events_of(requests, session)
     waiting = [(events[request.event_id], request) for request in requests]
     waiting.sort(key=lambda pair: (pair[0].proposed_date, pair[0].start_time, pair[1].id))
     return [show_booking_request(request, event) for event, request in waiting]
@@ -1763,10 +1772,14 @@ def _notify_hold(
     kind: NotificationKind,
     session: Session | None,
 ) -> None:
-    """Tell the coordinator who raised the request about its hold, with the expiry."""
+    """Tell the event's assigned coordinator about its hold, with the expiry.
+
+    The coordinator assigned now, not whoever raised the request: the event may have
+    been reassigned since (SCRUM-75 AC9, SCRUM-94 AC3).
+    """
     expires_at = to_business_time(request.booking.hold_expires_at)
     _notify_about_booking(
-        [request.requested_by], event, kind, detail=expires_at.isoformat(), session=session
+        [event.coordinator_id], event, kind, detail=expires_at.isoformat(), session=session
     )
 
 
@@ -1846,6 +1859,118 @@ def change_hold_expiry(
     _require_valid_expiry(data["expires_at"], event)
 
     request.booking.hold_expires_at = data["expires_at"]
+    # The warning follows the new expiry (SCRUM-94 AC4), so it may be sent again.
+    request.booking.hold_warning_sent_at = None
     resolve_session(session).commit()
     _notify_hold(request, event, NotificationKind.VENUE_HOLD_EXPIRY_CHANGED, session)
     return show_booking_request(request, event)
+
+
+# --------------------------------------------------------------------------
+# SCRUM-94 — expire tentative holds automatically
+# --------------------------------------------------------------------------
+
+#: How long before a hold expires its coordinator is warned (SCRUM-94 AC3). The customer
+#: gave no lead time, so this is the team's default, pending the customer (ADR-0052).
+HOLD_WARNING_LEAD = timedelta(hours=24)
+
+
+def _requests_on_hold(
+    *conditions: ColumnElement[bool], session: Session | None
+) -> list[VenueBookingRequest]:
+    """The requests On Hold whose hold meets every one of ``conditions``, by id."""
+    query = (
+        select(VenueBookingRequest)
+        .join(Booking, VenueBookingRequest.booking_id == Booking.id)
+        .where(VenueBookingRequest.status == BookingRequestStatus.ON_HOLD, *conditions)
+        .order_by(VenueBookingRequest.id)
+    )
+    return list(resolve_session(session).scalars(query))
+
+
+def _expire_hold(request: VenueBookingRequest, now: datetime, session: Session | None) -> None:
+    """Mark the request Expired, with an entry in its event's history, in one commit.
+
+    The hold's booking is left as it is: tentative, with the expiry that has passed, so
+    :func:`_booking_is_live` already ignores it and the history can say when it ran out.
+    """
+    from app.modules.events import services as event_services  # circular at import time
+
+    hold = request.booking
+    request.status = BookingRequestStatus.EXPIRED
+    event_services.record_venue_hold_expired(
+        request.event_id,
+        details={
+            "venue_booking_request_id": request.id,
+            "venue_id": request.venue_id,
+            "booking_id": hold.id,
+            "expires_at": hold.hold_expires_at.isoformat(),
+        },
+        now=now,
+        session=session,
+    )
+    resolve_session(session).commit()
+
+
+def expire_holds(
+    *, now: datetime | None = None, session: Session | None = None
+) -> list[VenueBookingRequest]:
+    """Expire every hold whose expiry has passed (SCRUM-94 AC1, AC2, AC3, AC6).
+
+    Each request On Hold whose expiry is at or before ``now`` moves to Expired, with an
+    entry in its event's history, and the event's coordinator is told in a second
+    commit (ADR-0015). Only requests still On Hold are read, so running it again expires
+    and tells nothing twice. The venue was free from the expiry instant already, because
+    an expired hold is ignored when bookings are read (ADR-0045 decision 17).
+
+    Args:
+        now: The instant to compare expiries with; defaults to the current one.
+        session: Database session; defaults to ``db.session``.
+
+    Returns:
+        The requests it expired, by id.
+    """
+    if now is None:
+        now = _utc_now()
+    run_out = _requests_on_hold(Booking.hold_expires_at <= now, session=session)
+    events = _events_of(run_out, session)
+    for request in run_out:
+        _expire_hold(request, now, session)
+        event = events[request.event_id]
+        _notify_hold(request, event, NotificationKind.VENUE_HOLD_EXPIRED, session)
+    return run_out
+
+
+def send_hold_expiry_warnings(
+    *, now: datetime | None = None, session: Session | None = None
+) -> list[VenueBookingRequest]:
+    """Warn coordinators of the holds that expire within 24 hours (SCRUM-94 AC3, AC4).
+
+    A hold is due a warning from 24 hours before its expiry until the expiry itself; a
+    hold that has already run out is expired instead, by :func:`expire_holds`. The time
+    of the warning is saved on the hold in its own commit before the coordinator is
+    told, so running it again warns nobody twice. Changing the expiry clears it
+    (:func:`change_hold_expiry`), so the warning follows the new time.
+
+    Args:
+        now: The instant to compare expiries with; defaults to the current one.
+        session: Database session; defaults to ``db.session``.
+
+    Returns:
+        The requests whose coordinators it warned, by id.
+    """
+    if now is None:
+        now = _utc_now()
+    due = _requests_on_hold(
+        Booking.hold_warning_sent_at.is_(None),
+        Booking.hold_expires_at > now,
+        Booking.hold_expires_at <= now + HOLD_WARNING_LEAD,
+        session=session,
+    )
+    events = _events_of(due, session)
+    for request in due:
+        event = events[request.event_id]
+        request.booking.hold_warning_sent_at = now
+        resolve_session(session).commit()
+        _notify_hold(request, event, NotificationKind.VENUE_HOLD_EXPIRING, session)
+    return due

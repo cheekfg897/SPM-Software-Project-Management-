@@ -1056,6 +1056,9 @@ class EventForBooking:
     end_time: time
     expected_attendance: int
     accessibility_needs: str | None
+    #: The Event Coordinator assigned to the event now, whom the venue module tells
+    #: about a hold (SCRUM-75 AC9, SCRUM-94 AC3); not always who raised the request.
+    coordinator_id: int | None
 
 
 def _for_booking(event_request: EventRequest) -> EventForBooking:
@@ -1071,6 +1074,7 @@ def _for_booking(event_request: EventRequest) -> EventForBooking:
         end_time=event_request.end_time,
         expected_attendance=event_request.expected_attendance,
         accessibility_needs=event_request.accessibility_needs,
+        coordinator_id=event_request.coordinator_id,
     )
 
 
@@ -1239,6 +1243,29 @@ def record_venue_preparation_updated(
         actor_id=actor_id,
         details=details,
         session=session,
+    )
+
+
+def record_venue_hold_expired(
+    event_id: int,
+    *,
+    details: dict[str, Any],
+    now: datetime,
+    session: Session | None = None,
+) -> EventHistoryEntry:
+    """Add the history entry for a hold that ran out, without committing (SCRUM-94 AC6).
+
+    The system expires a hold, so the entry has no actor. It rides in the caller's
+    transaction, so it is saved with the expiry it records or not at all (ADR-0018).
+    """
+    event_request = resolve_session(session).get(EventRequest, event_id)
+    return record_event_history(
+        event_request,
+        EventHistoryKind.VENUE_HOLD_EXPIRED,
+        actor_id=None,
+        details=details,
+        session=session,
+        now=now,
     )
 
 
