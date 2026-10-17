@@ -28,6 +28,11 @@ export default defineConfig({
       // Optional Venue Staff account for the SCRUM-43 decision checks; they skip without it.
       INTEGRATION_VENUE_STAFF_EMAIL: process.env.INTEGRATION_VENUE_STAFF_EMAIL ?? '',
       INTEGRATION_VENUE_STAFF_PASSWORD: process.env.INTEGRATION_VENUE_STAFF_PASSWORD ?? '',
+      // Optional Lead and Safety Officer accounts for the SCRUM-97/98 safety checks.
+      INTEGRATION_LEAD_EMAIL: process.env.INTEGRATION_LEAD_EMAIL ?? '',
+      INTEGRATION_LEAD_PASSWORD: process.env.INTEGRATION_LEAD_PASSWORD ?? '',
+      INTEGRATION_SAFETY_OFFICER_EMAIL: process.env.INTEGRATION_SAFETY_OFFICER_EMAIL ?? '',
+      INTEGRATION_SAFETY_OFFICER_PASSWORD: process.env.INTEGRATION_SAFETY_OFFICER_PASSWORD ?? '',
     },
     // One backend, one database: run the files one after another.
     fileParallelism: false,

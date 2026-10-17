@@ -11,6 +11,11 @@ interface ImportMetaEnv {
   /** Optional: a Venue Staff account, for the booking decision checks (SCRUM-43). They skip without it. */
   readonly INTEGRATION_VENUE_STAFF_EMAIL?: string
   readonly INTEGRATION_VENUE_STAFF_PASSWORD?: string
+  /** Optional: Lead and Safety Officer accounts, for the safety checks (SCRUM-97, SCRUM-98). They skip without them. */
+  readonly INTEGRATION_LEAD_EMAIL?: string
+  readonly INTEGRATION_LEAD_PASSWORD?: string
+  readonly INTEGRATION_SAFETY_OFFICER_EMAIL?: string
+  readonly INTEGRATION_SAFETY_OFFICER_PASSWORD?: string
 }
 
 interface ImportMeta {
