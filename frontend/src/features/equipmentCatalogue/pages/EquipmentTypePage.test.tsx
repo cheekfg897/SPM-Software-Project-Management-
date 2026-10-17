@@ -5,11 +5,7 @@ import { MOCK_ACCOUNTS, mockSessionFor } from '@/mocks/fixtures/accounts'
 import type { MockAccount } from '@/mocks/fixtures/accounts'
 import { renderApp } from '@/test/render'
 
-const OTHER_STAFF: [string, MockAccount][] = [
-  ['an Event Coordinator', MOCK_ACCOUNTS.coordinator],
-  ['the Event Coordinator Lead', MOCK_ACCOUNTS.lead],
-  ['Venue Staff', MOCK_ACCOUNTS.venueStaff],
-]
+import { OTHER_STAFF } from '../test/staff'
 
 function openTypeAs(account: MockAccount, equipmentTypeId: number) {
   return renderApp(equipmentTypePath(equipmentTypeId), { session: mockSessionFor(account) })

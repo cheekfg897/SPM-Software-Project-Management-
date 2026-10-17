@@ -43,7 +43,10 @@ const EDITOR_ROLES: readonly Role[] = [ROLE.TECHNICAL_SUPPORT_STAFF]
 const REQUIRED_ON_CREATE = ['name', 'total_quantity']
 /** What a new type has for a field left out of its body (the schema's load_default). */
 const CREATE_DEFAULTS = { description: null, venue_id: null, store_name: null }
-/** The fields of a new type before its body is applied; the body always sets the first three. */
+/**
+ * A new type before its body is applied. A body that passed the checks has every one of these
+ * fields (the defaults fill the rest), so none of these values is ever saved.
+ */
 const BLANK_TYPE = { name: '', total_quantity: 0, ...CREATE_DEFAULTS }
 
 let types: MockCatalogueType[] = []

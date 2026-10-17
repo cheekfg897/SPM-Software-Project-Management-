@@ -30,17 +30,21 @@ const UNKNOWN_VENUE_ID = 99
 /** A valid new type kept in a store, for tests to change one field of. */
 const NEW_TYPE = { name: 'Folding table', total_quantity: 2, store_name: 'Jurong store' }
 
-const READERS: [string, MockAccount][] = [
+/** Staff who read the catalogue but may not change it. */
+const OTHER_STAFF: [string, MockAccount][] = [
   ['an Event Coordinator', MOCK_ACCOUNTS.coordinator],
   ['the Event Coordinator Lead', MOCK_ACCOUNTS.lead],
   ['Venue Staff', MOCK_ACCOUNTS.venueStaff],
+]
+const READERS: [string, MockAccount][] = [
+  ...OTHER_STAFF,
   ['Technical Support', MOCK_ACCOUNTS.technicalSupport],
 ]
 const OUTSIDERS: [string, MockAccount][] = [
   ['an Attendee', MOCK_ACCOUNTS.attendee],
   ['an Event Organiser', MOCK_ACCOUNTS.organiser],
 ]
-const NON_EDITORS = [...OUTSIDERS, ...READERS.slice(0, 3)]
+const NON_EDITORS = [...OUTSIDERS, ...OTHER_STAFF]
 
 function signInAs(account: MockAccount) {
   sendRequestsAs(mockTokenFor(account))
