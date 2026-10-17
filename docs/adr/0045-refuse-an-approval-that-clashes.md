@@ -117,7 +117,10 @@ the others are separate pull requests.
 
 15. **A hold is checked exactly as an approval is.** `_refuse_clash` runs for both, so a
     hold is refused by a confirmed booking, a Conflicting one or another live hold, with
-    decision 2's padding and decision 4's 409 naming the booking. The refusal reuses the
+    decision 2's padding and decision 4's 409 naming the booking. Because the check is the
+    same, placing a hold takes decision 6's venue row lock too, so a hold and an approval
+    at one venue take turns and cannot both find it free; a unit test shows the hold's
+    venue read carries `FOR UPDATE`, as decision 6's does. The refusal reuses the
     approval's wording ("Cannot approve: ...") rather than a second set of messages;
     **default to review**.
 
@@ -135,7 +138,11 @@ the others are separate pull requests.
     when it is read.** `_booking_is_live` is the one rule: a booking holds the venue
     unless it is cancelled or is a tentative hold whose expiry has passed. The approval
     and hold checks (decision 1 and 15), the calendar and venue search all use it, so a
-    hold stops counting at the moment it expires, with no job running. Marking the hold
+    hold stops counting at the moment it expires, with no job running. **The expiry instant
+    itself counts as expired** (`hold_expires_at <= now`): a hold set to expire at 17:00
+    no longer blocks anything at 17:00. The ACs do not say; this is the simplest reading
+    of "until the expiry" and matches how final approval treats it (decision 18);
+    **default pending customer**. Marking the hold
     and its request Expired, and the warnings, are SCRUM-94's. A tentative booking with
     no expiry, made before holds had one, never lapses.
 
