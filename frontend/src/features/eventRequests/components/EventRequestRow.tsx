@@ -1,8 +1,11 @@
 import { EventArt, StatusChip } from '@/components/ui'
 import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
 
-import type { EventRequest } from '../api'
+import type { EventListRow, EventRequest } from '../api'
 import { formatSchedule } from '../formatSchedule'
+
+/** A row of any role's list: the list fields, and the attendance when the list carries it. */
+type ListedRequest = EventListRow & Partial<Pick<EventRequest, 'expected_attendance'>>
 
 /** A number from the reference, so a request keeps the same artwork every time it's shown. */
 function artSeed(reference: string): number {
@@ -13,12 +16,16 @@ function artSeed(reference: string): number {
   return seed
 }
 
-/** The second line: the reference, and the attendance once there is one. */
-function detailsOf(request: EventRequest): string {
-  if (request.expected_attendance === null) {
+/**
+ * The second line: the reference, and the attendance once there is one. Technical Support's list
+ * doesn't carry attendance at all (ADR-0051).
+ */
+function detailsOf(request: ListedRequest): string {
+  const attendance = request.expected_attendance ?? null
+  if (attendance === null) {
     return request.reference
   }
-  return `${request.reference} · ${request.expected_attendance} expected`
+  return `${request.reference} · ${attendance} expected`
 }
 
 /**
@@ -26,7 +33,7 @@ function detailsOf(request: EventRequest): string {
  * a dashed outline and a faint date line, so it stands apart from submitted requests
  * (SCRUM-20 AC2).
  */
-export function EventRequestRow({ request }: { request: EventRequest }) {
+export function EventRequestRow({ request }: { request: ListedRequest }) {
   const isDraft = request.status === EVENT_REQUEST_STATUS.DRAFT
   const outline = isDraft ? 'border-dashed border-line' : 'border-transparent'
   const scheduleColour = isDraft ? 'text-ink-faint' : 'text-flare'

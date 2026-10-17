@@ -3,17 +3,20 @@ import { Link } from 'react-router'
 
 import { ErrorAlert, Spinner } from '@/components/ui'
 
-import type { EventRequest, EventRequestList } from '../api'
+import type { EventListRow, EventListRows } from '../api'
 
 import { EventRequestRow } from './EventRequestRow'
 
 export interface RequestListProps {
-  /** A role's list as its hook reads it. */
-  requests: UseQueryResult<EventRequestList>
+  /**
+   * A role's list as its hook reads it. Every list has at least the list fields; an organiser's
+   * and a coordinator's rows also carry the attendance, which the row shows when it is there.
+   */
+  requests: UseQueryResult<EventListRows>
   /** What the list is, for screen readers, e.g. "Your event requests". */
   label: string
   /** The page a row opens. */
-  pathFor: (request: EventRequest) => string
+  pathFor: (request: EventListRow) => string
 }
 
 /**

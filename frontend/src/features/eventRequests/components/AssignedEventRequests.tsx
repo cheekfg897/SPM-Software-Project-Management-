@@ -2,7 +2,7 @@ import { ROLE } from '@/config/roles'
 import { coordinatorEventPath } from '@/config/routes'
 import { selectSessionUser, useAppSelector } from '@/store'
 
-import type { EventRequest } from '../api'
+import type { EventListRow } from '../api'
 import { useAssignedEventRequests } from '../hooks'
 
 import { RequestListSection } from './RequestListSection'
@@ -10,7 +10,7 @@ import { RequestListSection } from './RequestListSection'
 const TITLE = 'Your assigned events'
 
 /** A coordinator opens an event's record at their own address (ADR-0056). */
-function pathFor(request: EventRequest): string {
+function pathFor(request: EventListRow): string {
   return coordinatorEventPath(request.reference)
 }
 

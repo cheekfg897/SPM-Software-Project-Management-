@@ -2,13 +2,13 @@ import { ButtonLink } from '@/components/ui'
 import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
 import { editDraftPath, organiserRequestPath, ROUTES } from '@/config/routes'
 
-import type { EventRequest } from '../api'
+import type { EventListRow } from '../api'
 import { useMyEventRequests } from '../hooks'
 
 import { RequestList } from './RequestList'
 
 /** Where a row opens: the organiser's own draft for editing (SCRUM-20 AC3), else the record. */
-function pathFor(request: EventRequest): string {
+function pathFor(request: EventListRow): string {
   if (request.status === EVENT_REQUEST_STATUS.DRAFT) {
     return editDraftPath(request.reference)
   }
