@@ -6,18 +6,23 @@ refused with how many are (AC3), and the event's history shows who reserved what
 The first event's coordinator reads its equipment but not the other event's, which is
 not assigned to them (ADR-0019, ADR-0037). Every call goes through the real routes
 with Flask's test client (ADR-0031).
+
+A second journey follows a reservation when units are damaged (SCRUM-47): the free count
+drops, the reservation is flagged, its coordinator is told, and returning the units
+clears the flag (ADR-0046).
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import time
+from datetime import time, timedelta
 from typing import Any
 
 import pytest
 from sqlalchemy.orm import Session
 from werkzeug.test import TestResponse
 
+from app.common.clock import local_today
 from app.modules.auth.permissions import Role
 from app.modules.auth.services import create_staff_user
 from app.modules.events.models import EventRequest
@@ -45,6 +50,12 @@ def _free_projectors(actor: Actor, reference: str) -> int:
     """How many of the only equipment type are free for the event."""
     (row,) = _body(actor.get(f"/api/equipment/events/{reference}/availability"), 200)
     return row["available"]
+
+
+def _latest_notification_kind(actor: Actor) -> str | None:
+    """The kind of the actor's newest notification, or ``None`` if they have none."""
+    notifications = _body(actor.get("/api/notifications"), 200)["notifications"]
+    return notifications[0]["kind"] if notifications else None
 
 
 def _create_staff(account: dict[str, str], role: Role, session: Session) -> int:
@@ -79,6 +90,20 @@ def two_overlapping_events(
     """The first assigned to the coordinator, the second to nobody yet."""
     db_session.add(make_event_request(reference=FIRST_EVENT, coordinator_id=coordinator_id))
     db_session.add(make_event_request(reference=SECOND_EVENT, start_time=time(12, 0)))
+    db_session.commit()
+
+
+@pytest.fixture()
+def upcoming_event(
+    db_session: Session, make_event_request: Callable[..., EventRequest], coordinator_id: int
+) -> None:
+    """An event for the coordinator, still to come (a past one is never flagged)."""
+    in_a_month = local_today() + timedelta(days=30)
+    db_session.add(
+        make_event_request(
+            reference=FIRST_EVENT, coordinator_id=coordinator_id, proposed_date=in_a_month
+        )
+    )
     db_session.commit()
 
 
@@ -120,3 +145,43 @@ def test_reserving_for_one_event_leaves_less_for_an_overlapping_one(
     # --- ...but not the second event's, which is not theirs: as if it didn't exist ---
     not_theirs = _body(coordinator.get(f"/api/equipment/events/{SECOND_EVENT}/availability"), 404)
     assert not_theirs["message"] == "Event request not found."
+
+
+@pytest.mark.scrum_47
+def test_damaged_units_flag_the_reservation_until_they_are_returned(
+    technical_support: Actor, coordinator: Actor, upcoming_event: None
+) -> None:
+    equipment_type = _body(technical_support.post("/api/equipment/types", PROJECTORS), 201)
+    reservations_path = f"/api/equipment/events/{FIRST_EVENT}/reservations"
+    request = {"equipment_type_id": equipment_type["id"], "quantity": 4}
+    _body(technical_support.post(reservations_path, request), 201)
+    assert [row["needs_attention"] for row in _body(coordinator.get(reservations_path), 200)] == [
+        False
+    ]
+    assert _latest_notification_kind(coordinator) == "equipment_reserved"
+
+    # --- Seven of ten are damaged, so three serve four reserved (SCRUM-47 AC1) ---
+    out_of_service_path = f"/api/equipment/types/{equipment_type['id']}/out-of-service"
+    damaged = {"quantity": 7, "reason": "damaged"}
+    entry = _body(technical_support.post(out_of_service_path, damaged), 201)
+    assert entry["recorded_by"] == "Tina Technician"
+
+    # --- They no longer count as free for the event (SCRUM-47 AC2) ---
+    assert _free_projectors(technical_support, FIRST_EVENT) == 0
+
+    # --- The reservation is flagged, not released; its coordinator is told (AC3) ---
+    flagged = _body(coordinator.get(reservations_path), 200)
+    assert [row["needs_attention"] for row in flagged] == [True]
+    assert flagged[0]["quantity"] == 4
+    assert _latest_notification_kind(coordinator) == "significant_change"
+
+    # --- Returning the units puts them back and clears the flag (SCRUM-47 AC1, AC2) ---
+    returned = _body(
+        technical_support.post(f"/api/equipment/out-of-service/{entry['id']}/return"), 200
+    )
+    assert returned["resolved_by"] == "Tina Technician"
+    assert _body(technical_support.get(out_of_service_path), 200) == []
+    assert _free_projectors(technical_support, FIRST_EVENT) == 6
+    assert [row["needs_attention"] for row in _body(coordinator.get(reservations_path), 200)] == [
+        False
+    ]
