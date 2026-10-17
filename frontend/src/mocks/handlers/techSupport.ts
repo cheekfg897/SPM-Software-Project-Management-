@@ -3,34 +3,27 @@ import type { RequestHandler } from 'msw'
 
 import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
 import type { EventRequestStatus } from '@/config/eventStatus'
-import { INTERNAL_ROLES, ROLE } from '@/config/roles'
+import { ROLE } from '@/config/roles'
 import type { Role } from '@/config/roles'
 import type { EventListRow } from '@/features/eventRequests/api'
-import type {
-  EquipmentAwaitingAction,
-  EquipmentEvent,
-  EquipmentType,
-} from '@/features/techSupport/api'
+import type { EquipmentAwaitingAction, EquipmentEvent } from '@/features/techSupport/api'
 
 import { notAllowed, notAuthenticated } from '../responses'
 
 import { accountForRequest } from './auth'
 import { MOCK_TODAY } from './catalogueFixtures'
-import { MOCK_EQUIPMENT_TYPES } from './equipmentFixtures'
-import type { MockEquipmentType } from './equipmentFixtures'
 import { MOCK_EQUIPMENT_EVENTS } from './techSupportFixtures'
 import type { MockEquipmentEvent } from './techSupportFixtures'
 
 /**
  * Technical Support's two lists, as backend/app/modules/events/routes.py answers them: the
  * equipment awaiting action (SCRUM-38, ADR-0022) and the events with equipment (SCRUM-24 AC5,
- * ADR-0026), both for Technical Support only; and the equipment types their lines are named from,
- * as backend/app/modules/equipment/routes.py answers them for any staff role (ADR-0061).
+ * ADR-0026), both for Technical Support only. The equipment types their lines are named from are
+ * answered by the catalogue mock, equipmentCatalogue.ts (ADR-0061).
  */
 
 const AWAITING_EQUIPMENT_PATH = '/api/events/requests/awaiting-equipment'
 const WITH_EQUIPMENT_PATH = '/api/events/requests/with-equipment'
-const EQUIPMENT_TYPES_PATH = '/api/equipment/types'
 const NO_EQUIPMENT_REQUESTS_MESSAGE = 'No events have an equipment request yet.'
 const DAY_MS = 24 * 60 * 60_000
 
@@ -112,12 +105,6 @@ export function withEquipmentBody(rows: EventListRow[]) {
   return { event_requests: rows }
 }
 
-/** An equipment type as the catalogue shows it (EquipmentTypeSchema): not what the mock keeps free. */
-function catalogueEntry(type: MockEquipmentType): EquipmentType {
-  const { id, name, description, total_quantity, venue_id, store_name } = type
-  return { id, name, description, total_quantity, venue_id, store_name }
-}
-
 export const techSupportHandlers: RequestHandler[] = [
   http.get(AWAITING_EQUIPMENT_PATH, ({ request }) => {
     const refusal = refusalFor(request, [ROLE.TECHNICAL_SUPPORT_STAFF])
@@ -144,15 +131,5 @@ export const techSupportHandlers: RequestHandler[] = [
     const withLines = MOCK_EQUIPMENT_EVENTS.filter((stored) => stored.lines.length > 0)
     const rows = [...withLines].sort(newestFirst).map((stored) => stored.event)
     return HttpResponse.json(withEquipmentBody(rows))
-  }),
-
-  http.get(EQUIPMENT_TYPES_PATH, ({ request }) => {
-    const refusal = refusalFor(request, INTERNAL_ROLES)
-    if (refusal !== null) {
-      return refusal
-    }
-
-    const byName = [...MOCK_EQUIPMENT_TYPES].sort((a, b) => a.name.localeCompare(b.name))
-    return HttpResponse.json(byName.map(catalogueEntry))
   }),
 ]

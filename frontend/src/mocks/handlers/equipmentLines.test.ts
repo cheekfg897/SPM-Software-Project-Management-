@@ -25,7 +25,7 @@ import {
 /**
  * The equipment line mock mirrors backend/app/modules/events/routes.py (SCRUM-37, ADR-0019,
  * ADR-0028): the same bodies, refusals, wording and order of checks. The equipment types list
- * it names lines from is pinned in techSupport.test.ts.
+ * it names lines from is pinned in equipmentCatalogue.test.ts.
  */
 
 const PROJECTOR_LINE_ID = 41
