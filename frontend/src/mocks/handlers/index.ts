@@ -11,6 +11,7 @@ import { resetMockSafety, safetyHandlers } from './safety'
 import { venueSearchHandlers } from './venueSearch'
 import { techSupportHandlers } from './techSupport'
 import { organisationHandlers, resetMockOrganisations } from './organisations'
+import { equipmentCatalogueHandlers, resetMockEquipmentCatalogue } from './equipmentCatalogue'
 
 /**
  * Every mock handler, one file per feature. They stand in for the backend in unit tests,
@@ -27,6 +28,7 @@ export const handlers: RequestHandler[] = [
   ...leadHandlers,
   ...safetyHandlers,
   ...venueSearchHandlers,
+  ...equipmentCatalogueHandlers,
   ...techSupportHandlers,
   ...organisationHandlers,
 ]
@@ -42,4 +44,5 @@ export function resetMockBackend(): void {
   resetMockLeadQueue()
   resetMockSafety()
   resetMockOrganisations()
+  resetMockEquipmentCatalogue()
 }
