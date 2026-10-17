@@ -1,7 +1,7 @@
 import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
 import type { EventRequestStatus } from '@/config/eventStatus'
 import { fetchEventRequestsWithEquipment } from '@/features/eventRequests/api'
-import { fetchEquipmentAwaitingAction, fetchEquipmentTypes } from '@/features/techSupport/api'
+import { fetchEquipmentAwaitingAction } from '@/features/techSupport/api'
 import { refusal } from '@/test/refusal'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
 
@@ -14,8 +14,8 @@ import { awaitingRow, withEquipmentBody } from './techSupport'
 /**
  * The mock of Technical Support's two lists, pinned to what the backend sends: the equipment
  * awaiting action (GET /api/events/requests/awaiting-equipment; SCRUM-38, ADR-0022) and the
- * events with equipment (GET /api/events/requests/with-equipment; SCRUM-24 AC5, AC11), and of
- * the equipment types their lines are named from (GET /api/equipment/types; ADR-0061). The
+ * events with equipment (GET /api/events/requests/with-equipment; SCRUM-24 AC5, AC11). The
+ * equipment types their lines are named from are pinned in equipmentCatalogue.test.ts. The
  * integration tests check the same shapes against the running backend.
  */
 
@@ -200,59 +200,5 @@ describe('SCRUM-24 AC5 mock of the events with equipment', () => {
     signInAs(null)
 
     expect(await refusal(fetchEventRequestsWithEquipment())).toMatchObject(NOT_SIGNED_IN)
-  })
-})
-
-describe('mock of the equipment types the queue is named from', () => {
-  it.each([
-    ['Technical Support', MOCK_ACCOUNTS.technicalSupport],
-    ['an Event Coordinator', MOCK_ACCOUNTS.coordinator],
-    ['the Event Coordinator Lead', MOCK_ACCOUNTS.lead],
-    ['Venue Staff', MOCK_ACCOUNTS.venueStaff],
-    ['the Safety Officer', MOCK_ACCOUNTS.safetyOfficer],
-  ])('lists every type by name for %s', async (_role, account) => {
-    signInAs(account)
-
-    expect(await fetchEquipmentTypes()).toEqual([
-      {
-        id: 3,
-        name: 'Lectern',
-        description: null,
-        total_quantity: 2,
-        venue_id: null,
-        store_name: 'Main store',
-      },
-      {
-        id: 2,
-        name: 'Microphone',
-        description: 'Wireless, handheld.',
-        total_quantity: 12,
-        venue_id: 3,
-        store_name: null,
-      },
-      {
-        id: 1,
-        name: 'Projector',
-        description: 'Full HD, with HDMI and USB-C.',
-        total_quantity: 10,
-        venue_id: null,
-        store_name: 'Main store',
-      },
-    ])
-  })
-
-  it.each([
-    ['an Event Organiser', MOCK_ACCOUNTS.organiser],
-    ['an Attendee', MOCK_ACCOUNTS.attendee],
-  ])('refuses %s', async (_role, account) => {
-    signInAs(account)
-
-    expect(await refusal(fetchEquipmentTypes())).toMatchObject(NOT_ALLOWED)
-  })
-
-  it('refuses a visitor who is not signed in', async () => {
-    signInAs(null)
-
-    expect(await refusal(fetchEquipmentTypes())).toMatchObject(NOT_SIGNED_IN)
   })
 })

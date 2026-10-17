@@ -23,8 +23,8 @@ import {
 /**
  * The equipment endpoints, as backend/app/modules/equipment/routes.py answers them (SCRUM-45
  * availability, SCRUM-46 reservations), and the events module's equipment lines (SCRUM-37,
- * equipmentLines.ts). The catalogue's types are answered in techSupport.ts. Reservations live in
- * memory until resetMockEquipment.
+ * equipmentLines.ts). The catalogue's types are answered in equipmentCatalogue.ts. Reservations
+ * live in memory until resetMockEquipment.
  */
 
 const EVENT_PATH = '/api/equipment/events/:reference'
