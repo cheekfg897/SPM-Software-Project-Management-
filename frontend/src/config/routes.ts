@@ -30,6 +30,12 @@ export const ROUTES = {
   LEAD_OVERSIGHT: '/staff/oversight',
   /** Staff record and list client organisations (SCRUM-66). */
   ORGANISATIONS: '/staff/organisations',
+  /** The equipment catalogue (SCRUM-27): every member of staff reads it. */
+  EQUIPMENT_CATALOGUE: '/staff/equipment',
+  NEW_EQUIPMENT_TYPE: '/staff/equipment/new',
+  /** A route pattern: `:equipmentTypeId` is the equipment type's id. */
+  EQUIPMENT_TYPE: '/staff/equipment/:equipmentTypeId',
+  EDIT_EQUIPMENT_TYPE: '/staff/equipment/:equipmentTypeId/edit',
 } as const
 
 export type RoutePath = (typeof ROUTES)[keyof typeof ROUTES]
@@ -74,4 +80,14 @@ export function eventEquipmentPath(reference: string): string {
 /** The page for editing one of the organiser's own drafts, by its EVR- reference. */
 export function editDraftPath(reference: string): string {
   return withReference(ROUTES.EDIT_DRAFT, reference)
+}
+
+/** The page for one equipment type, by its id. */
+export function equipmentTypePath(equipmentTypeId: number): string {
+  return ROUTES.EQUIPMENT_TYPE.replace(':equipmentTypeId', String(equipmentTypeId))
+}
+
+/** The page for changing one equipment type, by its id. */
+export function editEquipmentTypePath(equipmentTypeId: number): string {
+  return ROUTES.EDIT_EQUIPMENT_TYPE.replace(':equipmentTypeId', String(equipmentTypeId))
 }
