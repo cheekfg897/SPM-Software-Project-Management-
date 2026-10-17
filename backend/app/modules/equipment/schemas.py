@@ -16,6 +16,7 @@ from marshmallow import (
     fields,
     post_load,
     validate,
+    validates,
     validates_schema,
 )
 
@@ -23,8 +24,10 @@ from app.common.fields import BusinessDateTime, PositiveId, PositiveQuantity, Wh
 from app.common.validation import not_blank
 from app.modules.equipment.models import (
     NAME_MAX_LENGTH,
+    PREPARATION_NOTES_MAX_LENGTH,
     STORE_NAME_MAX_LENGTH,
     OutOfServiceReason,
+    PreparationStatus,
 )
 
 #: ADR-0014: an equipment type is kept at exactly one venue or store.
@@ -125,6 +128,41 @@ class EquipmentUnitsSchema(Schema):
     quantity = PositiveQuantity(required=True)
 
 
+class UpdatePreparationSchema(Schema):
+    """Payload for ``PUT /api/equipment/reservations/<id>/preparation`` (SCRUM-85 AC1).
+
+    Each update states the whole picture: the ``status``, and the ``notes`` if there are
+    any (left out, they are cleared). Nothing else of the reservation can be sent
+    (AC3): marshmallow rejects an unknown field. Notes that are sent must not be blank,
+    and are trimmed.
+    """
+
+    status = fields.Enum(
+        PreparationStatus,
+        by_value=True,
+        required=True,
+        error_messages={"unknown": "Status must be not_started, in_progress or ready."},
+    )
+    notes = fields.String(allow_none=True, load_default=None, validate=not_blank)
+
+    @validates("notes")
+    def _notes_fit(self, value: str | None, **_: Any) -> None:
+        # Marshmallow also runs this on the default of notes left out.
+        if value is None:
+            return
+        # Measured once trimmed, since that's what is stored.
+        if len(value.strip()) > PREPARATION_NOTES_MAX_LENGTH:
+            raise MarshmallowValidationError(
+                f"Notes must be at most {PREPARATION_NOTES_MAX_LENGTH} characters."
+            )
+
+    @post_load
+    def _trim_notes(self, data: dict[str, Any], **_: Any) -> dict[str, Any]:
+        if data["notes"] is not None:
+            data["notes"] = data["notes"].strip()
+        return data
+
+
 class EquipmentReservationSchema(Schema):
     """One reservation as the API shows it, times in business time (SCRUM-46 AC4).
 
@@ -143,6 +181,8 @@ class EquipmentReservationSchema(Schema):
     created_at = BusinessDateTime(dump_only=True)
     #: True while units out of service leave the reservation short (SCRUM-47 AC3).
     needs_attention = fields.Boolean(dump_only=True)
+    preparation_status = fields.Enum(PreparationStatus, by_value=True, dump_only=True)
+    preparation_notes = fields.String(dump_only=True, allow_none=True)
 
 
 class MarkOutOfServiceSchema(Schema):

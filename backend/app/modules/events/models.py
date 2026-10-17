@@ -150,6 +150,11 @@ class EventHistoryKind(str, enum.Enum):
     #: (``None`` when none were given), and ``actor_id`` is the Venue Staff user
     #: (SCRUM-84 AC4, ADR-0049).
     VENUE_PREPARATION_UPDATED = "venue_preparation_updated"
+    #: Technical Support recorded the preparation of a reservation; ``details`` holds
+    #: ``reservation_id``, ``equipment_type_id``, ``equipment_type_name``, ``status``
+    #: and ``notes`` (``None`` when none were given), and ``actor_id`` is the Technical
+    #: Support user (SCRUM-85 AC4, ADR-0050).
+    EQUIPMENT_PREPARATION_UPDATED = "equipment_preparation_updated"
 
 
 class SafetyOutcome(str, enum.Enum):

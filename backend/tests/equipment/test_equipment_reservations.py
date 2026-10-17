@@ -30,6 +30,7 @@ from app.modules.equipment.models import (
     EquipmentReservation,
     EquipmentType,
     OutOfServiceReason,
+    PreparationStatus,
 )
 from app.modules.equipment.schemas import EquipmentReservationSchema
 from app.modules.events.models import EventHistoryKind, EventRequest, EventRequestStatus
@@ -416,6 +417,8 @@ def test_the_reservation_schema_dumps_exactly_the_agreed_fields_in_business_time
         reserved_by=TECHNICAL_SUPPORT_NAME,
         created_at=datetime(2026, 10, 1, 8, 0, tzinfo=timezone.utc),
         needs_attention=False,
+        preparation_status=PreparationStatus.IN_PROGRESS,
+        preparation_notes="Cables run.",
     )
 
     assert EquipmentReservationSchema().dump(reservation) == {
@@ -428,6 +431,8 @@ def test_the_reservation_schema_dumps_exactly_the_agreed_fields_in_business_time
         "reserved_by": TECHNICAL_SUPPORT_NAME,
         "created_at": "2026-10-01T16:00:00+08:00",
         "needs_attention": False,
+        "preparation_status": "in_progress",
+        "preparation_notes": "Cables run.",
     }
 
 

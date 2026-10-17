@@ -85,6 +85,23 @@ class OutOfServiceReason(str, enum.Enum):
     UNDER_MAINTENANCE = "under_maintenance"
 
 
+#: Longest preparation note (SCRUM-85, ADR-0050). The column is ``Text``, so this is an
+#: API rule.
+PREPARATION_NOTES_MAX_LENGTH = 1000
+
+
+class PreparationStatus(str, enum.Enum):
+    """How far Technical Support have got in preparing a reservation (SCRUM-85).
+
+    The venue module has its own, with the same values: a module never imports another
+    module's models.
+    """
+
+    NOT_STARTED = "not_started"
+    IN_PROGRESS = "in_progress"
+    READY = "ready"
+
+
 class EquipmentReservation(db.Model):  # type: ignore[name-defined]
     """Units of one equipment type held for one event's exact period (SCRUM-46).
 
@@ -119,6 +136,20 @@ class EquipmentReservation(db.Model):  # type: ignore[name-defined]
     needs_attention: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=expression.false()
     )
+
+    #: How far Technical Support have got in preparing the units, and their notes
+    #: (SCRUM-85). Who recorded each update and when are in the event's history entries.
+    preparation_status: Mapped[PreparationStatus] = mapped_column(
+        Enum(
+            PreparationStatus,
+            name="equipment_preparation_status",
+            # Store the enum *values* (snake_case), not the member names.
+            values_callable=lambda enum_cls: [m.value for m in enum_cls],
+        ),
+        nullable=False,
+        default=PreparationStatus.NOT_STARTED,
+    )
+    preparation_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
