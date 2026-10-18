@@ -3,8 +3,9 @@
 Technical Support take units of an equipment type out of service as damaged or under
 maintenance, and put them back (AC1). Units out of service no longer count as free
 (AC2). Reservations the change leaves short are flagged and their coordinator is told
-(AC3). Who changed the status, and when, is recorded (AC4). AC5 (a new safety check)
-waits for the Operational Safety Check itself (ADR-0046). They run against
+(AC3). Who changed the status, and when, is recorded (AC4). A reservation newly
+flagged on an event that already passed its safety check withdraws the approval, so
+the event must pass a new check (AC5, ADR-0046, ADR-0087). They run against
 ``db_session``, an in-memory SQLite database.
 """
 
@@ -30,10 +31,17 @@ from app.modules.equipment.models import (
     EquipmentType,
     OutOfServiceReason,
 )
-from app.modules.events.models import EventRequest
+from app.modules.events import services as event_services
+from app.modules.events.models import (
+    EventHistoryEntry,
+    EventHistoryKind,
+    EventRequest,
+    EventRequestStatus,
+)
 from app.modules.notifications.models import NotificationKind
 from app.modules.notifications.schemas import NotificationSchema
 from app.modules.notifications.services import list_notifications_for_recipient
+from tests.conftest import approve_safety
 
 pytestmark = pytest.mark.scrum_47
 
@@ -452,6 +460,74 @@ def test_an_event_with_no_coordinator_is_flagged_and_the_gap_is_logged(
     assert [record.getMessage() for record in caplog.records] == [
         "event_request_unassigned reference=EVR-AAAAAAAA"
     ]
+
+
+# --- AC5: a newly flagged reservation needs a new safety check ---------------------
+
+
+@pytest.fixture()
+def safety_approved(
+    saved_event_request: EventRequest, eight_reserved: EquipmentReservation, save: Save
+) -> EventRequest:
+    """``saved_event_request`` in Safety Review with the Safety Officer's approval."""
+    saved_event_request.status = EventRequestStatus.SAFETY_REVIEW
+    save(saved_event_request)
+    approve_safety(saved_event_request, save)
+    return saved_event_request
+
+
+def _withdrawals(db_session: Session) -> list[tuple[int | None, dict[str, Any] | None]]:
+    statement = select(EventHistoryEntry).where(
+        EventHistoryEntry.kind == EventHistoryKind.SAFETY_APPROVAL_WITHDRAWN
+    )
+    return [(entry.actor_id, entry.details) for entry in db_session.scalars(statement)]
+
+
+def test_a_newly_flagged_reservation_withdraws_the_safety_approval(
+    db_session: Session, safety_approved: EventRequest, equipment_type: EquipmentType
+) -> None:
+    """The event goes back to Approved, to be sent for a new check (ADR-0087)."""
+    _mark(equipment_type, 3)
+
+    assert event_services.has_safety_approval(safety_approved.id) is False
+    assert _withdrawals(db_session) == [
+        (
+            TECHNICAL_SUPPORT_ID,
+            {
+                "equipment_type_id": equipment_type.id,
+                "equipment_type_name": "Projector",
+                "units_out_of_service": 3,
+            },
+        )
+    ]
+    db_session.expire_all()
+    assert safety_approved.status is EventRequestStatus.APPROVED
+
+
+def test_a_reservation_still_covered_keeps_the_safety_approval(
+    db_session: Session, safety_approved: EventRequest, equipment_type: EquipmentType
+) -> None:
+    _mark(equipment_type, 2)
+
+    assert event_services.has_safety_approval(safety_approved.id) is True
+    assert _withdrawals(db_session) == []
+
+
+def test_a_reservation_already_flagged_before_the_approval_keeps_it(
+    db_session: Session,
+    saved_event_request: EventRequest,
+    eight_reserved: EquipmentReservation,
+    equipment_type: EquipmentType,
+    save: Save,
+) -> None:
+    """The Safety Officer approved the event with the flag already on it (ADR-0046)."""
+    _mark(equipment_type, 3)
+    approve_safety(saved_event_request, save)
+
+    _mark(equipment_type, 1)
+
+    assert event_services.has_safety_approval(saved_event_request.id) is True
+    assert _withdrawals(db_session) == []
 
 
 # --- AC4: who changed the status, and when ------------------------------------------
