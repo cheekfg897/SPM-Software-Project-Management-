@@ -43,7 +43,9 @@ PREVIOUS_REQUEST_STATUS_VALUES = ("pending", "withdrawn", "approved", "rejected"
 #: Added here (SCRUM-75 AC1).
 ADDED_REQUEST_STATUS_VALUES = ("on_hold",)
 
-#: The statuses the pending index covers after this migration (SCRUM-42 AC7).
+#: The statuses the pending index covers before this migration (0028) and after it
+#: (SCRUM-42 AC7).
+PENDING_OR_CONFLICTING = "status IN ('pending', 'conflicting')"
 PENDING_CONFLICTING_OR_ON_HOLD = "status IN ('pending', 'conflicting', 'on_hold')"
 
 #: What migrations 0009-0035 left. Downgrade rebuilds ``notification_kind`` with just
@@ -131,8 +133,9 @@ def downgrade() -> None:
     )
     op.drop_column("venue_booking_requests", "booking_id")
     op.drop_column("bookings", "hold_expires_at")
-    # The pending index's predicate (status = 'pending') can't be re-created against
-    # the renamed enum type, so it is dropped around the rebuild, as 0028 does.
+    # The pending index's predicate can't be re-created against the renamed enum type,
+    # so it is dropped around the rebuild, as 0028 does, and comes back as 0028 left
+    # it: Pending and Conflicting, without On Hold.
     op.drop_index("uq_venue_booking_requests_pending", table_name="venue_booking_requests")
     _rebuild_enum_without_added_values(
         "booking_request_status",
@@ -145,7 +148,7 @@ def downgrade() -> None:
         "venue_booking_requests",
         ["event_id", "venue_id", "starts_at", "ends_at"],
         unique=True,
-        postgresql_where=sa.text("status = 'pending'"),
+        postgresql_where=sa.text(PENDING_OR_CONFLICTING),
     )
     for value in ADDED_NOTIFICATION_KIND_VALUES:
         op.execute(sa.text("DELETE FROM notifications WHERE kind = :value").bindparams(value=value))
