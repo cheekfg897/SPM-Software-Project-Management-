@@ -5,7 +5,7 @@
 - **Date:** 2026-10-17
 - **Story:** SCRUM-38 See the equipment requests awaiting my action; SCRUM-24 See the events my
   role is involved in (AC5, AC8, AC11)
-- **Extends:** ADR-0022, ADR-0026, ADR-0046
+- **Extends:** ADR-0022, ADR-0026, ADR-0056
 
 ## Context
 The backend has both of Technical Support's lists, but the web app uses neither. A Technical
@@ -24,13 +24,13 @@ Equipment page only by typing its address.
 
 Five things are left open:
 
-1. **Where an event opens.** ADR-0046's detail page opens only for organisers and coordinators:
+1. **Where an event opens.** ADR-0056's detail page opens only for organisers and coordinators:
    `GET /api/events/requests/<reference>` refuses Technical Support.
 2. **Equipment type names.** A line names its type only by `equipment_type_id`; ADR-0022's
    point 8 leaves the names to the client, from the equipment catalogue.
 3. **How days remaining reads.** The backend sends a whole number, 0 on the event's day.
 4. **An empty queue.** Unlike every SCRUM-24 list, the queue's body has no `message`.
-5. **Rows without attendance.** The shared event row (ADR-0046) shows "EVR-… · 250 expected";
+5. **Rows without attendance.** The shared event row (ADR-0056) shows "EVR-… · 250 expected";
    the AC5 rows have no `expected_attendance`.
 
 ## Decision
@@ -48,7 +48,7 @@ Five things are left open:
    words, since the backend sends none. *Default to review*: a backend `message`, as the other
    lists have, would replace it (see Tickets in the PR).
 6. **The shared row shows only the reference when a list has no attendance**, so the AC5 rows
-   reuse ADR-0046's list and row as they are.
+   reuse ADR-0056's list and row as they are.
 7. **Both lists' query keys leave out the viewer.** The lists are the same for every Technical
    Support member (ADR-0022's point 7), other roles never ask, and signing out clears the
    cache, as with Venue Staff's and the Lead's queues.
