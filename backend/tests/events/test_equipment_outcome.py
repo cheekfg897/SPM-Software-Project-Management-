@@ -1,7 +1,9 @@
 """Unit tests for SCRUM-48 — the outcome of an equipment review.
 
 This file covers how an outcome's status follows from the quantity provided, and the
-"no outcome yet" seam that SCRUM-97 and SCRUM-49 gate the Safety Review on.
+"no outcome yet" seam that SCRUM-97 and SCRUM-49 gate the Safety Review on. Its
+SCRUM-50 section (marked ``scrum_50``) covers what the coordinator's notice says: the
+equipment, the outcome and the note (SCRUM-50 AC4, ADR-0055).
 """
 
 from __future__ import annotations
@@ -12,6 +14,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.common.errors import NotFoundError, ValidationError
@@ -27,7 +30,7 @@ from app.modules.events.models import (
     EventRequest,
 )
 from app.modules.events.schemas import EquipmentLineWithOutcomeSchema, EventRequestDetailSchema
-from app.modules.notifications.models import NotificationKind
+from app.modules.notifications.models import Notification, NotificationKind
 
 pytestmark = pytest.mark.scrum_48
 
@@ -386,6 +389,92 @@ def test_a_line_with_an_outcome_leaves_the_awaiting_action_list(
 
     after = services.list_equipment_requests_awaiting_action(session=db_session, today=today)
     assert after == []
+
+
+# --------------------------------------------------------------------------
+# SCRUM-50 AC4 — the coordinator's notice carries the outcome and the note
+# --------------------------------------------------------------------------
+
+
+def _outcome_details(session: Session) -> list[tuple[int, str | None]]:
+    """(recipient, detail) of each outcome notice, oldest first."""
+    notices = session.scalars(
+        select(Notification)
+        .where(Notification.kind == NotificationKind.EQUIPMENT_OUTCOME_RECORDED)
+        .order_by(Notification.id)
+    )
+    return [(notice.recipient_id, notice.detail) for notice in notices]
+
+
+@pytest.mark.scrum_50
+@pytest.mark.parametrize(
+    ("provided", "note", "expected"),
+    [
+        (10, None, "Projector: fulfilled, 10 of 10 provided."),
+        (
+            6,
+            "Only six in stock",
+            "Projector: partially fulfilled, 6 of 10 provided. Note: Only six in stock",
+        ),
+        (0, "All out on loan", "Projector: unavailable, 0 of 10 provided. Note: All out on loan"),
+    ],
+    ids=["fulfilled", "partial", "unavailable"],
+)
+def test_the_notice_names_the_equipment_the_outcome_and_the_note(
+    db_session: Session,
+    record_outcome: Callable[..., EventEquipmentLine],
+    ten_requested: EventEquipmentLine,
+    provided: int,
+    note: str | None,
+    expected: str,
+) -> None:
+    payload: dict[str, Any] = {"provided_quantity": provided}
+    if note is not None:
+        payload["note"] = note
+
+    record_outcome(ten_requested, **payload)
+
+    assert _outcome_details(db_session) == [(COORDINATOR_ID, expected)]
+
+
+@pytest.mark.scrum_50
+def test_a_revision_sends_one_more_notice_with_the_revised_outcome(
+    db_session: Session,
+    record_outcome: Callable[..., EventEquipmentLine],
+    ten_requested: EventEquipmentLine,
+) -> None:
+    """The revision to "fulfilled" drops the note, as the line itself does."""
+    record_outcome(ten_requested, provided_quantity=0, note="All out on loan")
+
+    record_outcome(ten_requested, provided_quantity=10)
+
+    assert _outcome_details(db_session) == [
+        (COORDINATOR_ID, "Projector: unavailable, 0 of 10 provided. Note: All out on loan"),
+        (COORDINATOR_ID, "Projector: fulfilled, 10 of 10 provided."),
+    ]
+
+
+@pytest.mark.scrum_50
+def test_each_lines_notice_names_its_own_equipment(
+    db_session: Session,
+    record_outcome: Callable[..., EventEquipmentLine],
+    ten_requested: EventEquipmentLine,
+    saved_event_request: EventRequest,
+    make_equipment_type: Callable[..., EquipmentType],
+    make_equipment_line: Callable[..., EventEquipmentLine],
+    save: Callable[..., None],
+) -> None:
+    """A second line, of a second type, so a notice naming the wrong type shows."""
+    microphone = make_equipment_type(name="Microphone")
+    save(microphone)
+    microphones = make_equipment_line(saved_event_request, microphone, quantity=4)
+    save(microphones)
+
+    record_outcome(microphones, provided_quantity=3, note="One is broken")
+
+    assert _outcome_details(db_session) == [
+        (COORDINATOR_ID, "Microphone: partially fulfilled, 3 of 4 provided. Note: One is broken")
+    ]
 
 
 # --------------------------------------------------------------------------
