@@ -1,7 +1,7 @@
 import type { UnavailabilityCategory } from '@/config/unavailabilityCategories'
 import { apiRequest } from '@/lib/api'
 
-/** The venue module's booking request endpoints (SCRUM-42, SCRUM-43, SCRUM-93). */
+/** The venue module's booking request endpoints (SCRUM-42, SCRUM-43, SCRUM-93, SCRUM-75). */
 const BOOKING_PATHS = {
   EVENT_REQUESTS: (reference: string) => `/api/venues/events/${reference}/booking-requests`,
   /** One of the event's requests, which SCRUM-93 calls a venue arrangement. */
@@ -13,6 +13,8 @@ const BOOKING_PATHS = {
   /** Venue Staff's queue, across every event. */
   PENDING: '/api/venues/booking-requests',
   decisionFor: (requestId: number) => `/api/venues/booking-requests/${requestId}/decision`,
+  /** POST places a tentative hold; PATCH moves its expiry (SCRUM-75). */
+  holdFor: (requestId: number) => `/api/venues/booking-requests/${requestId}/hold`,
 } as const
 
 /** What the backend accepts when a coordinator raises a request. */
@@ -179,4 +181,26 @@ export function withdrawArrangement(
 /** Withdraw every arrangement the event still has; answers with the ones it withdrew. */
 export function cancelAllArrangements(reference: string): Promise<BookingRequest[]> {
   return apiRequest<BookingRequest[]>(BOOKING_PATHS.cancelAll(reference), { method: 'POST' })
+}
+
+/** What the backend accepts to place a hold or move its expiry (SCRUM-75 AC3, AC4). */
+export interface HoldExpiry {
+  /** ISO date-time with an offset, in business time: in the future and before the event starts. */
+  expires_at: string
+}
+
+/** Hold the request's venue tentatively until the expiry, instead of booking it (SCRUM-75). */
+export function placeBookingHold(requestId: number, hold: HoldExpiry): Promise<BookingRequest> {
+  return apiRequest<BookingRequest>(BOOKING_PATHS.holdFor(requestId), {
+    method: 'POST',
+    body: hold,
+  })
+}
+
+/** Move the expiry of a request's active hold (SCRUM-75 AC4). */
+export function changeHoldExpiry(requestId: number, hold: HoldExpiry): Promise<BookingRequest> {
+  return apiRequest<BookingRequest>(BOOKING_PATHS.holdFor(requestId), {
+    method: 'PATCH',
+    body: hold,
+  })
 }

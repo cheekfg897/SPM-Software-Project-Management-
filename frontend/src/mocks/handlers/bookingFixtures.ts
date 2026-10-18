@@ -191,8 +191,12 @@ function arrangementOf(
  * order, and two start together, so the list's order (period, then id) is visible.
  *
  * The replaced event's original hall was released when its replacement was approved (SCRUM-92),
- * and its gallery hold ran out (SCRUM-94). The held event's studio is On hold (SCRUM-75), which
- * the backend's Venue Staff queue lists but this mock's queue does not yet.
+ * and its gallery hold ran out (SCRUM-94). The held event's studio is On hold (SCRUM-75), so the
+ * Venue Staff queue lists it, waiting for final approval.
+ *
+ * The earlier workshop's exhibition hall is approved, which makes that event multi-venue, so its
+ * Breakout room (9001, in the queue) can be held (SCRUM-75 AC1). It is at the other venue in the
+ * afternoon, so it clashes with nothing.
  */
 export const MOCK_ARRANGEMENTS = {
   rejectedMain: arrangementOf(MOCK_BOOKING_EVENTS.multiVenue, {
@@ -277,5 +281,14 @@ export const MOCK_ARRANGEMENTS = {
     status: 'on_hold',
     decision_reason: null,
     hold_expires_at: '2026-11-21T09:00:00+08:00',
+  }),
+  exhibitionHall: arrangementOf(MOCK_BOOKING_EVENTS.earlierWorkshop, {
+    id: 9003,
+    venue_id: MOCK_BOOKING_VENUES.tiny.id,
+    starts_at: '2026-11-20T13:00:00+08:00',
+    ends_at: '2026-11-20T16:00:00+08:00',
+    purpose: 'Exhibition hall',
+    status: 'approved',
+    decision_reason: 'Booked',
   }),
 } as const satisfies Record<string, BookingRequest>

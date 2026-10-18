@@ -22,11 +22,13 @@ import {
   MOCK_PENDING_DECISIONS,
 } from './bookingFixtures'
 import type { MockBookingEvent } from './bookingFixtures'
+import { MOCK_NOW } from './catalogueFixtures'
 
 /**
- * The venue module's booking request endpoints (SCRUM-42, SCRUM-43, SCRUM-93), answering as
- * backend/app/modules/venue/routes.py does, error bodies included, and Venue Staff's list of
- * events, which backend/app/modules/events/routes.py answers (SCRUM-24 AC4).
+ * The venue module's booking request endpoints (SCRUM-42, SCRUM-43, SCRUM-93, SCRUM-75), answering
+ * as backend/app/modules/venue/routes.py does, error bodies included, and Venue Staff's list of
+ * events, which backend/app/modules/events/routes.py answers (SCRUM-24 AC4). A hold's expiry is
+ * compared with the mocks' "now", MOCK_NOW.
  */
 
 const BOOKING_PATH = '/api/venues/events/:reference/booking-requests'
@@ -36,7 +38,9 @@ const CANCEL_ALL_PATH = `${BOOKING_PATH}/cancel-all`
 const PENDING_PATH = '/api/venues/booking-requests'
 const DECISION_PATH = `${PENDING_PATH}/:requestId/decision`
 const VENUE_STAFF_EVENTS_PATH = '/api/events/requests/with-venue-bookings'
+const HOLD_PATH = `${PENDING_PATH}/:requestId/hold`
 const REQUIRED_FIELDS = ['venue_id', 'starts_at', 'ends_at', 'purpose'] as const
+const MISSING_FIELD_MESSAGE = 'Missing data for required field.'
 /** The backend's EVENT_REQUEST_NOT_FOUND_MESSAGE (events/services.py), also sent for another coordinator's event. */
 const EVENT_NOT_FOUND_MESSAGE = 'Event request not found.'
 const JUSTIFICATION_REQUIRED_MESSAGE =
@@ -47,6 +51,12 @@ const DUPLICATE_REQUEST_MESSAGE =
 const BOOKING_REQUEST_NOT_FOUND_MESSAGE = 'Booking request not found.'
 export const REJECTION_REASON_REQUIRED_MESSAGE = 'A reason is required to reject a booking request.'
 const OUTCOME_ERROR_MESSAGE = 'Outcome must be approved or rejected.'
+/** The backend's messages for holds (venue/services.py, SCRUM-75). */
+export const SINGLE_VENUE_HOLD_MESSAGE =
+  'A hold can only be placed on a request of an event with more than one venue.'
+export const EXPIRY_NOT_BEFORE_EVENT_MESSAGE = 'The expiry must be before the event starts.'
+const EXPIRY_NOT_FUTURE_MESSAGE = 'The expiry must be in the future.'
+const NOT_A_DATE_TIME_MESSAGE = 'Not a valid datetime.'
 /** The backend's refusal of a clashing approval (venue/services.py, SCRUM-44), for an overlap. */
 function clashMessage(bookingId: number): string {
   return `Cannot approve: booking #${bookingId} already holds this venue during the requested period.`
@@ -120,10 +130,15 @@ function overlapsAtSameVenue(first: BookingRequest, second: BookingRequest): boo
   )
 }
 
-/** The approved request holding the venue during the period, which the backend would find as a confirmed booking. */
+/**
+ * The approved request, or one on hold, holding the venue during the period: the backend
+ * would find it as a confirmed booking or a live hold (SCRUM-75 AC5).
+ */
 function clashingApproval(waiting: BookingRequest): BookingRequest | undefined {
   return requests.find(
-    (existing) => existing.status === 'approved' && overlapsAtSameVenue(existing, waiting),
+    (existing) =>
+      (existing.status === 'approved' || existing.status === 'on_hold') &&
+      overlapsAtSameVenue(existing, waiting),
   )
 }
 
@@ -140,9 +155,56 @@ function markClashingRequestsConflicting(approved: BookingRequest): void {
   }
 }
 
-/** The statuses Venue Staff can still decide: the queue lists them and a decision accepts them. */
-function isDecidable(existing: BookingRequest): boolean {
+/** The statuses Venue Staff can hold: a request not yet approved (SCRUM-75). */
+function isHoldable(existing: BookingRequest): boolean {
   return existing.status === 'pending' || existing.status === 'conflicting'
+}
+
+/**
+ * The statuses Venue Staff can still decide: the queue lists them and a decision accepts them.
+ * A request On Hold waits for their final approval (SCRUM-75 AC7).
+ */
+function isDecidable(existing: BookingRequest): boolean {
+  return isHoldable(existing) || existing.status === 'on_hold'
+}
+
+/**
+ * How many venues the event has arranged: every request but a withdrawn or released one, so a
+ * rejected one still counts (SCRUM-75 AC1).
+ */
+function activeArrangementCount(eventId: number): number {
+  return requests.filter(
+    (existing) => existing.event_id === eventId && !RETIRED_STATUSES.includes(existing.status),
+  ).length
+}
+
+/** The request Venue Staff named in the path, if there is one. */
+function findRequest(requestId: unknown): BookingRequest | undefined {
+  return requests.find((existing) => existing.id === Number(requestId))
+}
+
+/** The body's expiry, or the backend's 400 when it is missing or not a date-time. */
+function readExpiry(body: Record<string, unknown>): string | Response {
+  const expiresAt = body.expires_at
+  if (expiresAt === undefined) {
+    return validationError({ expires_at: [MISSING_FIELD_MESSAGE] })
+  }
+  if (typeof expiresAt !== 'string' || Number.isNaN(Date.parse(expiresAt))) {
+    return validationError({ expires_at: [NOT_A_DATE_TIME_MESSAGE] })
+  }
+  return expiresAt
+}
+
+/** The backend's 400 for an expiry that has passed or is not before the event starts, or null. */
+function expiryOutOfRange(expiresAt: string, held: BookingRequest): Response | null {
+  const eventStartsAt = `${held.event_proposed_date}T${held.event_start_time}+08:00`
+  if (Date.parse(expiresAt) <= Date.parse(MOCK_NOW)) {
+    return validationError({ expires_at: [EXPIRY_NOT_FUTURE_MESSAGE] })
+  }
+  if (Date.parse(expiresAt) >= Date.parse(eventStartsAt)) {
+    return validationError({ expires_at: [EXPIRY_NOT_BEFORE_EVENT_MESSAGE] })
+  }
+  return null
 }
 
 /** The queue's order, as the backend sorts it: event date, then event start, then id. */
@@ -189,7 +251,7 @@ function missingFieldErrors(body: Record<string, unknown>): FieldErrors {
   const errors: FieldErrors = {}
   for (const field of REQUIRED_FIELDS) {
     if (body[field] === undefined) {
-      errors[field] = ['Missing data for required field.']
+      errors[field] = [MISSING_FIELD_MESSAGE]
     }
   }
   return errors
@@ -424,7 +486,7 @@ export const bookingHandlers: RequestHandler[] = [
     if (refusal !== null) {
       return refusal
     }
-    const waiting = requests.find((existing) => existing.id === Number(params.requestId))
+    const waiting = findRequest(params.requestId)
     if (waiting === undefined) {
       return notFound(BOOKING_REQUEST_NOT_FOUND_MESSAGE)
     }
@@ -445,7 +507,8 @@ export const bookingHandlers: RequestHandler[] = [
       return validationError({ reason: [REJECTION_REASON_REQUIRED_MESSAGE] })
     }
 
-    if (body.outcome === 'approved') {
+    // Final approval turns a hold into the booking, so it has nothing to clash with (SCRUM-75).
+    if (body.outcome === 'approved' && waiting.status !== 'on_hold') {
       const clash = clashingApproval(waiting)
       if (clash !== undefined) {
         return errorResponse(409, 'conflict', clashMessage(clash.id))
@@ -454,6 +517,8 @@ export const bookingHandlers: RequestHandler[] = [
 
     waiting.status = body.outcome
     waiting.decision_reason = reason
+    // The backend shows an expiry only while a request is On Hold or Expired.
+    waiting.hold_expires_at = null
     if (body.outcome === 'approved') {
       markClashingRequestsConflicting(waiting)
     }
@@ -537,5 +602,71 @@ export const bookingHandlers: RequestHandler[] = [
 
     Object.assign(arrangement, body)
     return HttpResponse.json(arrangement)
+  }),
+
+  http.post(HOLD_PATH, async ({ request, params }) => {
+    const refusal = checkVenueStaff(request)
+    if (refusal !== null) {
+      return refusal
+    }
+    const waiting = findRequest(params.requestId)
+    if (waiting === undefined) {
+      return notFound(BOOKING_REQUEST_NOT_FOUND_MESSAGE)
+    }
+    if (!isHoldable(waiting)) {
+      return errorResponse(
+        409,
+        'conflict',
+        `Only a pending or conflicting request can be held; this one is ${waiting.status}.`,
+      )
+    }
+    const expiresAt = readExpiry(await readBody(request))
+    if (expiresAt instanceof Response) {
+      return expiresAt
+    }
+    if (activeArrangementCount(waiting.event_id) < 2) {
+      return errorResponse(409, 'conflict', SINGLE_VENUE_HOLD_MESSAGE)
+    }
+    const outOfRange = expiryOutOfRange(expiresAt, waiting)
+    if (outOfRange !== null) {
+      return outOfRange
+    }
+    const clash = clashingApproval(waiting)
+    if (clash !== undefined) {
+      return errorResponse(409, 'conflict', clashMessage(clash.id))
+    }
+
+    waiting.status = 'on_hold'
+    waiting.hold_expires_at = expiresAt
+    return HttpResponse.json(waiting)
+  }),
+
+  http.patch(HOLD_PATH, async ({ request, params }) => {
+    const refusal = checkVenueStaff(request)
+    if (refusal !== null) {
+      return refusal
+    }
+    const held = findRequest(params.requestId)
+    if (held === undefined) {
+      return notFound(BOOKING_REQUEST_NOT_FOUND_MESSAGE)
+    }
+    if (held.status !== 'on_hold') {
+      return errorResponse(
+        409,
+        'conflict',
+        `Only a request on hold has an expiry to change; this one is ${held.status}.`,
+      )
+    }
+    const expiresAt = readExpiry(await readBody(request))
+    if (expiresAt instanceof Response) {
+      return expiresAt
+    }
+    const outOfRange = expiryOutOfRange(expiresAt, held)
+    if (outOfRange !== null) {
+      return outOfRange
+    }
+
+    held.hold_expires_at = expiresAt
+    return HttpResponse.json(held)
   }),
 ]
