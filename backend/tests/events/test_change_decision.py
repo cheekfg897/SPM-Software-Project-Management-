@@ -83,6 +83,16 @@ def request_equipment(
     return _request
 
 
+def _assert_decision_locked(decide: Decide) -> None:
+    """Try a new decision and check it is refused as locked (AC7)."""
+    with pytest.raises(DecisionLockedError) as exc_info:
+        decide(COORDINATOR_ID, "rejected", CHANGE_REASON)
+
+    refused = exc_info.value
+    assert (refused.status_code, refused.error_code) == (409, "decision_locked")
+    assert refused.message == DECISION_LOCKED_MESSAGE
+
+
 def _decisions_in(history: list[tuple[EventHistoryKind, int | None, Any]]) -> list[Any]:
     """The details of each ``decision_recorded`` entry, oldest first."""
     decisions = []
@@ -176,12 +186,8 @@ def test_a_new_decision_is_not_allowed_once_the_event_has_an_equipment_request(
     status_after_first = first_decided.status
     request_equipment()
 
-    with pytest.raises(DecisionLockedError) as exc_info:
-        decide(COORDINATOR_ID, "rejected", CHANGE_REASON)
+    _assert_decision_locked(decide)
 
-    refused = exc_info.value
-    assert (refused.status_code, refused.error_code) == (409, "decision_locked")
-    assert refused.message == DECISION_LOCKED_MESSAGE
     assert reload_event_request(saved_event_request.id).status is status_after_first
     assert len(_decisions_in(history_of(saved_event_request.id))) == 1
 
