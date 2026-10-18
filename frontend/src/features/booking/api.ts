@@ -1,3 +1,4 @@
+import type { UnavailabilityCategory } from '@/config/unavailabilityCategories'
 import { apiRequest } from '@/lib/api'
 
 /** The venue module's booking request endpoints (SCRUM-42, SCRUM-43). */
@@ -39,10 +40,6 @@ export type BookingRequestStatus =
 
 /** How far Venue Staff have got in setting up an approved booking (SCRUM-84). */
 export type PreparationStatus = 'not_started' | 'in_progress' | 'ready'
-
-/** Why a venue can't be used (SCRUM-92). */
-export type UnavailabilityCategory =
-  'maintenance' | 'equipment_failure' | 'renovation' | 'safety_concern' | 'other'
 
 /** One reason a booking needs an alternative venue: a block, or the venue's deactivation. */
 export interface Unavailability {
