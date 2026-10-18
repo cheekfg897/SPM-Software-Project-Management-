@@ -1,5 +1,7 @@
 import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
 import type { EventRequestStatus } from '@/config/eventStatus'
+import { ROLE } from '@/config/roles'
+import type { Role } from '@/config/roles'
 import {
   addEquipmentLine,
   fetchEventAvailability,
@@ -50,6 +52,15 @@ const LOCKED_STATUSES = Object.values(EVENT_REQUEST_STATUS).filter(
 )
 
 const LECTERN: EquipmentLineBody = { equipment_type_id: LECTERN_TYPE_ID, quantity: 2 }
+
+/** Every mock account whose role is not one of `allowed`, so a role added later is refused too. */
+function accountsOutside(allowed: readonly Role[]): MockAccount[] {
+  return Object.values(MOCK_ACCOUNTS).filter((account) => !allowed.includes(account.role))
+}
+
+/** Only Technical Support and coordinators read the lines; only coordinators change them. */
+const NOT_READERS = accountsOutside([ROLE.EVENT_COORDINATOR, ROLE.TECHNICAL_SUPPORT_STAFF])
+const NOT_WRITERS = accountsOutside([ROLE.EVENT_COORDINATOR])
 
 function signInAs(account: MockAccount) {
   sendRequestsAs(mockTokenFor(account))
@@ -181,12 +192,7 @@ describe('SCRUM-37 equipment line mock: listing', () => {
     expect(listed.equipment_lines).toHaveLength(2)
   })
 
-  it.each([
-    MOCK_ACCOUNTS.organiser,
-    MOCK_ACCOUNTS.attendee,
-    MOCK_ACCOUNTS.venueStaff,
-    MOCK_ACCOUNTS.lead,
-  ])('refuses $role with a 403', async (account) => {
+  it.each(NOT_READERS)('refuses $role ($email) with a 403', async (account) => {
     signInAs(account)
 
     await expect(fetchEventEquipmentLines(MOCK_OPEN_EVENT_REFERENCE)).rejects.toMatchObject({
@@ -410,8 +416,8 @@ describe('SCRUM-37 equipment line mock: adding (AC1, AC3)', () => {
     })
   })
 
-  it.each([MOCK_ACCOUNTS.technicalSupport, MOCK_ACCOUNTS.lead, MOCK_ACCOUNTS.organiser])(
-    'refuses $role with a 403: only the coordinator records equipment',
+  it.each(NOT_WRITERS)(
+    'refuses $role ($email) with a 403: only the coordinator records equipment',
     async (account) => {
       signInAs(account)
 
@@ -595,13 +601,17 @@ describe('SCRUM-37 equipment line mock: changing (AC2, AC3)', () => {
     })
   })
 
-  it('refuses Technical Support with a 403, and a visitor with a 401', async () => {
-    signInAs(MOCK_ACCOUNTS.technicalSupport)
+  it.each(NOT_WRITERS)('refuses $role ($email) with a 403', async (account) => {
+    signInAs(account)
+
     await expect(change(PROJECTOR_LINE_ID, { quantity: 2 })).rejects.toMatchObject({
       status: 403,
     })
+  })
 
+  it('refuses a visitor with a 401', async () => {
     sendRequestsAs(null)
+
     await expect(change(PROJECTOR_LINE_ID, { quantity: 2 })).rejects.toMatchObject({
       status: 401,
     })
@@ -654,13 +664,17 @@ describe('SCRUM-37 equipment line mock: removing (AC2)', () => {
     ).rejects.toMatchObject({ status: 404, message: NOT_FOUND_MESSAGE })
   })
 
-  it('refuses Technical Support with a 403, and a visitor with a 401', async () => {
-    signInAs(MOCK_ACCOUNTS.technicalSupport)
+  it.each(NOT_WRITERS)('refuses $role ($email) with a 403', async (account) => {
+    signInAs(account)
+
     await expect(
       removeEquipmentLine(MOCK_OPEN_EVENT_REFERENCE, PROJECTOR_LINE_ID),
     ).rejects.toMatchObject({ status: 403 })
+  })
 
+  it('refuses a visitor with a 401', async () => {
     sendRequestsAs(null)
+
     await expect(
       removeEquipmentLine(MOCK_OPEN_EVENT_REFERENCE, PROJECTOR_LINE_ID),
     ).rejects.toMatchObject({ status: 401 })
