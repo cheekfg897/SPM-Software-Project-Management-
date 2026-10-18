@@ -45,8 +45,9 @@ must not see it (AC5: not Attendees), not how staff reach it or what the screen 
 ## Consequences
 - The mock backend (`mocks/handlers/organisations.ts`) answers both routes: staff only, by name,
   each field refused with `CreateClientOrganisationSchema`'s own message, names trimmed and
-  unique exactly as typed. Two known differences: its email check is looser than marshmallow's
-  (one `@`, no spaces), and it sorts with `localeCompare`, where Postgres uses its collation.
+  unique exactly as typed. Its email check is marshmallow's in ASCII only, so it refuses a few
+  rare addresses the backend takes (quoted, non-English, `[1.2.3.4]`) but takes none the backend
+  refuses. It sorts with `localeCompare`, where Postgres uses its collation.
 - The mock starts with organisations 1 to 3, the ids mock sign-up accepts
   (`MOCK_ORGANISATION_IDS`); a test keeps the two in step. An organisation recorded in the mock
   is not accepted by mock sign-up, which still reads that list.

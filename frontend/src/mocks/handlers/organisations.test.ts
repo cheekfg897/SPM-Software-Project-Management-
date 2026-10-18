@@ -249,6 +249,36 @@ describe('SCRUM-66 organisations mock: recording', () => {
     expect(error.fieldErrors).toEqual({ [field]: messages })
   })
 
+  // Each one checked with marshmallow 4.3.1's Email, as the backend runs it.
+  it.each([
+    'weiling@bayfront',
+    'weiling@bayfront.t',
+    'weiling@bayfront.test.',
+    'weiling@bayfront..test',
+    'weiling@-bayfront.test',
+    'weiling@bayfront-.test',
+    'weiling@bay_front.test',
+    '.weiling@bayfront.test',
+    'weiling.@bayfront.test',
+    'wei..ling@bayfront.test',
+    'wei(ling)@bayfront.test',
+  ])('refuses the email %j, as marshmallow does', async (email) => {
+    const error = await errorOf(record(validOrganisation({ contact_email: email })))
+
+    expect(error.fieldErrors).toEqual({ contact_email: ['Not a valid email address.'] })
+  })
+
+  it.each([
+    "o'brien+events@bayfront.test",
+    'wei.ling@mail.bay-front.test',
+    'WEILING@BAYFRONT.TEST',
+    'weiling@localhost',
+  ])('accepts the email %j, as marshmallow does', async (email) => {
+    const created = await record(validOrganisation({ contact_email: email }))
+
+    expect(created.contact_email).toBe(email)
+  })
+
   it.each([
     ['a name of exactly 120 characters', { name: 'n'.repeat(120) }],
     ['a contact name of exactly 120 characters', { contact_name: 'c'.repeat(120) }],
