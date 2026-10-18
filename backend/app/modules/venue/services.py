@@ -1325,6 +1325,14 @@ WITHDRAWABLE_REQUEST_STATUSES = frozenset(
 CHANGE_NOT_PENDING_MESSAGE = "Only a pending arrangement can be changed; this one is {status}."
 
 
+def _is_active() -> ColumnElement[bool]:
+    """The condition for an arrangement that still counts towards its event's venues.
+
+    The one definition of "active": every status but the retired ones (ADR-0039).
+    """
+    return VenueBookingRequest.status.not_in(RETIRED_REQUEST_STATUSES)
+
+
 def list_active_arrangements(
     event_id: int, *, session: Session | None = None
 ) -> list[VenueBookingRequest]:
@@ -1336,10 +1344,7 @@ def list_active_arrangements(
     """
     query = (
         select(VenueBookingRequest)
-        .where(
-            VenueBookingRequest.event_id == event_id,
-            VenueBookingRequest.status.not_in(RETIRED_REQUEST_STATUSES),
-        )
+        .where(VenueBookingRequest.event_id == event_id, _is_active())
         .order_by(VenueBookingRequest.starts_at, VenueBookingRequest.id)
     )
     return list(resolve_session(session).scalars(query).all())
