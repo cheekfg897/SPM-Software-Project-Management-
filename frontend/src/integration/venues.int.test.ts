@@ -7,6 +7,7 @@ import {
   updateVenue,
 } from '@/features/venues/api'
 import type { Deactivation, VenueDetails } from '@/features/venues/api'
+import { apiRequest } from '@/lib/api'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
 
 import { refusal, signInAs, signInAsNewAttendee, staffAccount } from './backend'
@@ -204,6 +205,36 @@ describe.skipIf(!hasVenueStaff)('SCRUM-25 and SCRUM-67 Venue Staff keep the cata
     expect(stillOpens.is_active).toBe(false)
     expect(reactivated.is_active).toBe(true)
     expect(listedAgain.map((venue) => venue.id)).toContain(created.id)
+  })
+
+  it('refuses a deactivation with nothing chosen and a blank note, naming each field', async () => {
+    await signInAsVenueStaff()
+    const created = await createVenue(uniqueVenue())
+
+    const error = await refusal(deactivateVenue(created.id, { category: '', reason: '   ' }))
+
+    expect(error).toMatchObject({ status: 400, code: 'validation_error' })
+    expect(error.fieldErrors).toEqual({
+      category: [
+        'Category must be one of maintenance, equipment_failure, renovation, safety_concern or other.',
+      ],
+      reason: ['Must not be blank.'],
+    })
+    await expect(fetchVenue(created.id)).resolves.toMatchObject({ is_active: true })
+  })
+
+  it('refuses a deactivation without a category and a note before looking for the venue', async () => {
+    await signInAsVenueStaff()
+
+    const error = await refusal(
+      apiRequest(`/api/venues/${UNKNOWN_VENUE_ID}/deactivate`, { method: 'POST', body: {} }),
+    )
+
+    expect(error).toMatchObject({ status: 400, code: 'validation_error' })
+    expect(error.fieldErrors).toEqual({
+      category: ['Missing data for required field.'],
+      reason: ['Missing data for required field.'],
+    })
   })
 
   it.todo('reports bookings a longer turnaround now overlaps (needs seeded confirmed bookings)')
