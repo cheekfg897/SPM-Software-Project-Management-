@@ -1,4 +1,12 @@
-import { filtersFrom, readFilters, toSearchRequest, withFilters } from './searchParams'
+import {
+  filtersFrom,
+  readFilters,
+  readVenueToCheck,
+  toSearchRequest,
+  toSuitabilityRequest,
+  withFilters,
+  withVenueToCheck,
+} from './searchParams'
 import type { SearchFilters } from './searchParams'
 
 const FILTERS: SearchFilters = {
@@ -122,5 +130,43 @@ describe('SCRUM-35 the search sent to the backend', () => {
       required_facilities: ['projector'],
       required_accessibility: ['step-free access'],
     })
+  })
+})
+
+describe('SCRUM-36 the venue being checked', () => {
+  it('reads the venue to check from the URL, or none', () => {
+    expect(readVenueToCheck(new URLSearchParams('min_capacity=5&venue=32'))).toBe(32)
+    expect(readVenueToCheck(new URLSearchParams('min_capacity=5'))).toBeNull()
+  })
+
+  it.each(['abc', '0', '-3', '2.5', ''])('reads no venue from venue=%s', (value) => {
+    expect(readVenueToCheck(new URLSearchParams({ venue: value }))).toBeNull()
+  })
+
+  it('writes the venue to check into the URL, keeping the filters', () => {
+    const next = withVenueToCheck(new URLSearchParams('min_capacity=5&venue=31'), 33)
+
+    expect(next.toString()).toBe('min_capacity=5&venue=33')
+  })
+
+  it("checks against the search's needs, its minimum capacity as the attendance", () => {
+    const check = toSuitabilityRequest({
+      ...FILTERS,
+      location: 'Marina',
+      required_layout: 'theatre',
+      required_facilities: ['projector'],
+      required_accessibility: ['step-free access'],
+    })
+
+    expect(check).toEqual({
+      expected_attendance: 120,
+      required_layout: 'theatre',
+      required_facilities: ['projector'],
+      required_accessibility: ['step-free access'],
+    })
+  })
+
+  it('checks against any layout when none was chosen', () => {
+    expect(toSuitabilityRequest(FILTERS).required_layout).toBeNull()
   })
 })

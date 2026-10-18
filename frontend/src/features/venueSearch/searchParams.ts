@@ -1,13 +1,17 @@
 import { formText } from '@/features/auth/formText'
 import { toBusinessTimeIso } from '@/lib/businessTime'
 
-import type { VenueSearchRequest } from './api'
+import type { SuitabilityRequest, VenueSearchRequest } from './api'
 
 /**
  * The search's filters live in the page URL (ADR-0073), as the form's own values: a date, two
- * times and an optional end date rather than the instants the backend takes. These helpers read
- * them, write them, and build the backend's request from them; none of them filter anything.
+ * times and an optional end date rather than the instants the backend takes. So does the venue
+ * being checked against them. These helpers read them, write them, and build the backend's
+ * requests from them; none of them filter anything.
  */
+
+/** The URL parameter holding the id of the venue being checked (SCRUM-36). */
+const VENUE_TO_CHECK = 'venue'
 
 /** The filters with one value each, named as the form fields and URL parameters are. */
 const SINGLE_FILTERS = [
@@ -115,4 +119,27 @@ export function toSearchRequest(filters: SearchFilters): VenueSearchRequest {
     required_facilities: filters.required_facilities,
     required_accessibility: filters.required_accessibility,
   }
+}
+
+/** The check's request: the search's minimum capacity is the event's expected attendance. */
+export function toSuitabilityRequest(filters: SearchFilters): SuitabilityRequest {
+  return {
+    expected_attendance: Number(filters.min_capacity),
+    required_layout: orNull(filters.required_layout),
+    required_facilities: filters.required_facilities,
+    required_accessibility: filters.required_accessibility,
+  }
+}
+
+/** The id of the venue being checked, or null when there is none (or it isn't an id). */
+export function readVenueToCheck(params: URLSearchParams): number | null {
+  const venueId = Number(params.get(VENUE_TO_CHECK) ?? '')
+  return Number.isInteger(venueId) && venueId > 0 ? venueId : null
+}
+
+/** The URL checking `venueId`, the filters left as they are. */
+export function withVenueToCheck(current: URLSearchParams, venueId: number): URLSearchParams {
+  const next = new URLSearchParams(current)
+  next.set(VENUE_TO_CHECK, String(venueId))
+  return next
 }
