@@ -1,6 +1,6 @@
 # ADR-0051: The assigned coordinator confirms an event from Safety Review once every approval is in
 
-- **Status:** Accepted for the confirmation itself (SCRUM-49 AC1-AC8, AC12); decision 8 is deferred to SCRUM-92 and decisions 9-10 are defaults pending the customer
+- **Status:** Accepted for the confirmation itself (SCRUM-49 AC1-AC8, AC12); decision 8 was deferred to SCRUM-92 and is now delivered by [ADR-0053](0053-flag-bookings-when-a-venue-becomes-unavailable.md) (the gate names each flagged active arrangement), and decisions 9-10 are defaults pending the customer
 - **Date:** 2026-10-17
 - **Stories:** SCRUM-49 Confirm an event once its arrangements are in place
 
