@@ -1,0 +1,169 @@
+"""Unit tests for SCRUM-33 "Update event information and flag significant changes".
+
+AC7: once the event has passed its Operational Safety Check, a significant change
+withdraws the safety approval, and the event must pass a new check before it can be
+confirmed or prepared. A Confirmed event goes back to Approved, from where the
+coordinator can send it to Safety Review again (ADR-0025, ADR-0053). The withdrawal
+is a ``safety_approval_withdrawn`` history entry by the coordinator, naming the
+significant fields, which internal staff see and the organiser does not. A change
+that isn't significant, or an event without an approval, withdraws nothing.
+
+Runs against ``db_session`` with ``saved_users`` and ``saved_event_request``
+(``EVR-AAAAAAAA``, organiser 7, assigned to Event Coordinator 3), so
+``has_safety_approval`` reads the history the edit wrote.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import Any
+
+import pytest
+
+from app.modules.auth.models import User
+from app.modules.auth.permissions import Role
+from app.modules.events.models import EventHistoryKind, EventRequest, EventRequestStatus
+from app.modules.events.services import EventEdit, has_safety_approval, list_event_history
+
+pytestmark = pytest.mark.scrum_33
+
+EditEvent = Callable[[int, dict[str, Any] | None], EventEdit]
+WithdrawalsOf = Callable[[int], list[tuple[int | None, dict[str, Any] | None]]]
+ReloadEventRequest = Callable[[int], EventRequest]
+ApprovedForSafety = Callable[[EventRequestStatus], EventRequest]
+
+REFERENCE = "EVR-AAAAAAAA"
+#: The Event Coordinator ``saved_event_request`` is assigned to.
+COORDINATOR_ID = 3
+#: The Event Organiser whose organisation ``saved_event_request`` belongs to.
+ORGANISER_ID = 7
+WITHDRAWN = EventHistoryKind.SAFETY_APPROVAL_WITHDRAWN
+
+
+# --------------------------------------------------------------------------
+# AC7 — a significant change withdraws the approval
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("payload", "significant_fields"),
+    [
+        ({"expected_attendance": 300}, ["expected_attendance"]),
+        ({"venue_requirements": "Stage needed"}, ["venue_requirements"]),
+        ({"equipment_requirements": "4 mics"}, ["equipment_requirements"]),
+        (
+            {"description": "New notes", "expected_attendance": 300, "end_time": "18:00"},
+            ["end_time", "expected_attendance"],
+        ),
+    ],
+    ids=["timing-and-size", "venue-only", "equipment-only", "only-the-significant-fields"],
+)
+def test_a_significant_change_withdraws_the_safety_approval(
+    approved_for_safety: ApprovedForSafety,
+    edit_event: EditEvent,
+    safety_withdrawals_of: WithdrawalsOf,
+    payload: dict[str, Any],
+    significant_fields: list[str],
+) -> None:
+    event = approved_for_safety(EventRequestStatus.CONFIRMED)
+
+    edit_event(COORDINATOR_ID, payload)
+
+    assert has_safety_approval(event.id) is False
+    assert safety_withdrawals_of(event.id) == [
+        (COORDINATOR_ID, {"significant_fields": significant_fields})
+    ]
+
+
+def test_a_confirmed_event_goes_back_to_approved_for_a_new_safety_check(
+    approved_for_safety: ApprovedForSafety,
+    edit_event: EditEvent,
+    reload_event_request: ReloadEventRequest,
+) -> None:
+    event = approved_for_safety(EventRequestStatus.CONFIRMED)
+
+    edit = edit_event(COORDINATOR_ID, {"expected_attendance": 300})
+
+    assert edit.event_request.status is EventRequestStatus.APPROVED
+    assert reload_event_request(event.id).status is EventRequestStatus.APPROVED
+
+
+def test_an_approved_event_with_an_approval_loses_it_and_stays_approved(
+    approved_for_safety: ApprovedForSafety,
+    edit_event: EditEvent,
+    reload_event_request: ReloadEventRequest,
+) -> None:
+    """Flagged while Confirmed, it went back to Approved, approval kept (ADR-0053)."""
+    event = approved_for_safety(EventRequestStatus.APPROVED)
+
+    edit_event(COORDINATOR_ID, {"expected_attendance": 300})
+
+    assert has_safety_approval(event.id) is False
+    assert reload_event_request(event.id).status is EventRequestStatus.APPROVED
+
+
+# --------------------------------------------------------------------------
+# AC7 — nothing to withdraw
+# --------------------------------------------------------------------------
+
+
+def test_a_change_that_is_not_significant_keeps_the_safety_approval(
+    approved_for_safety: ApprovedForSafety,
+    edit_event: EditEvent,
+    safety_withdrawals_of: WithdrawalsOf,
+    reload_event_request: ReloadEventRequest,
+) -> None:
+    event = approved_for_safety(EventRequestStatus.CONFIRMED)
+
+    edit_event(COORDINATOR_ID, {"description": "New notes"})
+
+    assert has_safety_approval(event.id) is True
+    assert safety_withdrawals_of(event.id) == []
+    assert reload_event_request(event.id).status is EventRequestStatus.CONFIRMED
+
+
+def test_an_event_without_a_safety_approval_has_nothing_withdrawn(
+    saved_users: list[User],
+    saved_event_request: EventRequest,
+    save: Callable[..., None],
+    edit_event: EditEvent,
+    safety_withdrawals_of: WithdrawalsOf,
+    reload_event_request: ReloadEventRequest,
+) -> None:
+    saved_event_request.status = EventRequestStatus.CONFIRMED
+    save(saved_event_request)
+
+    edit_event(COORDINATOR_ID, {"expected_attendance": 300})
+
+    assert safety_withdrawals_of(saved_event_request.id) == []
+    assert reload_event_request(saved_event_request.id).status is EventRequestStatus.CONFIRMED
+
+
+# --------------------------------------------------------------------------
+# AC5 — the withdrawal is for internal eyes only
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("viewer_id", "viewer_role", "sees_it"),
+    [
+        (COORDINATOR_ID, Role.EVENT_COORDINATOR, True),
+        (ORGANISER_ID, Role.EVENT_ORGANISER, False),
+    ],
+    ids=["the-coordinator", "the-organiser"],
+)
+def test_only_internal_staff_see_the_withdrawal(
+    approved_for_safety: ApprovedForSafety,
+    edit_event: EditEvent,
+    viewer_id: int,
+    viewer_role: Role,
+    sees_it: bool,
+) -> None:
+    approved_for_safety(EventRequestStatus.CONFIRMED)
+    edit_event(COORDINATOR_ID, {"expected_attendance": 300})
+
+    history = list_event_history(viewer_id, REFERENCE, viewer_role=viewer_role)
+
+    kinds = [entry.kind for entry in history]
+    assert EventHistoryKind.FIELD_CHANGED in kinds
+    assert (WITHDRAWN in kinds) is sees_it
