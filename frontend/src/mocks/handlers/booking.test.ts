@@ -1,3 +1,4 @@
+import { ROLE } from '@/config/roles'
 import { ApiError, apiRequest } from '@/lib/api'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
 
@@ -670,6 +671,10 @@ describe('SCRUM-93 booking mock: cancelling all of an event’s arrangements', (
 })
 
 describe('SCRUM-93 booking mock: who may change, withdraw or cancel', () => {
+  /** The backend's `requires_role(Role.EVENT_COORDINATOR)` refuses every other role with 403. */
+  const NOT_COORDINATORS = Object.values(MOCK_ACCOUNTS).filter(
+    (account) => account.role !== ROLE.EVENT_COORDINATOR,
+  )
   const CALLS = {
     change: () => change(MULTI_VENUE_EVENT.reference, rejectedBreakout.id, { purpose: 'x' }),
     withdraw: () => withdraw(MULTI_VENUE_EVENT.reference, rejectedBreakout.id),
@@ -683,11 +688,18 @@ describe('SCRUM-93 booking mock: who may change, withdraw or cancel', () => {
   })
 
   it.each(Object.entries(CALLS))(
-    'answers %s with 403 for Venue Staff, who are not coordinators',
+    'answers %s with 403 for every role but the Event Coordinator',
     async (_name, call) => {
-      sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.venueStaff))
+      for (const account of NOT_COORDINATORS) {
+        sendRequestsAs(mockTokenFor(account))
 
-      expect((await errorOf(call())).status).toBe(403)
+        const error = await errorOf(call())
+
+        expect({ role: account.role, status: error.status }).toEqual({
+          role: account.role,
+          status: 403,
+        })
+      }
     },
   )
 })
