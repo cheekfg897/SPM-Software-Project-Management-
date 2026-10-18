@@ -1,6 +1,7 @@
 # ADR-0056: One event detail page for organisers and coordinators, and a coordinator's list on Staff home
 
-- **Status:** Accepted
+- **Status:** Accepted; the deferred history section is added by
+  [ADR-0076](0076-event-history-and-registrants-on-the-event-page.md)
 - **Date:** 2026-10-16
 - **Story:** SCRUM-24 See the events my role is involved in (AC2, AC8, AC9, AC10, AC11)
 - **Extends:** ADR-0026, ADR-0034
