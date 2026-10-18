@@ -2,6 +2,7 @@ import {
   completeEvent,
   confirmEvent,
   decideEventRequest,
+  fetchEventHistory,
   fetchAssignedEventRequests,
   sendToSafetyReview,
   updateRegistrationSettings,
@@ -14,6 +15,7 @@ import { refusal } from '@/test/refusal'
 import { MOCK_ACCOUNTS } from '../fixtures/accounts'
 import type { MockAccount } from '../fixtures/accounts'
 
+import { MOCK_NOW } from './catalogueFixtures'
 import {
   expectInvalid,
   expectNotAnObject,
@@ -538,3 +540,103 @@ describe.each(STATUS_GATES)(
     )
   },
 )
+
+/**
+ * SCRUM-33 AC4: each planning action is written to the event's history as the backend writes it
+ * (`record_event_history` in send_to_safety_review, confirm_event_request and
+ * complete_event_request; `_record_field_changes` in update_registration_settings): its kind, by
+ * the coordinator, at the mock's "now", and a refused or empty call writes nothing.
+ */
+describe('SCRUM-33 mock: the history each planning action writes', () => {
+  /** The history `account` reads for `reference`. */
+  async function historyOf(account: MockAccount, reference: string) {
+    signInAs(account)
+    return (await fetchEventHistory(reference)).history
+  }
+
+  /** An entry by Hana, now, as the backend shows it. */
+  function byHana(kind: string, details: Record<string, unknown> = {}) {
+    return { kind, occurred_at: MOCK_NOW, actor_name: HANA.full_name, details }
+  }
+
+  it.each([
+    [
+      'sending it to safety review',
+      APPROVED_AND_SETTLED,
+      sendToSafetyReview,
+      'safety_review_requested',
+    ],
+    ['confirming it', 'EVR-PLAN0003', confirmEvent, 'event_confirmed'],
+    ['marking it completed', ENDED_AT_NOW, completeEvent, 'event_completed'],
+  ])('records %s, by the coordinator, now', async (_, reference, act, kind) => {
+    signInAs(HANA)
+
+    await act(reference)
+
+    expect(await historyOf(HANA, reference)).toEqual([byHana(kind)])
+  })
+
+  it('records each registration setting that changed as a change of that field, in order', async () => {
+    signInAs(HANA)
+
+    await updateRegistrationSettings(ENDS_A_MINUTE_AFTER_NOW, { registration_capacity: 80 })
+
+    expect(await historyOf(HANA, ENDS_A_MINUTE_AFTER_NOW)).toEqual([
+      byHana('field_changed', {
+        field: 'registration_enabled',
+        previous_value: false,
+        new_value: true,
+        significant: false,
+      }),
+      byHana('field_changed', {
+        field: 'registration_capacity',
+        previous_value: null,
+        new_value: 80,
+        significant: false,
+      }),
+    ])
+  })
+
+  it('records only the setting that changed, and nothing for an unchanged one', async () => {
+    signInAs(HANA)
+
+    await updateRegistrationSettings(ENDED_AT_NOW, {
+      registration_enabled: true,
+      registration_capacity: 40,
+    })
+
+    expect(await historyOf(HANA, ENDED_AT_NOW)).toEqual([
+      byHana('field_changed', {
+        field: 'registration_capacity',
+        previous_value: 50,
+        new_value: 40,
+        significant: false,
+      }),
+    ])
+  })
+
+  it('writes nothing for a refused action or a call that changes nothing', async () => {
+    signInAs(HANA)
+
+    await refusal(sendToSafetyReview(APPROVED_WITH_GAPS))
+    await updateRegistrationSettings(ENDED_AT_NOW, {})
+
+    expect(await historyOf(HANA, APPROVED_WITH_GAPS)).toEqual([])
+    expect(await historyOf(HANA, ENDED_AT_NOW)).toEqual([])
+  })
+
+  it("shows the organiser a registration change, since it isn't kept internal", async () => {
+    const before = await historyOf(MOCK_ACCOUNTS.otherOrganiser, CHLOES_CONFIRMED)
+
+    signInAs(CHLOE)
+    await updateRegistrationSettings(CHLOES_CONFIRMED, { registration_capacity: 120 })
+
+    const organisersCopy = await historyOf(MOCK_ACCOUNTS.otherOrganiser, CHLOES_CONFIRMED)
+    expect(organisersCopy).toHaveLength(before.length + 1)
+    expect(organisersCopy.at(-1)).toMatchObject({
+      kind: 'field_changed',
+      actor_name: CHLOE.full_name,
+      details: { field: 'registration_capacity', previous_value: null, new_value: 120 },
+    })
+  })
+})

@@ -2,7 +2,8 @@ import { http, HttpResponse } from 'msw'
 import type { RequestHandler } from 'msw'
 
 import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
-import type { RegistrationChanges } from '@/features/eventRequests/api'
+import type { EventHistoryEntry, RegistrationChanges } from '@/features/eventRequests/api'
+import type { EventHistoryKind } from '@/features/eventRequests/eventHistory'
 import type { FieldErrors } from '@/lib/api'
 
 import { errorResponse, validationError } from '../responses'
@@ -11,6 +12,7 @@ import { MOCK_NOW } from './catalogueFixtures'
 import { NOTHING_PLANNED } from './eventPlanningFixtures'
 import type { MockPlanning } from './eventPlanningFixtures'
 import { loadRegistrationChanges } from './eventPlanningRules'
+import { addToHistory } from './eventRecordSections'
 import type { MockEventRequest } from './eventRequestFixtures'
 import { assignedOrRefusal, objectBodyOrRefusal } from './eventRequests'
 
@@ -20,8 +22,9 @@ import { assignedOrRefusal, objectBodyOrRefusal } from './eventRequests'
  * ADR-0047), marking it completed once it has ended, at the mock's "now", MOCK_NOW (SCRUM-68,
  * ADR-0027), its registration settings (SCRUM-69, ADR-0043) and confirming it once every
  * approval is in (SCRUM-49, ADR-0051). Only the event's assigned coordinator may; the checks,
- * their order, the codes, messages and the gaps named are the backend's (ADR-0075). No
- * notification is raised.
+ * their order, the codes, messages and the gaps named are the backend's (ADR-0075). Each action
+ * that changes something is written to the event's history as the backend writes it (SCRUM-33
+ * AC4). No notification is raised.
  */
 
 const REQUEST_PATH = '/api/events/requests/:reference'
@@ -42,6 +45,18 @@ const CONFIRMATION_NOT_READY_MESSAGE =
   'arrangement is approved and every equipment request has an outcome from Technical ' +
   'Support.'
 const SAFETY_NOT_APPROVED_GAP = 'The Safety Officer has not approved the event.'
+
+/** The settings the registration route changes, in the order the backend records them. */
+const REGISTRATION_FIELDS = ['registration_enabled', 'registration_capacity'] as const
+
+/** One history entry by the coordinator at the mock's "now", as `record_event_history` writes it. */
+function entryBy(
+  coordinatorName: string,
+  kind: EventHistoryKind,
+  details: Record<string, unknown>,
+): EventHistoryEntry {
+  return { kind, occurred_at: MOCK_NOW, actor_name: coordinatorName, details }
+}
 
 /** A 409 with the reasons behind it, as the backend's gates send it (ADR-0047, ADR-0051). */
 function refusalWithGaps(code: string, message: string, details: FieldErrors) {
@@ -140,13 +155,39 @@ function registrationRefusal(stored: MockEventRequest, settings: RegistrationSta
   return null
 }
 
+/**
+ * One `field_changed` entry per setting that differs from what is saved, as
+ * `_record_field_changes` writes them: neither setting is a significant change.
+ */
+function settingChanges(
+  stored: MockEventRequest,
+  settings: RegistrationState,
+  coordinatorName: string,
+): EventHistoryEntry[] {
+  const saved = planningOf(stored)
+  const entries: EventHistoryEntry[] = []
+  for (const field of REGISTRATION_FIELDS) {
+    if (saved[field] === settings[field]) {
+      continue
+    }
+    const details = {
+      field,
+      previous_value: saved[field],
+      new_value: settings[field],
+      significant: false,
+    }
+    entries.push(entryBy(coordinatorName, 'field_changed', details))
+  }
+  return entries
+}
+
 export const eventPlanningHandlers: RequestHandler[] = [
   http.post(`${REQUEST_PATH}/safety-review`, ({ request, params }) => {
     const found = assignedOrRefusal(request, params.reference)
     if ('refusal' in found) {
       return found.refusal
     }
-    const { stored } = found
+    const { coordinator, stored } = found
     if (stored.request.status !== EVENT_REQUEST_STATUS.APPROVED) {
       return errorResponse(409, 'safety_review_not_allowed', NOT_APPROVED_FOR_SAFETY_REVIEW_MESSAGE)
     }
@@ -156,6 +197,9 @@ export const eventPlanningHandlers: RequestHandler[] = [
     }
 
     stored.request.status = EVENT_REQUEST_STATUS.SAFETY_REVIEW
+    addToHistory(stored.request.reference, [
+      entryBy(coordinator.full_name, 'safety_review_requested', {}),
+    ])
     return HttpResponse.json(stored.request)
   }),
 
@@ -164,7 +208,7 @@ export const eventPlanningHandlers: RequestHandler[] = [
     if ('refusal' in found) {
       return found.refusal
     }
-    const { stored } = found
+    const { coordinator, stored } = found
     if (stored.request.status !== EVENT_REQUEST_STATUS.CONFIRMED) {
       return errorResponse(409, 'request_not_completable', NOT_CONFIRMED_MESSAGE)
     }
@@ -173,6 +217,7 @@ export const eventPlanningHandlers: RequestHandler[] = [
     }
 
     stored.request.status = EVENT_REQUEST_STATUS.COMPLETED
+    addToHistory(stored.request.reference, [entryBy(coordinator.full_name, 'event_completed', {})])
     return HttpResponse.json(stored.request)
   }),
 
@@ -181,7 +226,7 @@ export const eventPlanningHandlers: RequestHandler[] = [
     if ('refusal' in found) {
       return found.refusal
     }
-    const { stored } = found
+    const { coordinator, stored } = found
     if (stored.request.status !== EVENT_REQUEST_STATUS.SAFETY_REVIEW) {
       return errorResponse(409, 'confirmation_not_allowed', NOT_IN_SAFETY_REVIEW_MESSAGE)
     }
@@ -196,6 +241,7 @@ export const eventPlanningHandlers: RequestHandler[] = [
     }
 
     stored.request.status = EVENT_REQUEST_STATUS.CONFIRMED
+    addToHistory(stored.request.reference, [entryBy(coordinator.full_name, 'event_confirmed', {})])
     return HttpResponse.json(stored.request)
   }),
 
@@ -204,7 +250,7 @@ export const eventPlanningHandlers: RequestHandler[] = [
     if ('refusal' in found) {
       return found.refusal
     }
-    const { stored } = found
+    const { coordinator, stored } = found
     const payload = await objectBodyOrRefusal(request)
     if ('refusal' in payload) {
       return payload.refusal
@@ -219,6 +265,7 @@ export const eventPlanningHandlers: RequestHandler[] = [
       return refused
     }
 
+    addToHistory(stored.request.reference, settingChanges(stored, settings, coordinator.full_name))
     stored.planning = { ...planningOf(stored), ...settings }
     return HttpResponse.json({
       reference: stored.request.reference,
