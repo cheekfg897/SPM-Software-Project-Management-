@@ -136,6 +136,13 @@ export const MOCK_ACCOUNTS = {
     email: 'colin@connectsphere.test',
     full_name: 'Colin Tay',
   },
+  /** A coordinator whose events are past their first decision, for the planning actions (ADR-0075). */
+  planningCoordinator: {
+    ...BASE_ACCOUNTS.coordinator,
+    id: 40,
+    email: 'hana@connectsphere.test',
+    full_name: 'Hana Yusof',
+  },
   /** A second Technical Support member, so an outcome names whoever recorded it (SCRUM-48). */
   secondTechnicalSupport: {
     ...BASE_ACCOUNTS.technicalSupport,

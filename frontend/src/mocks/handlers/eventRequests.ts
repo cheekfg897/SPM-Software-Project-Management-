@@ -20,6 +20,7 @@ import {
   submissionErrors,
   withSeconds,
 } from './eventRequestRules'
+import { PLANNING_EVENT_REQUESTS } from './eventPlanningFixtures'
 import { MOCK_EVENT_REQUESTS, NOTHING_RECORDED } from './eventRequestFixtures'
 import type { MockEventRequest } from './eventRequestFixtures'
 import { loadDecision, loadText } from './eventReviewRules'
@@ -82,7 +83,7 @@ let madeCount = 0
 
 /** Put the requests back as the fixture has them. Runs after every test. */
 export function resetMockEventRequests(): void {
-  storedRequests = MOCK_EVENT_REQUESTS.map((stored) => ({
+  storedRequests = [...MOCK_EVENT_REQUESTS, ...PLANNING_EVENT_REQUESTS].map((stored) => ({
     ...stored,
     request: { ...stored.request },
   }))
@@ -242,7 +243,7 @@ function assignedRequest(coordinatorId: number, reference: unknown) {
  * The calling coordinator and their own assigned request, or the refusal: anyone but a
  * coordinator is refused by role, and another's request is "not found" (SCRUM-31 AC5).
  */
-function assignedOrRefusal(request: Request, reference: unknown) {
+export function assignedOrRefusal(request: Request, reference: unknown) {
   const found = callerOrRefusal(request, [ROLE.EVENT_COORDINATOR])
   if ('refusal' in found) {
     return { refusal: found.refusal }

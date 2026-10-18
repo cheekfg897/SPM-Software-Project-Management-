@@ -2,6 +2,8 @@ import type { EventRecord, EventRequest } from '@/features/eventRequests/api'
 
 import { MOCK_ACCOUNTS } from '../fixtures/accounts'
 
+import type { MockPlanning } from './eventPlanningFixtures'
+
 /** A coordinator as the mock stores one. The record shows the name and email, never the id. */
 export interface MockCoordinator {
   id: number
@@ -26,6 +28,8 @@ export interface MockEventRequest {
   record: MockRecordSections
   /** The event has an equipment request, so its decision can't change (SCRUM-31 AC7). */
   hasEquipmentRequest?: true
+  /** What its planning gates count (ADR-0075); left out, nothing is arranged. */
+  planning?: MockPlanning
 }
 
 /** A record with nothing on it yet beyond the request: no note, decision or question. */

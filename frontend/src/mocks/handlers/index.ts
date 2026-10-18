@@ -13,6 +13,7 @@ import { techSupportHandlers } from './techSupport'
 import { organisationHandlers, resetMockOrganisations } from './organisations'
 import { equipmentCatalogueHandlers, resetMockEquipmentCatalogue } from './equipmentCatalogue'
 import { resetMockVenues, venueHandlers } from './venues'
+import { eventPlanningHandlers } from './eventPlanning'
 
 /**
  * Every mock handler, one file per feature. They stand in for the backend in unit tests,
@@ -33,6 +34,7 @@ export const handlers: RequestHandler[] = [
   ...techSupportHandlers,
   ...organisationHandlers,
   ...venueHandlers,
+  ...eventPlanningHandlers,
 ]
 
 /** Put the mock backend's data back as it started, so no test sees another's sign-ups, registrations or requests. */
