@@ -236,16 +236,24 @@ def _mark_conflicting(
     bookings: list[Booking],
     overlaps: list[OverlapWarning],
     block_overlaps: list[BlockOverlapWarning],
-) -> None:
-    """Mark each of ``bookings`` that a warning names as Conflicting (SCRUM-44)."""
+) -> list[Booking]:
+    """Mark each of ``bookings`` that a warning names as Conflicting (SCRUM-44).
+
+    Returns the bookings it marked, in the order given. One that was Conflicting
+    already is left out, so Venue Staff hear about each booking once (SCRUM-50 AC6,
+    ADR-0055).
+    """
     affected_ids: set[int] = set()
     for overlap in overlaps:
         affected_ids.update(overlap.booking_ids)
     for block_overlap in block_overlaps:
         affected_ids.add(block_overlap.booking_id)
+    newly_marked = []
     for booking in bookings:
-        if booking.id in affected_ids:
+        if booking.id in affected_ids and booking.status is not BookingStatus.CONFLICTING:
             booking.status = BookingStatus.CONFLICTING
+            newly_marked.append(booking)
+    return newly_marked
 
 
 # --------------------------------------------------------------------------
@@ -398,6 +406,43 @@ def _notify_about_booking(
         logger.warning("venue_booking_notification_failed reference=%s", event.reference)
 
 
+#: What a Conflicting notice says about the booking (SCRUM-50 AC6, ADR-0055).
+CONFLICTING_BOOKING_DETAIL = (
+    "{venue}: a change to its setup or turnaround time makes this event's booking"
+    " overlap another booking or a block."
+)
+
+
+def _notify_venue_staff_of_conflicts(
+    venue: Venue, newly_conflicting: list[Booking], session: Session
+) -> None:
+    """Tell every Venue Staff user about each booking a buffer change marked (AC6).
+
+    One notice per booking, in the order given, after the change's own commit
+    (ADR-0015, ADR-0035, ADR-0055). A notice names an event, so a booking with no
+    event, or with an event id that isn't saved, is marked but nobody is told about it.
+    """
+    from app.modules.events import services as event_services  # circular at import time
+
+    event_ids = []
+    for booking in newly_conflicting:
+        if booking.event_id is not None:
+            event_ids.append(booking.event_id)
+    events = event_services.get_events_for_booking(event_ids, session=session)
+    staff_ids = list_user_ids_with_role(Role.VENUE_STAFF, session=session)
+    detail = CONFLICTING_BOOKING_DETAIL.format(venue=venue.name)
+    for booking in newly_conflicting:
+        if booking.event_id not in events:
+            continue
+        _notify_about_booking(
+            staff_ids,
+            events[booking.event_id],
+            NotificationKind.VENUE_BOOKING_CONFLICTING,
+            detail=detail,
+            session=session,
+        )
+
+
 def update_venue(
     venue_id: int, payload: Mapping[str, Any] | None, *, session: Session | None = None
 ) -> tuple[Venue, list[OverlapWarning], list[BlockOverlapWarning]]:
@@ -410,7 +455,8 @@ def update_venue(
     the new padding (ADR-0033). Every pair of bookings that now overlaps is returned,
     and so is every booking that now runs into a block. Each booking returned is marked
     Conflicting in the same commit as the change (SCRUM-44, ADR-0045); nothing is
-    deleted or cancelled.
+    deleted or cancelled. Every Venue Staff user is then told about each booking newly
+    marked, in a second commit (SCRUM-50 AC6, ADR-0055).
 
     Returns:
         The updated venue, the bookings that overlap each other and the bookings that
@@ -441,8 +487,9 @@ def update_venue(
     bookings = _holding_bookings(venue, sess)
     overlaps = _confirmed_overlaps(venue, bookings)
     block_overlaps = _block_overlaps(venue, bookings, sess)
-    _mark_conflicting(bookings, overlaps, block_overlaps)
+    newly_conflicting = _mark_conflicting(bookings, overlaps, block_overlaps)
     sess.commit()
+    _notify_venue_staff_of_conflicts(venue, newly_conflicting, sess)
     return venue, overlaps, block_overlaps
 
 

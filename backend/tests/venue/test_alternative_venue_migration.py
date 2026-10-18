@@ -79,10 +79,11 @@ def test_the_migrations_values_are_the_models_values(load_migration: LoadMigrati
         *migration.PREVIOUS_HISTORY_KIND_VALUES,
         *migration.ADDED_HISTORY_KIND_VALUES,
     } == _model_values(EventHistoryKind)
+    # Subset, not equality: a later migration (0041 SCRUM-50) adds a further kind.
     assert {
         *migration.PREVIOUS_NOTIFICATION_KIND_VALUES,
         *migration.ADDED_NOTIFICATION_KIND_VALUES,
-    } == _model_values(NotificationKind)
+    } <= _model_values(NotificationKind)
 
 
 def test_upgrade_adds_the_columns_and_table_then_the_values_outside_the_transaction(
