@@ -193,11 +193,17 @@ function toRequest(event: MockBookingEvent, body: Record<string, unknown>, id: n
   } as BookingRequest // the body was checked above to hold the required fields
 }
 
-/** Only a pending request holds its slot, as the backend's partial unique index does. */
+/**
+ * The statuses whose request holds its event, venue and period, as the backend's partial unique
+ * index (uq_venue_booking_requests_pending) lists them. A Conflicting request is still pending
+ * a decision, and one On hold has the venue held for it (SCRUM-75), so both hold the slot too.
+ */
+const SLOT_HOLDING_STATUSES: readonly BookingRequestStatus[] = ['pending', 'conflicting', 'on_hold']
+
 function isDuplicate(candidate: BookingRequest): boolean {
   return requests.some(
     (existing) =>
-      existing.status === 'pending' &&
+      SLOT_HOLDING_STATUSES.includes(existing.status) &&
       existing.event_id === candidate.event_id &&
       existing.venue_id === candidate.venue_id &&
       existing.starts_at === candidate.starts_at &&

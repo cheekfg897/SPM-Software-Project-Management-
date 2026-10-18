@@ -374,15 +374,18 @@ async function raisePending(overrides: Record<string, unknown> = {}): Promise<nu
   return Number(created.id)
 }
 
+/** A period on 20 Nov overlapping the request waiting for Venue Staff at the same venue. */
+const OVERLAPPING_SLOT = {
+  starts_at: '2026-11-20T11:00:00+08:00',
+  ends_at: '2026-11-20T14:00:00+08:00',
+}
+
 /**
- * Raise a request overlapping the waiting one on 20 Nov at the same venue, then have Venue Staff
- * approve that one, which marks this one Conflicting (SCRUM-44). Returns this one's id.
+ * Raise a request for OVERLAPPING_SLOT, then have Venue Staff approve the waiting one, which
+ * marks this one Conflicting (SCRUM-44). Returns this one's id.
  */
 async function raiseConflicting(): Promise<number> {
-  const overlapping = await raisePending({
-    starts_at: '2026-11-20T11:00:00+08:00',
-    ends_at: '2026-11-20T14:00:00+08:00',
-  })
+  const overlapping = await raisePending(OVERLAPPING_SLOT)
   sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.venueStaff))
   await apiRequest('/api/venues/booking-requests/9001/decision', {
     method: 'POST',
@@ -511,7 +514,34 @@ describe('SCRUM-93 booking mock: withdrawing an arrangement', () => {
     expect(again).not.toBe(first)
   })
 
-  it('lets a request be raised for the slot of a rejected one: only pending ones clash', async () => {
+  it('refuses a second request for the slot of a conflicting one, as the backend’s index does', async () => {
+    await raiseConflicting()
+
+    const error = await errorOf(raise(APPROVED_EVENT.reference, validPayload(OVERLAPPING_SLOT)))
+
+    expect([error.status, error.message]).toEqual([
+      409,
+      'A pending request for this event, venue and period already exists.',
+    ])
+  })
+
+  it('refuses a second request for the slot of one on hold, as the backend’s index does since SCRUM-75', async () => {
+    const sameSlot = {
+      venue_id: heldStudio.venue_id,
+      starts_at: heldStudio.starts_at,
+      ends_at: heldStudio.ends_at,
+      purpose: 'Studio again',
+    }
+
+    const error = await errorOf(raise(HELD_EVENT.reference, sameSlot))
+
+    expect([error.status, error.message]).toEqual([
+      409,
+      'A pending request for this event, venue and period already exists.',
+    ])
+  })
+
+  it('lets a request be raised for the slot of a rejected one: only pending, conflicting or held ones clash', async () => {
     const sameSlot = {
       venue_id: rejectedBreakout.venue_id,
       starts_at: rejectedBreakout.starts_at,
