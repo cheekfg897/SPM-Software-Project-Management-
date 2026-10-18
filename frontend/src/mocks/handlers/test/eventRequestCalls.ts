@@ -1,9 +1,11 @@
+import { ROLE } from '@/config/roles'
+import type { Role } from '@/config/roles'
 import { fetchEventRequest } from '@/features/eventRequests/api'
 import { fieldErrorsOf } from '@/lib/api'
 import type { FieldErrors } from '@/lib/api'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
 
-import { mockTokenFor } from '../../fixtures/accounts'
+import { MOCK_ACCOUNTS, mockTokenFor } from '../../fixtures/accounts'
 import type { MockAccount } from '../../fixtures/accounts'
 
 /**
@@ -24,6 +26,25 @@ export const NOT_AN_OBJECT = {
 /** Send every later call as `account`, or with no token for null. */
 export function signInAs(account: MockAccount | null) {
   sendRequestsAs(account === null ? null : mockTokenFor(account))
+}
+
+/**
+ * One mock account of every role except `allowed`, with its role, for the routes only one role
+ * may use. Built from ROLE, so a role added later is refused in these tests too.
+ */
+export function accountsOfEveryRoleBut(allowed: Role): [Role, MockAccount][] {
+  const accounts: [Role, MockAccount][] = []
+  for (const role of Object.values(ROLE)) {
+    if (role === allowed) {
+      continue
+    }
+    const account = Object.values(MOCK_ACCOUNTS).find((candidate) => candidate.role === role)
+    if (account === undefined) {
+      throw new Error(`No mock account has the role ${role}`)
+    }
+    accounts.push([role, account])
+  }
+  return accounts
 }
 
 /** The request's status as the signed-in caller reads it now. */

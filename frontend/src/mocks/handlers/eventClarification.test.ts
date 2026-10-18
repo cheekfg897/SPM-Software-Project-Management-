@@ -1,3 +1,4 @@
+import { ROLE } from '@/config/roles'
 import {
   answerClarification,
   fetchAssignedEventRequests,
@@ -12,6 +13,7 @@ import { MOCK_ACCOUNTS } from '../fixtures/accounts'
 
 import { MOCK_NOW } from './catalogueFixtures'
 import {
+  accountsOfEveryRoleBut,
   expectInvalid,
   expectNotAnObject,
   NOT_FOUND,
@@ -139,6 +141,17 @@ describe('SCRUM-32 AC1 mock: asking for clarification', () => {
     expect(visitor).toMatchObject(NOT_SIGNED_IN)
   })
 
+  it.each(accountsOfEveryRoleBut(ROLE.EVENT_COORDINATOR))(
+    'refuses the %s role before looking for the request',
+    async (_role, account) => {
+      signInAs(account)
+
+      expect(await refusal(requestClarification(PRIYAS_UNDER_REVIEW, 'Why?'))).toMatchObject(
+        NOT_PERMITTED,
+      )
+    },
+  )
+
   it.each(badTextBodies('message'))(
     'refuses %s with its field message',
     async (_case, body, details) => {
@@ -243,6 +256,17 @@ describe('SCRUM-32 AC2, AC4 mock: answering a question', () => {
     expect(coordinator).toMatchObject(NOT_PERMITTED)
     expect(visitor).toMatchObject(NOT_SIGNED_IN)
   })
+
+  it.each(accountsOfEveryRoleBut(ROLE.EVENT_ORGANISER))(
+    'refuses the %s role',
+    async (_role, account) => {
+      signInAs(account)
+
+      expect(await refusal(answerClarification(AWAITING_ANSWER, 'Yes.'))).toMatchObject(
+        NOT_PERMITTED,
+      )
+    },
+  )
 
   it.each(badTextBodies('response'))(
     'refuses %s with its field message',
