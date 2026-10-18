@@ -6,6 +6,7 @@ import { server } from '@/mocks/server'
 import { recordRequests } from '@/test/recordRequests'
 import { renderApp } from '@/test/render'
 
+import { OTHER_STAFF } from '../test/otherStaff'
 import { bodyOf } from '../test/venueFormSteps'
 
 const VENUE_STAFF = mockSessionFor(MOCK_ACCOUNTS.venueStaff)
@@ -187,17 +188,14 @@ describe('SCRUM-34 removing a block (AC4)', () => {
 })
 
 describe('SCRUM-34 only Venue Staff see and change blocks', () => {
-  it.each([MOCK_ACCOUNTS.coordinator, MOCK_ACCOUNTS.lead, MOCK_ACCOUNTS.technicalSupport])(
-    'shows $full_name the calendar but no blocks section',
-    async (account) => {
-      renderApp(MARINA_PAGE, { session: mockSessionFor(account) })
+  it.each(OTHER_STAFF)('shows $full_name the calendar but no blocks section', async (account) => {
+    renderApp(MARINA_PAGE, { session: mockSessionFor(account) })
 
-      await screen.findByRole('region', { name: 'Tuesday 10 Nov' })
+    await screen.findByRole('region', { name: 'Tuesday 10 Nov' })
 
-      expect(screen.queryByRole('region', { name: 'Blocks' })).not.toBeInTheDocument()
-      expect(screen.queryByRole('button', { name: 'Block venue' })).not.toBeInTheDocument()
-    },
-  )
+    expect(screen.queryByRole('region', { name: 'Blocks' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Block venue' })).not.toBeInTheDocument()
+  })
 
   it('says it is loading the blocks, then shows the backend message when they cannot be read', async () => {
     server.use(

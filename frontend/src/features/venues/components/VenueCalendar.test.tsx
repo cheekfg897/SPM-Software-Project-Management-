@@ -7,6 +7,8 @@ import { signedIn } from '@/store'
 import { recordRequests } from '@/test/recordRequests'
 import { renderApp } from '@/test/render'
 
+import { OTHER_STAFF } from '../test/otherStaff'
+
 const VENUE_STAFF = mockSessionFor(MOCK_ACCOUNTS.venueStaff)
 const COORDINATOR = mockSessionFor(MOCK_ACCOUNTS.coordinator)
 /** Marina Hall over 10 and 11 Nov, written out so a wrong path builder can't agree with itself. */
@@ -132,22 +134,19 @@ describe('SCRUM-26 a venue’s availability, day by day (AC1, AC2)', () => {
 })
 
 describe('SCRUM-26 what each role is told about a period (AC3)', () => {
-  it.each([MOCK_ACCOUNTS.coordinator, MOCK_ACCOUNTS.lead, MOCK_ACCOUNTS.technicalSupport])(
-    'shows $full_name the reasons the backend gives them',
-    async (account) => {
-      renderApp(MARINA_TWO_DAYS, { session: mockSessionFor(account) })
+  it.each(OTHER_STAFF)('shows $full_name the reasons the backend gives them', async (account) => {
+    renderApp(MARINA_TWO_DAYS, { session: mockSessionFor(account) })
 
-      const periods = await periodsOn('Tuesday 10 Nov')
+    const periods = await periodsOn('Tuesday 10 Nov')
 
-      expect(periods.map((period) => period?.includes(' booking ') ?? false)).toEqual([
-        true,
-        true,
-        true,
-        false,
-      ])
-      expect(periods[3]).toBe('Blocked 5:30 pm – 8:00 pm maintenance')
-    },
-  )
+    expect(periods.map((period) => period?.includes(' booking ') ?? false)).toEqual([
+      true,
+      true,
+      true,
+      false,
+    ])
+    expect(periods[3]).toBe('Blocked 5:30 pm – 8:00 pm maintenance')
+  })
 
   it('reads the calendar again when someone else signs in', async () => {
     const { store } = renderApp(MARINA_TWO_DAYS, { session: COORDINATOR })
