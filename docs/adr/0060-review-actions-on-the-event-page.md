@@ -38,7 +38,7 @@ Six things are left open.
    (`/organiser/requests/<reference>`), under the open question it answers.
 2. **Which actions show in which status.** A button shows only where it can apply; whether the
    action is allowed is still the backend's call, and its refusal is shown as it comes. The one
-   table, `REVIEW_ACTIONS_BY_STATUS`, is typed over every status:
+   table, `REVIEW_OPTIONS_BY_STATUS`, is typed over every status:
 
    | Status | Start review | Approve | Reject | Ask for clarification |
    |---|---|---|---|---|
@@ -46,7 +46,7 @@ Six things are left open.
    | under_review | | yes | yes | yes |
    | awaiting_clarification | | | yes | |
    | approved, rejected | | yes | yes | |
-   | draft, confirmed, completed, cancelled | | | | |
+   | draft, safety_review, confirmed, completed, cancelled | | | | |
 
    - A decision can be made straight from `submitted` (ADR-0028 decision 6), so both show there.
    - **Approve is hidden while a question is outstanding** (SCRUM-32 AC3): the backend would
