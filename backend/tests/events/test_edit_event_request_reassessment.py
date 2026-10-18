@@ -165,7 +165,8 @@ def test_a_failed_reassessment_notification_still_returns_the_edit(
     event_request = make_event_request(coordinator_id=COORDINATOR_ID)
     event_request.id = 1
     event_request.equipment_lines = [make_equipment_line(event_request, make_equipment_type())]
-    mock_session.scalar.return_value = event_request
+    # The request, then no safety check in its history (SCRUM-33 AC7).
+    mock_session.scalar.side_effect = [event_request, None]
     mock_session.scalars.return_value = [5]  # one Technical Support Staff member
     lost_connection = OperationalError("INSERT INTO notifications ...", {}, Exception("gone"))
     mock_session.commit.side_effect = [None, lost_connection]

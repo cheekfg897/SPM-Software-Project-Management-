@@ -2107,14 +2107,16 @@ def update_event_request(
     session: Session | None = None,
     today: date | None = None,
 ) -> EventEdit:
-    """Change the fields sent on a request assigned to the caller (SCRUM-33 AC1-AC4).
+    """Change the fields sent on a request assigned to the caller (SCRUM-33 AC1-4, AC7).
 
     Only what is sent in ``payload`` changes (AC1, AC3); a value equal to what is
     already saved is not a change. Each changed field is written to the event
     history as its own ``field_changed`` entry, sharing one ``occurred_at``, in the
     same commit as the change itself (AC2, AC4); a field in
-    :data:`SIGNIFICANT_FIELDS` is marked ``significant``. An edit that changes
-    nothing writes and commits nothing.
+    :data:`SIGNIFICANT_FIELDS` is marked ``significant``. A significant change
+    withdraws a safety approval in the same commit, naming the significant fields
+    (AC7, :func:`withdraw_safety_approval`). An edit that changes nothing writes and
+    commits nothing.
 
     Args:
         coordinator_id: The caller's user id, taken from their token.
@@ -2148,6 +2150,14 @@ def update_event_request(
     if not changes:
         return EventEdit(event_request, [])
 
+    significant_fields = [change.field for change in changes if change.significant]
+    if significant_fields:
+        withdraw_safety_approval(
+            event_request.id,
+            actor_id=int(coordinator_id),
+            details={"significant_fields": significant_fields},
+            session=sess,
+        )
     sess.commit()
     _reassess_arrangements(event_request, changes, sess)
     return EventEdit(event_request, changes)

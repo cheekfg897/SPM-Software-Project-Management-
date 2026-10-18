@@ -264,7 +264,8 @@ def test_the_changes_and_their_history_are_saved_in_one_commit(
 ) -> None:
     event_request = make_event_request(coordinator_id=COORDINATOR_ID)
     event_request.id = 1
-    mock_session.scalar.return_value = event_request
+    # The request, then no safety check in its history (SCRUM-33 AC7).
+    mock_session.scalar.side_effect = [event_request, None]
     seen_at_commit: list[tuple[int, list[EventHistoryKind]]] = []
 
     def note_what_is_saved() -> None:
