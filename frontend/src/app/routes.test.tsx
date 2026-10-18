@@ -86,6 +86,27 @@ describe('app routes', () => {
     ).not.toBeInTheDocument()
   })
 
+  it('links Venue Staff to their booking requests and approved bookings (SCRUM-84)', () => {
+    renderApp(ROUTES.EVENTS, { session: mockSessionFor(MOCK_ACCOUNTS.venueStaff) })
+
+    const header = within(screen.getByRole('banner'))
+    expect(header.getByRole('link', { name: 'Venue bookings' })).toHaveAttribute(
+      'href',
+      ROUTES.BOOKING_DECISIONS,
+    )
+  })
+
+  it.each([
+    ['a visitor', undefined],
+    ['an Event Coordinator', mockSessionFor(MOCK_ACCOUNTS.coordinator)],
+  ])('shows %s no link to the venue bookings, which only Venue Staff may use', (_who, session) => {
+    renderApp(ROUTES.EVENTS, session === undefined ? {} : { session })
+
+    expect(
+      within(screen.getByRole('banner')).queryByRole('link', { name: 'Venue bookings' }),
+    ).not.toBeInTheDocument()
+  })
+
   it.each([
     ['an attendee', ROUTES.MY_EVENTS, ATTENDEE],
     ['an organiser', ROUTES.ORGANISER_HOME, mockSessionFor(MOCK_ACCOUNTS.organiser)],

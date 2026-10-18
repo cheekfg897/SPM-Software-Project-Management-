@@ -94,6 +94,12 @@ function MainNav() {
           Find a venue
         </NavLink>
       )}
+      {/* Venue Staff's decisions queue and approved bookings (SCRUM-43, SCRUM-84, ADR-0080). */}
+      {user?.role === ROLE.VENUE_STAFF && (
+        <NavLink to={ROUTES.BOOKING_DECISIONS} className={NAV_LINK_CLASSES}>
+          Venue bookings
+        </NavLink>
+      )}
       {isStaff && (
         <>
           <NavLink to={ROUTES.ORGANISATIONS} className={NAV_LINK_CLASSES}>
