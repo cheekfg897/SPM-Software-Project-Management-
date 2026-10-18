@@ -1809,7 +1809,7 @@ def _booking_to_approve(request: VenueBookingRequest, session: Session | None) -
 
 
 def _booking_made_by(arrangement: VenueBookingRequest, session: Session | None) -> Booking | None:
-    """The booking approving ``arrangement`` made, if it still holds the venue (AC3).
+    """The booking approving ``arrangement`` made, if it still holds the venue (AC7).
 
     The booking has no link to its request, so it is the event's booking at the
     request's venue for exactly the request's period.
