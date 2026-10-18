@@ -73,7 +73,8 @@ export interface SuitabilityResult {
 
 export const venueSearchKeys = {
   all: ['venueSearch'] as const,
-  results: (search: VenueSearchRequest) => [...venueSearchKeys.all, 'results', search] as const,
+  results: (search: VenueSearchRequest | null) =>
+    [...venueSearchKeys.all, 'results', search] as const,
   venues: () => [...venueSearchKeys.all, 'venues'] as const,
   suitability: (venueId: number, check: SuitabilityRequest) =>
     [...venueSearchKeys.all, 'suitability', venueId, check] as const,
