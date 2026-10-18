@@ -3,7 +3,9 @@ import { http, HttpResponse } from 'msw'
 
 import { ROUTES } from '@/config/routes'
 import { MOCK_ACCOUNTS, mockSessionFor } from '@/mocks/fixtures/accounts'
+import { MOCK_CATALOGUE_EVENTS } from '@/mocks/handlers/catalogueFixtures'
 import { server } from '@/mocks/server'
+import { recordRequests } from '@/test/recordRequests'
 import { renderApp } from '@/test/render'
 import { signedIn } from '@/store'
 
@@ -173,5 +175,117 @@ describe('SCRUM-52 my events page: after registering', () => {
     await screen.findByRole('heading', { level: 1, name: 'My events' })
 
     expect(await screen.findByRole('heading', { name: 'Jazz by the Bay' })).toBeInTheDocument()
+  })
+})
+
+describe('SCRUM-53 my events page: seeing and withdrawing a registration', () => {
+  const PITCH_NIGHT = 'Startup Pitch Night'
+
+  function withdrawalUrl(name: string): string {
+    const event = MOCK_CATALOGUE_EVENTS.find((candidate) => candidate.name === name)
+    return `/api/events/catalogue/${event?.id ?? 0}/registrations`
+  }
+
+  /** Open the Attendee's upcoming events, and ask to withdraw from Startup Pitch Night. */
+  async function askToWithdraw() {
+    const view = renderApp(ROUTES.MY_EVENTS, { session: ATTENDEE })
+    await screen.findByRole('heading', { name: PITCH_NIGHT })
+    await view.user.click(screen.getByRole('button', { name: `Withdraw from ${PITCH_NIGHT}` }))
+    return view
+  }
+
+  it("shows each registration's own status beside the event's", async () => {
+    renderApp(ROUTES.MY_EVENTS, { session: ATTENDEE })
+
+    await screen.findByRole('heading', { name: PITCH_NIGHT })
+    const pitchNight = within(eventCard(PITCH_NIGHT))
+    expect(pitchNight.getByText('Registered')).toBeInTheDocument()
+    expect(pitchNight.getByText('Confirmed')).toBeInTheDocument()
+  })
+
+  it('withdraws once the attendee confirms, then shows the registration as withdrawn', async () => {
+    const requests = recordRequests()
+    const { user } = await askToWithdraw()
+
+    await user.click(screen.getByRole('button', { name: 'Yes, withdraw' }))
+
+    const pitchNight = within(eventCard(PITCH_NIGHT))
+    expect(await pitchNight.findByText('Withdrawn')).toBeInTheDocument()
+    // Nothing is left to do: no Withdraw, and no confirmation still open.
+    expect(pitchNight.queryAllByRole('button')).toHaveLength(0)
+    const sent = requests.find((request) => request.method === 'DELETE')
+    expect(sent?.url).toContain(withdrawalUrl(PITCH_NIGHT))
+  })
+
+  it('sends nothing when the attendee keeps their place', async () => {
+    const requests = recordRequests()
+    const { user } = await askToWithdraw()
+
+    await user.click(screen.getByRole('button', { name: 'Keep my place' }))
+
+    expect(screen.getByRole('button', { name: `Withdraw from ${PITCH_NIGHT}` })).toBeVisible()
+    expect(requests.filter((request) => request.method === 'DELETE')).toHaveLength(0)
+  })
+
+  it('shows the refusal and the cut-off once withdrawals have closed', async () => {
+    server.use(
+      http.delete(withdrawalUrl(PITCH_NIGHT), () =>
+        HttpResponse.json(
+          {
+            error: 'withdrawal_closed',
+            message: 'Withdrawals for this event have closed.',
+            details: { withdrawal_closed_at: '2026-10-07T19:00:00+08:00' },
+          },
+          { status: 409 },
+        ),
+      ),
+    )
+    const { user } = await askToWithdraw()
+
+    await user.click(screen.getByRole('button', { name: 'Yes, withdraw' }))
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('Withdrawals for this event have closed.')
+    expect(screen.getByText('The cut-off was 7 Oct, 7:00 pm.')).toBeInTheDocument()
+  })
+
+  it('shows any other refusal without a cut-off', async () => {
+    server.use(
+      http.delete(withdrawalUrl(PITCH_NIGHT), () =>
+        HttpResponse.json(
+          { error: 'already_withdrawn', message: 'You have already withdrawn from this event.' },
+          { status: 409 },
+        ),
+      ),
+    )
+    const { user } = await askToWithdraw()
+
+    await user.click(screen.getByRole('button', { name: 'Yes, withdraw' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'You have already withdrawn from this event.',
+    )
+    expect(screen.queryByText(/The cut-off was/)).not.toBeInTheDocument()
+  })
+
+  it('offers no withdrawal from events that have ended', async () => {
+    renderApp(`${ROUTES.MY_EVENTS}?when=past`, { session: ATTENDEE })
+
+    await screen.findByRole('heading', { name: 'Orchid Show Opening Night' })
+    expect(screen.queryByRole('button', { name: /^Withdraw/ })).not.toBeInTheDocument()
+  })
+
+  it('gives the place back, so the catalogue offers to register again', async () => {
+    const { user, router } = await askToWithdraw()
+    await user.click(screen.getByRole('button', { name: 'Yes, withdraw' }))
+    await within(eventCard(PITCH_NIGHT)).findByText('Withdrawn')
+
+    await router.navigate(ROUTES.EVENTS)
+    // Wait for the catalogue first: until it renders, the My events card is still on screen.
+    await screen.findByRole('heading', { name: 'Jazz by the Bay' })
+
+    expect(
+      within(eventCard(PITCH_NIGHT)).getByRole('button', { name: 'Register' }),
+    ).toBeInTheDocument()
   })
 })
