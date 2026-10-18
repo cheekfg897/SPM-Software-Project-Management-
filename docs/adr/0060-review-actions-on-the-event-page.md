@@ -5,7 +5,7 @@
 - **Stories:** SCRUM-31 Review and decide a submitted request; SCRUM-32 Ask the Organiser for
   clarification
 - **Extends:** [ADR-0028](0028-review-and-decide.md), [ADR-0029](0029-clarification-requests.md),
-  [ADR-0046](0046-event-request-detail-page.md)
+  [ADR-0056](0056-event-request-detail-page.md)
 
 ## Context
 The backend has had the four routes since Sprint 2 (ADR-0028, ADR-0029):
@@ -16,7 +16,7 @@ The backend has had the four routes since Sprint 2 (ADR-0028, ADR-0029):
 - `POST …/request-clarification` with `{"message"}`: the assigned coordinator asks a question.
 - `POST …/resubmit` with `{"response", …}`: an organiser of the request's organisation answers.
 
-The web app shows an event's record (ADR-0046) but none of these actions, which ADR-0046 left
+The web app shows an event's record (ADR-0056) but none of these actions, which ADR-0056 left
 for this PR. As numbered in Jira on 2026-10-17, SCRUM-31 AC3 says the coordinator can move a
 submitted request to Under Review, AC4 that approving moves it to Approved and rejecting needs a
 reason, AC5 that nobody else may, and AC6 that a decided request can be decided again with a
@@ -52,7 +52,7 @@ Six things are left open.
    - **Approve is hidden while a question is outstanding** (SCRUM-32 AC3): the backend would
      always refuse it. Reject stays, as the backend allows it (ADR-0029 decision 14).
    - **A decided request offers both outcomes again** (SCRUM-31 AC6). The page doesn't read the
-     record's equipment lines (ADR-0046), so it can't know the decision is locked (AC7). It
+     record's equipment lines (ADR-0056), so it can't know the decision is locked (AC7). It
      offers the change, and shows the backend's `decision_locked` message.
    - With nothing to offer, the section isn't drawn.
 3. **Inline forms, not modals.** Each action is a small card with a heading, a text box where it
