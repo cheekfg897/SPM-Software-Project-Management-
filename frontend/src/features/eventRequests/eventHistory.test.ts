@@ -47,6 +47,7 @@ describe('SCRUM-33 the kinds of history entry', () => {
       'venue_booking_approved',
       'venue_booking_rejected',
       'venue_booking_requested',
+      'venue_preparation_updated',
     ])
   })
 })
@@ -284,6 +285,25 @@ describe('SCRUM-33 describing the venue arrangements', () => {
   })
 })
 
+describe("SCRUM-84 describing Venue Staff's preparation of a booking", () => {
+  it('gives the venue, the status in words and the notes', () => {
+    const details = {
+      venue_booking_request_id: 31,
+      venue_id: 12,
+      status: 'in_progress',
+      notes: 'Chairs out, stage to do.',
+    }
+
+    expect(described('venue_preparation_updated', details)).toEqual(
+      plain('Venue preparation updated', [
+        ['Venue ID', '12'],
+        ['Status', 'In progress'],
+        ['Notes', 'Chairs out, stage to do.'],
+      ]),
+    )
+  })
+})
+
 describe('SCRUM-33 describing the equipment and the safety check', () => {
   it('gives what was reserved and how many', () => {
     const details = {
@@ -363,6 +383,7 @@ describe('SCRUM-33 an entry missing some of its details', () => {
     ['equipment_outcome_recorded', { status: 'unavailable', quantity: 4 }, ['Outcome']],
     ['equipment_outcome_recorded', { equipment_type_name: 'Projector' }, ['Equipment']],
     ['safety_outcome_recorded', { reason: 'Too crowded.' }, ['Reason']],
+    ['venue_preparation_updated', { venue_id: 12, status: 'done', notes: null }, ['Venue ID']],
   ])('leaves out of %s the facts it cannot make', (kind, details, labels) => {
     expect(described(kind, details).facts.map((fact) => fact.label)).toEqual(labels)
   })
@@ -370,11 +391,9 @@ describe('SCRUM-33 an entry missing some of its details', () => {
 
 describe('SCRUM-33 a kind added to the backend since', () => {
   it('says what happened in words made from its name, and nothing more', () => {
-    const details = { venue_id: 12, ready: true }
+    const details = { venue_id: 12, expired_at: '2026-11-20T01:00:00+00:00' }
 
-    expect(described('venue_preparation_updated', details)).toEqual(
-      plain('Venue preparation updated'),
-    )
+    expect(described('venue_hold_expired', details)).toEqual(plain('Venue hold expired'))
   })
 
   it('is not mistaken for a kind it shares a name with in JavaScript', () => {

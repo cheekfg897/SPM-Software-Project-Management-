@@ -100,10 +100,10 @@ describe('SCRUM-33 AC5 the history on an event record', () => {
   it('shows a kind of entry it does not know yet as a plain line, and the rest as usual', async () => {
     serveHistory([
       {
-        kind: 'venue_preparation_updated',
+        kind: 'venue_hold_expired',
         occurred_at: '2026-10-09T09:00:00+08:00',
         actor_name: 'Vera Goh',
-        details: { venue_id: 12, ready: true },
+        details: { venue_id: 12 },
       },
       {
         kind: 'review_started',
@@ -116,7 +116,7 @@ describe('SCRUM-33 AC5 the history on an event record', () => {
 
     const [unknown, known] = (await historyEntries()) as [HTMLElement, HTMLElement]
 
-    expect(within(unknown).getByRole('heading')).toHaveTextContent('Venue preparation updated')
+    expect(within(unknown).getByRole('heading')).toHaveTextContent('Venue hold expired')
     expect(unknown).toHaveTextContent('9 Oct, 9:00 am · Vera Goh')
     expect(within(known).getByRole('heading')).toHaveTextContent('Review started')
   })

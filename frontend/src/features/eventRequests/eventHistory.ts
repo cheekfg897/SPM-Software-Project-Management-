@@ -1,3 +1,4 @@
+import { preparationStatusLabel } from '@/config/preparation'
 import { formatShortDate, formatTimeRange } from '@/lib/formatDate'
 import { isRecord } from '@/lib/isRecord'
 
@@ -24,6 +25,7 @@ export const EVENT_HISTORY_KIND = {
   VENUE_BOOKING_REQUESTED: 'venue_booking_requested',
   VENUE_BOOKING_APPROVED: 'venue_booking_approved',
   VENUE_BOOKING_REJECTED: 'venue_booking_rejected',
+  VENUE_PREPARATION_UPDATED: 'venue_preparation_updated',
   EQUIPMENT_RESERVED: 'equipment_reserved',
   VENUE_ARRANGEMENT_CHANGED: 'venue_arrangement_changed',
   VENUE_ARRANGEMENT_WITHDRAWN: 'venue_arrangement_withdrawn',
@@ -233,6 +235,12 @@ const DESCRIBE_KIND: Record<EventHistoryKind, (details: Details) => DescribedEnt
     entry('Venue booking rejected', [
       ['Venue ID', numberIn(details, 'venue_id')],
       ['Reason', textIn(details, 'reason')],
+    ]),
+  venue_preparation_updated: (details) =>
+    entry('Venue preparation updated', [
+      ['Venue ID', numberIn(details, 'venue_id')],
+      ['Status', preparationStatusLabel(details.status)],
+      ['Notes', textIn(details, 'notes')],
     ]),
   equipment_reserved: (details) =>
     entry('Equipment reserved', [
