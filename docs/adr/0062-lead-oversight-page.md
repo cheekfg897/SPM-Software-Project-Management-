@@ -29,7 +29,8 @@ The web app had only the Lead's queue (`/staff/queue`). Left open for the screen
 
 Jira's SCRUM-96 changed after review (17 Oct): an unassigned event is no longer active (AC2), the
 workload lists every coordinator, with 0 for one who has nothing (AC3), and Safety Review is an
-active status. The backend on `main` still follows ADR-0041, so the screen shows what it sends.
+active status. The backend on `main` already counts Safety Review as active (SCRUM-97, ADR-0047),
+but still follows ADR-0041 for AC2 and AC3, so the screen shows what it sends.
 
 ## Decision
 1. **One page, `/staff/oversight` ("Coordinator oversight"), Lead only.** Its first section is the
@@ -66,13 +67,13 @@ active status. The backend on `main` still follows ADR-0041, so the screen shows
 
 ## Consequences
 - `ROUTES.LEAD_OVERSIGHT` and its route-table entry; the Lead's home stays the queue.
-- When the backend adopts the 17 Oct ACs (unassigned events leave the active list, idle
-  coordinators join the workload, Safety Review becomes a status), the page needs no change
-  beyond a status chip for the new status; the mock and the contract tests change with it.
+- When the backend adopts the rest of the 17 Oct ACs (unassigned events leave the active list,
+  idle coordinators join the workload), the page needs no change; the mock and the contract
+  tests change with it. Safety Review is already an active status on both, with its own chip.
 - The contract tests that need a Lead account are `it.todo`, as the queue's are: the integration
   setup can make an Event Coordinator but not a Lead.
 
 ## Revisit when
-- The backend follows SCRUM-96's 17 Oct ACs (AC2, AC3, Safety Review).
+- The backend follows SCRUM-96's 17 Oct ACs (AC2, AC3).
 - A route lists the Event Coordinators: the form could become a picker (ADR-0036 decision 8).
 - The Lead is given a view of an event's record: rows could link to it.
