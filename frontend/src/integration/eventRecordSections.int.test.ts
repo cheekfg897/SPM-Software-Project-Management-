@@ -1,5 +1,6 @@
 import { fetchCurrentUser, register } from '@/features/auth/api'
 import {
+  editEventRequest,
   fetchEventHistory,
   fetchRegistrants,
   submitEventRequest,
@@ -20,7 +21,8 @@ import type { Credentials } from './backend'
 
 /**
  * The sections of an event's record read from routes of their own, against the running
- * backend: its history (SCRUM-33 AC4, AC5; ADR-0025) and who registered (SCRUM-55), ADR-0076.
+ * backend: its history (SCRUM-33 AC4, AC5; ADR-0025) and who registered (SCRUM-55), ADR-0076;
+ * and the coordinator's edit, which the history records (SCRUM-33 AC1 to AC4, ADR-0079).
  * A registrant's own shape can't be checked here: registering needs a confirmed event with
  * registration open, which takes a Safety Officer, Venue Staff and Technical Support account.
  *
@@ -39,8 +41,15 @@ const NOT_PERMITTED = { status: 403, code: 'authorization_error' }
 /** An event's registrants before anyone registers or a capacity is set (SCRUM-69). */
 const NOBODY_REGISTERED = { capacity: null, registered_count: 0, places_left: null, items: [] }
 
-/** A date a month from now, as the backend reads dates ("2026-11-20"): never in the past. */
-const EVENT_DATE = new Date(Date.now() + 30 * 24 * 60 * 60_000).toISOString().slice(0, 10)
+/** A date `days` from now, as the backend reads dates ("2026-11-20"). */
+function daysFromNow(days: number): string {
+  return new Date(Date.now() + days * 24 * 60 * 60_000).toISOString().slice(0, 10)
+}
+
+/** A month from now: never in the past. */
+const EVENT_DATE = daysFromNow(30)
+/** Two days ago: in the past wherever the backend's "today" is. */
+const PAST_DATE = daysFromNow(-2)
 
 /** An organiser of an organisation no other test uses. Staff record it (SCRUM-66). */
 async function newOrganiserAccount(): Promise<Credentials> {
@@ -165,5 +174,114 @@ describe('SCRUM-55 an event registrants against the backend', () => {
     await assignToStaffCoordinator(reference)
 
     expect(await fetchRegistrants(reference)).toEqual(NOBODY_REGISTERED)
+  })
+})
+
+/** The request's history entries the edit wrote: every one but the assignment. */
+async function editsInHistory(reference: string) {
+  const { history } = await fetchEventHistory(reference)
+  return history.filter((entry) => entry.kind === 'field_changed')
+}
+
+describe('SCRUM-33 AC1 to AC4 the coordinator edit against the backend', () => {
+  it('refuses an organiser, even on their own request', async () => {
+    const { reference } = await submittedByNewOrganiser()
+
+    expect(await refusal(editEventRequest(reference, { description: 'x' }))).toMatchObject(
+      NOT_PERMITTED,
+    )
+  })
+
+  it("answers a coordinator a request that isn't theirs as not found", async () => {
+    const { reference } = await submittedByNewOrganiser()
+    await signInAs(staffAccount())
+
+    expect(await refusal(editEventRequest(reference, { description: 'x' }))).toMatchObject(
+      NOT_FOUND,
+    )
+  })
+
+  it.skipIf(!hasLead)(
+    'changes the fields sent, says which are significant, and records each in the history',
+    async () => {
+      const { reference } = await submittedByNewOrganiser()
+      const { coordinatorName } = await assignToStaffCoordinator(reference)
+
+      const edited = await editEventRequest(reference, {
+        expected_attendance: 75,
+        description: 'Now with a panel.',
+      })
+
+      expect(edited).toMatchObject({
+        reference,
+        description: 'Now with a panel.',
+        expected_attendance: 75,
+        programme_notes: null,
+        internal_planning_notes: null,
+      })
+      const changes = [
+        {
+          field: 'description',
+          previous_value: null,
+          new_value: 'Now with a panel.',
+          significant: false,
+        },
+        { field: 'expected_attendance', previous_value: 60, new_value: 75, significant: true },
+      ]
+      expect(edited.changes).toEqual(changes)
+      const edits = await editsInHistory(reference)
+      expect(edits.map((entry) => entry.details)).toEqual(changes)
+      expect(edits.map((entry) => entry.actor_name)).toEqual([coordinatorName, coordinatorName])
+    },
+  )
+
+  it.skipIf(!hasLead)('moves the end date with a date moved on its own', async () => {
+    const { reference } = await submittedByNewOrganiser()
+    await assignToStaffCoordinator(reference)
+    const later = daysFromNow(37)
+
+    const edited = await editEventRequest(reference, { proposed_date: later })
+
+    expect(edited.end_date).toBe(later)
+    expect(edited.changes.map((change) => [change.field, change.new_value])).toEqual([
+      ['proposed_date', later],
+      ['end_date', later],
+    ])
+  })
+
+  it.skipIf(!hasLead)(
+    'keeps the internal planning notes out of the organiser history (ADR-0025)',
+    async () => {
+      const { organiser, reference } = await submittedByNewOrganiser()
+      await assignToStaffCoordinator(reference)
+
+      const edited = await editEventRequest(reference, { internal_planning_notes: 'Call AV.' })
+      const coordinatorsEdits = await editsInHistory(reference)
+      await signInAs(organiser)
+      const organisersEdits = await editsInHistory(reference)
+
+      expect(edited.internal_planning_notes).toBe('Call AV.')
+      expect(coordinatorsEdits).toHaveLength(1)
+      expect(organisersEdits).toEqual([])
+    },
+  )
+
+  it.skipIf(!hasLead).each<[Record<string, unknown>, string, string]>([
+    [{ proposed_date: PAST_DATE }, 'proposed_date', 'Proposed date cannot be in the past.'],
+    [{ expected_attendance: 0 }, 'expected_attendance', 'Expected attendance must be at least 1.'],
+    [{ end_time: null }, 'end_time', 'Field may not be null.'],
+    [{ name: 'Renamed' }, 'name', 'Unknown field.'],
+    [{ end_time: '08:00' }, 'end_time', 'Event must end after it starts.'],
+  ])('refuses %j with the message on %s', async (changes, field, message) => {
+    const { reference } = await submittedByNewOrganiser()
+    await assignToStaffCoordinator(reference)
+
+    const error = await refusal(editEventRequest(reference, changes))
+
+    expect(error).toMatchObject({
+      status: 400,
+      code: 'validation_error',
+      fieldErrors: { [field]: [message] },
+    })
   })
 })

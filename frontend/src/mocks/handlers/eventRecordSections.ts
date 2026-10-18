@@ -22,7 +22,8 @@ import type { MockEventRequest } from './eventRequestFixtures'
  * The sections of an event's record that have routes of their own: its history (SCRUM-33,
  * ADR-0025) and who registered (SCRUM-55). Who may read which event is decided as the backend
  * decides it, through the same lookups as the record itself (eventRequests.ts), and so are what
- * an organiser is not shown and the count against the capacity.
+ * an organiser is not shown and the count against the capacity. An edit adds to the history
+ * (eventEdits.ts), so the history is kept here and put back after every test.
  */
 
 const REQUESTS_PATH = '/api/events/requests'
@@ -80,6 +81,23 @@ function readerOrRefusal(request: Request, roles: readonly Role[], reference: un
   return { stored, isOrganiser }
 }
 
+/** Each event's history as it stands, edits included. Reset per test. */
+let storedHistory: Record<string, EventHistoryEntry[]> = {}
+
+/** Put the history back as the fixture has it. Runs after every test. */
+export function resetMockEventHistory(): void {
+  storedHistory = {}
+  for (const [reference, entries] of Object.entries(MOCK_EVENT_HISTORY)) {
+    storedHistory[reference] = [...entries]
+  }
+}
+resetMockEventHistory()
+
+/** Add `entries` to the end of an event's history, as the backend writes them. */
+export function addToHistory(reference: string, entries: EventHistoryEntry[]): void {
+  storedHistory[reference] = [...(storedHistory[reference] ?? []), ...entries]
+}
+
 /** Oldest registration first, as the backend lists them. */
 function oldestFirst(a: Registrant, b: Registrant): number {
   return a.registered_at.localeCompare(b.registered_at)
@@ -100,7 +118,7 @@ export const eventRecordSectionHandlers: RequestHandler[] = [
       return found.refusal
     }
 
-    const history = MOCK_EVENT_HISTORY[found.stored.request.reference] ?? []
+    const history = storedHistory[found.stored.request.reference] ?? []
     const shown = found.isOrganiser ? history.filter(shownToOrganiser) : history
     return HttpResponse.json({ history: shown })
   }),

@@ -1,0 +1,229 @@
+import { http, HttpResponse } from 'msw'
+import type { RequestHandler } from 'msw'
+
+import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
+import type { EventRequestStatus } from '@/config/eventStatus'
+import type { EventHistoryEntry, EventRequest, FieldChange } from '@/features/eventRequests/api'
+import type { FieldErrors } from '@/lib/api'
+
+import { errorResponse, readBody, validationError } from '../responses'
+
+import { MOCK_NOW, MOCK_TODAY } from './catalogueFixtures'
+import { addToHistory } from './eventRecordSections'
+import { withSeconds } from './eventRequestRules'
+import { assignedOrRefusal } from './eventRequests'
+import type { MockEventRequest } from './eventRequestFixtures'
+
+/**
+ * The assigned coordinator's edit (PATCH /api/events/requests/<reference>; SCRUM-33, ADR-0025):
+ * only the fields sent change, each checked as the backend checks it, and each change is
+ * answered and written to the history, significant or not. Checks run in the backend's order:
+ * the coordinator's own event (404), a status that can be edited (409), then the fields (400).
+ * The internal planning notes are kept here: the record never shows them.
+ */
+
+const REQUESTS_PATH = '/api/events/requests'
+const NOT_EDITABLE_MESSAGE =
+  'Only a submitted, under-review, approved or confirmed event request can be edited.'
+const NOT_NULL_MESSAGE = 'Field may not be null.'
+const EDITABLE_STATUSES: readonly EventRequestStatus[] = [
+  EVENT_REQUEST_STATUS.SUBMITTED,
+  EVENT_REQUEST_STATUS.UNDER_REVIEW,
+  EVENT_REQUEST_STATUS.APPROVED,
+  EVENT_REQUEST_STATUS.CONFIRMED,
+]
+/** Every field the edit takes, in the backend's order (EditEventRequestSchema.Meta.fields). */
+const EDITABLE_FIELDS = [
+  'description',
+  'programme_notes',
+  'accessibility_needs',
+  'internal_planning_notes',
+  'proposed_date',
+  'end_date',
+  'start_time',
+  'end_time',
+  'expected_attendance',
+  'venue_requirements',
+  'equipment_requirements',
+] as const
+type EditableField = (typeof EDITABLE_FIELDS)[number]
+/** Fields that can't be emptied: when and how big the event is. */
+const NOT_NULL_FIELDS: readonly string[] = [
+  'proposed_date',
+  'end_date',
+  'start_time',
+  'end_time',
+  'expected_attendance',
+]
+const SIGNIFICANT_FIELDS: readonly string[] = [
+  ...NOT_NULL_FIELDS,
+  'venue_requirements',
+  'equipment_requirements',
+]
+const DAY_MS = 24 * 60 * 60_000
+
+type Values = Partial<Record<EditableField, string | number | null>>
+
+/** Internal planning notes by reference; none until an edit sets them. Reset per test. */
+let internalNotes: Record<string, string | null> = {}
+
+export function resetMockEventEdits(): void {
+  internalNotes = {}
+}
+
+function isEditableField(name: string): name is EditableField {
+  return (EDITABLE_FIELDS as readonly string[]).includes(name)
+}
+
+/** `date` moved by `days`, both "2026-11-12". */
+function addDays(date: string, days: number): string {
+  return new Date(Date.parse(`${date}T00:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10)
+}
+
+function daysBetween(from: string, to: string): number {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY_MS)
+}
+
+/** Each field's own rules: unknown fields, nulls, the past date and the attendance. */
+function fieldErrors(body: Record<string, unknown>): FieldErrors {
+  const errors: FieldErrors = {}
+  for (const [name, value] of Object.entries(body)) {
+    if (!isEditableField(name)) {
+      errors[name] = ['Unknown field.']
+    } else if (value === null && NOT_NULL_FIELDS.includes(name)) {
+      errors[name] = [NOT_NULL_MESSAGE]
+    }
+  }
+  if (typeof body.proposed_date === 'string' && body.proposed_date < MOCK_TODAY) {
+    errors.proposed_date = ['Proposed date cannot be in the past.']
+  }
+  if (typeof body.expected_attendance === 'number' && body.expected_attendance < 1) {
+    errors.expected_attendance = ['Expected attendance must be at least 1.']
+  }
+  return errors
+}
+
+/** What the backend saves from the body: text trimmed, blank as null, times with seconds. */
+function loadedValues(body: Record<string, unknown>): Values {
+  const values: Values = {}
+  for (const field of EDITABLE_FIELDS) {
+    const value = body[field]
+    if (!(field in body) || value === undefined) {
+      continue
+    }
+    if (typeof value === 'string' && (field === 'start_time' || field === 'end_time')) {
+      values[field] = withSeconds(value)
+    } else if (typeof value === 'string') {
+      values[field] = value.trim() === '' ? null : value.trim()
+    } else if (typeof value === 'number' || value === null) {
+      values[field] = value
+    }
+  }
+  return values
+}
+
+/** A date moved on its own takes the end date with it, keeping the event's length. */
+function withEndDate(values: Values, request: EventRequest): Values {
+  if (!('proposed_date' in values) || 'end_date' in values) {
+    return values
+  }
+  const start = String(request.proposed_date)
+  const length = daysBetween(start, String(request.end_date))
+  return { ...values, end_date: addDays(String(values.proposed_date), length) }
+}
+
+/** The window rule on the values the event would have (ADR-0002), or null when it holds. */
+function windowErrors(values: Values, request: EventRequest): FieldErrors | null {
+  const proposedDate = String(values.proposed_date ?? request.proposed_date)
+  const endDate = String(values.end_date ?? request.end_date)
+  if (endDate < proposedDate) {
+    return { end_date: ['End date cannot be before the proposed date.'] }
+  }
+  const starts = `${proposedDate}T${String(values.start_time ?? request.start_time)}`
+  const ends = `${endDate}T${String(values.end_time ?? request.end_time)}`
+  if (ends <= starts) {
+    return { end_time: ['Event must end after it starts.'] }
+  }
+  return null
+}
+
+function currentValue(stored: MockEventRequest, field: EditableField) {
+  if (field === 'programme_notes') {
+    return stored.record.programme_notes
+  }
+  if (field === 'internal_planning_notes') {
+    return internalNotes[stored.request.reference] ?? null
+  }
+  return stored.request[field]
+}
+
+/** Save each value that differs from what is saved, and say what changed. */
+function applyChanges(stored: MockEventRequest, values: Values): FieldChange[] {
+  const changes: FieldChange[] = []
+  for (const [name, value] of Object.entries(values)) {
+    if (!isEditableField(name)) {
+      continue
+    }
+    const previous = currentValue(stored, name)
+    const next = value ?? null
+    if (previous === next) {
+      continue
+    }
+    changes.push({
+      field: name,
+      previous_value: previous,
+      new_value: next,
+      significant: SIGNIFICANT_FIELDS.includes(name),
+    })
+    if (name === 'programme_notes') {
+      stored.record = { ...stored.record, programme_notes: value === null ? null : String(value) }
+    } else if (name === 'internal_planning_notes') {
+      internalNotes[stored.request.reference] = value === null ? null : String(value)
+    } else {
+      stored.request = { ...stored.request, [name]: next }
+    }
+  }
+  return changes
+}
+
+/** One field_changed entry per change, by the coordinator, at the mock's "now". */
+function historyOf(changes: FieldChange[], actorName: string): EventHistoryEntry[] {
+  return changes.map((change) => ({
+    kind: 'field_changed',
+    occurred_at: MOCK_NOW,
+    actor_name: actorName,
+    details: { ...change },
+  }))
+}
+
+export const eventEditHandlers: RequestHandler[] = [
+  http.patch(`${REQUESTS_PATH}/:reference`, async ({ request, params }) => {
+    const found = assignedOrRefusal(request, params.reference)
+    if ('refusal' in found) {
+      return found.refusal
+    }
+    const { coordinator, stored } = found
+    if (!EDITABLE_STATUSES.includes(stored.request.status)) {
+      return errorResponse(409, 'request_not_editable', NOT_EDITABLE_MESSAGE)
+    }
+    const body = await readBody(request)
+    const errors = fieldErrors(body)
+    if (Object.keys(errors).length > 0) {
+      return validationError(errors)
+    }
+    const values = withEndDate(loadedValues(body), stored.request)
+    const refused = windowErrors(values, stored.request)
+    if (refused !== null) {
+      return validationError(refused)
+    }
+
+    const changes = applyChanges(stored, values)
+    addToHistory(stored.request.reference, historyOf(changes, coordinator.full_name))
+    return HttpResponse.json({
+      ...stored.request,
+      programme_notes: stored.record.programme_notes,
+      internal_planning_notes: internalNotes[stored.request.reference] ?? null,
+      changes,
+    })
+  }),
+]

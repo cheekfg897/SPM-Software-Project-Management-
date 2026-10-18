@@ -4,7 +4,8 @@ import { authHandlers, resetMockAccounts } from './auth'
 import { bookingHandlers, resetMockBooking } from './booking'
 import { catalogueHandlers, resetMockCatalogue } from './catalogue'
 import { eventRequestHandlers, resetMockEventRequests } from './eventRequests'
-import { eventRecordSectionHandlers } from './eventRecordSections'
+import { eventEditHandlers, resetMockEventEdits } from './eventEdits'
+import { eventRecordSectionHandlers, resetMockEventHistory } from './eventRecordSections'
 import { notificationHandlers, resetMockNotifications } from './notifications'
 import { equipmentHandlers, resetMockEquipment } from './equipment'
 import { leadHandlers, resetMockLeadQueue } from './lead'
@@ -26,6 +27,7 @@ export const handlers: RequestHandler[] = [
   ...catalogueHandlers,
   ...eventRequestHandlers,
   ...eventRecordSectionHandlers,
+  ...eventEditHandlers,
   ...notificationHandlers,
   ...bookingHandlers,
   ...equipmentHandlers,
@@ -44,6 +46,8 @@ export function resetMockBackend(): void {
   resetMockAccounts()
   resetMockCatalogue()
   resetMockEventRequests()
+  resetMockEventHistory()
+  resetMockEventEdits()
   resetMockNotifications()
   resetMockBooking()
   resetMockEquipment()
