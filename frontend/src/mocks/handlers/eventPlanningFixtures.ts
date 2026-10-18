@@ -76,7 +76,7 @@ const DETAILS = {
 /**
  * Hana's events. Approved: EVR-PLAN0001 still has a pending venue arrangement (42) beside an
  * approved one and a withdrawn one, and an unanswered equipment request (43), so the Safety
- * Review gate names both; EVR-PLAN0002 is settled, its only other arrangement withdrawn.
+ * Review gate names both, and its decision can no longer change (SCRUM-31 AC7); EVR-PLAN0002 is settled, its only other arrangement withdrawn.
  * In Safety Review: EVR-PLAN0003 has the Safety Officer's approval and is settled;
  * EVR-PLAN0004 has no approval, a rejected arrangement (48) beside an approved one and an
  * unanswered equipment request (49), so confirming it names a gap in each area.
@@ -97,6 +97,7 @@ export const PLANNING_EVENT_REQUESTS: readonly MockEventRequest[] = [
       ],
       equipmentWithoutOutcome: [43],
     },
+    hasEquipmentRequest: true,
     request: {
       ...DETAILS,
       reference: 'EVR-PLAN0001',
@@ -154,6 +155,7 @@ export const PLANNING_EVENT_REQUESTS: readonly MockEventRequest[] = [
       ],
       equipmentWithoutOutcome: [49],
     },
+    hasEquipmentRequest: true,
     request: {
       ...DETAILS,
       reference: 'EVR-PLAN0004',
