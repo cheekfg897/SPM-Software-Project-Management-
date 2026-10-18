@@ -12,6 +12,14 @@ import { Logo } from './Logo'
 
 const NAV_LINK_CLASSES =
   'text-sm text-ink-muted transition hover:text-ink aria-[current=page]:text-ink'
+/** Where the main links sit for everyone but staff: beside the logo, as far from it as before. */
+const BESIDE_THE_LOGO = 'ml-1 sm:ml-2'
+/**
+ * Staff's links don't fit beside the logo and Log out on a phone or a tablet, so up to lg they
+ * take a row of their own under the bar.
+ */
+const STAFF_LINKS_ROW =
+  'col-span-3 row-start-2 pb-3 lg:col-span-1 lg:col-start-2 lg:row-start-1 lg:ml-2 lg:pb-0'
 
 function SessionActions() {
   const user = useAppSelector(selectSessionUser)
@@ -55,13 +63,15 @@ function SessionActions() {
 
 /**
  * The main links: the catalogue for everyone, their own events for an Attendee, and the client
- * organisations for staff (SCRUM-66), as "Clients" so the header still fits a 320px phone.
+ * organisations for staff (SCRUM-66, as "Clients").
  */
 function MainNav() {
   const user = useAppSelector(selectSessionUser)
+  const isStaff = user !== null && INTERNAL_ROLES.includes(user.role)
+  const placement = isStaff ? STAFF_LINKS_ROW : BESIDE_THE_LOGO
 
   return (
-    <nav aria-label="Main" className="flex items-center gap-4 sm:gap-6">
+    <nav aria-label="Main" className={`flex items-center gap-4 sm:gap-6 ${placement}`}>
       <NavLink to={ROUTES.EVENTS} className={NAV_LINK_CLASSES}>
         Events
       </NavLink>
@@ -81,7 +91,7 @@ function MainNav() {
           Find a venue
         </NavLink>
       )}
-      {user !== null && INTERNAL_ROLES.includes(user.role) && (
+      {isStaff && (
         <NavLink to={ROUTES.ORGANISATIONS} className={NAV_LINK_CLASSES}>
           Clients
         </NavLink>
@@ -93,12 +103,12 @@ function MainNav() {
 export function SiteHeader() {
   return (
     <header className="border-line/60 bg-void/60 fixed inset-x-0 top-0 z-50 border-b backdrop-blur-md">
-      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:gap-6 sm:px-6">
-        <div className="flex items-center gap-4 sm:gap-8">
+      <div className="mx-auto grid max-w-6xl grid-cols-[auto_1fr_auto] items-center gap-x-3 px-4 sm:gap-x-6 sm:px-6">
+        <div className="flex h-16 items-center">
           <Logo />
-          <MainNav />
         </div>
-        <div className="flex items-center gap-2">
+        <MainNav />
+        <div className="col-start-3 flex h-16 items-center gap-2">
           <SessionActions />
         </div>
       </div>
