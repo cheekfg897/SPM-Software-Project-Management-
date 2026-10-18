@@ -33,6 +33,9 @@ function BookingRequestItem({
         <span className="text-flare font-medium">{STATUS_LABELS[request.status]}</span>
       </div>
       <BookingRequestDetails request={request} />
+      {request.needs_alternative_venue && (
+        <p className="text-danger font-medium">Needs an alternative venue</p>
+      )}
       {request.decision_reason !== null && (
         <p className="text-ink-muted">Reason: {request.decision_reason}</p>
       )}

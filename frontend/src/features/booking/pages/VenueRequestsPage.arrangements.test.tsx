@@ -127,6 +127,13 @@ describe('SCRUM-93 venue arrangements on the venue requests page', () => {
     ])
   })
 
+  it('says which arrangement needs an alternative venue, as the backend flags it', async () => {
+    openEvent(MOCK_BOOKING_EVENTS.booked.reference)
+
+    expect(await item(bookedHall.purpose)).toHaveTextContent('Needs an alternative venue')
+    expect(await item(bookedSideRoom.purpose)).not.toHaveTextContent('alternative venue')
+  })
+
   it('shows the backend’s refusal in the arrangement it was about', async () => {
     const view = openEvent(MOCK_BOOKING_EVENTS.booked.reference)
 
