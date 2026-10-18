@@ -1,6 +1,6 @@
 # ADR-0045: Clashing bookings: refuse a clashing approval, and mark what overlaps Conflicting
 
-- **Status:** Accepted
+- **Status:** Accepted; Venue Staff are told about each booking a buffer change marks, by [ADR-0055](0055-booking-and-equipment-notices.md)
 - **Date:** 2026-10-16
 - **Story:** SCRUM-44 Prevent the same venue being booked twice (the approval clauses and, from decision 7, the Conflicting status); SCRUM-75 Place a tentative hold on a venue (from decision 13, the hold clauses)
 - **Extends:** ADR-0011, ADR-0042
