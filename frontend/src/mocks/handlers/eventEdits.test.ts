@@ -195,14 +195,31 @@ describe('SCRUM-33 mock of an edit: what is refused', () => {
     expect((await fetchEventRequest(PARTNER_SUMMIT)).description).toBeNull()
   })
 
-  it('refuses an event in a status that cannot be edited', async () => {
-    signInAs(MOCK_ACCOUNTS.coordinator)
+  it.each([
+    ['awaiting_clarification', MOCK_ACCOUNTS.coordinator, AWAITING_ANSWER],
+    ['rejected', MOCK_ACCOUNTS.reviewingCoordinator, 'EVR-RV9H6C1W'],
+  ])('refuses an event that is %s, as the backend does', async (_, account, reference) => {
+    signInAs(account)
 
-    expect(await refusal(editEventRequest(AWAITING_ANSWER, { description: 'x' }))).toMatchObject({
+    expect(await refusal(editEventRequest(reference, { description: 'x' }))).toMatchObject({
       status: 409,
       code: 'request_not_editable',
       message: 'Only a submitted, under-review, approved or confirmed event request can be edited.',
     })
+  })
+
+  // Each status the backend lets an edit through (EDITABLE_STATUSES), so none is dropped.
+  it.each([
+    ['submitted', MOCK_ACCOUNTS.reviewingCoordinator, 'EVR-RV4K8N2P'],
+    ['under_review', MOCK_ACCOUNTS.coordinator, PARTNER_SUMMIT],
+    ['approved', MOCK_ACCOUNTS.coordinator, 'EVR-BOOK0101'],
+    ['confirmed', MOCK_ACCOUNTS.coordinator, 'EVR-BOOK0102'],
+  ])('lets the coordinator edit an event that is %s', async (status, account, reference) => {
+    signInAs(account)
+
+    const edited = await editEventRequest(reference, { description: 'Edited.' })
+
+    expect(edited).toMatchObject({ status, description: 'Edited.' })
   })
 
   it("answers another coordinator's event as not found, and refuses an organiser", async () => {
