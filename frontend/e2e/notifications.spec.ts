@@ -18,6 +18,9 @@ test('SCRUM-28: an attendee opens their notifications and marks one read', async
   const header = page.getByRole('banner')
   const bellWithTwo = header.getByRole('link', { name: 'Notifications, 2 unread' })
   await expect(bellWithTwo).toBeVisible()
+  // The web fonts swap in after the first render and move the header by a few pixels, so
+  // wait for them first: otherwise the bell and Log out can be measured in different layouts.
+  await page.evaluate(() => document.fonts.ready)
   const bellBox = await bellWithTwo.boundingBox()
   expect(bellBox?.height).toBeGreaterThanOrEqual(MIN_TAP_TARGET)
   expect(bellBox?.width).toBeGreaterThanOrEqual(MIN_TAP_TARGET)
