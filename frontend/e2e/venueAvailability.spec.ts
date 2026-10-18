@@ -39,6 +39,7 @@ test('Venue Staff block a free morning, see it in the calendar, then remove it',
   const blocks = page.getByRole('region', { name: 'Blocks' })
   await blocks.getByLabel('Starts').fill('2026-11-11T10:00')
   await blocks.getByLabel('Ends').fill('2026-11-11T12:00')
+  await blocks.getByLabel('Category').selectOption('Maintenance')
   await blocks.getByLabel('Reason').fill('Fire alarm test')
   await blocks.getByRole('button', { name: 'Block venue' }).click()
   await expect(eleventh).toContainText('Blocked 10:00 am – 12:00 pm Fire alarm test')
@@ -57,6 +58,7 @@ test('a block over confirmed bookings is saved and names the bookings it cuts in
   const blocks = page.getByRole('region', { name: 'Blocks' })
   await blocks.getByLabel('Starts').fill('2026-11-10T11:00')
   await blocks.getByLabel('Ends').fill('2026-11-10T14:00')
+  await blocks.getByLabel('Category').selectOption('Maintenance')
   await blocks.getByLabel('Reason').fill('Burst pipe')
   await blocks.getByRole('button', { name: 'Block venue' }).click()
 

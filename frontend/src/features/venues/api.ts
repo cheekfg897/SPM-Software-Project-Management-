@@ -1,3 +1,4 @@
+import type { UnavailabilityCategory } from '@/config/unavailabilityCategories'
 import type { VenueLayout } from '@/config/venueLayouts'
 import { apiRequest } from '@/lib/api'
 
@@ -87,16 +88,20 @@ export interface VenueBlock {
   venue_id: number
   start_time: string
   end_time: string
+  category: UnavailabilityCategory
   reason: string
 }
 
 /**
  * What the block form sends. The times are as a date-time input holds them, with no offset,
- * which the backend reads as business time (ADR-0009, ADR-0068).
+ * which the backend reads as business time (ADR-0009, ADR-0068). The category is one of
+ * UNAVAILABILITY_CATEGORIES as chosen, or empty when none is, for the backend to refuse
+ * (SCRUM-92 AC2).
  */
 export interface NewBlock {
   start_time: string
   end_time: string
+  category: string
   reason: string
 }
 

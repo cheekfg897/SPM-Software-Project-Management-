@@ -1,5 +1,6 @@
 import { ROLE } from '@/config/roles'
 import type { Role } from '@/config/roles'
+import { UNAVAILABILITY_CATEGORIES } from '@/config/unavailabilityCategories'
 import type { CalendarEntry, CreatedBlock, VenueBlock } from '@/features/venues/api'
 import { ApiError, apiRequest } from '@/lib/api'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
@@ -42,8 +43,11 @@ const NOT_VENUE_STAFF: Role[] = Object.values(ROLE).filter((role) => role !== RO
 const MIDDAY_BLOCK = {
   start_time: '2026-11-10T11:00',
   end_time: '2026-11-10T14:00',
+  category: 'safety_concern',
   reason: '  Fire alarm test  ',
 }
+const CATEGORY_UNKNOWN_MESSAGE =
+  'Category must be one of maintenance, equipment_failure, renovation, safety_concern or other.'
 
 function signInAs(role: Role) {
   sendRequestsAs(mockTokenFor(ACCOUNT_BY_ROLE[role]))
@@ -93,6 +97,7 @@ describe('SCRUM-34 venue mock: blocking a venue', () => {
       venue_id: MARINA_HALL.id,
       start_time: '2026-11-10T11:00:00+08:00',
       end_time: '2026-11-10T14:00:00+08:00',
+      category: 'safety_concern',
       reason: 'Fire alarm test',
     })
     expect(created.conflicting_bookings).toEqual([
@@ -138,8 +143,20 @@ describe('SCRUM-34 venue mock: blocking a venue', () => {
 
     expect(blocks.map((each) => each.id)).toEqual([created.id, 71])
     expect(await listBlocks(BOARDROOM_TWO.id)).toEqual([
-      expect.objectContaining({ id: 72, reason: 'Carpet cleaning' }) as unknown,
+      expect.objectContaining({
+        id: 72,
+        category: 'maintenance',
+        reason: 'Carpet cleaning',
+      }) as unknown,
     ])
+  })
+
+  it.each(UNAVAILABILITY_CATEGORIES)('saves a block for $label', async ({ value }) => {
+    const created = await block(MARINA_HALL.id, { ...MIDDAY_BLOCK, category: value })
+
+    expect(created.category).toBe(value)
+    const listed = await listBlocks(MARINA_HALL.id)
+    expect(listed.find((each) => each.id === created.id)?.category).toBe(value)
   })
 
   it.each([
@@ -149,8 +166,45 @@ describe('SCRUM-34 venue mock: blocking a venue', () => {
       {
         start_time: ['Missing data for required field.'],
         end_time: ['Missing data for required field.'],
+        category: ['Missing data for required field.'],
         reason: ['Missing data for required field.'],
       },
+    ],
+    [
+      'a category it does not know',
+      { ...MIDDAY_BLOCK, category: 'flood' },
+      { category: [CATEGORY_UNKNOWN_MESSAGE] },
+    ],
+    [
+      'a category as its label',
+      { ...MIDDAY_BLOCK, category: 'Maintenance' },
+      { category: [CATEGORY_UNKNOWN_MESSAGE] },
+    ],
+    [
+      'an empty category',
+      { ...MIDDAY_BLOCK, category: '' },
+      { category: [CATEGORY_UNKNOWN_MESSAGE] },
+    ],
+    [
+      'a null category',
+      { ...MIDDAY_BLOCK, category: null },
+      { category: ['Field may not be null.'] },
+    ],
+    [
+      'an unknown category with an end before the start, the field first',
+      { ...MIDDAY_BLOCK, category: 'flood', end_time: '2026-11-10T10:00' },
+      { category: [CATEGORY_UNKNOWN_MESSAGE] },
+    ],
+    [
+      'a field it does not know',
+      { ...MIDDAY_BLOCK, colour: 'red' },
+      { colour: ['Unknown field.'] },
+    ],
+    ['a null reason', { ...MIDDAY_BLOCK, reason: null }, { reason: ['Field may not be null.'] }],
+    [
+      'a null start',
+      { ...MIDDAY_BLOCK, start_time: null },
+      { start_time: ['Field may not be null.'] },
     ],
     ['a blank reason', { ...MIDDAY_BLOCK, reason: '   ' }, { reason: ['Must not be blank.'] }],
     [

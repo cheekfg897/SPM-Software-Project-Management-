@@ -3,6 +3,7 @@ import type { RequestHandler } from 'msw'
 
 import { INTERNAL_ROLES, ROLE } from '@/config/roles'
 import type { Role } from '@/config/roles'
+import type { UnavailabilityCategory } from '@/config/unavailabilityCategories'
 import type {
   BlockOverlapWarning,
   CalendarEntry,
@@ -427,7 +428,7 @@ export const venueHandlers: RequestHandler[] = [
       return venueNotFound()
     }
 
-    // The rules accepted both times and the reason, so none of these is null or missing.
+    // The rules accepted both times, the category and the reason, so none is null or missing.
     const start = instantOf(body.start_time) as number
     const end = instantOf(body.end_time) as number
     const block: MockVenueBlock = {
@@ -435,6 +436,8 @@ export const venueHandlers: RequestHandler[] = [
       venue_id: venue.id,
       start_time: businessIso(start),
       end_time: businessIso(end),
+      // The rules accepted it, so it is one of the categories.
+      category: body.category as UnavailabilityCategory,
       reason: String(body.reason).trim(),
     }
     nextBlockId += 1

@@ -13,7 +13,7 @@ import { isRecord } from '@/lib/isRecord'
  */
 
 export const MISSING_MESSAGE = 'Missing data for required field.'
-const NULL_MESSAGE = 'Field may not be null.'
+export const NULL_MESSAGE = 'Field may not be null.'
 const NOT_INTEGER_MESSAGE = 'Not a valid integer.'
 const NOT_LIST_MESSAGE = 'Not a valid list.'
 const TEXT_MAX_LENGTH = 200
@@ -327,9 +327,9 @@ export function newVenueErrors(body: Record<string, unknown>): FieldErrors {
 }
 
 /*
- * Deactivating (UnavailabilitySchema in venue/schemas.py, SCRUM-92 AC9, ADR-0053): a category
- * and a note, both required. Marshmallow's Enum field calls anything that isn't one of the
- * values unknown, whatever its type, and the note is measured once trimmed.
+ * The category and the note (UnavailabilitySchema in venue/schemas.py, SCRUM-92, ADR-0053), which
+ * a deactivation and a block both carry, both required. Marshmallow's Enum field calls anything
+ * that isn't one of the values unknown, whatever its type, and the note is measured once trimmed.
  */
 
 const CATEGORY_VALUES: readonly string[] = UNAVAILABILITY_CATEGORIES.map(
@@ -338,7 +338,7 @@ const CATEGORY_VALUES: readonly string[] = UNAVAILABILITY_CATEGORIES.map(
 const CATEGORY_UNKNOWN_MESSAGE =
   'Category must be one of maintenance, equipment_failure, renovation, safety_concern or other.'
 const REASON_MAX_LENGTH = 500
-const DEACTIVATION_FIELDS: readonly string[] = ['category', 'reason']
+const UNAVAILABILITY_FIELDS: readonly string[] = ['category', 'reason']
 
 function categoryErrors(value: unknown): string[] {
   if (value === null) {
@@ -365,14 +365,23 @@ function reasonErrors(value: unknown): string[] {
   return []
 }
 
-/** What deactivating a venue is refused for: a field left out, a bad one, or an unknown one. */
-export function deactivationErrors(body: Record<string, unknown>): FieldErrors {
+/** "Unknown field." for each field of `body` the schema doesn't declare, as marshmallow says. */
+export function unknownFieldErrors(
+  body: Record<string, unknown>,
+  declared: readonly string[],
+): FieldErrors {
   const errors: FieldErrors = {}
   for (const field of Object.keys(body)) {
-    if (!DEACTIVATION_FIELDS.includes(field)) {
+    if (!declared.includes(field)) {
       errors[field] = ['Unknown field.']
     }
   }
+  return errors
+}
+
+/** What the category and the note are refused for: left out, or not a valid value. */
+export function unavailabilityErrors(body: Record<string, unknown>): FieldErrors {
+  const errors: FieldErrors = {}
   if ('category' in body) {
     addMessages(errors, 'category', categoryErrors(body.category))
   } else {
@@ -384,4 +393,9 @@ export function deactivationErrors(body: Record<string, unknown>): FieldErrors {
     errors.reason = [MISSING_MESSAGE]
   }
   return errors
+}
+
+/** What deactivating a venue is refused for (SCRUM-92 AC9): a field left out, bad or unknown. */
+export function deactivationErrors(body: Record<string, unknown>): FieldErrors {
+  return { ...unknownFieldErrors(body, UNAVAILABILITY_FIELDS), ...unavailabilityErrors(body) }
 }
