@@ -16,6 +16,12 @@ export const MOCK_CLOSED_EVENT_REFERENCE = 'EVR-MOCK0002'
 export const MOCK_OTHER_COORDINATORS_EVENT_REFERENCE = 'EVR-MOCK0003'
 /** That other coordinator. No mock account signs in as them. */
 const OTHER_COORDINATOR_ID = 15
+/**
+ * Events the Safety Officer has approved, so their reservations' preparation can be recorded
+ * (SCRUM-85 AC5). The open event stands in for one; every other event, including the one in
+ * Safety Review, is still waiting for that approval.
+ */
+export const MOCK_SAFETY_APPROVED_EVENT_REFERENCES: readonly string[] = [MOCK_OPEN_EVENT_REFERENCE]
 
 export const MOCK_EVENT_PERIOD = {
   starts_at: '2026-10-12T19:30:00+08:00',

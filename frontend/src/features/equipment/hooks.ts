@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
+import type { PreparationUpdate } from '@/config/preparation'
 import { selectSessionUser, useAppSelector } from '@/store'
 
 import {
@@ -12,6 +13,7 @@ import {
   removeEquipmentLine,
   reserveEquipment,
   updateEquipmentLine,
+  updateReservationPreparation,
 } from './api'
 import type {
   EquipmentLineBody,
@@ -98,5 +100,18 @@ export function useRecordEquipmentOutcome(reference: string) {
   return useMutation({
     mutationFn: (change: EquipmentOutcomeChange) => recordEquipmentOutcome(reference, change),
     onSettled: refresh,
+  })
+}
+
+/**
+ * Record one reservation's preparation. Afterwards the event's reservations are read again, so
+ * the table shows what the backend saved.
+ */
+export function useUpdateReservationPreparation(reference: string, reservationId: number) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (update: PreparationUpdate) => updateReservationPreparation(reservationId, update),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: equipmentKeys.reservations(reference) }),
   })
 }

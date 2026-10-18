@@ -4,10 +4,10 @@ import type { RequestHandler } from 'msw'
 import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
 import type { EventRequestStatus } from '@/config/eventStatus'
 import { EQUIPMENT_READER_ROLES, ROLE } from '@/config/roles'
-import type { PreparationStatus } from '@/features/equipment/api'
+import type { PreparationStatus } from '@/config/preparation'
 import { isRecord } from '@/lib/isRecord'
 
-import { errorResponse, validationError } from '../responses'
+import { errorResponse, readBody, validationError } from '../responses'
 
 import {
   callerOrRefusal,
@@ -16,7 +16,11 @@ import {
   eventNotFound,
   resetMockEquipmentEvents,
 } from './equipmentAccess'
-import { MOCK_EQUIPMENT_TYPES, MOCK_EVENT_PERIOD } from './equipmentFixtures'
+import {
+  MOCK_EQUIPMENT_TYPES,
+  MOCK_EVENT_PERIOD,
+  MOCK_SAFETY_APPROVED_EVENT_REFERENCES,
+} from './equipmentFixtures'
 import type { MockEquipmentType } from './equipmentFixtures'
 import { equipmentLineHandlers, requestedQuantity, resetMockEquipmentLines } from './equipmentLines'
 import {
@@ -25,12 +29,17 @@ import {
   positiveWholeNumberError,
   QUANTITY_RANGE_MESSAGE,
 } from './equipmentValidation'
+import {
+  PREPARATION_NEEDS_SAFETY_APPROVAL_MESSAGE,
+  preparationErrors,
+  savedNotes,
+} from './preparationRules'
 
 /**
  * The equipment endpoints, as backend/app/modules/equipment/routes.py answers them (SCRUM-45
- * availability, SCRUM-46 reservations), and the events module's equipment lines (SCRUM-37,
- * equipmentLines.ts). The catalogue's types are answered in equipmentCatalogue.ts. Reservations
- * live in memory until resetMockEquipment.
+ * availability, SCRUM-46 reservations, SCRUM-85 preparation), and the events module's equipment
+ * lines (SCRUM-37, equipmentLines.ts). The catalogue's types are answered in
+ * equipmentCatalogue.ts. Reservations live in memory until resetMockEquipment.
  */
 
 const EVENT_PATH = '/api/equipment/events/:reference'
@@ -56,10 +65,13 @@ interface MockReservation {
 }
 
 let reservations: MockReservation[] = []
+/** The event each reservation is for, by reservation id: the backend's foreign key. */
+let reservationEvents = new Map<number, string>()
 
 /** Forget every reservation and line change made since the mock started. Runs after every test. */
 export function resetMockEquipment(): void {
   reservations = []
+  reservationEvents = new Map()
   resetMockEquipmentLines()
   resetMockEquipmentEvents()
 }
@@ -191,8 +203,38 @@ export const equipmentHandlers: RequestHandler[] = [
       preparation_notes: null,
     }
     reservations.push(reservation)
+    reservationEvents.set(reservation.id, event.reference)
     return HttpResponse.json(reservation, { status: 201 })
   }),
+
+  // The backend's order: the body, then the reservation, then the event's safety approval.
+  http.put(
+    '/api/equipment/reservations/:reservationId/preparation',
+    async ({ request, params }) => {
+      const caller = callerOrRefusal(request, [ROLE.TECHNICAL_SUPPORT_STAFF])
+      if (caller instanceof Response) {
+        return caller
+      }
+      const body = await readBody(request)
+      const errors = preparationErrors(body)
+      if (Object.keys(errors).length > 0) {
+        return validationError(errors)
+      }
+      const reservation = reservations.find((saved) => saved.id === Number(params.reservationId))
+      if (reservation === undefined) {
+        return errorResponse(404, 'not_found', 'Equipment reservation not found.')
+      }
+      const eventReference = reservationEvents.get(reservation.id) ?? ''
+      if (!MOCK_SAFETY_APPROVED_EVENT_REFERENCES.includes(eventReference)) {
+        return errorResponse(409, 'conflict', PREPARATION_NEEDS_SAFETY_APPROVAL_MESSAGE)
+      }
+
+      // preparationErrors has just checked the status is one of the three.
+      reservation.preparation_status = body.status as PreparationStatus
+      reservation.preparation_notes = savedNotes(body)
+      return HttpResponse.json(reservation)
+    },
+  ),
 
   ...equipmentLineHandlers,
 ]
