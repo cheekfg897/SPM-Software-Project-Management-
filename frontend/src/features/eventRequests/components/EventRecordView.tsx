@@ -10,6 +10,7 @@ import type { Clarification, CoordinatorContact, Decision, EventRecord } from '.
 import { formatSchedule } from '../formatSchedule'
 import { useAnswerClarification } from '../hooks'
 
+import { EventHistorySection } from './EventHistorySection'
 import { MessageForm } from './MessageForm'
 import { RecordActions } from './RecordActions'
 import { RecordSection } from './RecordSection'
@@ -197,6 +198,7 @@ export function EventRecordView({ record }: { record: EventRecord }) {
           <p className="text-ink whitespace-pre-line">{record.programme_notes}</p>
         </RecordSection>
       )}
+      <EventHistorySection reference={record.reference} />
     </PageContainer>
   )
 }
