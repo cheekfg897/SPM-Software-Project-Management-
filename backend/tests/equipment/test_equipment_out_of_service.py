@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Iterator
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import pytest
@@ -291,6 +291,22 @@ def test_only_the_reservations_the_change_leaves_short_are_flagged(
 
     assert _flagged_quantities(db_session) == [8]
     assert len(db_session.scalars(select(EquipmentReservation)).all()) == 4
+
+
+def test_a_reservation_that_ends_exactly_now_is_over_and_left_unflagged(
+    db_session: Session,
+    saved_event_request: EventRequest,
+    equipment_type: EquipmentType,
+    save: Save,
+    make_reservation: MakeReservation,
+) -> None:
+    """Both are short of the seven units left, but only the later one still matters."""
+    save(make_reservation(equipment_type, 8, NOW - timedelta(hours=2), NOW))
+    save(make_reservation(equipment_type, 9, NOW + timedelta(hours=1), NOW + timedelta(hours=2)))
+
+    _mark(equipment_type, 3)
+
+    assert _flagged_quantities(db_session) == [9]
 
 
 def test_returning_the_units_clears_the_flag(
