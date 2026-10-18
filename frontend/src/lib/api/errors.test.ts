@@ -1,4 +1,4 @@
-import { ApiError, errorMessageOf, fieldErrorsOf, toApiError } from './errors'
+import { ApiError, errorMessageOf, fieldErrorsOf, textDetailOf, toApiError } from './errors'
 
 describe('toApiError', () => {
   it('keeps the code and message from the backend error body', () => {
@@ -44,6 +44,26 @@ describe('toApiError', () => {
     expect(error.fieldErrors).toEqual({})
   })
 
+  it('keeps the details as the backend sent them, for a screen to read one', () => {
+    const error = toApiError(409, {
+      error: 'withdrawal_closed',
+      message: 'Withdrawals for this event have closed.',
+      details: { withdrawal_closed_at: '2026-10-07T19:00:00+08:00' },
+    })
+
+    expect(error.details).toEqual({ withdrawal_closed_at: '2026-10-07T19:00:00+08:00' })
+    expect(error.fieldErrors).toEqual({})
+  })
+
+  it.each([undefined, 'not an object', ['a list']])(
+    'keeps no details when the body has %j instead of an object',
+    (details) => {
+      const error = toApiError(409, { error: 'conflict', message: 'Clashes.', details })
+
+      expect(error.details).toEqual({})
+    },
+  )
+
   it('falls back to a generic error when the body is not the backend shape', () => {
     const error = toApiError(502, '<html>Bad gateway</html>')
 
@@ -73,5 +93,28 @@ describe('errorMessageOf and fieldErrorsOf', () => {
       'Something went wrong. Please try again.',
     )
     expect(fieldErrorsOf(null)).toEqual({})
+  })
+})
+
+describe('textDetailOf', () => {
+  const CLOSED = new ApiError(
+    409,
+    'withdrawal_closed',
+    'Closed.',
+    {},
+    {
+      withdrawal_closed_at: '2026-10-07T19:00:00+08:00',
+      count: 2,
+    },
+  )
+
+  it('reads a detail that is text', () => {
+    expect(textDetailOf(CLOSED, 'withdrawal_closed_at')).toBe('2026-10-07T19:00:00+08:00')
+  })
+
+  it('answers null for a detail that is missing or not text, and for anything but an ApiError', () => {
+    expect(textDetailOf(CLOSED, 'reason')).toBeNull()
+    expect(textDetailOf(CLOSED, 'count')).toBeNull()
+    expect(textDetailOf(new Error('Closed.'), 'withdrawal_closed_at')).toBeNull()
   })
 })
