@@ -1,6 +1,6 @@
 import { ApiError, NETWORK_ERROR_CODE, NETWORK_ERROR_MESSAGE, toApiError } from './errors'
 
-export type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'DELETE'
+export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 
 /** Query parameters. Empty strings and `undefined` are left out of the URL. */
 export type QueryParams = Record<string, string | number | undefined>
