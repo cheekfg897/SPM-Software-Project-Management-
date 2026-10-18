@@ -1,14 +1,15 @@
-import type { EventHistoryEntry } from '@/features/eventRequests/api'
+import type { EventHistoryEntry, Registrant } from '@/features/eventRequests/api'
 
 /**
  * What the mock's events have on record besides the request (eventRequestFixtures.ts), by
- * reference: their history (SCRUM-33). An event with no entry here has none yet.
+ * reference: their history (SCRUM-33) and who registered (SCRUM-55). An event with no entry
+ * here has none of either yet, and no capacity.
  *
  * Each history is written as staff see it, oldest first; the mock leaves out of an organiser's
  * copy what the backend does. Partner Summit and Leadership Offsite are the mock organiser's,
  * so each holds entries an organiser must not see (an internal planning note; equipment and the
  * safety check), next to ones they must. The Year-End Town Hall, Chloe's confirmed event, has
- * been through every step to confirmation.
+ * been through every step to confirmation, and three people registered for its 80 places.
  */
 
 const LEON = 'Leon Goh'
@@ -202,4 +203,37 @@ export const MOCK_EVENT_HISTORY: Readonly<Record<string, readonly EventHistoryEn
       },
     },
   ],
+}
+
+/** An event's registrations as the mock keeps them, and the capacity the coordinator set. */
+export interface MockRegistrations {
+  capacity: number | null
+  /** Saved out of order, so the mock must sort them as the backend does, oldest first. */
+  registrants: readonly Registrant[]
+}
+
+export const MOCK_REGISTRATIONS: Readonly<Record<string, MockRegistrations>> = {
+  'EVR-BOOK0102': {
+    capacity: 80,
+    registrants: [
+      {
+        name: 'Ravi Kumar',
+        email: 'ravi.kumar@example.com',
+        registered_at: '2026-10-07T18:40:00+08:00',
+        status: 'registered',
+      },
+      {
+        name: 'Hannah Lee',
+        email: 'hannah.lee@example.com',
+        registered_at: '2026-10-06T09:15:00+08:00',
+        status: 'registered',
+      },
+      {
+        name: 'Mei Ling Tan',
+        email: 'meiling.tan@example.com',
+        registered_at: '2026-10-08T12:05:00+08:00',
+        status: 'registered',
+      },
+    ],
+  },
 }

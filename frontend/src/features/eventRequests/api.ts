@@ -179,9 +179,35 @@ export interface EventHistory {
   history: EventHistoryEntry[]
 }
 
+/** One person registered for an event (SCRUM-55 AC3). */
+export interface Registrant {
+  name: string
+  email: string
+  /** ISO date-time with an offset. */
+  registered_at: string
+  /** "registered" today; SCRUM-53 adds more (ADR-0032). */
+  status: string
+}
+
+/**
+ * Who registered, oldest first, and the count against the capacity (SCRUM-55 AC4). The
+ * capacity, and so the places left, are null until the coordinator sets one (SCRUM-69).
+ */
+export interface RegistrantList {
+  capacity: number | null
+  registered_count: number
+  places_left: number | null
+  items: Registrant[]
+}
+
 /** An event's history: staff see all of it, an organiser what the backend shows them. */
 export function eventHistoryKey(reference: string, viewerId: number | null) {
   return [...eventRequestKeys.all, 'history', viewerId, reference] as const
+}
+
+/** An event's registrants: whether they may be read depends on who is asking. */
+export function registrantsKey(reference: string, viewerId: number | null) {
+  return [...eventRequestKeys.all, 'registrants', viewerId, reference] as const
 }
 
 /**
@@ -191,6 +217,11 @@ export function eventHistoryKey(reference: string, viewerId: number | null) {
  */
 export function fetchEventHistory(reference: string): Promise<EventHistory> {
   return apiRequest<EventHistory>(`${requestPath(reference)}/history`)
+}
+
+/** Who registered for an event, for its organisation's organisers or its coordinator (SCRUM-55). */
+export function fetchRegistrants(reference: string): Promise<RegistrantList> {
+  return apiRequest<RegistrantList>(`${requestPath(reference)}/registrations`)
 }
 
 /** Move a submitted request assigned to the coordinator to under review (SCRUM-31 AC3). */
