@@ -14,6 +14,7 @@ import { EventHistorySection } from './EventHistorySection'
 import { MessageForm } from './MessageForm'
 import { RecordActions } from './RecordActions'
 import { RecordSection } from './RecordSection'
+import { RegistrantsSection } from './RegistrantsSection'
 import { ReviewActions } from './ReviewActions'
 
 interface DecisionStyle {
@@ -199,6 +200,7 @@ export function EventRecordView({ record }: { record: EventRecord }) {
         </RecordSection>
       )}
       <EventHistorySection reference={record.reference} />
+      <RegistrantsSection reference={record.reference} />
     </PageContainer>
   )
 }
