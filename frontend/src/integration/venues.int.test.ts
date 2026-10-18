@@ -13,8 +13,8 @@ import { refusal, signInAs, signInAsNewAttendee, staffAccount } from './backend'
 
 /**
  * The venue catalogue routes against the real backend (SCRUM-25, SCRUM-67). Only Venue Staff
- * write, and CI seeds no Venue Staff account, so the writes that need one read it from these
- * variables and skip without them:
+ * write, so the writes read a Venue Staff account from these variables, which CI sets
+ * (frontend.yml), and skip without them on a machine that has none:
  * INTEGRATION_VENUE_STAFF_EMAIL=... INTEGRATION_VENUE_STAFF_PASSWORD=... npm run test:integration
  */
 const VENUE_STAFF_EMAIL = import.meta.env.INTEGRATION_VENUE_STAFF_EMAIL ?? ''
