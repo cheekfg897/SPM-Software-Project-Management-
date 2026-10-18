@@ -990,8 +990,8 @@ def submit_draft_event_request(
 # --------------------------------------------------------------------------
 
 #: The history kinds that open, settle or unsettle a safety check. The newest of them
-#: says whether the event's current check is approved (SCRUM-98, ADR-0047); a
-#: replacement venue withdraws an approval (SCRUM-92 AC10, ADR-0053).
+#: says whether the event's current check is approved (SCRUM-98, ADR-0047); a change
+#: that needs a new check withdraws an approval (ADR-0053, ADR-0087).
 SAFETY_CHECK_KINDS = (
     EventHistoryKind.SAFETY_REVIEW_REQUESTED,
     EventHistoryKind.SAFETY_OUTCOME_RECORDED,
@@ -1025,6 +1025,14 @@ def has_safety_approval(event_id: int, *, session: Session | None = None) -> boo
     return latest.details["outcome"] == SafetyOutcome.APPROVED.value
 
 
+#: Statuses an event leaves when its safety approval is withdrawn. It goes back to
+#: Approved, the only status it can be sent to Safety Review from, to pass a new
+#: check (ADR-0053, ADR-0087).
+RETURNED_TO_PLANNING_ON_WITHDRAWAL: frozenset[EventRequestStatus] = frozenset(
+    {EventRequestStatus.SAFETY_REVIEW, EventRequestStatus.CONFIRMED}
+)
+
+
 def withdraw_safety_approval(
     event_id: int,
     *,
@@ -1034,23 +1042,26 @@ def withdraw_safety_approval(
 ) -> None:
     """Withdraw the event's safety approval, if it has one, without committing.
 
-    SCRUM-92 AC10: once a replacement venue is approved, the event must pass a new
-    safety check before it can be confirmed or prepared. The withdrawal is a history
-    entry, which ``has_safety_approval`` then reads as no approval. An event in Safety
-    Review goes back to Approved, so the coordinator can send it again. An event with
-    no approval is left alone. The entry rides in the caller's transaction (ADR-0018).
+    For a change after which the event must pass a new safety check before it can be
+    confirmed or prepared: a replacement venue (SCRUM-92 AC10), a significant change
+    (SCRUM-33 AC7, SCRUM-37 AC4), equipment out of service (SCRUM-47 AC5) or a revised
+    equipment outcome (SCRUM-48 AC7). The withdrawal is a history entry, which
+    ``has_safety_approval`` then reads as no approval. An event in Safety Review or
+    Confirmed goes back to Approved, so the coordinator can send it again (ADR-0087).
+    An event with no approval is left alone. The entry rides in the caller's
+    transaction (ADR-0018).
 
     Args:
         event_id: The event request's id.
-        actor_id: The Venue Staff user who approved the replacement.
-        details: The replacement and the arrangement it replaced.
+        actor_id: The user whose change withdrew the approval.
+        details: What the change was, for the history entry.
         session: Database session; defaults to ``db.session``.
     """
     sess = resolve_session(session)
     if not has_safety_approval(event_id, session=sess):
         return
     event_request = sess.get(EventRequest, event_id)
-    if event_request.status is EventRequestStatus.SAFETY_REVIEW:
+    if event_request.status in RETURNED_TO_PLANNING_ON_WITHDRAWAL:
         event_request.status = EventRequestStatus.APPROVED
     record_event_history(
         event_request,

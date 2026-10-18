@@ -48,6 +48,7 @@ from app.modules.notifications.services import (
     list_notifications_for_recipient,
 )
 from app.modules.venue.models import BookingRequestStatus, Venue, VenueBookingRequest
+from tests.conftest import approve_safety
 from tests.events.cases import DRAFT_REFERENCE, LEAD_ID, AddLine, Arrange, SaveArrangement
 
 #: Every role but the Lead, so a role added later is refused unless a test says not.
@@ -373,6 +374,40 @@ def set_status(
         save(saved_event_request)
 
     return _set
+
+
+@pytest.fixture()
+def approved_for_safety(
+    saved_event_request: EventRequest, save: Callable[..., None]
+) -> Callable[[EventRequestStatus], EventRequest]:
+    """Move ``saved_event_request`` to a status, with the Safety Officer's approval.
+
+    Written as the history holds an approval, so ``has_safety_approval`` reads it
+    (ADR-0047).
+    """
+
+    def _approve(status: EventRequestStatus) -> EventRequest:
+        saved_event_request.status = status
+        approve_safety(saved_event_request, save)
+        return saved_event_request
+
+    return _approve
+
+
+@pytest.fixture()
+def safety_withdrawals_of(
+    history_of: Callable[[int], list[tuple[EventHistoryKind, int | None, dict[str, Any] | None]]],
+) -> Callable[[int], list[tuple[int | None, dict[str, Any] | None]]]:
+    """An event's ``safety_approval_withdrawn`` entries, as ``(actor_id, details)``."""
+
+    def _withdrawals(event_request_id: int) -> list[tuple[int | None, dict[str, Any] | None]]:
+        withdrawals = []
+        for kind, actor_id, details in history_of(event_request_id):
+            if kind is EventHistoryKind.SAFETY_APPROVAL_WITHDRAWN:
+                withdrawals.append((actor_id, details))
+        return withdrawals
+
+    return _withdrawals
 
 
 @pytest.fixture()
