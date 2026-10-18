@@ -20,19 +20,39 @@ export interface RaiseBookingRequest {
   required_layout?: string
   /** Required by the backend when the venue is unsuitable for this request. */
   justification?: string
+  /**
+   * A flagged arrangement of the same event this request replaces; approving it releases that
+   * one (SCRUM-92). The backend then also accepts an event in Safety Review.
+   */
+  replaces_request_id?: number
 }
 
 /**
  * Where a request stands. `conflicting` is a pending request that clashes with one Venue Staff
  * approved (SCRUM-44). `on_hold` is a venue Venue Staff hold tentatively until the request's
  * `hold_expires_at` (SCRUM-75). `expired` is a hold that ran out before Venue Staff's final
- * approval, so the venue was released (SCRUM-94).
+ * approval, so the venue was released (SCRUM-94). `released` is one an approved replacement
+ * took over from (SCRUM-92).
  */
 export type BookingRequestStatus =
-  'pending' | 'conflicting' | 'on_hold' | 'approved' | 'rejected' | 'expired'
+  'pending' | 'conflicting' | 'on_hold' | 'approved' | 'rejected' | 'expired' | 'released'
 
 /** How far Venue Staff have got in setting up an approved booking (SCRUM-84). */
 export type PreparationStatus = 'not_started' | 'in_progress' | 'ready'
+
+/** Why a venue can't be used (SCRUM-92). */
+export type UnavailabilityCategory =
+  'maintenance' | 'equipment_failure' | 'renovation' | 'safety_concern' | 'other'
+
+/** One reason a booking needs an alternative venue: a block, or the venue's deactivation. */
+export interface Unavailability {
+  category: UnavailabilityCategory
+  /** Venue Staff's note. */
+  reason: string
+  /** ISO date-times in business time; `ends_at` is `null` until a deactivated venue is reactivated. */
+  starts_at: string
+  ends_at: string | null
+}
 
 /** What the backend accepts when Venue Staff decide a request (SCRUM-43). */
 export interface BookingDecision {
@@ -63,6 +83,12 @@ export interface BookingRequest {
    * otherwise null.
    */
   hold_expires_at: string | null
+  /** Flagged "Needs Alternative Venue": its venue became unavailable (SCRUM-92). */
+  needs_alternative_venue: boolean
+  /** Every block or deactivation that flagged it, earliest first; kept once it is released. */
+  unavailability: Unavailability[]
+  /** The flagged arrangement this one replaces, if it is a replacement (SCRUM-92). */
+  replaces_request_id: number | null
   /** The event's own timing: dates as `2026-11-10`, times as `09:00:00`, in business time. */
   event_proposed_date: string
   event_end_date: string | null

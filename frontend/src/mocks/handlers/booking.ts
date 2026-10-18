@@ -2,7 +2,7 @@ import { http, HttpResponse } from 'msw'
 import type { RequestHandler } from 'msw'
 
 import { ROLE } from '@/config/roles'
-import type { BookingRequest } from '@/features/booking/api'
+import type { BookingRequest, Unavailability } from '@/features/booking/api'
 import type { FieldErrors } from '@/lib/api'
 
 import {
@@ -125,6 +125,8 @@ function missingFieldErrors(body: Record<string, unknown>): FieldErrors {
 }
 
 function toRequest(event: MockBookingEvent, body: Record<string, unknown>, id: number) {
+  /** A new request has no flag: only a block or a deactivation adds one (SCRUM-92). */
+  const unavailability: Unavailability[] = []
   return {
     id,
     event_id: event.id,
@@ -139,6 +141,9 @@ function toRequest(event: MockBookingEvent, body: Record<string, unknown>, id: n
     preparation_status: 'not_started',
     preparation_notes: null,
     hold_expires_at: null,
+    needs_alternative_venue: false,
+    unavailability,
+    replaces_request_id: body.replaces_request_id ?? null,
     event_proposed_date: event.proposed_date,
     event_end_date: event.end_date,
     event_start_time: event.start_time,

@@ -101,6 +101,9 @@ describe('SCRUM-42 venue booking requests against the backend', () => {
 
   it.todo('raises a request for an approved event and lists it (needs a seeded approved event)')
   it.todo('refuses a second Pending request for the same venue and period (409)')
+  it.todo(
+    'raises a replacement linked to a flagged arrangement (SCRUM-92; needs a seeded blocked booking)',
+  )
 })
 
 describe('SCRUM-43 venue booking decisions against the backend', () => {
@@ -144,6 +147,8 @@ describe('SCRUM-43 venue booking decisions against the backend', () => {
     for (const waiting of queue) {
       expect(waiting.status).toBe('pending')
       expect(typeof waiting.event_proposed_date).toBe('string')
+      expect(typeof waiting.needs_alternative_venue).toBe('boolean')
+      expect(Array.isArray(waiting.unavailability)).toBe(true)
     }
   })
 
