@@ -261,6 +261,34 @@ def test_a_request_in_any_other_status_cannot_be_held(
 
 
 # --------------------------------------------------------------------------
+# SCRUM-42 AC7 — a request On Hold still blocks a second one for its venue and period
+# --------------------------------------------------------------------------
+
+
+def test_a_second_request_for_a_held_venue_and_period_is_refused(
+    db_session: Session, multi_venue_event: EventRequest, multi_venue_request: VenueBookingRequest
+) -> None:
+    place_hold(multi_venue_request.id, hours_from_now(48), db_session)
+    venue = db_session.get(Venue, multi_venue_request.venue_id)
+
+    with pytest.raises(ConflictError) as raised:
+        raise_booking(
+            venue,
+            multi_venue_event,
+            db_session,
+            starts_at=multi_venue_request.starts_at.isoformat(),
+            ends_at=multi_venue_request.ends_at.isoformat(),
+        )
+
+    assert raised.value.message == services.DUPLICATE_REQUEST_MESSAGE
+    same_slot = select(VenueBookingRequest).where(
+        VenueBookingRequest.venue_id == multi_venue_request.venue_id,
+        VenueBookingRequest.starts_at == multi_venue_request.starts_at,
+    )
+    assert db_session.scalars(same_slot).all() == [multi_venue_request]
+
+
+# --------------------------------------------------------------------------
 # AC3 — the expiry is in the future and before the event starts
 # --------------------------------------------------------------------------
 

@@ -62,7 +62,7 @@ def test_the_revision_follows_0031_and_fits_alembics_version_column(
     assert len(migration.revision) <= 32
 
 
-def test_upgrade_adds_the_columns_then_the_enum_values_outside_the_transaction(
+def test_upgrade_adds_the_columns_the_enum_values_then_widens_the_pending_index(
     load_migration: LoadMigration,
     render_migration_sql: RenderMigrationSql,
     assert_in_order: AssertInOrder,
@@ -76,6 +76,11 @@ def test_upgrade_adds_the_columns_then_the_enum_values_outside_the_transaction(
         "ALTER TYPE notification_kind ADD VALUE IF NOT EXISTS 'venue_hold_placed'",
         "ALTER TYPE notification_kind ADD VALUE IF NOT EXISTS 'venue_hold_expiry_changed'",
         "BEGIN",
+        # SCRUM-42 AC7: a request On Hold blocks a second one, like a Pending one.
+        "DROP INDEX uq_venue_booking_requests_pending",
+        "CREATE UNIQUE INDEX uq_venue_booking_requests_pending ON venue_booking_requests "
+        "(event_id, venue_id, starts_at, ends_at) "
+        "WHERE status IN ('pending', 'conflicting', 'on_hold')",
     ]
 
     sql = render_migration_sql(migration.upgrade)

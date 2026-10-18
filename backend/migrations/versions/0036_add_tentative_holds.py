@@ -9,7 +9,9 @@ SCRUM-75 "Place a tentative hold on a venue" (ADR-0045):
 * ``bookings`` gains ``hold_expires_at``, when a tentative hold stops holding the venue.
 * ``venue_booking_requests`` gains ``booking_id``, the booking that holds the venue for
   a request that is On Hold.
-* ``booking_request_status`` gains ``on_hold``.
+* ``booking_request_status`` gains ``on_hold``, and the pending index counts it: a
+  request On Hold still blocks a second one for its event, venue and period
+  (SCRUM-42 AC7).
 * ``notification_kind`` gains ``venue_hold_placed`` and ``venue_hold_expiry_changed``,
   the notices the coordinator gets when a hold is placed and when its expiry changes.
 
@@ -40,6 +42,9 @@ PREVIOUS_REQUEST_STATUS_VALUES = ("pending", "withdrawn", "approved", "rejected"
 
 #: Added here (SCRUM-75 AC1).
 ADDED_REQUEST_STATUS_VALUES = ("on_hold",)
+
+#: The statuses the pending index covers after this migration (SCRUM-42 AC7).
+PENDING_CONFLICTING_OR_ON_HOLD = "status IN ('pending', 'conflicting', 'on_hold')"
 
 #: What migrations 0009-0035 left. Downgrade rebuilds ``notification_kind`` with just
 #: this.
@@ -107,6 +112,15 @@ def upgrade() -> None:
     with op.get_context().autocommit_block():
         _add_enum_values("booking_request_status", ADDED_REQUEST_STATUS_VALUES)
         _add_enum_values("notification_kind", ADDED_NOTIFICATION_KIND_VALUES)
+    # The new value is committed by now, so the index can name it, as 0028 does.
+    op.drop_index("uq_venue_booking_requests_pending", table_name="venue_booking_requests")
+    op.create_index(
+        "uq_venue_booking_requests_pending",
+        "venue_booking_requests",
+        ["event_id", "venue_id", "starts_at", "ends_at"],
+        unique=True,
+        postgresql_where=sa.text(PENDING_CONFLICTING_OR_ON_HOLD),
+    )
 
 
 def downgrade() -> None:
