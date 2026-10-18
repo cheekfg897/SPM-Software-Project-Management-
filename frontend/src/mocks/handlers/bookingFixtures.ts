@@ -147,7 +147,8 @@ export const MOCK_PENDING_DECISIONS = [
 
 /**
  * A decided or withdrawn arrangement of `event`: the event's own details, as the backend adds
- * them. A held or expired one also says when its hold runs or ran out.
+ * them. A held or expired one also says when its hold runs or ran out, and a flagged one why it
+ * needs an alternative venue (SCRUM-92).
  */
 function arrangementOf(
   event: MockBookingEvent,
@@ -155,10 +156,12 @@ function arrangementOf(
     BookingRequest,
     'id' | 'venue_id' | 'starts_at' | 'ends_at' | 'purpose' | 'status' | 'decision_reason'
   > &
-    Partial<Pick<BookingRequest, 'hold_expires_at'>>,
+    Partial<Pick<BookingRequest, 'hold_expires_at' | 'needs_alternative_venue' | 'unavailability'>>,
 ): BookingRequest {
   return {
     hold_expires_at: null,
+    needs_alternative_venue: false,
+    unavailability: [],
     ...arrangement,
     event_id: event.id,
     expected_occupancy: 10,
@@ -166,8 +169,6 @@ function arrangementOf(
     justification: null,
     preparation_status: 'not_started',
     preparation_notes: null,
-    needs_alternative_venue: false,
-    unavailability: [],
     replaces_request_id: null,
     event_proposed_date: event.proposed_date,
     event_end_date: event.end_date,
@@ -180,7 +181,8 @@ function arrangementOf(
 /**
  * Arrangements no longer waiting for Venue Staff, so the queue never shows them (SCRUM-93).
  * The multi-venue event has two rejected and one withdrawn; the booked event has an approved
- * one, which nothing can withdraw, and a rejected one. Each event's are saved out of period
+ * one, which nothing can withdraw and whose venue has since been blocked, so it is flagged as
+ * needing an alternative venue (SCRUM-92), and a rejected one. Each event's are saved out of period
  * order, and two start together, so the list's order (period, then id) is visible.
  *
  * The replaced event's original hall was released when its replacement was approved (SCRUM-92),
@@ -223,6 +225,15 @@ export const MOCK_ARRANGEMENTS = {
     purpose: 'Main hall',
     status: 'approved',
     decision_reason: 'Booked',
+    needs_alternative_venue: true,
+    unavailability: [
+      {
+        category: 'maintenance',
+        reason: 'Roof repairs',
+        starts_at: '2026-11-26T08:00:00+08:00',
+        ends_at: '2026-11-26T18:00:00+08:00',
+      },
+    ],
   }),
   bookedSideRoom: arrangementOf(MOCK_BOOKING_EVENTS.booked, {
     id: 9105,
