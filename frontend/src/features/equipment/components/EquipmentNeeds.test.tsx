@@ -130,7 +130,7 @@ describe('SCRUM-37 equipment page: what the event needs (AC5)', () => {
     await screen.findByRole('table', { name: 'Equipment lines' })
     expect(lineRows()).toEqual([
       ['Equipment type 77', '1', 'No notes', 'Unavailable'],
-      ['Projector', '2', 'No notes', 'Partly fulfilled'],
+      ['Projector', '2', 'No notes', 'Partially fulfilled'],
       ['Microphone', '3', 'No notes', 'Awaiting Technical Support'],
       ['Lectern', '4', 'No notes', 'Fulfilled'],
     ])

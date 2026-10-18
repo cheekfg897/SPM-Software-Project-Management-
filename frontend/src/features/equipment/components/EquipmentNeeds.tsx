@@ -7,6 +7,7 @@ import type { DataTableColumn } from '@/components/ui'
 import { selectSessionUser, useAppSelector } from '@/store'
 
 import type { EquipmentLine, EquipmentLineStatus, EquipmentType, EventEquipmentLines } from '../api'
+import { EQUIPMENT_LINE_STATUS_LABELS } from '../constants'
 import { equipmentTypeName } from '../equipmentTypeName'
 
 import { AddLineForm } from './AddLineForm'
@@ -19,12 +20,12 @@ import { RemoveLineConfirm } from './RemoveLineConfirm'
  */
 const EQUIPMENT_LINE_EDITOR_ROLES: readonly Role[] = [ROLE.EVENT_COORDINATOR]
 
-/** Each status in words, so it does not depend on colour to be read (ADR-0065). */
-const STATUS_TEXT: Record<EquipmentLineStatus, { label: string; tone: string }> = {
-  requested: { label: 'Awaiting Technical Support', tone: 'text-flare' },
-  fulfilled: { label: 'Fulfilled', tone: 'text-success' },
-  partially_fulfilled: { label: 'Partly fulfilled', tone: 'text-ember' },
-  unavailable: { label: 'Unavailable', tone: 'text-danger' },
+/** Each status's colour, beside its words (ADR-0065). */
+const STATUS_TONES: Record<EquipmentLineStatus, string> = {
+  requested: 'text-flare',
+  fulfilled: 'text-success',
+  partially_fulfilled: 'text-ember',
+  unavailable: 'text-danger',
 }
 
 /** The line a coordinator is changing or about to remove. */
@@ -46,10 +47,11 @@ function readColumns(equipmentTypes: EquipmentType[]): DataTableColumn<Equipment
     },
     {
       header: 'Status',
-      cell: (line) => {
-        const { label, tone } = STATUS_TEXT[line.status]
-        return <span className={`font-medium ${tone}`}>{label}</span>
-      },
+      cell: (line) => (
+        <span className={`font-medium ${STATUS_TONES[line.status]}`}>
+          {EQUIPMENT_LINE_STATUS_LABELS[line.status]}
+        </span>
+      ),
     },
   ]
 }
