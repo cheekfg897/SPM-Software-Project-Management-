@@ -1,9 +1,13 @@
 import { PageContainer } from '@/components/layout'
 
+import { SuitabilityCheck } from '../components/SuitabilityCheck'
 import { VenueSearchForm } from '../components/VenueSearchForm'
 import { VenueSearchResults } from '../components/VenueSearchResults'
 
-/** A coordinator's venue search (SCRUM-35). Everything shown is the backend's answer to the URL. */
+/**
+ * A coordinator's venue search (SCRUM-35) and suitability check (SCRUM-36). Everything shown is
+ * the backend's answer to the URL.
+ */
 export function VenueSearchPage() {
   return (
     <PageContainer
@@ -15,6 +19,9 @@ export function VenueSearchPage() {
       </div>
       <div className="mt-12">
         <VenueSearchResults />
+      </div>
+      <div className="mt-12">
+        <SuitabilityCheck />
       </div>
     </PageContainer>
   )

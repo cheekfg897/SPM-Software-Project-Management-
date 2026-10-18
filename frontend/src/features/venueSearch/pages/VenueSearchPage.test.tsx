@@ -81,7 +81,7 @@ describe('SCRUM-35 venue search page', () => {
     await view.user.selectOptions(screen.getByLabelText('Room layout'), 'Theatre')
     await view.user.click(screen.getByRole('button', { name: 'Search venues' }))
 
-    await screen.findByText('Harbourfront Hall')
+    await screen.findByRole('article', { name: 'Harbourfront Hall' })
     const sent = searchesSent(requests)
     expect(sent).toHaveLength(1)
     expect(await sent[0]?.json()).toEqual({
@@ -104,7 +104,7 @@ describe('SCRUM-35 venue search page', () => {
 
     await search(view, { 'End time': '01:00', 'End date': '2026-11-21' })
 
-    await screen.findByText('Harbourfront Hall')
+    await screen.findByRole('article', { name: 'Harbourfront Hall' })
     const sent = (await searchesSent(requests).at(-1)?.json()) as Record<string, unknown>
     expect(sent.end_time).toBe('2026-11-21T01:00:00+08:00')
   })
@@ -203,7 +203,7 @@ describe('SCRUM-35 venue search page', () => {
       COORDINATOR,
     )
 
-    expect(await screen.findByText('Harbourfront Hall')).toBeInTheDocument()
+    expect(await screen.findByRole('article', { name: 'Harbourfront Hall' })).toBeInTheDocument()
     expect(screen.getByLabelText('Date')).toHaveValue('2026-11-20')
     expect(screen.getByLabelText('Start time')).toHaveValue('09:00')
     expect(screen.getByLabelText('End time')).toHaveValue('17:00')

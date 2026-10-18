@@ -1,8 +1,15 @@
 import { skipToken, useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router'
 
-import { searchVenues, venueSearchKeys } from './api'
-import { readFilters, toSearchRequest, withFilters } from './searchParams'
+import { checkSuitability, fetchVenues, searchVenues, venueSearchKeys } from './api'
+import {
+  readFilters,
+  readVenueToCheck,
+  toSearchRequest,
+  toSuitabilityRequest,
+  withFilters,
+  withVenueToCheck,
+} from './searchParams'
 import type { SearchFilters } from './searchParams'
 
 /**
@@ -26,5 +33,31 @@ export function useVenueSearch(filters: SearchFilters | null) {
   return useQuery({
     queryKey: venueSearchKeys.results(search),
     queryFn: search === null ? skipToken : () => searchVenues(search),
+  })
+}
+
+/** The venue being checked, read from and written to the page URL (SCRUM-36). */
+export function useVenueToCheck() {
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  return {
+    venueId: readVenueToCheck(searchParams),
+    checkVenue: (venueId: number) => {
+      setSearchParams((current) => withVenueToCheck(current, venueId))
+    },
+  }
+}
+
+/** Every active venue, to choose one to check. */
+export function useVenues() {
+  return useQuery({ queryKey: venueSearchKeys.venues(), queryFn: fetchVenues })
+}
+
+/** Whether the venue meets the needs searched for, and each one it fails. */
+export function useSuitability(venueId: number, filters: SearchFilters) {
+  const check = toSuitabilityRequest(filters)
+  return useQuery({
+    queryKey: venueSearchKeys.suitability(venueId, check),
+    queryFn: () => checkSuitability(venueId, check),
   })
 }
