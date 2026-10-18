@@ -165,7 +165,8 @@ def test_a_failed_notification_write_still_returns_the_saved_line(
     """The line is committed first; failing its reply would invite adding it again."""
     event_request = make_event_request(coordinator_id=COORDINATOR_ID)
     event_request.id = 1
-    mock_session.scalar.return_value = event_request
+    # The request, then no safety check in its history (SCRUM-37 AC4).
+    mock_session.scalar.side_effect = [event_request, None]
     mock_session.get.return_value = make_equipment_type()
     mock_session.scalars.return_value = [5]  # one Technical Support Staff member
     lost_connection = OperationalError("INSERT INTO notifications ...", {}, Exception("gone"))
