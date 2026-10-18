@@ -1,4 +1,4 @@
 export { apiRequest, connectApiClient } from './client'
 export type { HttpMethod, QueryParams, RequestOptions } from './client'
-export { ApiError, errorMessageOf, fieldErrorsOf, toApiError } from './errors'
+export { ApiError, errorMessageOf, fieldErrorsOf, textDetailOf, toApiError } from './errors'
 export type { FieldErrors } from './errors'

@@ -13,19 +13,29 @@ export const UNEXPECTED_RESPONSE_MESSAGE = 'Something went wrong. Please try aga
  * An error response from the backend, or a failure to reach it.
  *
  * `code` and `message` are the backend's `error` and `message`; screens show `message` as it
- * is rather than writing their own. `status` is 0 when no response arrived at all.
+ * is rather than writing their own. `status` is 0 when no response arrived at all. `details` is
+ * the body's `details` as sent, for a refusal that carries more than per-field messages, such as
+ * when withdrawals closed (SCRUM-53).
  */
 export class ApiError extends Error {
   readonly status: number
   readonly code: string
   readonly fieldErrors: FieldErrors
+  readonly details: Record<string, unknown>
 
-  constructor(status: number, code: string, message: string, fieldErrors: FieldErrors = {}) {
+  constructor(
+    status: number,
+    code: string,
+    message: string,
+    fieldErrors: FieldErrors = {},
+    details: Record<string, unknown> = {},
+  ) {
     super(message)
     this.name = 'ApiError'
     this.status = status
     this.code = code
     this.fieldErrors = fieldErrors
+    this.details = details
   }
 
   /** A 4xx: the request itself was refused, so sending it again won't help. */
@@ -73,7 +83,7 @@ export function toApiError(status: number, body: unknown): ApiError {
   }
 
   const details = isRecord(body.details) ? body.details : {}
-  return new ApiError(status, body.error, body.message, collectFieldErrors(details))
+  return new ApiError(status, body.error, body.message, collectFieldErrors(details), details)
 }
 
 /** The message to show for any error: the backend's own, or a generic one. */
@@ -84,4 +94,13 @@ export function errorMessageOf(error: unknown): string {
 /** The backend's messages per field, or none when the error isn't a validation error. */
 export function fieldErrorsOf(error: unknown): FieldErrors {
   return error instanceof ApiError ? error.fieldErrors : {}
+}
+
+/** One of the error's `details` that is text, or null when it is missing, not text or not an ApiError. */
+export function textDetailOf(error: unknown, name: string): string | null {
+  if (!(error instanceof ApiError)) {
+    return null
+  }
+  const detail = error.details[name]
+  return typeof detail === 'string' ? detail : null
 }
