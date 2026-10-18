@@ -15,8 +15,8 @@ import { refusal, signInAs, signInAsNewAttendee, staffAccount } from './backend'
  * SCRUM-37's equipment lines and SCRUM-27's equipment types against the running backend: the
  * paths, roles, refusals and wording the equipment page relies on (ADR-0019, ADR-0065).
  *
- * The staff account is an Event Coordinator with no event assigned: CI has no Event Coordinator
- * Lead to assign one, nor a Technical Support account, so what needs an assigned event is a todo.
+ * The staff account is an Event Coordinator with no event assigned here, so what needs an
+ * assigned event is still a todo.
  */
 
 /** A well-formed reference no database has, so the lookup finds nothing. */
@@ -37,8 +37,8 @@ const EQUIPMENT_TYPE_FIELDS = [
 ]
 
 /**
- * A Technical Support account for the SCRUM-48 checks only they can reach. CI seeds none, so
- * those checks read it from these variables and skip without them:
+ * A Technical Support account for the SCRUM-48 checks only they can reach. CI makes one
+ * (frontend.yml); a local run reads it from these variables and skips those checks without them:
  * INTEGRATION_TECH_SUPPORT_EMAIL=... INTEGRATION_TECH_SUPPORT_PASSWORD=... npm run test:integration
  */
 const TECH_SUPPORT_EMAIL = import.meta.env.INTEGRATION_TECH_SUPPORT_EMAIL ?? ''
