@@ -3,7 +3,8 @@
 This file covers how an outcome's status follows from the quantity provided, and the
 "no outcome yet" seam that SCRUM-97 and SCRUM-49 gate the Safety Review on. Its
 SCRUM-50 section (marked ``scrum_50``) covers what the coordinator's notice says: the
-equipment, the outcome and the note (SCRUM-50 AC4, ADR-0055).
+equipment, the outcome and the note (SCRUM-50 AC4, ADR-0055). AC7: revising an outcome
+once the event has passed its safety check withdraws the approval (ADR-0040, ADR-0087).
 """
 
 from __future__ import annotations
@@ -28,6 +29,7 @@ from app.modules.events.models import (
     EventHistoryEntry,
     EventHistoryKind,
     EventRequest,
+    EventRequestStatus,
 )
 from app.modules.events.schemas import EquipmentLineWithOutcomeSchema, EventRequestDetailSchema
 from app.modules.notifications.models import Notification, NotificationKind
@@ -123,6 +125,7 @@ REVIEWER_ID = 5
 COORDINATOR_ID = 3
 RECORDED_AT = datetime(2026, 10, 13, 9, 30, tzinfo=UTC)
 HistoryOf = Callable[[int], list[tuple[EventHistoryKind, int | None, dict[str, Any] | None]]]
+WithdrawalsOf = Callable[[int], list[tuple[int | None, dict[str, Any] | None]]]
 
 
 @pytest.fixture()
@@ -629,3 +632,76 @@ def test_raising_a_quantity_after_an_outcome_is_still_allowed(
     )
 
     assert line.quantity == 12
+
+
+# --------------------------------------------------------------------------
+# AC7 — revising an outcome after the safety check withdraws the approval
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("status", [EventRequestStatus.SAFETY_REVIEW, EventRequestStatus.CONFIRMED])
+def test_a_revised_outcome_withdraws_the_safety_approval(
+    record_outcome: Callable[..., EventEquipmentLine],
+    ten_requested: EventEquipmentLine,
+    approved_for_safety: Callable[[EventRequestStatus], EventRequest],
+    saved_event_request: EventRequest,
+    equipment_type: EquipmentType,
+    safety_withdrawals_of: WithdrawalsOf,
+    db_session: Session,
+    status: EventRequestStatus,
+) -> None:
+    """The event goes back to Approved, to be sent for a new check (ADR-0087)."""
+    record_outcome(ten_requested, provided_quantity=8, note="Two in repair")
+    approved_for_safety(status)
+
+    record_outcome(ten_requested, provided_quantity=6, note="Two broke")
+
+    assert services.has_safety_approval(saved_event_request.id, session=db_session) is False
+    assert safety_withdrawals_of(saved_event_request.id) == [
+        (
+            REVIEWER_ID,
+            {
+                "equipment_line_id": ten_requested.id,
+                "equipment_type_name": equipment_type.name,
+                "previous_provided_quantity": 8,
+            },
+        )
+    ]
+    db_session.expire_all()
+    assert saved_event_request.status is EventRequestStatus.APPROVED
+
+
+def test_a_first_outcome_keeps_the_safety_approval(
+    record_outcome: Callable[..., EventEquipmentLine],
+    ten_requested: EventEquipmentLine,
+    approved_for_safety: Callable[[EventRequestStatus], EventRequest],
+    saved_event_request: EventRequest,
+    safety_withdrawals_of: WithdrawalsOf,
+    db_session: Session,
+) -> None:
+    """Only a revision changes what the Safety Officer approved."""
+    approved_for_safety(EventRequestStatus.SAFETY_REVIEW)
+
+    record_outcome(ten_requested, provided_quantity=10)
+
+    assert services.has_safety_approval(saved_event_request.id, session=db_session) is True
+    assert safety_withdrawals_of(saved_event_request.id) == []
+
+
+def test_a_revision_on_an_event_without_an_approval_withdraws_nothing(
+    record_outcome: Callable[..., EventEquipmentLine],
+    ten_requested: EventEquipmentLine,
+    saved_event_request: EventRequest,
+    save: Callable[..., None],
+    safety_withdrawals_of: WithdrawalsOf,
+    db_session: Session,
+) -> None:
+    saved_event_request.status = EventRequestStatus.SAFETY_REVIEW
+    save(saved_event_request)
+    record_outcome(ten_requested, provided_quantity=10)
+
+    record_outcome(ten_requested, provided_quantity=6, note="Two broke")
+
+    assert safety_withdrawals_of(saved_event_request.id) == []
+    db_session.expire_all()
+    assert saved_event_request.status is EventRequestStatus.SAFETY_REVIEW

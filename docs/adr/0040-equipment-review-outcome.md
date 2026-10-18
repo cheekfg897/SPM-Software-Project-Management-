@@ -1,6 +1,6 @@
 # ADR-0040: Technical Support records how much of an equipment request can be met; the status is derived from the quantity provided
 
-- **Status:** Accepted; the coordinator's notice gains the outcome and the note in [ADR-0055](0055-booking-and-equipment-notices.md)
+- **Status:** Accepted; the coordinator's notice gains the outcome and the note in [ADR-0055](0055-booking-and-equipment-notices.md); the deferred safety check AC (now AC7) is built in decision 14
 - **Date:** 2026-10-13
 - **Story:** SCRUM-48 Record the outcome of an equipment review
 
@@ -19,13 +19,14 @@ SCRUM-48 lets Technical Support staff record, line by line, how much of a reques
 9. **Where the outcome is shown.** `POST /api/events/requests/<reference>/equipment/<line_id>/outcome` (endpoint `events.record_outcome`, `technical_support_staff`) returns the line with its outcome. The outcome fields (provided quantity, shortfall, note, reviewer, time) also appear on the equipment list (`GET .../equipment`). The organiser's event detail (`EventRequestDetailSchema`) shows each line's status but not the provided quantity, shortfall, note, reviewer or time; a later story shares those.
 10. **A line id belonging to another event is a `404`,** and an Event Coordinator calling the route is a `403`; only Technical Support records an outcome.
 11. **Deferred acceptance criteria, each with its owner.**
-    - AC6 (a revised outcome after the Operational Safety Check forces a new check): **SCRUM-97** and **SCRUM-98**, because Safety Review does not exist yet.
+    - AC6 (a revised outcome after the Operational Safety Check forces a new check): **SCRUM-97** and **SCRUM-98**, because Safety Review does not exist yet. *(Built once they landed: decision 14. The AC is now AC7.)*
     - Notifications beyond the coordinator: **SCRUM-50**.
 12. **Known gaps, each a default for the team to review (the organiser's detail page not showing the outcome is in decision 9).**
     - **Changing a line after an outcome is recorded can leave the outcome stale.** Lowering the quantity below `provided_quantity` is refused with a `400` on `quantity` (the database check would otherwise fire). Raising the quantity is allowed and leaves a `fulfilled` status beside a positive shortfall, and removing the line discards its outcome. A follow-up ticket for the team to raise in Jira: decide whether to block those edits once an outcome exists or to reset the outcome.
     - **`all_outcomes_recorded` returns `True` for an event with no equipment,** because no line is missing an outcome. SCRUM-97 and SCRUM-49 must decide whether an event with no equipment passes the Safety Review gate; this is what "every request has an outcome" means for zero requests.
     - **An outcome can be recorded on an event in any non-draft status,** including rejected, cancelled and completed, and the coordinator is still notified. A follow-up ticket for the team to raise in Jira: decide which statuses accept an outcome.
 13. **Defaults to review (not agreed with the team):** decision 5 (a note is required for a partial outcome, not only an unavailable one), decision 6 (the coordinator is notified of every outcome, not only an unavailable one), and the three gaps in decision 12.
+14. **A revision after the safety check withdraws the approval (AC7).** A revision is an outcome recorded on a line that already had one (`provided_quantity` was set), the same thing decision 7 calls a revision. If the Safety Officer has approved the event, the outcome's own commit also writes a `safety_approval_withdrawn` history entry through `withdraw_safety_approval`, with the Technical Support user as actor and `details = {"equipment_line_id", "equipment_type_name", "previous_provided_quantity"}`, the quantity the approved outcome promised; an event in Safety Review or Confirmed goes back to Approved ([ADR-0087](0087-withdrawn-safety-approval-returns-the-event-to-approved.md)). The entry is internal-only, like the outcome entry beside it. The coordinator gets the one outcome notice AC4 already sends, and nothing more. A first outcome withdraws nothing: an event only reaches the Safety Officer once every line has an outcome (SCRUM-97), so a first outcome is never something they approved. **Default to review:** every revision counts, even one that records the same quantity and note again, since decision 7 has no "unchanged" case either.
 
 ## Consequences
 - The status can never disagree with the quantities, and the shortfall needs no migration to correct.
@@ -34,6 +35,6 @@ SCRUM-48 lets Technical Support staff record, line by line, how much of a reques
 - The migration's downgrade loses recorded outcomes: it resets every line with an outcome to `requested`, nulls the four outcome columns, and deletes the `equipment_outcome_recorded` history entries and notifications.
 
 ## Revisit when
-- SCRUM-97 / SCRUM-98 build Safety Review (AC6, and the empty-equipment question).
+- SCRUM-97 / SCRUM-98 build Safety Review (the empty-equipment question; AC6, now AC7, is decision 14).
 - The team answers the stale-outcome ticket.
 - The team confirms or overturns decisions 5 and 6.
