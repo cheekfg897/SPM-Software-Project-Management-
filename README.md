@@ -175,21 +175,21 @@ curl http://localhost:5000/api/auth/internal-only -H "Authorization: Bearer <tok
 | `GET  /api/venues`             | any authenticated user — list active venues, by name            |
 | `GET  /api/venues/<id>`        | any authenticated user — one venue, active or not               |
 | `PATCH /api/venues/<id>`       | `venue_staff` — change only the fields sent; if setup/turnaround changed, lists confirmed bookings that now overlap each other or run into a block |
-| `POST /api/venues/<id>/deactivate` | `venue_staff` — hide from listing and search            |
-| `POST /api/venues/<id>/reactivate` | `venue_staff` — show again                              |
+| `POST /api/venues/<id>/deactivate` | `venue_staff` — hide from listing and search, with a `category` and a `reason` note; flags its arrangements that haven't ended Needs Alternative Venue (ADR-0053) |
+| `POST /api/venues/<id>/reactivate` | `venue_staff` — show again; clears the flags the deactivation left |
 | `GET  /api/venues/<id>/calendar?range_start=…&range_end=…` | internal roles — bookings and blocked periods in the range |
 | `POST /api/venues/search`      | `event_coordinator` — venues that meet an event's requirements and are free |
-| `POST /api/venues/<id>/blocks` | `venue_staff` — block a period with a reason; lists the confirmed bookings it cuts into |
+| `POST /api/venues/<id>/blocks` | `venue_staff` — block a period with a `category` and a `reason` note; lists the confirmed bookings it cuts into, and flags every confirmed booking or Pending request it cuts into Needs Alternative Venue, telling each event's coordinator (ADR-0053) |
 | `GET  /api/venues/<id>/blocks` | `venue_staff` — the venue's blocks with ids and reasons, in start order |
-| `DELETE /api/venues/<id>/blocks/<block_id>` | `venue_staff` — remove a block; the venue is available again |
+| `DELETE /api/venues/<id>/blocks/<block_id>` | `venue_staff` — remove a block; the venue is available again and the block's flags are cleared |
 | `POST /api/venues/<id>/suitability` | `event_coordinator`, `venue_staff` — whether the venue meets an event's requirements, with each reason it doesn't |
-| `POST /api/venues/events/<reference>/booking-requests` | `event_coordinator` — raise a Pending venue booking request for your approved event; returns the request with the event's timing and accessibility needs; 400 naming the venue's hours if the period falls outside them |
+| `POST /api/venues/events/<reference>/booking-requests` | `event_coordinator` — raise a Pending venue booking request for your approved event; returns the request with the event's timing and accessibility needs; 400 naming the venue's hours if the period falls outside them. With `replaces_request_id`, a replacement for a flagged arrangement, also allowed in Safety Review (ADR-0053) |
 | `GET  /api/venues/events/<reference>/booking-requests` | `event_coordinator` — the event's booking requests, earliest first, with the same event details; 404 if the event is not yours |
 | `PATCH /api/venues/events/<reference>/booking-requests/<id>` | `event_coordinator` — change a pending arrangement's purpose, occupancy, layout or justification; the venue and period don't move |
 | `POST  /api/venues/events/<reference>/booking-requests/<id>/withdraw` | `event_coordinator` — retract one arrangement before Venue Staff decide it; 409 if it isn't pending, conflicting or rejected |
 | `POST  /api/venues/events/<reference>/booking-requests/cancel-all` | `event_coordinator` — retire every arrangement the event still has |
 | `GET  /api/venues/booking-requests` | `venue_staff` — every Pending or Conflicting request waiting for a decision, earliest event first, with the event's timing and accessibility needs |
-| `POST /api/venues/booking-requests/<id>/decision` | `venue_staff` — approve a request (books the venue) or reject it; a rejection needs a reason; 409 if it isn't pending or conflicting, or if approving clashes with a confirmed booking at the venue (setup and turnaround included), naming that booking (ADR-0045) |
+| `POST /api/venues/booking-requests/<id>/decision` | `venue_staff` — approve a request (books the venue) or reject it; a rejection needs a reason; 409 if it isn't pending or conflicting, or if approving clashes with a confirmed booking at the venue (setup and turnaround included), naming that booking (ADR-0045). Approving a replacement releases the arrangement it replaces and withdraws the event's safety approval (ADR-0053) |
 | `PUT  /api/venues/booking-requests/<id>/preparation` | `venue_staff` — record `{"status": "not_started" \| "in_progress" \| "ready", "notes"}` on an approved booking, each update kept in the event's history with who and when; the coordinator reads it on their event's booking requests; 409 if the booking isn't approved or the Safety Officer hasn't approved the event ([ADR-0049](docs/adr/0049-venue-preparation-details.md)) |
 | `POST /api/equipment/types`    | `technical_support_staff` — add an equipment type               |
 | `GET  /api/equipment/types`    | internal roles — every equipment type with its total quantity, by name |
