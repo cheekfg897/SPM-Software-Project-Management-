@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision = "0039_flag_alternative_venues"
@@ -122,10 +123,11 @@ PENDING_CONFLICTING_OR_ON_HOLD = "status IN ('pending', 'conflicting', 'on_hold'
 REPLACES_FOREIGN_KEY = "fk_venue_booking_requests_replaces_request_id"
 
 
-def _category_type() -> sa.Enum:
+def _category_type() -> postgresql.ENUM:
     # create_type=False: the type is created once, explicitly, before either column
-    # uses it.
-    return sa.Enum(*CATEGORY_VALUES, name=CATEGORY_TYPE, create_type=False)
+    # uses it. Only Postgres's ENUM honours it on SQLAlchemy 2.0 (as in 0021); the
+    # generic sa.Enum ignores it there, and create_table makes the type a second time.
+    return postgresql.ENUM(*CATEGORY_VALUES, name=CATEGORY_TYPE, create_type=False)
 
 
 def _add_enum_values(type_name: str, values: tuple[str, ...]) -> None:
