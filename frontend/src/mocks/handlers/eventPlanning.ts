@@ -2,22 +2,25 @@ import { http, HttpResponse } from 'msw'
 import type { RequestHandler } from 'msw'
 
 import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
+import type { RegistrationChanges } from '@/features/eventRequests/api'
 import type { FieldErrors } from '@/lib/api'
 
-import { errorResponse } from '../responses'
+import { errorResponse, validationError } from '../responses'
 
 import { MOCK_NOW } from './catalogueFixtures'
 import { NOTHING_PLANNED } from './eventPlanningFixtures'
 import type { MockPlanning } from './eventPlanningFixtures'
+import { loadRegistrationChanges } from './eventPlanningRules'
 import type { MockEventRequest } from './eventRequestFixtures'
-import { assignedOrRefusal } from './eventRequests'
+import { assignedOrRefusal, objectBodyOrRefusal } from './eventRequests'
 
 /**
  * The coordinator's planning actions on the stored event requests eventRequests.ts keeps, so
  * the record read afterwards shows the change: sending an event to safety review (SCRUM-97,
- * ADR-0047) and marking it completed once it has ended, at the mock's "now", MOCK_NOW (SCRUM-68,
- * ADR-0027). Only the event's assigned coordinator may; the checks, their order, the codes,
- * messages and the gaps named are the backend's (ADR-0075).
+ * ADR-0047), marking it completed once it has ended, at the mock's "now", MOCK_NOW (SCRUM-68,
+ * ADR-0027), and its registration settings (SCRUM-69, ADR-0043). Only the event's assigned
+ * coordinator may; the checks, their order, the codes, messages and the gaps named are the
+ * backend's (ADR-0075).
  */
 
 const REQUEST_PATH = '/api/events/requests/:reference'
@@ -30,6 +33,8 @@ const NOT_CONFIRMED_MESSAGE = 'Only a confirmed event can be marked completed.'
 const NOT_YET_ENDED_MESSAGE = 'The event has not ended yet.'
 /** Singapore's offset: an event's dates and times are business time with none (ADR-0009). */
 const BUSINESS_TIME_OFFSET = '+08:00'
+const CAPACITY_REQUIRED_MESSAGE = 'A capacity is required to enable registration.'
+const REGISTRATION_NOT_CONFIRMED_MESSAGE = 'Registration can be enabled only for a confirmed event.'
 
 /** A 409 with the reasons behind it, as the backend's gates send it (ADR-0047, ADR-0051). */
 function refusalWithGaps(code: string, message: string, details: FieldErrors) {
@@ -87,6 +92,47 @@ function hasEnded(stored: MockEventRequest): boolean {
   return Date.parse(MOCK_NOW) >= endsAt
 }
 
+/** An event's registration settings as the backend stores them. */
+type RegistrationState = Pick<MockPlanning, 'registration_enabled' | 'registration_capacity'>
+
+/**
+ * The settings once `changes` apply, as `_settings_after` works them out: what isn't sent stays,
+ * except whether registration is open on an event that never had a capacity, which follows the
+ * organiser's answer (SCRUM-69 AC1, ADR-0043).
+ */
+function settingsAfter(stored: MockEventRequest, changes: RegistrationChanges): RegistrationState {
+  const planning = planningOf(stored)
+  let enabled = planning.registration_enabled
+  if (changes.registration_enabled !== undefined) {
+    enabled = changes.registration_enabled
+  } else if (planning.registration_capacity === null) {
+    enabled = stored.request.registration_required
+  }
+  return {
+    registration_enabled: enabled,
+    registration_capacity: changes.registration_capacity ?? planning.registration_capacity,
+  }
+}
+
+/**
+ * Why the settings are refused, in the backend's order: open with no capacity, open before the
+ * event is confirmed, then, open or closed, a capacity below the number registered (ADR-0043).
+ */
+function registrationRefusal(stored: MockEventRequest, settings: RegistrationState) {
+  if (settings.registration_enabled && settings.registration_capacity === null) {
+    return validationError({ registration_capacity: [CAPACITY_REQUIRED_MESSAGE] })
+  }
+  if (settings.registration_enabled && stored.request.status !== EVENT_REQUEST_STATUS.CONFIRMED) {
+    return errorResponse(409, 'registration_not_enablable', REGISTRATION_NOT_CONFIRMED_MESSAGE)
+  }
+  const { registeredCount } = planningOf(stored)
+  if (settings.registration_capacity !== null && settings.registration_capacity < registeredCount) {
+    const message = `Capacity cannot be lower than the ${registeredCount} places already taken.`
+    return validationError({ registration_capacity: [message] })
+  }
+  return null
+}
+
 export const eventPlanningHandlers: RequestHandler[] = [
   http.post(`${REQUEST_PATH}/safety-review`, ({ request, params }) => {
     const found = assignedOrRefusal(request, params.reference)
@@ -121,5 +167,33 @@ export const eventPlanningHandlers: RequestHandler[] = [
 
     stored.request.status = EVENT_REQUEST_STATUS.COMPLETED
     return HttpResponse.json(stored.request)
+  }),
+
+  http.patch(`${REQUEST_PATH}/registration`, async ({ request, params }) => {
+    const found = assignedOrRefusal(request, params.reference)
+    if ('refusal' in found) {
+      return found.refusal
+    }
+    const { stored } = found
+    const payload = await objectBodyOrRefusal(request)
+    if ('refusal' in payload) {
+      return payload.refusal
+    }
+    const loaded = loadRegistrationChanges(payload.body)
+    if ('errors' in loaded) {
+      return validationError(loaded.errors)
+    }
+    const settings = settingsAfter(stored, loaded.changes)
+    const refused = registrationRefusal(stored, settings)
+    if (refused !== null) {
+      return refused
+    }
+
+    stored.planning = { ...planningOf(stored), ...settings }
+    return HttpResponse.json({
+      reference: stored.request.reference,
+      registration_required: stored.request.registration_required,
+      ...settings,
+    })
   }),
 ]

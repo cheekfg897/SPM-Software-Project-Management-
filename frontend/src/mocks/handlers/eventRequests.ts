@@ -256,7 +256,7 @@ export function assignedOrRefusal(request: Request, reference: unknown) {
 }
 
 /** The body, if it is a JSON object; anything else is refused before its fields are read. */
-async function objectBodyOrRefusal(request: Request) {
+export async function objectBodyOrRefusal(request: Request) {
   const body: unknown = await request.json().catch(() => null)
   if (!isRecord(body)) {
     return { refusal: errorResponse(400, 'validation_error', NOT_AN_OBJECT_MESSAGE) }

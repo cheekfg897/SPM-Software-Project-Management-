@@ -15,18 +15,28 @@ export interface MockArrangement {
 
 /**
  * What the backend counts when the coordinator plans an event, which the other feature mocks
- * keep in their own copies of events (ADR-0075): its venue arrangements, in period order, and
- * the ids of its equipment requests Technical Support hasn't answered.
+ * keep in their own copies of events (ADR-0075): its venue arrangements, in period order, the
+ * ids of its equipment requests Technical Support hasn't answered, its registration settings
+ * as the backend stores them (ADR-0043) and how many attendees have registered.
  */
 export interface MockPlanning {
   arrangements: readonly MockArrangement[]
   equipmentWithoutOutcome: readonly number[]
+  registration_enabled: boolean
+  registration_capacity: number | null
+  registeredCount: number
 }
 
-/** An event the mock holds nothing for: no venue arranged and no equipment requested. */
+/**
+ * An event the mock holds nothing for: no venue arranged, no equipment requested, registration
+ * closed with no capacity and nobody registered.
+ */
 export const NOTHING_PLANNED: MockPlanning = {
   arrangements: [],
   equipmentWithoutOutcome: [],
+  registration_enabled: false,
+  registration_capacity: null,
+  registeredCount: 0,
 }
 
 /** Hana, the mock coordinator whose events are past their first decision (ADR-0075). */
@@ -66,11 +76,14 @@ const DETAILS = {
  * Review gate names both; EVR-PLAN0002 is settled, its only other arrangement withdrawn.
  * Confirmed, against the mock's "now" (MOCK_NOW, 5 Oct 12:00 pm): EVR-PLAN0005 ends exactly
  * then, so it has ended; EVR-PLAN0006 began the day before and ends a minute later, so it hasn't.
+ * EVR-PLAN0005's registration is open for 50 with 30 registered, though its organiser didn't ask
+ * for it; EVR-PLAN0006's organiser did, and nothing is set yet.
  */
 export const PLANNING_EVENT_REQUESTS: readonly MockEventRequest[] = [
   {
     ...HANAS_EVENT,
     planning: {
+      ...NOTHING_PLANNED,
       arrangements: [
         { id: 41, status: 'approved' },
         { id: 40, status: 'withdrawn' },
@@ -91,6 +104,7 @@ export const PLANNING_EVENT_REQUESTS: readonly MockEventRequest[] = [
   {
     ...HANAS_EVENT,
     planning: {
+      ...NOTHING_PLANNED,
       arrangements: [
         { id: 44, status: 'withdrawn' },
         { id: 45, status: 'approved' },
@@ -109,6 +123,12 @@ export const PLANNING_EVENT_REQUESTS: readonly MockEventRequest[] = [
   },
   {
     ...HANAS_EVENT,
+    planning: {
+      ...NOTHING_PLANNED,
+      registration_enabled: true,
+      registration_capacity: 50,
+      registeredCount: 30,
+    },
     request: {
       ...DETAILS,
       reference: 'EVR-PLAN0005',
@@ -127,6 +147,7 @@ export const PLANNING_EVENT_REQUESTS: readonly MockEventRequest[] = [
       reference: 'EVR-PLAN0006',
       status: 'confirmed',
       name: 'Weekend Coding Camp',
+      registration_required: true,
       proposed_date: '2026-10-04',
       end_date: '2026-10-05',
       end_time: '12:01:00',

@@ -219,6 +219,34 @@ export function completeEvent(reference: string): Promise<EventRequest> {
 }
 
 /**
+ * An event's registration settings, as the backend answers a change: what the organiser asked
+ * for beside what the coordinator set (SCRUM-69, ADR-0043). The capacity is null until set.
+ */
+export interface RegistrationSettings {
+  reference: string
+  registration_required: boolean
+  registration_enabled: boolean
+  registration_capacity: number | null
+}
+
+/** A change to the settings: only what is sent changes, and a capacity can't be emptied. */
+export interface RegistrationChanges {
+  registration_enabled?: boolean
+  registration_capacity?: number
+}
+
+/** Open or close registration for a confirmed event, and set its capacity (SCRUM-69). */
+export function updateRegistrationSettings(
+  reference: string,
+  changes: RegistrationChanges,
+): Promise<RegistrationSettings> {
+  return apiRequest<RegistrationSettings>(`${requestPath(reference)}/registration`, {
+    method: 'PATCH',
+    body: changes,
+  })
+}
+
+/**
  * A row of a staff list that carries only the backend's `EVENT_LIST_FIELDS`: the event's
  * reference, name, dates, times and status (SCRUM-24 AC8, ADR-0026).
  */
