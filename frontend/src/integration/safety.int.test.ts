@@ -1,21 +1,20 @@
-import { ROLE } from '@/config/roles'
-import { register } from '@/features/auth/api'
 import { decideBookingRequest, raiseBookingRequest } from '@/features/booking/api'
-import { assignCoordinator } from '@/features/lead/api'
 import { fetchAwaitingSafetyReview, recordSafetyOutcome } from '@/features/safety/api'
 import type { SafetyChecklist } from '@/features/safety/api'
-import { apiRequest } from '@/lib/api'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
 
+import { refusal, signInAs, signInAsNewAttendee, staffAccount } from './backend'
 import {
-  refusal,
-  signInAs,
-  signInAsNewAttendee,
-  staffAccount,
-  uniqueEmail,
-  VALID_PASSWORD,
-} from './backend'
-import type { Credentials } from './backend'
+  approvedEvent,
+  coordinatorPosts,
+  EVENT_DATE,
+  LEAD,
+  newVenue,
+  optionalAccount,
+  required,
+  submittedEvent,
+  VENUE_STAFF,
+} from './plannedEvent'
 
 /**
  * The Safety Officer's list (SCRUM-97 AC5, AC6; SCRUM-24 AC6) and the safety check outcome
@@ -59,36 +58,12 @@ const EVENT_REQUEST_FIELDS = [
 /** A well-formed reference no database has, so the lookup finds nothing. */
 const UNKNOWN_REFERENCE = 'EVR-NOSUCH00'
 
-/** A staff account read from two variables, or null when either is unset. */
-function optionalAccount(email: string | undefined, password: string | undefined) {
-  if (email === undefined || email === '' || password === undefined || password === '') {
-    return null
-  }
-  return { email, password }
-}
-
 const SAFETY_OFFICER = optionalAccount(
   import.meta.env.INTEGRATION_SAFETY_OFFICER_EMAIL,
   import.meta.env.INTEGRATION_SAFETY_OFFICER_PASSWORD,
 )
-const LEAD = optionalAccount(
-  import.meta.env.INTEGRATION_LEAD_EMAIL,
-  import.meta.env.INTEGRATION_LEAD_PASSWORD,
-)
-const VENUE_STAFF = optionalAccount(
-  import.meta.env.INTEGRATION_VENUE_STAFF_EMAIL,
-  import.meta.env.INTEGRATION_VENUE_STAFF_PASSWORD,
-)
 const hasSafetyOfficer = SAFETY_OFFICER !== null
 const canReachSafetyReview = hasSafetyOfficer && LEAD !== null && VENUE_STAFF !== null
-
-/** The account, which the test's skip condition has already checked is set. */
-function required(account: Credentials | null): Credentials {
-  if (account === null) {
-    throw new Error('This check needs an account that is not set; it should have been skipped.')
-  }
-  return account
-}
 
 /** A note on each of SCRUM-98 AC2's seven items. */
 const CHECKLIST: SafetyChecklist = {
@@ -101,83 +76,13 @@ const CHECKLIST: SafetyChecklist = {
   venue_restrictions: 'No open flames.',
 }
 
-/** A date `days` from now, as the backend reads dates ("2026-11-20"). */
-function daysFromNow(days: number): string {
-  return new Date(Date.now() + days * 24 * 60 * 60_000).toISOString().slice(0, 10)
-}
-
-const EVENT_DATE = daysFromNow(30)
-
-/** As the signed-in staff account: record a client organisation and sign its organiser up. */
-async function newOrganiser(): Promise<Credentials> {
-  await signInAs(staffAccount())
-  const organisation = await apiRequest<{ id: number }>('/api/organisations', {
-    method: 'POST',
-    body: {
-      name: `Integration organisation ${uniqueEmail('organisation')}`,
-      contact_name: 'Integration Contact',
-      contact_email: uniqueEmail('contact'),
-    },
-  })
-  const organiser = { email: uniqueEmail('organiser'), password: VALID_PASSWORD }
-  await register({
-    full_name: 'Integration Organiser',
-    ...organiser,
-    role: ROLE.EVENT_ORGANISER,
-    organisation_id: organisation.id,
-  })
-  return organiser
-}
-
-/** A new organiser's submitted event request: the reference and name it was given. */
-async function submittedEvent(): Promise<{ reference: string; name: string }> {
-  await signInAs(await newOrganiser())
-  return apiRequest<{ reference: string; name: string }>('/api/events/requests', {
-    method: 'POST',
-    body: {
-      name: `Integration Safety Check ${uniqueEmail('event')}`,
-      proposed_date: EVENT_DATE,
-      end_date: EVENT_DATE,
-      start_time: '09:00',
-      end_time: '17:00',
-      expected_attendance: 120,
-      accessibility_needs: 'Step-free entrance',
-    },
-  })
-}
-
-/** As the staff account, the event's coordinator: POST to one of the event's actions. */
-async function coordinatorPosts(reference: string, action: string, body?: object) {
-  await signInAs(staffAccount())
-  await apiRequest(`/api/events/requests/${reference}/${action}`, { method: 'POST', body })
-}
-
 /** An approved event with one venue booked and approved, as the staff account's to send. */
 async function eventReadyForSafetyReview() {
-  const event = await submittedEvent()
-  await signInAs(required(LEAD))
-  await assignCoordinator({
-    reference: event.reference,
-    coordinator_email: staffAccount().email,
-  })
-  await coordinatorPosts(event.reference, 'review')
-  await coordinatorPosts(event.reference, 'decide', { outcome: 'approved' })
-
-  await signInAs(required(VENUE_STAFF))
-  const venue = await apiRequest<{ id: number }>('/api/venues', {
-    method: 'POST',
-    body: {
-      name: `Integration Hall ${uniqueEmail('venue')}`,
-      location: 'Level 1',
-      capacity: 300,
-      supported_layouts: ['theatre'],
-      facilities: ['projector'],
-      accessibility_features: ['wheelchair_access'],
-    },
-  })
+  const event = await approvedEvent()
+  const venueId = await newVenue()
   await signInAs(staffAccount())
   const booking = await raiseBookingRequest(event.reference, {
-    venue_id: venue.id,
+    venue_id: venueId,
     starts_at: `${EVENT_DATE}T09:00:00+08:00`,
     ends_at: `${EVENT_DATE}T12:00:00+08:00`,
     purpose: 'Integration safety check',
