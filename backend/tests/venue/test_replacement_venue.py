@@ -373,6 +373,48 @@ def test_a_second_replacement_leaves_an_already_released_arrangement_released(
     ]
 
 
+def _withdraw(event: EventRequest, request_id: int, session: Session) -> None:
+    services.withdraw_arrangement(
+        event.reference, request_id, coordinator_id=COORDINATOR_ID, session=session
+    )
+
+
+def _reject(event: EventRequest, request_id: int, session: Session) -> None:
+    decide(request_id, "rejected", session, reason="Venue closed.")
+
+
+@pytest.mark.parametrize(
+    ("stop_holding", "left_as"),
+    [
+        pytest.param(_withdraw, BookingRequestStatus.WITHDRAWN, id="withdrawn"),
+        pytest.param(_reject, BookingRequestStatus.REJECTED, id="rejected"),
+    ],
+)
+def test_an_original_that_stopped_holding_its_venue_is_left_as_it_is(
+    db_session: Session,
+    make_venue: Callable[..., Venue],
+    save: Callable[..., None],
+    saved_event: SavedEvent,
+    stop_holding: Callable[[EventRequest, int, Session], None],
+    left_as: BookingRequestStatus,
+) -> None:
+    """ADR-0053 §11: an original already retired or decided against isn't released.
+
+    The flagged Pending original is withdrawn or rejected after its replacement was
+    raised; approving the replacement leaves that status as it is.
+    """
+    auditorium, breakout = two_venues(make_venue, save)
+    event = saved_event()
+    pending = raise_booking(auditorium, event, db_session)
+    block(auditorium, at(10), at(11), db_session)
+    replacement = raise_booking(breakout, event, db_session, replaces_request_id=pending.id)
+    stop_holding(event, pending.id, db_session)
+
+    decide(replacement.id, "approved", db_session)
+
+    assert reload_request(db_session, pending.id).status is left_as
+
+
 # --------------------------------------------------------------------------
 # AC10 — a replacement withdraws the safety approval
 # --------------------------------------------------------------------------
