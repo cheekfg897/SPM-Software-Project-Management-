@@ -1,6 +1,6 @@
 # ADR-0039: A venue arrangement is a venue booking request; a coordinator can change, withdraw or retire all of an event's arrangements, and the retired ones stay on record
 
-- **Status:** Accepted
+- **Status:** Accepted; notices for a change, withdrawal or cancellation are not built by SCRUM-50 after all (a default to review in [ADR-0055](0055-booking-and-equipment-notices.md) decision 6)
 - **Date:** 2026-10-13
 - **Story:** SCRUM-93 Book several venues for one event
 

@@ -1,6 +1,6 @@
 # ADR-0040: Technical Support records how much of an equipment request can be met; the status is derived from the quantity provided
 
-- **Status:** Accepted
+- **Status:** Accepted; the coordinator's notice gains the outcome and the note in [ADR-0055](0055-booking-and-equipment-notices.md)
 - **Date:** 2026-10-13
 - **Story:** SCRUM-48 Record the outcome of an equipment review
 
