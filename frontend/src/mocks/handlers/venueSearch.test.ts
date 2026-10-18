@@ -1,5 +1,6 @@
 import { searchVenues } from '@/features/venueSearch/api'
 import type { VenueSearchRequest } from '@/features/venueSearch/api'
+import { createVenue, deactivateVenue } from '@/features/venues/api'
 import { apiRequest } from '@/lib/api'
 import { refusalOf } from '@/test/refusalOf'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
@@ -160,6 +161,37 @@ describe('SCRUM-35 venue search mock: what it finds', () => {
     const body = await searchVenues(search({ min_capacity: 1000 }))
 
     expect(body).toEqual({ results: [], message: NO_MATCHES_MESSAGE })
+  })
+})
+
+describe("SCRUM-35 venue search mock: the catalogue's venues, as the backend has one table", () => {
+  /** Makes one catalogue change as Venue Staff, then goes back to searching as the coordinator. */
+  async function asVenueStaff(change: () => Promise<unknown>) {
+    sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.venueStaff))
+    await change()
+    sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.coordinator))
+  }
+
+  it('finds a venue the catalogue added', async () => {
+    await asVenueStaff(() =>
+      createVenue({
+        name: 'Quayside Loft',
+        location: 'Robertson Quay',
+        capacity: 40,
+        facilities: [],
+        accessibility_features: [],
+        supported_layouts: [],
+        opening_hours: [],
+      }),
+    )
+
+    expect(await namesFound({ location: 'Robertson Quay' })).toEqual(['Quayside Loft'])
+  })
+
+  it('leaves out a venue the catalogue deactivated', async () => {
+    await asVenueStaff(() => deactivateVenue(MOCK_VENUES.orchidRoom.id))
+
+    expect(await namesFound()).not.toContain(MOCK_VENUES.orchidRoom.name)
   })
 })
 
