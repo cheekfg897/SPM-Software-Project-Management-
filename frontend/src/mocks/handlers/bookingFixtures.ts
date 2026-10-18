@@ -41,7 +41,8 @@ const APPROVED_EVENT: MockBookingEvent = {
  * Nine events: one the coordinator can book for, one already confirmed, one assigned
  * elsewhere, two whose requests are waiting for Venue Staff (SCRUM-43), two of the
  * coordinator's with several venue arrangements already decided (SCRUM-93), and two whose
- * arrangements reached the later statuses (Released, Expired, On hold). The waiting two run on
+ * arrangements reached the later statuses (Released, Expired, On hold), and one the Safety Officer
+ * has approved, whose booking Venue Staff are preparing (SCRUM-84). The waiting two run on
  * different dates, so the queue's order is visible.
  */
 export const MOCK_BOOKING_EVENTS = {
@@ -87,7 +88,21 @@ export const MOCK_BOOKING_EVENTS = {
     reference: 'EVR-BOOK0109',
     proposed_date: '2026-11-28',
   },
+  safetyApproved: {
+    ...APPROVED_EVENT,
+    id: 110,
+    reference: 'EVR-BOOK0110',
+    proposed_date: '2026-11-12',
+  },
 } as const satisfies Record<string, MockBookingEvent>
+
+/**
+ * The events the Safety Officer has approved, so their bookings' preparation can be recorded
+ * (SCRUM-84 AC5). Every other event, the booked one included, is still waiting.
+ */
+export const MOCK_SAFETY_APPROVED_EVENT_IDS: readonly number[] = [
+  MOCK_BOOKING_EVENTS.safetyApproved.id,
+]
 
 /** One venue that fits the approved event's 80 guests and one that does not. */
 export const MOCK_BOOKING_VENUES = {
@@ -152,8 +167,8 @@ export const MOCK_PENDING_DECISIONS = [
 
 /**
  * A decided or withdrawn arrangement of `event`: the event's own details, as the backend adds
- * them. A held or expired one also says when its hold runs or ran out, and a flagged one why it
- * needs an alternative venue (SCRUM-92).
+ * them. A held or expired one also says when its hold runs or ran out, a flagged one why it
+ * needs an alternative venue (SCRUM-92), and one being prepared how far that has got (SCRUM-84).
  */
 function arrangementOf(
   event: MockBookingEvent,
@@ -161,19 +176,28 @@ function arrangementOf(
     BookingRequest,
     'id' | 'venue_id' | 'starts_at' | 'ends_at' | 'purpose' | 'status' | 'decision_reason'
   > &
-    Partial<Pick<BookingRequest, 'hold_expires_at' | 'needs_alternative_venue' | 'unavailability'>>,
+    Partial<
+      Pick<
+        BookingRequest,
+        | 'hold_expires_at'
+        | 'needs_alternative_venue'
+        | 'unavailability'
+        | 'preparation_status'
+        | 'preparation_notes'
+      >
+    >,
 ): BookingRequest {
   return {
     hold_expires_at: null,
     needs_alternative_venue: false,
     unavailability: [],
+    preparation_status: 'not_started',
+    preparation_notes: null,
     ...arrangement,
     event_id: event.id,
     expected_occupancy: 10,
     required_layout: null,
     justification: null,
-    preparation_status: 'not_started',
-    preparation_notes: null,
     replaces_request_id: null,
     event_proposed_date: event.proposed_date,
     event_end_date: event.end_date,
@@ -197,6 +221,9 @@ function arrangementOf(
  * The earlier workshop's exhibition hall is approved, which makes that event multi-venue, so its
  * Breakout room (9001, in the queue) can be held (SCRUM-75 AC1). It is at the other venue in the
  * afternoon, so it clashes with nothing.
+ *
+ * The safety-approved event's ballroom is approved and under way (SCRUM-84): Venue Staff can go
+ * on preparing it, while the booked event's hall is refused until its safety approval.
  */
 export const MOCK_ARRANGEMENTS = {
   rejectedMain: arrangementOf(MOCK_BOOKING_EVENTS.multiVenue, {
@@ -290,5 +317,16 @@ export const MOCK_ARRANGEMENTS = {
     purpose: 'Exhibition hall',
     status: 'approved',
     decision_reason: 'Booked',
+  }),
+  preparedBallroom: arrangementOf(MOCK_BOOKING_EVENTS.safetyApproved, {
+    id: 9109,
+    venue_id: MOCK_BOOKING_VENUES.roomy.id,
+    starts_at: '2026-11-12T09:00:00+08:00',
+    ends_at: '2026-11-12T17:00:00+08:00',
+    purpose: 'Grand ballroom',
+    status: 'approved',
+    decision_reason: 'Booked',
+    preparation_status: 'in_progress',
+    preparation_notes: 'Stage half built.',
   }),
 } as const satisfies Record<string, BookingRequest>
