@@ -4,6 +4,7 @@ import { selectSessionUser, useAppSelector } from '@/store'
 
 import {
   answerClarification,
+  completeEvent,
   decideEventRequest,
   eventRequestKeys,
   fetchAssignedEventRequests,
@@ -131,6 +132,12 @@ export function useAnswerClarification(reference: string) {
 export function useSendToSafetyReview(reference: string) {
   const refresh = useRefreshEventRequests()
   return useMutation({ mutationFn: () => sendToSafetyReview(reference), onSuccess: refresh })
+}
+
+/** Mark a confirmed event assigned to the coordinator completed once it has ended (SCRUM-68). */
+export function useCompleteEvent(reference: string) {
+  const refresh = useRefreshEventRequests()
+  return useMutation({ mutationFn: () => completeEvent(reference), onSuccess: refresh })
 }
 
 /** One request's record, read for whoever is signed in: who may open it depends on them. */
