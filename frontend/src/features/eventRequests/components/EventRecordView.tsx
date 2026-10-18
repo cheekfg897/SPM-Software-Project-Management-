@@ -11,6 +11,7 @@ import { formatSchedule } from '../formatSchedule'
 import { useAnswerClarification } from '../hooks'
 
 import { MessageForm } from './MessageForm'
+import { RecordActions } from './RecordActions'
 import { RecordSection } from './RecordSection'
 import { ReviewActions } from './ReviewActions'
 
@@ -165,6 +166,7 @@ export function EventRecordView({ record }: { record: EventRecord }) {
       </div>
       {isCoordinator && <CoordinatorLinks reference={record.reference} />}
       {isCoordinator && <ReviewActions request={record} />}
+      {isCoordinator && <RecordActions record={record} />}
 
       <RecordSection title="About the event">
         <AboutTheEvent record={record} />

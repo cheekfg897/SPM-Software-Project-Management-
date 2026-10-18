@@ -12,6 +12,7 @@ import {
   fetchMyEventRequests,
   requestClarification,
   saveDraftEventRequest,
+  sendToSafetyReview,
   startEventRequestReview,
   submitDraftEventRequest,
   submitEventRequest,
@@ -124,6 +125,12 @@ export function useAnswerClarification(reference: string) {
     mutationFn: (response: string) => answerClarification(reference, response),
     onSuccess: refresh,
   })
+}
+
+/** Send an approved event assigned to the coordinator to safety review (SCRUM-97). */
+export function useSendToSafetyReview(reference: string) {
+  const refresh = useRefreshEventRequests()
+  return useMutation({ mutationFn: () => sendToSafetyReview(reference), onSuccess: refresh })
 }
 
 /** One request's record, read for whoever is signed in: who may open it depends on them. */
