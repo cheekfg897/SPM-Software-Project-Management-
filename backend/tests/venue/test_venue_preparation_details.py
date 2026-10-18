@@ -188,6 +188,21 @@ def test_each_update_records_who_and_when(
     assert second.details["status"] == "ready"
 
 
+def test_the_details_and_their_entry_are_committed(
+    db_session: Session, venue: Venue, saved_event: SavedEvent
+) -> None:
+    """AC4: a rollback after the update leaves both the details and the entry saved."""
+    booking = _approved_booking(venue, saved_event(), db_session)
+    _record(booking, IN_PROGRESS, db_session)
+
+    db_session.rollback()
+
+    reloaded = db_session.get(VenueBookingRequest, booking.id)
+    assert reloaded is not None
+    assert reloaded.preparation_status is PreparationStatus.IN_PROGRESS
+    assert len(_preparation_entries(db_session)) == 1
+
+
 def test_nothing_is_recorded_before_the_safety_officer_approves(
     db_session: Session, venue: Venue, saved_event: SavedEvent
 ) -> None:
