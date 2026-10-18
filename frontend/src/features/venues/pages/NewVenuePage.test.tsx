@@ -1,7 +1,9 @@
 import { screen, waitFor } from '@testing-library/react'
+import { http, HttpResponse } from 'msw'
 
 import { ROUTES } from '@/config/routes'
 import { MOCK_ACCOUNTS, mockSessionFor } from '@/mocks/fixtures/accounts'
+import { server } from '@/mocks/server'
 import { recordRequests } from '@/test/recordRequests'
 import { renderApp } from '@/test/render'
 
@@ -105,6 +107,29 @@ describe('SCRUM-25 adding a venue', () => {
 
     expect(await screen.findByText('Item 2: Items cannot contain ",".')).toBeInTheDocument()
     expect(screen.getByLabelText('Facilities')).toBeInvalid()
+  })
+
+  it('shows the backend messages for the layouts under them, as sent', async () => {
+    server.use(
+      http.post('/api/venues', () =>
+        HttpResponse.json(
+          {
+            error: 'validation_error',
+            message: 'Invalid request.',
+            details: { supported_layouts: ['Pick fewer layouts.'] },
+          },
+          { status: 400 },
+        ),
+      ),
+    )
+    const { user } = openNewVenueForm()
+
+    await fillInTheRequiredFields(user)
+    await user.click(screen.getByRole('button', { name: 'Add venue' }))
+
+    const layouts = await screen.findByRole('group', { name: 'Layouts it supports' })
+    await waitFor(() => expect(layouts).toHaveAccessibleDescription('Pick fewer layouts.'))
+    expect(screen.getByRole('checkbox', { name: 'Theatre' })).toBeInvalid()
   })
 })
 
