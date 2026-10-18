@@ -373,6 +373,31 @@ def _arrangements_not_ended(
     return list(session.scalars(stmt))
 
 
+def _notify_about_booking(
+    recipient_ids: list[int],
+    event: EventForBooking,
+    kind: NotificationKind,
+    *,
+    detail: str | None = None,
+    session: Session | None = None,
+) -> None:
+    """Notify about a booking request after its own commit, in a second (ADR-0015).
+
+    If the notifications can't be saved, only they are lost and a warning is logged:
+    the request or decision is already saved, and failing the reply would invite the
+    caller to send it again. Shared by the notices the venue module sends; moving it
+    into ``notifications.services`` alongside the events module's copy stays a
+    follow-up (ADR-0035, ADR-0042).
+    """
+    active_session = resolve_session(session)
+    summary = EventSummary(id=event.id, reference=event.reference, name=event.name)
+    try:
+        notify_users(recipient_ids, summary, kind, session=session, detail=detail)
+    except SQLAlchemyError:
+        active_session.rollback()
+        logger.warning("venue_booking_notification_failed reference=%s", event.reference)
+
+
 def update_venue(
     venue_id: int, payload: Mapping[str, Any] | None, *, session: Session | None = None
 ) -> tuple[Venue, list[OverlapWarning], list[BlockOverlapWarning]]:
@@ -1093,31 +1118,6 @@ def show_booking_request(
         end_time=event.end_time,
         accessibility_needs=event.accessibility_needs,
     )
-
-
-def _notify_about_booking(
-    recipient_ids: list[int],
-    event: EventForBooking,
-    kind: NotificationKind,
-    *,
-    detail: str | None = None,
-    session: Session | None = None,
-) -> None:
-    """Notify about a booking request after its own commit, in a second (ADR-0015).
-
-    If the notifications can't be saved, only they are lost and a warning is logged:
-    the request or decision is already saved, and failing the reply would invite the
-    caller to send it again. Shared by the two notices the venue module sends; moving
-    it into ``notifications.services`` alongside the events module's copy stays a
-    follow-up (ADR-0035, ADR-0042).
-    """
-    active_session = resolve_session(session)
-    summary = EventSummary(id=event.id, reference=event.reference, name=event.name)
-    try:
-        notify_users(recipient_ids, summary, kind, session=session, detail=detail)
-    except SQLAlchemyError:
-        active_session.rollback()
-        logger.warning("venue_booking_notification_failed reference=%s", event.reference)
 
 
 def _notify_venue_staff(event: EventForBooking, session: Session | None) -> None:
