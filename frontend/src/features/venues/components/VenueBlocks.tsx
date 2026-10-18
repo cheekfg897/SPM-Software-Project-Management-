@@ -41,7 +41,7 @@ function ConflictReport({ conflicts }: { conflicts: ConflictingBooking[] }) {
   )
 }
 
-/** A start, an end and a reason. The times go as typed: business time (ADR-0058). */
+/** A start, an end and a reason. The times go as typed: business time (ADR-0068). */
 function BlockForm({ venueId }: { venueId: number }) {
   const block = useBlockVenue(venueId)
   const fieldErrors = fieldErrorsOf(block.error)
@@ -156,7 +156,7 @@ function BlockList({ venueId }: { venueId: number }) {
 
 /**
  * Venue Staff's blocks on the venue: a form to add one, and the list to remove them from
- * (SCRUM-34, ADR-0016, ADR-0058). Other staff see blocks only in the calendar.
+ * (SCRUM-34, ADR-0016, ADR-0068). Other staff see blocks only in the calendar.
  */
 export function VenueBlocks({ venueId }: { venueId: number }) {
   return (
