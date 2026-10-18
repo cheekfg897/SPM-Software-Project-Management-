@@ -1,4 +1,5 @@
 import { ROLE } from '@/config/roles'
+import type { BookingRequestStatus } from '@/features/booking/api'
 import { ApiError, apiRequest } from '@/lib/api'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
 
@@ -373,6 +374,24 @@ async function raisePending(overrides: Record<string, unknown> = {}): Promise<nu
   return Number(created.id)
 }
 
+/**
+ * Raise a request overlapping the waiting one on 20 Nov at the same venue, then have Venue Staff
+ * approve that one, which marks this one Conflicting (SCRUM-44). Returns this one's id.
+ */
+async function raiseConflicting(): Promise<number> {
+  const overlapping = await raisePending({
+    starts_at: '2026-11-20T11:00:00+08:00',
+    ends_at: '2026-11-20T14:00:00+08:00',
+  })
+  sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.venueStaff))
+  await apiRequest('/api/venues/booking-requests/9001/decision', {
+    method: 'POST',
+    body: { outcome: 'approved' },
+  })
+  sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.coordinator))
+  return overlapping
+}
+
 const {
   rejectedMain,
   withdrawnOverflow,
@@ -386,6 +405,29 @@ const {
 const BOOKED_EVENT = MOCK_BOOKING_EVENTS.booked
 const REPLACED_EVENT = MOCK_BOOKING_EVENTS.replaced
 const HELD_EVENT = MOCK_BOOKING_EVENTS.held
+
+/**
+ * How to get an arrangement in each status, as its event's reference and its id. A `Record`
+ * over the status type, so a status added later doesn't compile until it is placed here and
+ * the refusal tests below try it.
+ */
+const ARRANGEMENT_IN: Record<BookingRequestStatus, () => Promise<[string, number]>> = {
+  pending: async () => [APPROVED_EVENT.reference, await raisePending()],
+  conflicting: async () => [APPROVED_EVENT.reference, await raiseConflicting()],
+  approved: () => Promise.resolve([BOOKED_EVENT.reference, bookedHall.id]),
+  rejected: () => Promise.resolve([MULTI_VENUE_EVENT.reference, rejectedBreakout.id]),
+  withdrawn: () => Promise.resolve([MULTI_VENUE_EVENT.reference, withdrawnOverflow.id]),
+  on_hold: () => Promise.resolve([HELD_EVENT.reference, heldStudio.id]),
+  expired: () => Promise.resolve([REPLACED_EVENT.reference, expiredGallery.id]),
+  released: () => Promise.resolve([REPLACED_EVENT.reference, releasedHall.id]),
+}
+
+/** Every status but the ones allowed, which the caller writes out. */
+function statusesOtherThan(allowed: BookingRequestStatus[]): BookingRequestStatus[] {
+  // Object.keys loses the key type; ARRANGEMENT_IN is a Record over every status.
+  const statuses = Object.keys(ARRANGEMENT_IN) as BookingRequestStatus[]
+  return statuses.filter((status) => !allowed.includes(status))
+}
 
 describe('SCRUM-93 booking mock: listing an event with several arrangements', () => {
   it('lists them earliest period first, then by id, whatever order they were saved in', async () => {
@@ -412,16 +454,7 @@ describe('SCRUM-93 booking mock: withdrawing an arrangement', () => {
   })
 
   it('withdraws a conflicting arrangement, as the backend does since SCRUM-44', async () => {
-    const overlapping = await raisePending({
-      starts_at: '2026-11-20T11:00:00+08:00',
-      ends_at: '2026-11-20T14:00:00+08:00',
-    })
-    sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.venueStaff))
-    await apiRequest('/api/venues/booking-requests/9001/decision', {
-      method: 'POST',
-      body: { outcome: 'approved' },
-    })
-    sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.coordinator))
+    const overlapping = await raiseConflicting()
     expect(await statusesOf(APPROVED_EVENT.reference)).toEqual([`${overlapping} conflicting`])
 
     const withdrawn = await withdraw(APPROVED_EVENT.reference, overlapping)
@@ -441,14 +474,11 @@ describe('SCRUM-93 booking mock: withdrawing an arrangement', () => {
     expect(withdrawn.status).toBe('withdrawn')
   })
 
-  it.each([
-    [BOOKED_EVENT.reference, bookedHall.id, 'approved'],
-    [MULTI_VENUE_EVENT.reference, withdrawnOverflow.id, 'withdrawn'],
-    [REPLACED_EVENT.reference, releasedHall.id, 'released'],
-    [HELD_EVENT.reference, heldStudio.id, 'on_hold'],
-  ])(
-    'refuses to withdraw on %s arrangement %i, naming its status (%s)',
-    async (reference, id, status) => {
+  it.each(statusesOtherThan(['pending', 'conflicting', 'rejected', 'expired']))(
+    'refuses to withdraw an arrangement that is %s, naming its status',
+    async (status) => {
+      const [reference, id] = await ARRANGEMENT_IN[status]()
+
       const error = await errorOf(withdraw(reference, id))
 
       expect(error.status).toBe(409)
@@ -526,16 +556,11 @@ describe('SCRUM-93 booking mock: changing an arrangement', () => {
     expect(changed.required_layout).toBeNull()
   })
 
-  it.each([
-    [BOOKED_EVENT.reference, bookedHall.id, 'approved'],
-    [MULTI_VENUE_EVENT.reference, rejectedBreakout.id, 'rejected'],
-    [MULTI_VENUE_EVENT.reference, withdrawnOverflow.id, 'withdrawn'],
-    [REPLACED_EVENT.reference, releasedHall.id, 'released'],
-    [REPLACED_EVENT.reference, expiredGallery.id, 'expired'],
-    [HELD_EVENT.reference, heldStudio.id, 'on_hold'],
-  ])(
-    'refuses to change on %s arrangement %i, naming its status (%s)',
-    async (reference, id, status) => {
+  it.each(statusesOtherThan(['pending']))(
+    'refuses to change an arrangement that is %s, naming its status',
+    async (status) => {
+      const [reference, id] = await ARRANGEMENT_IN[status]()
+
       const error = await errorOf(change(reference, id, { purpose: 'New' }))
 
       expect(error.status).toBe(409)
