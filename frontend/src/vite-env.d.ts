@@ -16,6 +16,9 @@ interface ImportMetaEnv {
   readonly INTEGRATION_LEAD_PASSWORD?: string
   readonly INTEGRATION_SAFETY_OFFICER_EMAIL?: string
   readonly INTEGRATION_SAFETY_OFFICER_PASSWORD?: string
+  /** Optional: a Technical Support account, for the equipment outcome checks (SCRUM-48). They skip without it. */
+  readonly INTEGRATION_TECH_SUPPORT_EMAIL?: string
+  readonly INTEGRATION_TECH_SUPPORT_PASSWORD?: string
 }
 
 interface ImportMeta {

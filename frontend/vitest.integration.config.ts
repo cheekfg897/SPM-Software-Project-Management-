@@ -33,6 +33,9 @@ export default defineConfig({
       INTEGRATION_LEAD_PASSWORD: process.env.INTEGRATION_LEAD_PASSWORD ?? '',
       INTEGRATION_SAFETY_OFFICER_EMAIL: process.env.INTEGRATION_SAFETY_OFFICER_EMAIL ?? '',
       INTEGRATION_SAFETY_OFFICER_PASSWORD: process.env.INTEGRATION_SAFETY_OFFICER_PASSWORD ?? '',
+      // Optional Technical Support account for the SCRUM-48 outcome checks; they skip without it.
+      INTEGRATION_TECH_SUPPORT_EMAIL: process.env.INTEGRATION_TECH_SUPPORT_EMAIL ?? '',
+      INTEGRATION_TECH_SUPPORT_PASSWORD: process.env.INTEGRATION_TECH_SUPPORT_PASSWORD ?? '',
     },
     // One backend, one database: run the files one after another.
     fileParallelism: false,
