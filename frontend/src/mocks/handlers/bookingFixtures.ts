@@ -35,10 +35,11 @@ const APPROVED_EVENT: MockBookingEvent = {
 }
 
 /**
- * Seven events: one the coordinator can book for, one already confirmed, one assigned
- * elsewhere, two whose requests are waiting for Venue Staff (SCRUM-43), and two of the
- * coordinator's with several venue arrangements already decided (SCRUM-93). The waiting
- * two run on different dates, so the queue's order is visible.
+ * Nine events: one the coordinator can book for, one already confirmed, one assigned
+ * elsewhere, two whose requests are waiting for Venue Staff (SCRUM-43), two of the
+ * coordinator's with several venue arrangements already decided (SCRUM-93), and two whose
+ * arrangements reached the later statuses (Released, Expired, On hold). The waiting two run on
+ * different dates, so the queue's order is visible.
  */
 export const MOCK_BOOKING_EVENTS = {
   approved: APPROVED_EVENT,
@@ -68,6 +69,18 @@ export const MOCK_BOOKING_EVENTS = {
     id: 107,
     reference: 'EVR-BOOK0107',
     proposed_date: '2026-11-26',
+  },
+  replaced: {
+    ...APPROVED_EVENT,
+    id: 108,
+    reference: 'EVR-BOOK0108',
+    proposed_date: '2026-11-27',
+  },
+  held: {
+    ...APPROVED_EVENT,
+    id: 109,
+    reference: 'EVR-BOOK0109',
+    proposed_date: '2026-11-28',
   },
 } as const satisfies Record<string, MockBookingEvent>
 
@@ -132,15 +145,20 @@ export const MOCK_PENDING_DECISIONS = [
   },
 ] as const satisfies readonly BookingRequest[]
 
-/** A decided or withdrawn arrangement of `event`: the event's own details, as the backend adds them. */
+/**
+ * A decided or withdrawn arrangement of `event`: the event's own details, as the backend adds
+ * them. A held or expired one also says when its hold runs or ran out.
+ */
 function arrangementOf(
   event: MockBookingEvent,
   arrangement: Pick<
     BookingRequest,
     'id' | 'venue_id' | 'starts_at' | 'ends_at' | 'purpose' | 'status' | 'decision_reason'
-  >,
+  > &
+    Partial<Pick<BookingRequest, 'hold_expires_at'>>,
 ): BookingRequest {
   return {
+    hold_expires_at: null,
     ...arrangement,
     event_id: event.id,
     expected_occupancy: 10,
@@ -148,7 +166,6 @@ function arrangementOf(
     justification: null,
     preparation_status: 'not_started',
     preparation_notes: null,
-    hold_expires_at: null,
     needs_alternative_venue: false,
     unavailability: [],
     replaces_request_id: null,
@@ -165,6 +182,10 @@ function arrangementOf(
  * The multi-venue event has two rejected and one withdrawn; the booked event has an approved
  * one, which nothing can withdraw, and a rejected one. Each event's are saved out of period
  * order, and two start together, so the list's order (period, then id) is visible.
+ *
+ * The replaced event's original hall was released when its replacement was approved (SCRUM-92),
+ * and its gallery hold ran out (SCRUM-94). The held event's studio is On hold (SCRUM-75), which
+ * the backend's Venue Staff queue lists but this mock's queue does not yet.
  */
 export const MOCK_ARRANGEMENTS = {
   rejectedMain: arrangementOf(MOCK_BOOKING_EVENTS.multiVenue, {
@@ -211,5 +232,34 @@ export const MOCK_ARRANGEMENTS = {
     purpose: 'Side room',
     status: 'rejected',
     decision_reason: 'Too small',
+  }),
+  releasedHall: arrangementOf(MOCK_BOOKING_EVENTS.replaced, {
+    id: 9106,
+    venue_id: MOCK_BOOKING_VENUES.roomy.id,
+    starts_at: '2026-11-27T09:00:00+08:00',
+    ends_at: '2026-11-27T12:00:00+08:00',
+    purpose: 'Original hall',
+    status: 'released',
+    decision_reason: 'Booked',
+  }),
+  expiredGallery: arrangementOf(MOCK_BOOKING_EVENTS.replaced, {
+    id: 9107,
+    venue_id: MOCK_BOOKING_VENUES.tiny.id,
+    starts_at: '2026-11-27T13:00:00+08:00',
+    ends_at: '2026-11-27T15:00:00+08:00',
+    purpose: 'Gallery',
+    status: 'expired',
+    decision_reason: null,
+    hold_expires_at: '2026-11-20T09:00:00+08:00',
+  }),
+  heldStudio: arrangementOf(MOCK_BOOKING_EVENTS.held, {
+    id: 9108,
+    venue_id: MOCK_BOOKING_VENUES.roomy.id,
+    starts_at: '2026-11-28T09:00:00+08:00',
+    ends_at: '2026-11-28T12:00:00+08:00',
+    purpose: 'Studio',
+    status: 'on_hold',
+    decision_reason: null,
+    hold_expires_at: '2026-11-21T09:00:00+08:00',
   }),
 } as const satisfies Record<string, BookingRequest>

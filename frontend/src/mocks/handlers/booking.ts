@@ -52,14 +52,21 @@ function clashMessage(bookingId: number): string {
 /** The backend's messages for an event's arrangements (venue/services.py, SCRUM-93). */
 const ARRANGEMENT_NOT_FOUND_MESSAGE = 'Venue arrangement not found.'
 /**
- * As the backend (SCRUM-44): a rejected arrangement stays active until withdrawn, and a
- * conflicting one may be withdrawn like a pending one; an approved one has made a booking.
+ * As the backend's WITHDRAWABLE_REQUEST_STATUSES: a rejected arrangement stays active until
+ * withdrawn, a conflicting one (SCRUM-44) may be withdrawn like a pending one, and so may one
+ * whose hold expired (SCRUM-94). An approved or held one has a booking behind it.
  */
 const WITHDRAWABLE_STATUSES: readonly BookingRequestStatus[] = [
   'pending',
   'conflicting',
   'rejected',
+  'expired',
 ]
+/**
+ * As the backend's RETIRED_REQUEST_STATUSES: withdrawn, or released when an approved replacement
+ * took over (SCRUM-92). Cancel all leaves them out.
+ */
+const RETIRED_STATUSES: readonly BookingRequestStatus[] = ['withdrawn', 'released']
 /** What ChangeArrangementSchema accepts; the venue and the period are not among them. */
 const CHANGEABLE_FIELDS = ['purpose', 'expected_occupancy', 'required_layout', 'justification']
 const LAYOUT_ERROR_MESSAGE = `Must be one of: ${LAYOUT_OPTIONS.map((option) => option.value).join(', ')}.`
@@ -245,7 +252,7 @@ function withdrawRefusal(arrangement: BookingRequest) {
   return errorResponse(
     409,
     'conflict',
-    `Only a pending, conflicting or rejected arrangement can be withdrawn; this one is ${arrangement.status}.`,
+    `Only a pending, conflicting, rejected or expired arrangement can be withdrawn; this one is ${arrangement.status}.`,
   )
 }
 
@@ -429,7 +436,9 @@ export const bookingHandlers: RequestHandler[] = [
     if (event === undefined) {
       return notFound(EVENT_NOT_FOUND_MESSAGE)
     }
-    const active = requestsOf(event).filter((existing) => existing.status !== 'withdrawn')
+    const active = requestsOf(event).filter(
+      (existing) => !RETIRED_STATUSES.includes(existing.status),
+    )
     // The backend commits once, so one it cannot withdraw means none of them is.
     const stuck = active.find((existing) => !WITHDRAWABLE_STATUSES.includes(existing.status))
     if (stuck !== undefined) {

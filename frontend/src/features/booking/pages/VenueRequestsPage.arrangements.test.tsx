@@ -20,8 +20,15 @@ import { fillRequest, typeInto } from '../test/requestForm'
  */
 
 const SESSION = { session: mockSessionFor(MOCK_ACCOUNTS.coordinator) }
-const { rejectedMain, rejectedBreakout, withdrawnOverflow, bookedHall, bookedSideRoom } =
-  MOCK_ARRANGEMENTS
+const {
+  rejectedMain,
+  rejectedBreakout,
+  withdrawnOverflow,
+  bookedHall,
+  bookedSideRoom,
+  releasedHall,
+  expiredGallery,
+} = MOCK_ARRANGEMENTS
 
 type AppView = ReturnType<typeof renderApp>
 
@@ -87,6 +94,19 @@ describe('SCRUM-93 venue arrangements on the venue requests page', () => {
     ).toBeEnabled()
   })
 
+  it('offers nothing for a released arrangement, which a replacement took over, but does for an expired one', async () => {
+    openEvent(MOCK_BOOKING_EVENTS.replaced.reference)
+
+    const released = await item(releasedHall.purpose)
+    expect(released).toHaveTextContent('Released')
+    expect(within(released).queryByRole('button')).not.toBeInTheDocument()
+    const expired = await item(expiredGallery.purpose)
+    expect(expired).toHaveTextContent('Expired')
+    expect(
+      within(expired).getByRole('button', { name: `Withdraw ${expiredGallery.purpose}` }),
+    ).toBeEnabled()
+  })
+
   it('withdraws one arrangement and leaves the event’s other ones as they were', async () => {
     const requests = recordRequests()
     const view = openEvent(MOCK_BOOKING_EVENTS.multiVenue.reference)
@@ -116,7 +136,7 @@ describe('SCRUM-93 venue arrangements on the venue requests page', () => {
 
     const hall = await item(bookedHall.purpose)
     expect(await within(hall).findByRole('alert')).toHaveTextContent(
-      'Only a pending, conflicting or rejected arrangement can be withdrawn; this one is approved.',
+      'Only a pending, conflicting, rejected or expired arrangement can be withdrawn; this one is approved.',
     )
     expect(hall).toHaveTextContent('Approved')
     expect(within(await item(bookedSideRoom.purpose)).queryByRole('alert')).not.toBeInTheDocument()
@@ -293,7 +313,7 @@ describe('SCRUM-93 venue arrangements on the venue requests page', () => {
 
     const section = screen.getByRole('region', { name: 'Cancel all venue requests' })
     expect(await within(section).findByRole('alert')).toHaveTextContent(
-      'Only a pending, conflicting or rejected arrangement can be withdrawn; this one is approved.',
+      'Only a pending, conflicting, rejected or expired arrangement can be withdrawn; this one is approved.',
     )
     expect(await item(bookedSideRoom.purpose)).toHaveTextContent('Rejected')
   })
