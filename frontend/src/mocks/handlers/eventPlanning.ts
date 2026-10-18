@@ -6,6 +6,7 @@ import type { FieldErrors } from '@/lib/api'
 
 import { errorResponse } from '../responses'
 
+import { MOCK_NOW } from './catalogueFixtures'
 import { NOTHING_PLANNED } from './eventPlanningFixtures'
 import type { MockPlanning } from './eventPlanningFixtures'
 import type { MockEventRequest } from './eventRequestFixtures'
@@ -14,7 +15,8 @@ import { assignedOrRefusal } from './eventRequests'
 /**
  * The coordinator's planning actions on the stored event requests eventRequests.ts keeps, so
  * the record read afterwards shows the change: sending an event to safety review (SCRUM-97,
- * ADR-0047). Only the event's assigned coordinator may; the checks, their order, the codes,
+ * ADR-0047) and marking it completed once it has ended, at the mock's "now", MOCK_NOW (SCRUM-68,
+ * ADR-0027). Only the event's assigned coordinator may; the checks, their order, the codes,
  * messages and the gaps named are the backend's (ADR-0075).
  */
 
@@ -24,6 +26,10 @@ const SAFETY_REVIEW_NOT_READY_MESSAGE =
   'The event can go to Safety Review once every venue arrangement is approved and every ' +
   'equipment request has an outcome from Technical Support.'
 const NO_VENUE_GAP = 'The event has no venue arranged.'
+const NOT_CONFIRMED_MESSAGE = 'Only a confirmed event can be marked completed.'
+const NOT_YET_ENDED_MESSAGE = 'The event has not ended yet.'
+/** Singapore's offset: an event's dates and times are business time with none (ADR-0009). */
+const BUSINESS_TIME_OFFSET = '+08:00'
 
 /** A 409 with the reasons behind it, as the backend's gates send it (ADR-0047, ADR-0051). */
 function refusalWithGaps(code: string, message: string, details: FieldErrors) {
@@ -74,6 +80,13 @@ function arrangementGaps(planning: MockPlanning): FieldErrors {
   return heldBack
 }
 
+/** Whether the event's end (`end_date` + `end_time`, business time) is now or past (ADR-0027). */
+function hasEnded(stored: MockEventRequest): boolean {
+  const { end_date: endDate, end_time: endTime } = stored.request
+  const endsAt = Date.parse(`${endDate ?? ''}T${endTime ?? ''}${BUSINESS_TIME_OFFSET}`)
+  return Date.parse(MOCK_NOW) >= endsAt
+}
+
 export const eventPlanningHandlers: RequestHandler[] = [
   http.post(`${REQUEST_PATH}/safety-review`, ({ request, params }) => {
     const found = assignedOrRefusal(request, params.reference)
@@ -90,6 +103,23 @@ export const eventPlanningHandlers: RequestHandler[] = [
     }
 
     stored.request.status = EVENT_REQUEST_STATUS.SAFETY_REVIEW
+    return HttpResponse.json(stored.request)
+  }),
+
+  http.post(`${REQUEST_PATH}/complete`, ({ request, params }) => {
+    const found = assignedOrRefusal(request, params.reference)
+    if ('refusal' in found) {
+      return found.refusal
+    }
+    const { stored } = found
+    if (stored.request.status !== EVENT_REQUEST_STATUS.CONFIRMED) {
+      return errorResponse(409, 'request_not_completable', NOT_CONFIRMED_MESSAGE)
+    }
+    if (!hasEnded(stored)) {
+      return errorResponse(409, 'request_not_completable', NOT_YET_ENDED_MESSAGE)
+    }
+
+    stored.request.status = EVENT_REQUEST_STATUS.COMPLETED
     return HttpResponse.json(stored.request)
   }),
 ]

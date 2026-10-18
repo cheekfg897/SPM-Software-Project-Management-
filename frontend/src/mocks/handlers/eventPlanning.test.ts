@@ -1,4 +1,8 @@
-import { fetchAssignedEventRequests, sendToSafetyReview } from '@/features/eventRequests/api'
+import {
+  completeEvent,
+  fetchAssignedEventRequests,
+  sendToSafetyReview,
+} from '@/features/eventRequests/api'
 import { fieldErrorsOf } from '@/lib/api'
 import { refusal } from '@/test/refusal'
 
@@ -19,8 +23,10 @@ import {
  * the backend.
  *
  * Hana coordinates EVR-PLAN0001 (approved; arrangement 42 pending, 40 withdrawn, equipment
- * request 43 unanswered) and EVR-PLAN0002 (approved and settled). Chloe coordinates EVR-MOCK0001
- * (approved, nothing arranged in this mock) and EVR-BOOK0102 (confirmed).
+ * request 43 unanswered) and EVR-PLAN0002 (approved and settled), and two confirmed events:
+ * EVR-PLAN0005, ending exactly at the mock's "now" (MOCK_NOW), and EVR-PLAN0006, which began the
+ * day before and ends a minute after it. Chloe coordinates EVR-MOCK0001 (approved, nothing
+ * arranged in this mock) and EVR-BOOK0102 (confirmed).
  */
 
 const HANA = MOCK_ACCOUNTS.planningCoordinator
@@ -29,6 +35,8 @@ const APPROVED_WITH_GAPS = 'EVR-PLAN0001'
 const APPROVED_AND_SETTLED = 'EVR-PLAN0002'
 const APPROVED_WITH_NOTHING_ARRANGED = 'EVR-MOCK0001'
 const CHLOES_CONFIRMED = 'EVR-BOOK0102'
+const ENDED_AT_NOW = 'EVR-PLAN0005'
+const ENDS_A_MINUTE_AFTER_NOW = 'EVR-PLAN0006'
 
 const SAFETY_REVIEW_NOT_READY = {
   status: 409,
@@ -104,5 +112,60 @@ describe('SCRUM-97 mock: sending an event to safety review', () => {
 
     signInAs(null)
     expect(await refusal(sendToSafetyReview(APPROVED_AND_SETTLED))).toMatchObject(NOT_SIGNED_IN)
+  })
+})
+
+describe('SCRUM-68 mock: marking an event completed', () => {
+  const NOT_CONFIRMED = {
+    status: 409,
+    code: 'request_not_completable',
+    message: 'Only a confirmed event can be marked completed.',
+  }
+
+  it('completes a confirmed event whose end is exactly now, in the reply and the record', async () => {
+    signInAs(HANA)
+
+    const completed = await completeEvent(ENDED_AT_NOW)
+
+    expect(completed).toMatchObject({ reference: ENDED_AT_NOW, status: 'completed' })
+    expect(completed).not.toHaveProperty('coordinator')
+    expect(await statusOf(ENDED_AT_NOW)).toBe('completed')
+  })
+
+  it('refuses an event ending a minute from now, judged by its end date, not its start', async () => {
+    signInAs(HANA)
+
+    expect(await refusal(completeEvent(ENDS_A_MINUTE_AFTER_NOW))).toMatchObject({
+      status: 409,
+      code: 'request_not_completable',
+      message: 'The event has not ended yet.',
+    })
+    expect(await statusOf(ENDS_A_MINUTE_AFTER_NOW)).toBe('confirmed')
+  })
+
+  it('refuses an event that is not confirmed, before looking at its end', async () => {
+    signInAs(HANA)
+
+    expect(await refusal(completeEvent(APPROVED_AND_SETTLED))).toMatchObject(NOT_CONFIRMED)
+  })
+
+  it('refuses to complete an event twice', async () => {
+    signInAs(HANA)
+    await completeEvent(ENDED_AT_NOW)
+
+    expect(await refusal(completeEvent(ENDED_AT_NOW))).toMatchObject(NOT_CONFIRMED)
+  })
+
+  it("answers another coordinator's event as not found, and refuses other roles", async () => {
+    signInAs(CHLOE)
+    expect(await refusal(completeEvent(ENDED_AT_NOW))).toMatchObject(NOT_FOUND)
+
+    signInAs(MOCK_ACCOUNTS.organiser)
+    expect(await refusal(completeEvent(ENDED_AT_NOW))).toMatchObject(NOT_PERMITTED)
+
+    signInAs(null)
+    expect(await refusal(completeEvent(ENDED_AT_NOW))).toMatchObject(NOT_SIGNED_IN)
+    signInAs(HANA)
+    expect(await statusOf(ENDED_AT_NOW)).toBe('confirmed')
   })
 })

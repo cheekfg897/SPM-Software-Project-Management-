@@ -64,6 +64,8 @@ const DETAILS = {
  * Hana's events. Approved: EVR-PLAN0001 still has a pending venue arrangement (42) beside an
  * approved one and a withdrawn one, and an unanswered equipment request (43), so the Safety
  * Review gate names both; EVR-PLAN0002 is settled, its only other arrangement withdrawn.
+ * Confirmed, against the mock's "now" (MOCK_NOW, 5 Oct 12:00 pm): EVR-PLAN0005 ends exactly
+ * then, so it has ended; EVR-PLAN0006 began the day before and ends a minute later, so it hasn't.
  */
 export const PLANNING_EVENT_REQUESTS: readonly MockEventRequest[] = [
   {
@@ -103,6 +105,32 @@ export const PLANNING_EVENT_REQUESTS: readonly MockEventRequest[] = [
       proposed_date: '2026-11-14',
       end_date: '2026-11-14',
       created_at: '2026-09-20T03:00:00+00:00',
+    },
+  },
+  {
+    ...HANAS_EVENT,
+    request: {
+      ...DETAILS,
+      reference: 'EVR-PLAN0005',
+      status: 'confirmed',
+      name: 'Autumn Book Fair',
+      proposed_date: '2026-10-05',
+      end_date: '2026-10-05',
+      end_time: '12:00:00',
+      created_at: '2026-09-17T03:00:00+00:00',
+    },
+  },
+  {
+    ...HANAS_EVENT,
+    request: {
+      ...DETAILS,
+      reference: 'EVR-PLAN0006',
+      status: 'confirmed',
+      name: 'Weekend Coding Camp',
+      proposed_date: '2026-10-04',
+      end_date: '2026-10-05',
+      end_time: '12:01:00',
+      created_at: '2026-09-16T03:00:00+00:00',
     },
   },
 ]
