@@ -34,8 +34,8 @@ export const ALREADY_ASSIGNED_MESSAGE =
   'That coordinator is already assigned to this event request.'
 const NO_COORDINATOR_TO_REPLACE_MESSAGE = 'This event request has no coordinator to reassign from.'
 const NOT_REASSIGNABLE_MESSAGE =
-  'Only a submitted, under-review, awaiting-clarification, approved or confirmed event ' +
-  'request can be reassigned.'
+  'Only a submitted, under-review, awaiting-clarification, approved, safety-review or ' +
+  'confirmed event request can be reassigned.'
 const NOT_FOUND_MESSAGE = 'Event request not found.'
 const MISSING_EMAIL_MESSAGE = 'Missing data for required field.'
 const INVALID_EMAIL_MESSAGE = 'Not a valid email address.'
@@ -49,6 +49,7 @@ const ACTIVE_STATUSES: readonly EventRequestStatus[] = [
   EVENT_REQUEST_STATUS.UNDER_REVIEW,
   EVENT_REQUEST_STATUS.AWAITING_CLARIFICATION,
   EVENT_REQUEST_STATUS.APPROVED,
+  EVENT_REQUEST_STATUS.SAFETY_REVIEW,
   EVENT_REQUEST_STATUS.CONFIRMED,
 ]
 
@@ -201,6 +202,18 @@ const INITIAL_EVENTS: readonly LeadMockEvent[] = [
     expected_attendance: 80,
     created_at: '2026-10-03T08:20:00+08:00',
     coordinator_id: CHLOE_ID,
+  },
+  {
+    reference: 'EVR-LEAD0013',
+    name: 'Rooftop Film Night',
+    status: EVENT_REQUEST_STATUS.SAFETY_REVIEW,
+    proposed_date: '2026-12-08',
+    end_date: null,
+    start_time: '19:30:00',
+    end_time: '22:00:00',
+    expected_attendance: 110,
+    created_at: '2026-09-20T15:00:00+08:00',
+    coordinator_id: AISHA_ID,
   },
   {
     reference: 'EVR-LEAD0012',
