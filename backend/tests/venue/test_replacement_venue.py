@@ -229,6 +229,38 @@ def test_a_refused_replacement_saves_nothing(db_session: Session, flagged: Flagg
     assert db_session.scalars(select(VenueBookingRequest.id)).all() == before
 
 
+def _replace_naming(flagged: Flagged, session: Session, replaces: Any) -> None:
+    """Raise a replacement whose ``replaces_request_id`` is ``replaces`` as sent."""
+    raise_booking(flagged.other, flagged.event, session, replaces_request_id=replaces)
+
+
+@pytest.mark.parametrize(
+    "as_sent",
+    [
+        pytest.param(lambda original_id: original_id + 0.5, id="a fraction"),
+        pytest.param(str, id="a numeric string"),
+        pytest.param(lambda _: True, id="true"),
+    ],
+)
+def test_a_replacement_id_that_is_not_a_whole_number_is_refused(
+    db_session: Session, flagged: Flagged, as_sent: Callable[[int], Any]
+) -> None:
+    """The original's id sent as ``1.5`` or ``"1"`` used to load as 1 and replace it."""
+    with pytest.raises(ValidationError) as refusal:
+        _replace_naming(flagged, db_session, as_sent(flagged.original.id))
+
+    assert refusal.value.details == {"replaces_request_id": ["Not a valid integer."]}
+
+
+def test_a_replacement_id_below_one_is_refused(db_session: Session, flagged: Flagged) -> None:
+    with pytest.raises(ValidationError) as refusal:
+        _replace_naming(flagged, db_session, 0)
+
+    assert refusal.value.details == {
+        "replaces_request_id": ["replaces_request_id must be a positive number."]
+    }
+
+
 # --------------------------------------------------------------------------
 # AC7 — approving the replacement releases the flagged arrangement
 # --------------------------------------------------------------------------
