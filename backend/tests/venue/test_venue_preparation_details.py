@@ -10,6 +10,7 @@ the Safety Officer has approved the event (AC5).
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 
 import pytest
 from sqlalchemy import select
@@ -45,6 +46,7 @@ OTHER_VENUE_STAFF_ID = 42
 #: The Event Organiser ``saved_users`` saves, and their client organisation.
 ORGANISER_ID = 7
 ORGANISER_ORGANISATION_ID = 3
+UNKNOWN_STATUS_MESSAGE = "Status must be not_started, in_progress or ready."
 #: Every status but approved, built from the enum so a status added later is tested.
 NOT_APPROVED_STATUSES = [
     status for status in BookingRequestStatus if status is not BookingRequestStatus.APPROVED
@@ -62,7 +64,7 @@ def _approved_booking(
     return booking
 
 
-def _record(booking: VenueBookingRequest, payload: dict[str, str], session: Session) -> None:
+def _record(booking: VenueBookingRequest, payload: dict[str, Any], session: Session) -> None:
     services.update_preparation_details(
         booking.id, payload, updated_by=VENUE_STAFF_ID, session=session
     )
@@ -96,13 +98,18 @@ def test_a_booking_starts_as_not_started_with_no_notes(
     assert booking.preparation_notes is None
 
 
+@pytest.mark.parametrize(
+    "next_update",
+    [{"status": "ready"}, {"status": "ready", "notes": None}],
+    ids=["notes left out", "notes null"],
+)
 def test_the_next_update_replaces_the_details_and_notes_may_be_left_out(
-    db_session: Session, venue: Venue, saved_event: SavedEvent
+    db_session: Session, venue: Venue, saved_event: SavedEvent, next_update: dict[str, Any]
 ) -> None:
     booking = _approved_booking(venue, saved_event(), db_session)
     _record(booking, IN_PROGRESS, db_session)
 
-    _record(booking, {"status": "ready"}, db_session)
+    _record(booking, next_update, db_session)
 
     assert booking.preparation_status is PreparationStatus.READY
     assert booking.preparation_notes is None
@@ -284,25 +291,28 @@ def test_an_unknown_booking_is_not_found(db_session: Session) -> None:
 
 
 @pytest.mark.parametrize(
-    ("payload", "field"),
+    ("payload", "field", "message"),
     [
-        ({"notes": "Chairs set out."}, "status"),
-        ({"status": "finished"}, "status"),
-        ({"status": "ready", "notes": "   "}, "notes"),
+        ({"notes": "Chairs set out."}, "status", "Missing data for required field."),
+        ({"status": "finished"}, "status", UNKNOWN_STATUS_MESSAGE),
+        ({"status": True}, "status", UNKNOWN_STATUS_MESSAGE),
+        ({"status": "ready", "notes": "   "}, "notes", "Must not be blank."),
+        ({"status": "ready", "notes": 5}, "notes", "Not a valid string."),
     ],
-    ids=["no status", "unknown status", "blank notes"],
+    ids=["no status", "unknown status", "boolean status", "blank notes", "numeric notes"],
 )
 def test_an_invalid_payload_is_a_400_naming_the_field(
     db_session: Session,
     venue: Venue,
     saved_event: SavedEvent,
-    payload: dict[str, str],
+    payload: dict[str, Any],
     field: str,
+    message: str,
 ) -> None:
     booking = _approved_booking(venue, saved_event(), db_session)
 
     with pytest.raises(ValidationError) as caught:
         _record(booking, payload, db_session)
 
-    assert set(caught.value.details) == {field}
+    assert caught.value.details == {field: [message]}
     assert _preparation_entries(db_session) == []
