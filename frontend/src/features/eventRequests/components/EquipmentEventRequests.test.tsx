@@ -103,6 +103,7 @@ describe('SCRUM-24 AC5 Staff home: the events with equipment, for Technical Supp
     ['an Event Coordinator', MOCK_ACCOUNTS.coordinator],
     ['the Event Coordinator Lead', MOCK_ACCOUNTS.lead],
     ['Venue Staff', MOCK_ACCOUNTS.venueStaff],
+    ['the Safety Officer', MOCK_ACCOUNTS.safetyOfficer],
   ])('shows %s no such list, and asks for none', async (_role, account) => {
     const requests = recordRequests()
     openStaffHome(account)

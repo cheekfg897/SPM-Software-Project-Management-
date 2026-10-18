@@ -27,6 +27,7 @@ const NOT_TECHNICAL_SUPPORT: readonly [string, MockAccount][] = [
   ['an Event Coordinator', MOCK_ACCOUNTS.coordinator],
   ['the Event Coordinator Lead', MOCK_ACCOUNTS.lead],
   ['Venue Staff', MOCK_ACCOUNTS.venueStaff],
+  ['the Safety Officer', MOCK_ACCOUNTS.safetyOfficer],
   ['an Event Organiser', MOCK_ACCOUNTS.organiser],
   ['an Attendee', MOCK_ACCOUNTS.attendee],
 ]
@@ -208,6 +209,7 @@ describe('mock of the equipment types the queue is named from', () => {
     ['an Event Coordinator', MOCK_ACCOUNTS.coordinator],
     ['the Event Coordinator Lead', MOCK_ACCOUNTS.lead],
     ['Venue Staff', MOCK_ACCOUNTS.venueStaff],
+    ['the Safety Officer', MOCK_ACCOUNTS.safetyOfficer],
   ])('lists every type by name for %s', async (_role, account) => {
     signInAs(account)
 

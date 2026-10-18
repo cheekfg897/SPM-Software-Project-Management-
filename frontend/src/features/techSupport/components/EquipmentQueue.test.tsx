@@ -181,6 +181,7 @@ describe('SCRUM-38 Staff home: the equipment awaiting action, for Technical Supp
     ['an Event Coordinator', MOCK_ACCOUNTS.coordinator],
     ['the Event Coordinator Lead', MOCK_ACCOUNTS.lead],
     ['Venue Staff', MOCK_ACCOUNTS.venueStaff],
+    ['the Safety Officer', MOCK_ACCOUNTS.safetyOfficer],
   ])('shows %s no queue, and asks for neither it nor the types (AC6)', async (_role, account) => {
     const requests = recordRequests()
     openStaffHome(account)
