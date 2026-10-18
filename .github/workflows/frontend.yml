@@ -106,6 +106,7 @@ jobs:
       INTEGRATION_LEAD_EMAIL: integration-lead@connectsphere.test
       INTEGRATION_VENUE_STAFF_EMAIL: integration-venue-staff@connectsphere.test
       INTEGRATION_SAFETY_OFFICER_EMAIL: integration-safety-officer@connectsphere.test
+      INTEGRATION_TECH_SUPPORT_EMAIL: integration-tech-support@connectsphere.test
 
     steps:
       - name: Check out
@@ -148,7 +149,8 @@ jobs:
       # The safety checks (SCRUM-97, SCRUM-98) need an event in Safety Review, which takes a Lead
       # to assign it and Venue Staff to approve its venue, and a Safety Officer to answer. They
       # are made the same way, each with its own password for this run. The Venue Staff account
-      # also runs the SCRUM-43 decision checks that skip without one.
+      # also runs the SCRUM-43 decision checks that skip without one, and the Technical Support
+      # account the SCRUM-48 equipment outcome checks that skip without one.
       - name: Create the Lead, Venue Staff and Safety Officer accounts for the tests
         working-directory: backend
         run: |
@@ -167,6 +169,8 @@ jobs:
             "Integration Venue Staff" INTEGRATION_VENUE_STAFF_PASSWORD
           create_account safety_officer "$INTEGRATION_SAFETY_OFFICER_EMAIL" \
             "Integration Safety Officer" INTEGRATION_SAFETY_OFFICER_PASSWORD
+          create_account technical_support_staff "$INTEGRATION_TECH_SUPPORT_EMAIL" \
+            "Integration Technical Support" INTEGRATION_TECH_SUPPORT_PASSWORD
 
       # Left running in the background for the next step; the runner stops it at the end.
       - name: Start the backend

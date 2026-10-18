@@ -62,8 +62,9 @@ serve yet.
 Also:
 - The integration tests check the route's refusals with the accounts CI has. The checks that
   need a Technical Support account run only when `INTEGRATION_TECH_SUPPORT_EMAIL` and
-  `INTEGRATION_TECH_SUPPORT_PASSWORD` are set, as the Venue Staff checks do. Recording on a
-  real line needs an event assigned by a Lead, so it waits as a todo with SCRUM-37's.
+  `INTEGRATION_TECH_SUPPORT_PASSWORD` are set, as the Venue Staff checks do; CI makes that
+  account (frontend.yml). Recording on a real line needs an event assigned by a Lead, so it
+  waits as a todo with SCRUM-37's.
 
 ## Deferred, each with what it needs
 - **AC4, the outcome and the note in the notification:** the backend's notification says only
