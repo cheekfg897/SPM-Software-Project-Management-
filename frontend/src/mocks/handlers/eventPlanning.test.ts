@@ -2,13 +2,16 @@ import {
   completeEvent,
   fetchAssignedEventRequests,
   sendToSafetyReview,
+  updateRegistrationSettings,
 } from '@/features/eventRequests/api'
-import { fieldErrorsOf } from '@/lib/api'
+import { apiRequest, fieldErrorsOf } from '@/lib/api'
 import { refusal } from '@/test/refusal'
 
 import { MOCK_ACCOUNTS } from '../fixtures/accounts'
 
 import {
+  expectInvalid,
+  expectNotAnObject,
   NOT_FOUND,
   NOT_PERMITTED,
   NOT_SIGNED_IN,
@@ -25,8 +28,10 @@ import {
  * Hana coordinates EVR-PLAN0001 (approved; arrangement 42 pending, 40 withdrawn, equipment
  * request 43 unanswered) and EVR-PLAN0002 (approved and settled), and two confirmed events:
  * EVR-PLAN0005, ending exactly at the mock's "now" (MOCK_NOW), and EVR-PLAN0006, which began the
- * day before and ends a minute after it. Chloe coordinates EVR-MOCK0001 (approved, nothing
- * arranged in this mock) and EVR-BOOK0102 (confirmed).
+ * day before and ends a minute after it. EVR-PLAN0005's registration is open for 50 with 30
+ * registered; EVR-PLAN0006's organiser asked for registration and nothing is set. Chloe
+ * coordinates EVR-MOCK0001 (approved, nothing arranged in this mock) and EVR-BOOK0102
+ * (confirmed; no registration asked for or set).
  */
 
 const HANA = MOCK_ACCOUNTS.planningCoordinator
@@ -167,5 +172,173 @@ describe('SCRUM-68 mock: marking an event completed', () => {
     expect(await refusal(completeEvent(ENDED_AT_NOW))).toMatchObject(NOT_SIGNED_IN)
     signInAs(HANA)
     expect(await statusOf(ENDED_AT_NOW)).toBe('confirmed')
+  })
+})
+
+describe('SCRUM-69 mock: registration settings', () => {
+  const OPEN_FOR_50 = 'EVR-PLAN0005'
+  const ASKED_FOR_NOTHING_SET = 'EVR-PLAN0006'
+  const CAPACITY_REQUIRED = 'A capacity is required to enable registration.'
+  const BELOW_REGISTERED = 'Capacity cannot be lower than the 30 places already taken.'
+  const NOT_AN_INTEGER = 'Not a valid integer.'
+  const OUT_OF_RANGE = 'Capacity must be between 1 and 2147483647.'
+
+  /** Send `body` to the registration route as it is, whatever its shape. */
+  function patchWith(reference: string, body: unknown) {
+    return apiRequest(`/api/events/requests/${reference}/registration`, { method: 'PATCH', body })
+  }
+
+  it('opens registration with a capacity, answering with the settings as they now are', async () => {
+    signInAs(HANA)
+
+    const settings = await updateRegistrationSettings(ASKED_FOR_NOTHING_SET, {
+      registration_enabled: true,
+      registration_capacity: 120,
+    })
+
+    expect(settings).toEqual({
+      reference: ASKED_FOR_NOTHING_SET,
+      registration_required: true,
+      registration_enabled: true,
+      registration_capacity: 120,
+    })
+    const closed = await updateRegistrationSettings(ASKED_FOR_NOTHING_SET, {
+      registration_enabled: false,
+    })
+    expect(closed).toMatchObject({ registration_enabled: false, registration_capacity: 120 })
+  })
+
+  it("follows the organiser's answer when only a first capacity is sent (AC1)", async () => {
+    signInAs(HANA)
+    const asked = await updateRegistrationSettings(ASKED_FOR_NOTHING_SET, {
+      registration_capacity: 80,
+    })
+    expect(asked).toMatchObject({ registration_enabled: true, registration_capacity: 80 })
+
+    signInAs(CHLOE)
+    const notAsked = await updateRegistrationSettings(CHLOES_CONFIRMED, {
+      registration_capacity: 10,
+    })
+    expect(notAsked).toMatchObject({ registration_enabled: false, registration_capacity: 10 })
+  })
+
+  it('keeps whether registration is open when only a new capacity is sent', async () => {
+    signInAs(HANA)
+
+    const settings = await updateRegistrationSettings(OPEN_FOR_50, { registration_capacity: 40 })
+
+    expect(settings).toMatchObject({
+      registration_required: false,
+      registration_enabled: true,
+      registration_capacity: 40,
+    })
+  })
+
+  it('asks for a capacity to open registration on an event that has none', async () => {
+    signInAs(HANA)
+
+    const error = await refusal(
+      updateRegistrationSettings(ASKED_FOR_NOTHING_SET, { registration_enabled: true }),
+    )
+
+    expectInvalid(error, { registration_capacity: [CAPACITY_REQUIRED] })
+  })
+
+  it('refuses a capacity below the number registered, open or closed, and allows exactly it', async () => {
+    signInAs(HANA)
+
+    const below = await refusal(
+      updateRegistrationSettings(OPEN_FOR_50, { registration_capacity: 29 }),
+    )
+    expectInvalid(below, { registration_capacity: [BELOW_REGISTERED] })
+    const belowClosed = await refusal(
+      updateRegistrationSettings(OPEN_FOR_50, {
+        registration_enabled: false,
+        registration_capacity: 29,
+      }),
+    )
+    expectInvalid(belowClosed, { registration_capacity: [BELOW_REGISTERED] })
+    const exactly = await updateRegistrationSettings(OPEN_FOR_50, { registration_capacity: 30 })
+    expect(exactly.registration_capacity).toBe(30)
+  })
+
+  it('refuses to open registration before the event is confirmed, but lets it stay closed', async () => {
+    signInAs(HANA)
+
+    const error = await refusal(
+      updateRegistrationSettings(APPROVED_AND_SETTLED, {
+        registration_enabled: true,
+        registration_capacity: 10,
+      }),
+    )
+
+    expect(error).toMatchObject({
+      status: 409,
+      code: 'registration_not_enablable',
+      message: 'Registration can be enabled only for a confirmed event.',
+    })
+    const closed = await updateRegistrationSettings(APPROVED_AND_SETTLED, {
+      registration_enabled: false,
+      registration_capacity: 10,
+    })
+    expect(closed).toMatchObject({ registration_enabled: false, registration_capacity: 10 })
+  })
+
+  it('names every field it refuses, as marshmallow words it', async () => {
+    signInAs(HANA)
+
+    expectInvalid(
+      await refusal(
+        patchWith(OPEN_FOR_50, {
+          registration_enabled: 'yes',
+          registration_capacity: 1.5,
+          size: 3,
+        }),
+      ),
+      {
+        registration_enabled: ['Not a valid boolean.'],
+        registration_capacity: [NOT_AN_INTEGER],
+        size: ['Unknown field.'],
+      },
+    )
+    expectInvalid(
+      await refusal(
+        patchWith(OPEN_FOR_50, { registration_enabled: null, registration_capacity: 0 }),
+      ),
+      { registration_enabled: ['Field may not be null.'], registration_capacity: [OUT_OF_RANGE] },
+    )
+    expectInvalid(await refusal(patchWith(OPEN_FOR_50, { registration_capacity: '5' })), {
+      registration_capacity: [NOT_AN_INTEGER],
+    })
+    expectInvalid(await refusal(patchWith(OPEN_FOR_50, { registration_capacity: true })), {
+      registration_capacity: [NOT_AN_INTEGER],
+    })
+    expectInvalid(await refusal(patchWith(OPEN_FOR_50, { registration_capacity: null })), {
+      registration_capacity: ['Field may not be null.'],
+    })
+    expectInvalid(await refusal(patchWith(OPEN_FOR_50, { registration_capacity: 2147483648 })), {
+      registration_capacity: [OUT_OF_RANGE],
+    })
+    const largest = await updateRegistrationSettings(OPEN_FOR_50, {
+      registration_capacity: 2147483647,
+    })
+    expect(largest.registration_capacity).toBe(2147483647)
+  })
+
+  it('refuses a body that is not a JSON object', async () => {
+    signInAs(HANA)
+
+    expectNotAnObject(await refusal(patchWith(OPEN_FOR_50, [true])))
+  })
+
+  it("answers another coordinator's event as not found before reading the body", async () => {
+    signInAs(CHLOE)
+    expect(await refusal(patchWith(OPEN_FOR_50, { size: 3 }))).toMatchObject(NOT_FOUND)
+
+    signInAs(MOCK_ACCOUNTS.organiser)
+    expect(await refusal(patchWith(OPEN_FOR_50, {}))).toMatchObject(NOT_PERMITTED)
+
+    signInAs(null)
+    expect(await refusal(patchWith(OPEN_FOR_50, {}))).toMatchObject(NOT_SIGNED_IN)
   })
 })
