@@ -986,6 +986,82 @@ def submit_draft_event_request(
 
 
 # --------------------------------------------------------------------------
+# SCRUM-98 — whether an event's safety check is approved, and withdrawing it
+# --------------------------------------------------------------------------
+
+#: The history kinds that open, settle or unsettle a safety check. The newest of them
+#: says whether the event's current check is approved (SCRUM-98, ADR-0047); a
+#: replacement venue withdraws an approval (SCRUM-92 AC10, ADR-0053).
+SAFETY_CHECK_KINDS = (
+    EventHistoryKind.SAFETY_REVIEW_REQUESTED,
+    EventHistoryKind.SAFETY_OUTCOME_RECORDED,
+    EventHistoryKind.SAFETY_APPROVAL_WITHDRAWN,
+)
+
+
+def has_safety_approval(event_id: int, *, session: Session | None = None) -> bool:
+    """Whether the Safety Officer has approved the event's current safety check.
+
+    SCRUM-98 AC5. For SCRUM-49, which confirms only an approved event, and SCRUM-84/85,
+    which prepare only one. The newest entry that opens or settles a check decides, so
+    an approval counts until the event is sent to Safety Review again (ADR-0047).
+
+    Args:
+        event_id: The event request's id.
+        session: Database session; defaults to ``db.session``.
+    """
+    stmt = (
+        select(EventHistoryEntry)
+        .where(
+            EventHistoryEntry.event_request_id == event_id,
+            EventHistoryEntry.kind.in_(SAFETY_CHECK_KINDS),
+        )
+        .order_by(EventHistoryEntry.occurred_at.desc(), EventHistoryEntry.id.desc())
+        .limit(1)
+    )
+    latest = resolve_session(session).scalar(stmt)
+    if latest is None or latest.kind is not EventHistoryKind.SAFETY_OUTCOME_RECORDED:
+        return False
+    return latest.details["outcome"] == SafetyOutcome.APPROVED.value
+
+
+def withdraw_safety_approval(
+    event_id: int,
+    *,
+    actor_id: int,
+    details: dict[str, Any],
+    session: Session | None = None,
+) -> None:
+    """Withdraw the event's safety approval, if it has one, without committing.
+
+    SCRUM-92 AC10: once a replacement venue is approved, the event must pass a new
+    safety check before it can be confirmed or prepared. The withdrawal is a history
+    entry, which ``has_safety_approval`` then reads as no approval. An event in Safety
+    Review goes back to Approved, so the coordinator can send it again. An event with
+    no approval is left alone. The entry rides in the caller's transaction (ADR-0018).
+
+    Args:
+        event_id: The event request's id.
+        actor_id: The Venue Staff user who approved the replacement.
+        details: The replacement and the arrangement it replaced.
+        session: Database session; defaults to ``db.session``.
+    """
+    sess = resolve_session(session)
+    if not has_safety_approval(event_id, session=sess):
+        return
+    event_request = sess.get(EventRequest, event_id)
+    if event_request.status is EventRequestStatus.SAFETY_REVIEW:
+        event_request.status = EventRequestStatus.APPROVED
+    record_event_history(
+        event_request,
+        EventHistoryKind.SAFETY_APPROVAL_WITHDRAWN,
+        actor_id=actor_id,
+        details=details,
+        session=sess,
+    )
+
+
+# --------------------------------------------------------------------------
 # SCRUM-37 — record what equipment an event needs
 # --------------------------------------------------------------------------
 
@@ -3963,78 +4039,6 @@ def _equipment_for_safety_review(
             )
         )
     return equipment
-
-
-#: The history kinds that open, settle or unsettle a safety check. The newest of them
-#: says whether the event's current check is approved (SCRUM-98, ADR-0047); a
-#: replacement venue withdraws an approval (SCRUM-92 AC10, ADR-0053).
-SAFETY_CHECK_KINDS = (
-    EventHistoryKind.SAFETY_REVIEW_REQUESTED,
-    EventHistoryKind.SAFETY_OUTCOME_RECORDED,
-    EventHistoryKind.SAFETY_APPROVAL_WITHDRAWN,
-)
-
-
-def has_safety_approval(event_id: int, *, session: Session | None = None) -> bool:
-    """Whether the Safety Officer has approved the event's current safety check.
-
-    SCRUM-98 AC5. For SCRUM-49, which confirms only an approved event, and SCRUM-84/85,
-    which prepare only one. The newest entry that opens or settles a check decides, so
-    an approval counts until the event is sent to Safety Review again (ADR-0047).
-
-    Args:
-        event_id: The event request's id.
-        session: Database session; defaults to ``db.session``.
-    """
-    stmt = (
-        select(EventHistoryEntry)
-        .where(
-            EventHistoryEntry.event_request_id == event_id,
-            EventHistoryEntry.kind.in_(SAFETY_CHECK_KINDS),
-        )
-        .order_by(EventHistoryEntry.occurred_at.desc(), EventHistoryEntry.id.desc())
-        .limit(1)
-    )
-    latest = resolve_session(session).scalar(stmt)
-    if latest is None or latest.kind is not EventHistoryKind.SAFETY_OUTCOME_RECORDED:
-        return False
-    return latest.details["outcome"] == SafetyOutcome.APPROVED.value
-
-
-def withdraw_safety_approval(
-    event_id: int,
-    *,
-    actor_id: int,
-    details: dict[str, Any],
-    session: Session | None = None,
-) -> None:
-    """Withdraw the event's safety approval, if it has one, without committing.
-
-    SCRUM-92 AC10: once a replacement venue is approved, the event must pass a new
-    safety check before it can be confirmed or prepared. The withdrawal is a history
-    entry, which ``has_safety_approval`` then reads as no approval. An event in Safety
-    Review goes back to Approved, so the coordinator can send it again. An event with
-    no approval is left alone. The entry rides in the caller's transaction (ADR-0018).
-
-    Args:
-        event_id: The event request's id.
-        actor_id: The Venue Staff user who approved the replacement.
-        details: The replacement and the arrangement it replaced.
-        session: Database session; defaults to ``db.session``.
-    """
-    sess = resolve_session(session)
-    if not has_safety_approval(event_id, session=sess):
-        return
-    event_request = sess.get(EventRequest, event_id)
-    if event_request.status is EventRequestStatus.SAFETY_REVIEW:
-        event_request.status = EventRequestStatus.APPROVED
-    record_event_history(
-        event_request,
-        EventHistoryKind.SAFETY_APPROVAL_WITHDRAWN,
-        actor_id=actor_id,
-        details=details,
-        session=sess,
-    )
 
 
 def list_events_awaiting_safety_review(
