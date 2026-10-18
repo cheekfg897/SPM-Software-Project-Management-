@@ -11,31 +11,37 @@ import { isRecord } from '@/lib/isRecord'
 import type { MockAccount } from '../fixtures/accounts'
 import { errorResponse, validationError } from '../responses'
 
-import { callerOrRefusal, eventForReader, eventNotFound } from './equipmentAccess'
+import { callerOrRefusal, eventForReader, eventForStaff, eventNotFound } from './equipmentAccess'
 import {
   MOCK_EQUIPMENT_LINES,
   MOCK_EQUIPMENT_TYPES,
   MOCK_EVENT_SCHEDULE,
+  MOCK_OUTCOME_RECORDED_AT,
 } from './equipmentFixtures'
-import type { MockEquipmentLine, MockEvent } from './equipmentFixtures'
+import type { MockEquipmentLine, MockEquipmentLineStatus, MockEvent } from './equipmentFixtures'
 import {
   EQUIPMENT_TYPE_ID_RANGE_MESSAGE,
   MISSING_MESSAGE,
   positiveWholeNumberError,
   QUANTITY_RANGE_MESSAGE,
+  wholeNumberError,
 } from './equipmentValidation'
 
 /**
  * Each event's equipment lines (SCRUM-37), as backend/app/modules/events/routes.py answers them
- * (ADR-0019, ADR-0028): kept in memory in the order they were added, until
- * resetMockEquipmentLines. The equipment mock reads them for availability's "requested".
+ * (ADR-0019, ADR-0028), and Technical Support's outcome on each (SCRUM-48, ADR-0040): kept in
+ * memory in the order they were added, until resetMockEquipmentLines. The equipment mock reads
+ * them for availability's "requested".
  */
 
 const LINES_PATH = '/api/events/requests/:reference/equipment'
 const LINE_PATH = `${LINES_PATH}/:lineId`
+const OUTCOME_PATH = `${LINE_PATH}/outcome`
 
 /** Only the event's assigned coordinator changes its lines; which event is the lookup's job. */
 const LINE_WRITER_ROLES: readonly Role[] = [ROLE.EVENT_COORDINATOR]
+/** Only Technical Support record an outcome, on any event's line (SCRUM-48). */
+const OUTCOME_RECORDER_ROLES: readonly Role[] = [ROLE.TECHNICAL_SUPPORT_STAFF]
 /** While an event's equipment may change (EQUIPMENT_EDITABLE_STATUSES). */
 const EDITABLE_STATUSES: readonly EventRequestStatus[] = [
   EVENT_REQUEST_STATUS.SUBMITTED,
@@ -45,6 +51,11 @@ const EDITABLE_STATUSES: readonly EventRequestStatus[] = [
 /** The fields a line body may carry (EditEquipmentLineSchema); adding needs the first two. */
 const LINE_FIELDS: readonly string[] = ['equipment_type_id', 'quantity', 'notes']
 const REQUIRED_TO_ADD: readonly string[] = ['equipment_type_id', 'quantity']
+/** The fields an outcome body may carry (RecordEquipmentOutcomeSchema). */
+const OUTCOME_FIELDS: readonly string[] = ['provided_quantity', 'note']
+const PROVIDED_RANGE_MESSAGE = 'Must be greater than or equal to 0.'
+const PROVIDED_ABOVE_REQUESTED_MESSAGE = 'Cannot provide more than was requested.'
+const OUTCOME_NOTE_REQUIRED_MESSAGE = 'A note is required unless the whole request can be provided.'
 const RANGE_MESSAGES = {
   equipment_type_id: EQUIPMENT_TYPE_ID_RANGE_MESSAGE,
   quantity: QUANTITY_RANGE_MESSAGE,
@@ -110,14 +121,25 @@ function notAnObject() {
   return errorResponse(400, 'validation_error', 'Request body must be a JSON object.')
 }
 
-/** Problems with a line body, by field, in the backend's wording. `required` must be sent. */
-function lineErrors(body: Record<string, unknown>, required: readonly string[]): FieldErrors {
+/** "Unknown field." for each field of the body that is not one of `known`. */
+function unknownFieldErrors(body: Record<string, unknown>, known: readonly string[]): FieldErrors {
   const errors: FieldErrors = {}
   for (const name of Object.keys(body)) {
-    if (!LINE_FIELDS.includes(name)) {
+    if (!known.includes(name)) {
       errors[name] = ['Unknown field.']
     }
   }
+  return errors
+}
+
+/** Whether an optional text field holds text, null, or nothing at all. */
+function isOptionalText(value: unknown): boolean {
+  return value === undefined || value === null || typeof value === 'string'
+}
+
+/** Problems with a line body, by field, in the backend's wording. `required` must be sent. */
+function lineErrors(body: Record<string, unknown>, required: readonly string[]): FieldErrors {
+  const errors = unknownFieldErrors(body, LINE_FIELDS)
   for (const name of required) {
     if (body[name] === undefined) {
       errors[name] = [MISSING_MESSAGE]
@@ -130,9 +152,23 @@ function lineErrors(body: Record<string, unknown>, required: readonly string[]):
       errors[name] = [error]
     }
   }
-  const notes = body.notes
-  if (notes !== undefined && notes !== null && typeof notes !== 'string') {
+  if (!isOptionalText(body.notes)) {
     errors.notes = ['Not a valid string.']
+  }
+  return errors
+}
+
+/** Problems with an outcome body, by field, in the backend's wording. */
+function outcomeErrors(body: Record<string, unknown>): FieldErrors {
+  const errors = unknownFieldErrors(body, OUTCOME_FIELDS)
+  const provided = body.provided_quantity
+  const providedError =
+    provided === undefined ? MISSING_MESSAGE : wholeNumberError(provided, 0, PROVIDED_RANGE_MESSAGE)
+  if (providedError !== undefined) {
+    errors.provided_quantity = [providedError]
+  }
+  if (!isOptionalText(body.note)) {
+    errors.note = ['Not a valid string.']
   }
   return errors
 }
@@ -205,6 +241,28 @@ function typeTakenByAnotherLine(
   return linesOfEvent(event.reference).some(
     (line) => line.equipment_type_id === equipmentTypeId && line.id !== lineId,
   )
+}
+
+/** Which outcome `provided` units of `quantity` is (`outcome_status_for`). */
+function outcomeStatus(quantity: number, provided: number): MockEquipmentLineStatus {
+  if (provided === quantity) {
+    return 'fulfilled'
+  }
+  if (provided === 0) {
+    return 'unavailable'
+  }
+  return 'partially_fulfilled'
+}
+
+/** More than was asked for, or a shortfall with no note, refused (`_check_outcome_is_possible`). */
+function outcomeRefusal(line: MockEquipmentLine, provided: number, note: string | null) {
+  if (provided > line.quantity) {
+    return validationError({ provided_quantity: [PROVIDED_ABOVE_REQUESTED_MESSAGE] })
+  }
+  if (provided < line.quantity && note === null) {
+    return validationError({ note: [OUTCOME_NOTE_REQUIRED_MESSAGE] })
+  }
+  return undefined
 }
 
 function duplicateLine() {
@@ -337,5 +395,45 @@ export const equipmentLineHandlers: RequestHandler[] = [
     }
     lines = lines.filter((candidate) => candidate !== line)
     return new HttpResponse(null, { status: 204 })
+  }),
+
+  // Technical Support only. The body, the event, the line, then what the line asked for. Every
+  // call overwrites the outcome, so a revision is recording again (SCRUM-48 AC6).
+  http.post(OUTCOME_PATH, async ({ request, params }) => {
+    const caller = callerOrRefusal(request, OUTCOME_RECORDER_ROLES)
+    if (caller instanceof Response) {
+      return caller
+    }
+    const body = await objectBody(request)
+    if (body === undefined) {
+      return notAnObject()
+    }
+    const errors = outcomeErrors(body)
+    if (Object.keys(errors).length > 0) {
+      return validationError(errors)
+    }
+    const event = eventForStaff(String(params.reference))
+    if (event === undefined) {
+      return eventNotFound()
+    }
+    const line = lineOfEvent(event, String(params.lineId))
+    if (line === undefined) {
+      return lineNotFound()
+    }
+    const provided = Number(body.provided_quantity)
+    const note = storedNotes(body.note)
+    const refused = outcomeRefusal(line, provided, note)
+    if (refused !== undefined) {
+      return refused
+    }
+
+    const status = outcomeStatus(line.quantity, provided)
+    line.status = status
+    line.provided_quantity = provided
+    // A line met in full keeps no note, so a revision never keeps a stale reason.
+    line.outcome_note = status === 'fulfilled' ? null : note
+    line.reviewed_by = caller.full_name
+    line.reviewed_at = MOCK_OUTCOME_RECORDED_AT
+    return HttpResponse.json(shownLine(line))
   }),
 ]

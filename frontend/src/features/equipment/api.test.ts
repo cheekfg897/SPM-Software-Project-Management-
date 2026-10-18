@@ -5,6 +5,7 @@ import {
   fetchEventAvailability,
   fetchEventEquipmentLines,
   fetchEventReservations,
+  recordEquipmentOutcome,
   removeEquipmentLine,
   reserveEquipment,
   updateEquipmentLine,
@@ -59,5 +60,14 @@ describe('SCRUM-37 equipment line API paths', () => {
     ['removes a line', () => removeEquipmentLine(REFERENCE, LINE_ID), `DELETE ${LINES}/${LINE_ID}`],
   ])('%s at its own path, with the reference as one segment', async (_name, send, expected) => {
     await expect(sentRequest(send)).resolves.toBe(expected)
+  })
+})
+
+describe('SCRUM-48 equipment outcome API path', () => {
+  it("records an outcome at its line's own path, with the reference as one segment", async () => {
+    const send = () =>
+      recordEquipmentOutcome(REFERENCE, { lineId: LINE_ID, body: { provided_quantity: 1 } })
+
+    await expect(sentRequest(send)).resolves.toBe(`POST ${LINES}/${LINE_ID}/outcome`)
   })
 })
