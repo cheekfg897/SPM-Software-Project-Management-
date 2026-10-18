@@ -17,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.common.errors import ConflictError, NotFoundError, ValidationError
+from app.modules.auth.models import User
 from app.modules.auth.permissions import Role
 from app.modules.equipment import services
 from app.modules.equipment.models import EquipmentReservation, EquipmentType, PreparationStatus
@@ -30,6 +31,8 @@ TECHNICAL_SUPPORT_ID = 5
 #: A Technical Support id no fixture uses, so a hard-coded actor can't pass by chance.
 OTHER_TECHNICAL_SUPPORT_ID = 42
 COORDINATOR_ID = 3
+#: The Event Organiser ``saved_users`` saves, whose organisation the saved event is.
+ORGANISER_ID = 7
 STARTS_AT = datetime(2026, 11, 3, 1, 0, tzinfo=UTC)
 ENDS_AT = datetime(2026, 11, 3, 9, 30, tzinfo=UTC)
 IN_PROGRESS = {"status": "in_progress", "notes": "Projector mounted, cables to run."}
@@ -123,6 +126,38 @@ def test_other_internal_users_read_the_details_in_the_events_history(
     ]
     assert entry.details["status"] == "in_progress"
     assert entry.details["notes"] == "Projector mounted, cables to run."
+
+
+def test_the_organiser_never_sees_the_preparation_in_the_history(
+    db_session: Session,
+    saved_users: list[User],
+    reservation: EquipmentReservation,
+    saved_event_request: EventRequest,
+    save: Callable[..., None],
+) -> None:
+    """ADR-0050 decision 6: the entry is internal-only.
+
+    An entry the organiser may see is saved first, so the test can't pass on a
+    history that shows them nothing at all.
+    """
+    review_started = EventHistoryEntry(
+        event_request=saved_event_request,
+        kind=EventHistoryKind.REVIEW_STARTED,
+        actor_id=None,
+        details={},
+        occurred_at=datetime.now(UTC),
+    )
+    save(review_started)
+    _record(reservation, IN_PROGRESS, db_session)
+
+    history = event_services.list_event_history(
+        ORGANISER_ID,
+        saved_event_request.reference,
+        viewer_role=Role.EVENT_ORGANISER,
+        session=db_session,
+    )
+
+    assert [shown.kind for shown in history] == [EventHistoryKind.REVIEW_STARTED]
 
 
 @pytest.mark.parametrize("field", ["quantity", "equipment_type_id", "event_id", "reserved_by"])
