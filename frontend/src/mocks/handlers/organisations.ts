@@ -29,8 +29,15 @@ const PHONE_RULE_MESSAGE =
   'Contact phone must have at least 7 digits and use only spaces, hyphens, brackets and a leading +.'
 const PHONE_MIN_DIGITS = 7
 const PHONE_CHARACTERS = /^\+?[0-9 ()-]+$/
-/** Looser than marshmallow's Email: one @ with something either side and no spaces. */
-const EMAIL_SHAPE = /^[^@\s]+@[^@\s]+$/
+/**
+ * marshmallow's Email check, split at the last @. Before it: words joined by single dots. After
+ * it: dotted labels that don't start or end with a hyphen, then a last part of at least two
+ * characters; or just localhost. ASCII only, so the mock refuses a few rare addresses the
+ * backend takes (quoted, non-English, [1.2.3.4]) but takes none the backend refuses.
+ */
+const EMAIL_USER = /^[\w!#$%&'*+/=?^`{}|~-]+(\.[\w!#$%&'*+/=?^`{}|~-]+)*$/
+const EMAIL_DOMAIN =
+  /^([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+([A-Za-z]{2,6}|[A-Za-z0-9-]{2,})$/
 const FIELDS = ['name', 'contact_name', 'contact_email', 'contact_phone']
 const REQUIRED_FIELDS = ['name', 'contact_name', 'contact_email']
 /** Each field's longest value and the message for one longer (organisations/models.py). */
@@ -66,6 +73,16 @@ function byName(): ClientOrganisation[] {
   return [...organisations].sort((left, right) => left.name.localeCompare(right.name))
 }
 
+function isEmail(value: string): boolean {
+  const at = value.lastIndexOf('@')
+  if (at === -1) {
+    return false
+  }
+  const user = value.slice(0, at)
+  const domain = value.slice(at + 1)
+  return EMAIL_USER.test(user) && (domain === 'localhost' || EMAIL_DOMAIN.test(domain))
+}
+
 function phoneRuleBroken(phone: string): boolean {
   const trimmed = phone.trim()
   if (trimmed === '') {
@@ -78,7 +95,7 @@ function phoneRuleBroken(phone: string): boolean {
 /** What the field's own validators say about a string value; marshmallow runs every one. */
 function stringMessages(field: string, value: string): string[] {
   const messages: string[] = []
-  if (field === 'contact_email' && !EMAIL_SHAPE.test(value)) {
+  if (field === 'contact_email' && !isEmail(value)) {
     messages.push('Not a valid email address.')
   }
   if ((field === 'name' || field === 'contact_name') && value.trim() === '') {
