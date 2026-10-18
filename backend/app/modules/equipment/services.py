@@ -568,9 +568,11 @@ def mark_out_of_service(
     """Take units of an equipment type out of service (SCRUM-47 AC1, AC4).
 
     The units stop counting as free (AC2). Reservations they leave short are flagged
-    and, after the commit, each affected event's coordinator is told once (AC3). The
-    type is locked first, so a reservation made at the same moment is either counted
-    before the change or flagged by it (ADR-0037 section 3).
+    and, after the commit, each affected event's coordinator is told once (AC3). An
+    event with a newly flagged reservation loses its safety approval, if it has one,
+    in the same commit, so it must pass a new check (AC5, ADR-0087). The type is
+    locked first, so a reservation made at the same moment is either counted before
+    the change or flagged by it (ADR-0037 section 3).
 
     Args:
         equipment_type_id: The equipment type, from the URL.
@@ -608,6 +610,17 @@ def mark_out_of_service(
     )
     sess.add(entry)
     flagged_event_ids = _reflag_short_reservations(equipment_type, now, sess)
+    for event_id in flagged_event_ids:
+        events_services.withdraw_safety_approval(
+            event_id,
+            actor_id=int(recorded_by),
+            details={
+                "equipment_type_id": equipment_type.id,
+                "equipment_type_name": equipment_type.name,
+                "units_out_of_service": entry.quantity,
+            },
+            session=sess,
+        )
     sess.commit()
     # After the commit (ADR-0015): losing a notice must not lose the change.
     events_services.notify_coordinators_equipment_short(flagged_event_ids, session=sess)
