@@ -181,6 +181,20 @@ def test_each_update_records_who_and_when(
     assert second.details["status"] == "ready"
 
 
+def test_the_details_and_their_entry_are_committed(
+    db_session: Session, reservation: EquipmentReservation
+) -> None:
+    """AC4: a rollback after the update leaves both the details and the entry saved."""
+    _record(reservation, IN_PROGRESS, db_session)
+
+    db_session.rollback()
+
+    reloaded = db_session.get(EquipmentReservation, reservation.id)
+    assert reloaded is not None
+    assert reloaded.preparation_status is PreparationStatus.IN_PROGRESS
+    assert len(_preparation_entries(db_session)) == 1
+
+
 def test_nothing_is_recorded_before_the_safety_officer_approves(
     db_session: Session,
     equipment_type: EquipmentType,
