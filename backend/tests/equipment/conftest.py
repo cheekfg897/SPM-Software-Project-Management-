@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import UTC, datetime, timezone
+from datetime import datetime, timezone
 
 import pytest
 from sqlalchemy.orm import Session
@@ -14,23 +14,9 @@ from app.modules.equipment.models import (
     EquipmentType,
     OutOfServiceReason,
 )
-from app.modules.events.models import EventHistoryEntry, EventHistoryKind, EventRequest
 
 MakeReservation = Callable[[EquipmentType, int, datetime, datetime], EquipmentReservation]
 MakeOutOfService = Callable[..., EquipmentOutOfService]
-
-
-def approve_safety(event: EventRequest, save: Callable[..., None]) -> None:
-    """Record the Safety Officer approving the event, as the history holds it."""
-    save(
-        EventHistoryEntry(
-            event_request=event,
-            kind=EventHistoryKind.SAFETY_OUTCOME_RECORDED,
-            actor_id=None,
-            details={"outcome": "approved"},
-            occurred_at=datetime.now(UTC),
-        )
-    )
 
 
 @pytest.fixture()

@@ -24,7 +24,8 @@ from app.modules.equipment import services
 from app.modules.equipment.models import EquipmentReservation, EquipmentType, PreparationStatus
 from app.modules.events import services as event_services
 from app.modules.events.models import EventHistoryEntry, EventHistoryKind, EventRequest
-from tests.equipment.conftest import MakeReservation, approve_safety
+from tests.conftest import approve_safety
+from tests.equipment.conftest import MakeReservation
 
 pytestmark = pytest.mark.scrum_85
 

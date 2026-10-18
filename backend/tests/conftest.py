@@ -34,6 +34,8 @@ from app.modules.equipment.models import EquipmentType
 from app.modules.events.models import (
     EquipmentLineStatus,
     EventEquipmentLine,
+    EventHistoryEntry,
+    EventHistoryKind,
     EventRequest,
     EventRequestStatus,
 )
@@ -41,6 +43,19 @@ from app.modules.notifications.services import list_notifications_for_recipient
 from app.modules.venue.models import Venue, VenueOpeningPeriod, Weekday
 
 MIGRATIONS_DIR = Path(__file__).resolve().parents[1] / "migrations" / "versions"
+
+
+def approve_safety(event: EventRequest, save: Callable[..., None]) -> None:
+    """Record the Safety Officer approving the event, as the history holds it."""
+    save(
+        EventHistoryEntry(
+            event_request=event,
+            kind=EventHistoryKind.SAFETY_OUTCOME_RECORDED,
+            actor_id=None,
+            details={"outcome": "approved"},
+            occurred_at=datetime.now(timezone.utc),
+        )
+    )
 
 
 @pytest.fixture(scope="session")
