@@ -415,6 +415,35 @@ def test_an_original_that_stopped_holding_its_venue_is_left_as_it_is(
     assert reload_request(db_session, pending.id).status is left_as
 
 
+def test_another_venue_booked_for_the_same_period_is_not_cancelled(
+    db_session: Session,
+    make_venue: Callable[..., Venue],
+    save: Callable[..., None],
+    saved_event: SavedEvent,
+) -> None:
+    """Only the original's own booking is cancelled (AC7).
+
+    The event also has the Breakout room for the same period, booked first, so a search
+    that ignored the venue would cancel that booking instead of the original's.
+    """
+    auditorium, breakout = two_venues(make_venue, save)
+    annex = make_venue(name="Annex")
+    save(annex)
+    event = saved_event()
+    decide(raise_booking(breakout, event, db_session).id, "approved", db_session)
+    original = decide(raise_booking(auditorium, event, db_session).id, "approved", db_session)
+    block(auditorium, at(10), at(11), db_session)
+    replacement = raise_booking(annex, event, db_session, replaces_request_id=original.id)
+
+    decide(replacement.id, "approved", db_session)
+
+    assert bookings(db_session) == [
+        (breakout.id, BookingStatus.CONFIRMED),
+        (auditorium.id, BookingStatus.CANCELLED),
+        (annex.id, BookingStatus.CONFIRMED),
+    ]
+
+
 # --------------------------------------------------------------------------
 # AC10 — a replacement withdraws the safety approval
 # --------------------------------------------------------------------------
