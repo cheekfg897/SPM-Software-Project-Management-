@@ -1,6 +1,7 @@
 import {
   addEquipmentLine,
   fetchEventEquipmentLines,
+  recordEquipmentOutcome,
   removeEquipmentLine,
   updateEquipmentLine,
 } from '@/features/equipment/api'
@@ -34,6 +35,19 @@ const EQUIPMENT_TYPE_FIELDS = [
   'total_quantity',
   'venue_id',
 ]
+
+/**
+ * A Technical Support account for the SCRUM-48 checks only they can reach. CI seeds none, so
+ * those checks read it from these variables and skip without them:
+ * INTEGRATION_TECH_SUPPORT_EMAIL=... INTEGRATION_TECH_SUPPORT_PASSWORD=... npm run test:integration
+ */
+const TECH_SUPPORT_EMAIL = import.meta.env.INTEGRATION_TECH_SUPPORT_EMAIL ?? ''
+const TECH_SUPPORT_PASSWORD = import.meta.env.INTEGRATION_TECH_SUPPORT_PASSWORD ?? ''
+const hasTechSupport = TECH_SUPPORT_EMAIL !== '' && TECH_SUPPORT_PASSWORD !== ''
+
+function signInAsTechSupport() {
+  return signInAs({ email: TECH_SUPPORT_EMAIL, password: TECH_SUPPORT_PASSWORD })
+}
 
 afterEach(() => sendRequestsAs(null))
 
@@ -177,4 +191,122 @@ describe('SCRUM-37 equipment lines against the backend', () => {
     'refuses a change once the event is confirmed (409 equipment_not_editable, with the backend wording)',
   )
   it.todo("lets Technical Support list any event's lines but refuses them adding one (403)")
+})
+
+describe('SCRUM-48 equipment outcomes against the backend', () => {
+  /** An outcome for a line of an event no database has. */
+  function recordUnknown(body: unknown) {
+    return apiRequest(
+      `/api/events/requests/${UNKNOWN_EVENT_REFERENCE}/equipment/${UNKNOWN_LINE_ID}/outcome`,
+      { method: 'POST', body },
+    )
+  }
+
+  function recordWholeRequest() {
+    return recordEquipmentOutcome(UNKNOWN_EVENT_REFERENCE, {
+      lineId: UNKNOWN_LINE_ID,
+      body: { provided_quantity: 1 },
+    })
+  }
+
+  it('refuses a visitor (401)', async () => {
+    const error = await refusal(recordWholeRequest())
+
+    expect(error).toMatchObject({ status: 401, code: 'authentication_error' })
+  })
+
+  it('refuses an Event Coordinator and an attendee (403): only Technical Support record one', async () => {
+    await signInAs(staffAccount())
+    const coordinator = await refusal(recordWholeRequest())
+    await signInAsNewAttendee()
+    const attendee = await refusal(recordWholeRequest())
+
+    for (const error of [coordinator, attendee]) {
+      expect(error).toMatchObject({
+        status: 403,
+        code: 'authorization_error',
+        message: 'You do not have permission to perform this action.',
+      })
+    }
+  })
+
+  it.skipIf(!hasTechSupport)(
+    'names a missing quantity (400), before looking for the event',
+    async () => {
+      await signInAsTechSupport()
+
+      const error = await refusal(
+        recordEquipmentOutcome(UNKNOWN_EVENT_REFERENCE, {
+          lineId: UNKNOWN_LINE_ID,
+          body: { note: 'None to spare.' },
+        }),
+      )
+
+      expect(error).toMatchObject({ status: 400, code: 'validation_error' })
+      expect(error.fieldErrors).toEqual({ provided_quantity: [MISSING_MESSAGE] })
+    },
+  )
+
+  it.skipIf(!hasTechSupport).each([
+    [-1, 'Must be greater than or equal to 0.'],
+    [null, 'Field may not be null.'],
+    ['6', 'Not a valid integer.'],
+  ])('refuses a quantity of %j on its field', async (provided, message) => {
+    await signInAsTechSupport()
+
+    const error = await refusal(recordUnknown({ provided_quantity: provided }))
+
+    expect(error.fieldErrors).toEqual({ provided_quantity: [message] })
+  })
+
+  it.skipIf(!hasTechSupport)(
+    'refuses a note that is not text and a field it does not know',
+    async () => {
+      await signInAsTechSupport()
+
+      const error = await refusal(
+        recordUnknown({ provided_quantity: 1, note: 5, status: 'fulfilled' }),
+      )
+
+      expect(error.fieldErrors).toEqual({
+        note: ['Not a valid string.'],
+        status: ['Unknown field.'],
+      })
+    },
+  )
+
+  it.skipIf(!hasTechSupport)(
+    'refuses a body that is not a JSON object, naming no field',
+    async () => {
+      await signInAsTechSupport()
+
+      const error = await refusal(recordUnknown([]))
+
+      expect(error).toMatchObject({
+        status: 400,
+        message: 'Request body must be a JSON object.',
+        fieldErrors: {},
+      })
+    },
+  )
+
+  it.skipIf(!hasTechSupport)('answers 404 for an event that does not exist', async () => {
+    await signInAsTechSupport()
+
+    const error = await refusal(recordWholeRequest())
+
+    expect(error).toMatchObject({ status: 404, code: 'not_found', message: NOT_FOUND_MESSAGE })
+  })
+
+  it.todo(
+    "records part of an assigned event's line, answering exactly EquipmentLine's fields with partially_fulfilled, the shortfall, the trimmed note and the reviewer's name (needs an assigned event)",
+  )
+  it.todo(
+    'refuses part of a line with no note, on note, and more than was asked for, on provided_quantity',
+  )
+  it.todo('records the whole line as fulfilled, keeping no note, and revises it')
+  it.todo('answers 404 "Equipment line not found." for another event\'s line')
+  it.todo(
+    'refuses an outcome on a cancelled event, naming its status (SCRUM-48 AC8, once the backend has it)',
+  )
 })
