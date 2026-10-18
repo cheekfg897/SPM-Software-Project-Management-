@@ -88,7 +88,7 @@ function equipmentEventOf(event: EventListRow): EquipmentEvent {
 }
 
 /** The event's place in the queue, or null when nothing of it is awaited (SCRUM-38 AC1, AC4). */
-function awaitingRow(stored: MockEquipmentEvent): EquipmentAwaitingAction | null {
+export function awaitingRow(stored: MockEquipmentEvent): EquipmentAwaitingAction | null {
   const { event } = stored
   if (event.proposed_date < MOCK_TODAY || EQUIPMENT_NOT_NEEDED.includes(event.status)) {
     return null

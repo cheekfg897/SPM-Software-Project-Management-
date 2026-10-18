@@ -1,3 +1,5 @@
+import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
+import type { EventRequestStatus } from '@/config/eventStatus'
 import { fetchEventRequestsWithEquipment } from '@/features/eventRequests/api'
 import { fetchEquipmentAwaitingAction, fetchEquipmentTypes } from '@/features/techSupport/api'
 import { refusal } from '@/test/refusal'
@@ -6,7 +8,8 @@ import { sendRequestsAs } from '@/test/sendRequestsAs'
 import { MOCK_ACCOUNTS, mockTokenFor } from '../fixtures/accounts'
 import type { MockAccount } from '../fixtures/accounts'
 
-import { withEquipmentBody } from './techSupport'
+import { MOCK_TODAY } from './catalogueFixtures'
+import { awaitingRow, withEquipmentBody } from './techSupport'
 
 /**
  * The mock of Technical Support's two lists, pinned to what the backend sends: the equipment
@@ -27,6 +30,16 @@ const NOT_TECHNICAL_SUPPORT: readonly [string, MockAccount][] = [
   ['an Event Organiser', MOCK_ACCOUNTS.organiser],
   ['an Attendee', MOCK_ACCOUNTS.attendee],
 ]
+
+/**
+ * Every status the queue still lets through: the backend drops only completed, cancelled and
+ * rejected events (EQUIPMENT_NOT_NEEDED_STATUSES), written out here so the test doesn't copy the
+ * mock's list. Built from the statuses, so one added later is checked too.
+ */
+const WONT_RUN: readonly string[] = ['completed', 'cancelled', 'rejected']
+const STILL_NEEDED: EventRequestStatus[] = Object.values(EVENT_REQUEST_STATUS).filter(
+  (status) => !WONT_RUN.includes(status),
+)
 
 function signInAs(account: MockAccount | null) {
   sendRequestsAs(account === null ? null : mockTokenFor(account))
@@ -84,6 +97,28 @@ describe('SCRUM-38 mock of the equipment awaiting action', () => {
       days_remaining: 36,
     })
   })
+
+  it.each(STILL_NEEDED)(
+    'queues an upcoming %s event whose line is still requested (AC1)',
+    (status) => {
+      const row = awaitingRow({
+        id: 99,
+        createdAt: '2026-10-01T00:00:00+00:00',
+        event: {
+          reference: 'EVR-STATUS99',
+          name: 'Status Check',
+          status,
+          proposed_date: MOCK_TODAY,
+          end_date: MOCK_TODAY,
+          start_time: '10:00:00',
+          end_time: '11:00:00',
+        },
+        lines: [{ id: 991, equipment_type_id: 1, quantity: 1, notes: null, status: 'requested' }],
+      })
+
+      expect(row?.event.reference).toBe('EVR-STATUS99')
+    },
+  )
 
   it('keeps an event with several requested lines as one row, its lines in the order added', async () => {
     signInAs(MOCK_ACCOUNTS.technicalSupport)
