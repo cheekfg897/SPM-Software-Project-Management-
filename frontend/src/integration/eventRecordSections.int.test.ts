@@ -30,6 +30,9 @@ import type { Credentials } from './backend'
  * with `flask create-staff-user` like the staff account, so the checks that need an event
  * assigned to the staff account read a Lead from these variables and skip without them:
  * INTEGRATION_LEAD_EMAIL=... INTEGRATION_LEAD_PASSWORD=... npm run test:integration
+ * They leave events assigned to the staff account, and SCRUM-24's check that a coordinator with
+ * nothing assigned gets an empty list (eventRequests.int.test.ts) needs a staff account with
+ * none: so with a Lead set, give each run a fresh staff account, as CI does.
  */
 
 const LEAD_EMAIL = import.meta.env.INTEGRATION_LEAD_EMAIL ?? ''
