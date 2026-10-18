@@ -1,3 +1,5 @@
+import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
+import type { EventRequestStatus } from '@/config/eventStatus'
 import { fetchEventEquipmentLines, recordEquipmentOutcome } from '@/features/equipment/api'
 import type { EquipmentOutcomeBody } from '@/features/equipment/api'
 import { apiRequest } from '@/lib/api'
@@ -32,6 +34,27 @@ const MICROPHONE_LINE_ID = 42
 const NOTE_REQUIRED = 'A note is required unless the whole request can be provided.'
 const ABOVE_REQUESTED = 'Cannot provide more than was requested.'
 const LINE_NOT_FOUND = { status: 404, code: 'not_found', message: 'Equipment line not found.' }
+/** Statuses in which the coordinator may still change an event's equipment. */
+const EDITABLE_STATUSES: readonly EventRequestStatus[] = ['submitted', 'under_review', 'approved']
+/**
+ * The rest, but a draft. The backend records an outcome on any event but a draft, closed ones
+ * included, until SCRUM-48 AC8 lands (ADR-0040 decision 12). Built from every status, so a new
+ * one is tested.
+ */
+const LOCKED_STATUSES = Object.values(EVENT_REQUEST_STATUS).filter(
+  (status) => status !== 'draft' && !EDITABLE_STATUSES.includes(status),
+)
+
+/** The one line of the mock coordinator's event in `status`. */
+async function onlyLineOf(status: EventRequestStatus) {
+  const reference = mockStatusEventReference(status)
+  const { equipment_lines: lines } = await fetchEventEquipmentLines(reference)
+  const [line] = lines
+  if (lines.length !== 1 || line === undefined) {
+    throw new Error(`Expected one line on ${reference}, found ${String(lines.length)}`)
+  }
+  return { reference, line }
+}
 
 function recordOnProjector(body: EquipmentOutcomeBody) {
   return recordEquipmentOutcome(MOCK_OPEN_EVENT_REFERENCE, { lineId: PROJECTOR_LINE_ID, body })
@@ -126,6 +149,21 @@ describe('SCRUM-48 equipment outcome mock: recording', () => {
       reviewed_at: MOCK_OUTCOME_RECORDED_AT,
     })
   })
+
+  it.each(LOCKED_STATUSES)(
+    'records an outcome on an event that is %s, as the backend still does',
+    async (status) => {
+      signInAs(MOCK_ACCOUNTS.technicalSupport)
+      const { reference, line } = await onlyLineOf(status)
+
+      const recorded = await recordEquipmentOutcome(reference, {
+        lineId: line.id,
+        body: { provided_quantity: 0, note: 'None left that week.' },
+      })
+
+      expect(recorded).toMatchObject({ id: line.id, status: 'unavailable', provided_quantity: 0 })
+    },
+  )
 
   it('finds the event whatever its case and surrounding spaces', async () => {
     signInAs(MOCK_ACCOUNTS.technicalSupport)
