@@ -47,6 +47,21 @@ describe('SCRUM-66 client organisations against the backend', () => {
     expect(listed).toContainEqual(created)
   })
 
+  it('lists by name, not in the order they were recorded', async () => {
+    await signInAs(staffAccount())
+    const prefix = uniqueName()
+    const recordedFirst = await createOrganisation({ ...newOrganisation(), name: `${prefix} b` })
+    const recordedSecond = await createOrganisation({ ...newOrganisation(), name: `${prefix} a` })
+
+    const listed = await fetchOrganisations()
+
+    const ours = listed.filter((organisation) => organisation.name.startsWith(prefix))
+    expect(ours.map((organisation) => organisation.id)).toEqual([
+      recordedSecond.id,
+      recordedFirst.id,
+    ])
+  })
+
   it('refuses a name already recorded (409)', async () => {
     await signInAs(staffAccount())
     const organisation = newOrganisation()
@@ -65,12 +80,19 @@ describe('SCRUM-66 client organisations against the backend', () => {
     await signInAs(staffAccount())
 
     const error = await refusal(
-      createOrganisation({ ...newOrganisation(), name: '   ', contact_phone: '12345' }),
+      createOrganisation({
+        ...newOrganisation(),
+        name: '   ',
+        // One @ and no spaces, which the mock once took, but no dot after the @.
+        contact_email: 'weiling@bayfront',
+        contact_phone: '12345',
+      }),
     )
 
     expect(error).toMatchObject({ status: 400, code: 'validation_error' })
     expect(error.fieldErrors).toEqual({
       name: ['Must not be blank.'],
+      contact_email: ['Not a valid email address.'],
       contact_phone: [
         'Contact phone must have at least 7 digits and use only spaces, hyphens, brackets and a leading +.',
       ],
