@@ -12,6 +12,7 @@ import { MOCK_NOW, MOCK_TODAY } from './catalogueFixtures'
 import { addToHistory } from './eventRecordSections'
 import { withSeconds } from './eventRequestRules'
 import { assignedOrRefusal } from './eventRequests'
+import { positiveWholeNumberError } from './equipmentValidation'
 import type { MockEventRequest } from './eventRequestFixtures'
 
 /**
@@ -61,6 +62,11 @@ const SIGNIFICANT_FIELDS: readonly string[] = [
   'equipment_requirements',
 ]
 const DAY_MS = 24 * 60 * 60_000
+/** What marshmallow reads as a date ("2026-11-12") and a time ("09:00" or "09:00:00"). */
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
+const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/
+/** A time with an offset, which the backend reads and then refuses (ADR-0002). */
+const TIME_WITH_OFFSET_PATTERN = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?(Z|[+-]\d{2}:\d{2})$/
 
 type Values = Partial<Record<EditableField, string | number | null>>
 
@@ -84,21 +90,46 @@ function daysBetween(from: string, to: string): number {
   return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY_MS)
 }
 
-/** Each field's own rules: unknown fields, nulls, the past date and the attendance. */
+function timeError(value: unknown): string | undefined {
+  if (typeof value === 'string' && TIME_PATTERN.test(value)) {
+    return undefined
+  }
+  if (typeof value === 'string' && TIME_WITH_OFFSET_PATTERN.test(value)) {
+    return 'Time must not include a timezone offset.'
+  }
+  return 'Not a valid time.'
+}
+
+/** What is wrong with one sent value, in marshmallow's words, or undefined when nothing is. */
+function valueError(name: EditableField, value: unknown): string | undefined {
+  if (name === 'expected_attendance') {
+    return positiveWholeNumberError(value, 'Expected attendance must be at least 1.')
+  }
+  if (value === null) {
+    return NOT_NULL_FIELDS.includes(name) ? NOT_NULL_MESSAGE : undefined
+  }
+  if (name === 'proposed_date' || name === 'end_date') {
+    return typeof value === 'string' && DATE_PATTERN.test(value) ? undefined : 'Not a valid date.'
+  }
+  if (name === 'start_time' || name === 'end_time') {
+    return timeError(value)
+  }
+  return typeof value === 'string' ? undefined : 'Not a valid string.'
+}
+
+/** Each field's own rules: unknown fields, types, nulls, the attendance and the past date. */
 function fieldErrors(body: Record<string, unknown>): FieldErrors {
   const errors: FieldErrors = {}
   for (const [name, value] of Object.entries(body)) {
-    if (!isEditableField(name)) {
-      errors[name] = ['Unknown field.']
-    } else if (value === null && NOT_NULL_FIELDS.includes(name)) {
-      errors[name] = [NOT_NULL_MESSAGE]
+    const error = isEditableField(name) ? valueError(name, value) : 'Unknown field.'
+    if (error !== undefined) {
+      errors[name] = [error]
     }
   }
-  if (typeof body.proposed_date === 'string' && body.proposed_date < MOCK_TODAY) {
+  const proposedDate = body.proposed_date
+  const isValidDate = errors.proposed_date === undefined && typeof proposedDate === 'string'
+  if (isValidDate && proposedDate < MOCK_TODAY) {
     errors.proposed_date = ['Proposed date cannot be in the past.']
-  }
-  if (typeof body.expected_attendance === 'number' && body.expected_attendance < 1) {
-    errors.expected_attendance = ['Expected attendance must be at least 1.']
   }
   return errors
 }
