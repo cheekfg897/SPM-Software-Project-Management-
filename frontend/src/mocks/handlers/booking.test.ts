@@ -491,6 +491,17 @@ describe('SCRUM-93 booking mock: withdrawing an arrangement', () => {
     },
   )
 
+  it('refuses to withdraw an approved arrangement flagged as needing an alternative venue', async () => {
+    expect(bookedHall.needs_alternative_venue).toBe(true)
+
+    const error = await errorOf(withdraw(BOOKED_EVENT.reference, bookedHall.id))
+
+    expect([error.status, error.message]).toEqual([
+      409,
+      'Only a pending, conflicting, rejected or expired arrangement can be withdrawn; this one is approved.',
+    ])
+  })
+
   it('answers 404 for an arrangement of another event, or one that does not exist', async () => {
     const otherEvents = await errorOf(withdraw(MULTI_VENUE_EVENT.reference, 9001))
     const missing = await errorOf(withdraw(MULTI_VENUE_EVENT.reference, 424242))
