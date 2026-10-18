@@ -1413,6 +1413,20 @@ class ArrangedVenue:
     ends_at: datetime
 
 
+def _arranged_venue(arrangement: VenueBookingRequest, session: Session | None) -> ArrangedVenue:
+    """The arrangement's venue, and the period it is arranged for."""
+    venue = get_venue(arrangement.venue_id, session=session)
+    return ArrangedVenue(
+        name=venue.name,
+        capacity=venue.capacity,
+        layouts=venue.layouts_list(),
+        facilities=venue.facilities_list(),
+        accessibility_features=venue.accessibility_list(),
+        starts_at=arrangement.starts_at,
+        ends_at=arrangement.ends_at,
+    )
+
+
 def list_arranged_venues(event_id: int, *, session: Session | None = None) -> list[ArrangedVenue]:
     """The venues the event still has arranged, earliest period first (SCRUM-97 AC6).
 
@@ -1420,18 +1434,7 @@ def list_arranged_venues(event_id: int, *, session: Session | None = None) -> li
     """
     arranged = []
     for arrangement in list_active_arrangements(event_id, session=session):
-        venue = get_venue(arrangement.venue_id, session=session)
-        arranged.append(
-            ArrangedVenue(
-                name=venue.name,
-                capacity=venue.capacity,
-                layouts=venue.layouts_list(),
-                facilities=venue.facilities_list(),
-                accessibility_features=venue.accessibility_list(),
-                starts_at=arrangement.starts_at,
-                ends_at=arrangement.ends_at,
-            )
-        )
+        arranged.append(_arranged_venue(arrangement, session))
     return arranged
 
 
