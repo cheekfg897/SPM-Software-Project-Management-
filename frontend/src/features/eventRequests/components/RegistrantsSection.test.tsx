@@ -11,8 +11,9 @@ import { findRegion } from '../test/recordPage'
 /**
  * SCRUM-55: who has registered for an event, on its record, for its coordinator and for an
  * organiser of its organisation, with the count against the capacity (ADR-0076). The mock
- * (src/mocks/handlers/eventRecordSections.ts) has three registrants and 80 places for Chloe's
- * EVR-BOOK0102, in Sara's organisation, and nobody and no capacity for EVR-7K2M9QXA.
+ * (src/mocks/handlers/eventRecordSections.ts) has three registrants, one who withdrew (SCRUM-53)
+ * and 80 places for Chloe's EVR-BOOK0102, in Sara's organisation, and nobody and no capacity
+ * for EVR-7K2M9QXA.
  */
 
 const COORDINATOR = mockSessionFor(MOCK_ACCOUNTS.coordinator)
@@ -39,12 +40,13 @@ describe('SCRUM-55 registrants on an event record', () => {
 
     expect(await registrantRows()).toEqual([
       ['Hannah Lee', 'hannah.lee@example.com', '6 Oct, 9:15 am', 'Registered'],
+      ['Owen Teo', 'owen.teo@example.com', '7 Oct, 8:00 am', 'Withdrawn'],
       ['Ravi Kumar', 'ravi.kumar@example.com', '7 Oct, 6:40 pm', 'Registered'],
       ['Mei Ling Tan', 'meiling.tan@example.com', '8 Oct, 12:05 pm', 'Registered'],
     ])
   })
 
-  it('counts them against the capacity, with the places left (AC4)', async () => {
+  it('counts those still registered against the capacity, with the places left (AC4)', async () => {
     renderApp(coordinatorEventPath(TOWN_HALL), { session: COORDINATOR })
 
     const registrants = await findRegion('Registrants')
@@ -59,7 +61,12 @@ describe('SCRUM-55 registrants on an event record', () => {
 
     const rows = await registrantRows()
 
-    expect(rows.map(([name]) => name)).toEqual(['Hannah Lee', 'Ravi Kumar', 'Mei Ling Tan'])
+    expect(rows.map(([name]) => name)).toEqual([
+      'Hannah Lee',
+      'Owen Teo',
+      'Ravi Kumar',
+      'Mei Ling Tan',
+    ])
   })
 
   it('says when nobody has registered and no capacity is set yet', async () => {

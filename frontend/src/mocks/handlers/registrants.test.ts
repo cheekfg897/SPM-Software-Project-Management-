@@ -12,7 +12,10 @@ import type { MockAccount } from '../fixtures/accounts'
  * running backend.
  */
 
-/** Chloe's confirmed event, in organisation 2, Sara's: three registrants and 80 places. */
+/**
+ * Chloe's confirmed event, in organisation 2, Sara's: 80 places, three registrants holding one,
+ * and one who withdrew (SCRUM-53), who is listed but not counted.
+ */
 const TOWN_HALL = 'EVR-BOOK0102'
 /** Chloe's, under review, in the mock organiser's organisation: nobody registered yet. */
 const PARTNER_SUMMIT = 'EVR-7K2M9QXA'
@@ -29,6 +32,12 @@ const TOWN_HALL_REGISTRANTS = {
       email: 'hannah.lee@example.com',
       registered_at: '2026-10-06T09:15:00+08:00',
       status: 'registered',
+    },
+    {
+      name: 'Owen Teo',
+      email: 'owen.teo@example.com',
+      registered_at: '2026-10-07T08:00:00+08:00',
+      status: 'withdrawn',
     },
     {
       name: 'Ravi Kumar',

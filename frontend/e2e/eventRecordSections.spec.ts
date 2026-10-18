@@ -32,7 +32,8 @@ test('SCRUM-33, SCRUM-55: a coordinator opens an event and sees its history and 
   const registrants = page.getByRole('region', { name: 'Registrants' })
   await expect(registrants.getByText('3 registered of 80 places · 77 left')).toBeVisible()
   const rows = registrants.getByRole('row')
-  await expect(rows).toHaveCount(4)
+  // A header row, three registered and one who withdrew (SCRUM-53).
+  await expect(rows).toHaveCount(5)
   await expect(rows.nth(1)).toContainText('Hannah Lee')
   await expect(rows.nth(1)).toContainText('hannah.lee@example.com')
 })

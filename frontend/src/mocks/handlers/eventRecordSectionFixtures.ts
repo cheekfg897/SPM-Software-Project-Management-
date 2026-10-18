@@ -234,6 +234,13 @@ export const MOCK_REGISTRATIONS: Readonly<Record<string, MockRegistrations>> = {
         registered_at: '2026-10-08T12:05:00+08:00',
         status: 'registered',
       },
+      {
+        // Withdrew later (SCRUM-53): still listed, but no longer takes a place.
+        name: 'Owen Teo',
+        email: 'owen.teo@example.com',
+        registered_at: '2026-10-07T08:00:00+08:00',
+        status: 'withdrawn',
+      },
     ],
   },
 }

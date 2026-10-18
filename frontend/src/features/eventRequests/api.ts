@@ -185,7 +185,7 @@ export interface Registrant {
   email: string
   /** ISO date-time with an offset. */
   registered_at: string
-  /** "registered" today; SCRUM-53 adds more (ADR-0032). */
+  /** "registered", or "withdrawn" once they withdraw (SCRUM-53): listed, but not counted. */
   status: string
 }
 
