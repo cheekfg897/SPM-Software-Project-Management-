@@ -95,18 +95,20 @@ def test_upgrade_adds_the_column_then_the_enum_values_outside_the_transaction(
     assert_in_order(sql, expected_in_order)
 
 
-def test_downgrade_returns_expired_requests_to_on_hold_and_rebuilds_the_types(
+def test_downgrade_deletes_expired_requests_and_rebuilds_the_types(
     load_migration: LoadMigration,
     render_migration_sql: RenderMigrationSql,
     assert_in_order: AssertInOrder,
 ) -> None:
-    """An expired request goes back On Hold; its expiry has passed, so it reads expired.
+    """An expired request is deleted, as 0036 deletes the On Hold ones.
 
-    The pending index is dropped around the request rebuild, as in 0036.
+    Putting it back On Hold could collide under the pending index with the request
+    raised again for the same slot after it expired (SCRUM-94 AC2). The pending index is
+    dropped around the request rebuild, as in 0036.
     """
     migration = load_migration(MIGRATION)
     expected_in_order = [
-        "UPDATE venue_booking_requests SET status = 'on_hold' WHERE status = 'expired'",
+        "DELETE FROM venue_booking_requests WHERE status = 'expired'",
         "DELETE FROM event_history_entries WHERE kind = 'venue_hold_expired'",
         "DELETE FROM notifications WHERE kind = 'venue_hold_expiring'",
         "DELETE FROM notifications WHERE kind = 'venue_hold_expired'",

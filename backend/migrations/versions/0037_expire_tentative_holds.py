@@ -16,8 +16,9 @@ SCRUM-94 "Expire tentative holds automatically" (ADR-0052):
 
 The values are added outside the migration's transaction, with ``IF NOT EXISTS``, as
 0025, 0028 and 0036 do. Postgres can't remove an enum value, so downgrading rebuilds the
-three types without the new values. An expired request goes back to ``on_hold``, which
-loses nothing: its hold's expiry has passed, so 0036's code reads it as expired anyway.
+three types without the new values. An expired request is deleted, as 0036's downgrade
+deletes On Hold ones: putting it back On Hold could collide under the pending index with
+the request raised again for the same slot after it expired (SCRUM-94 AC2).
 The history entries and notices of the new kinds are deleted, as 0036 deletes its own.
 """
 
@@ -145,9 +146,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute(
-        sa.text("UPDATE venue_booking_requests SET status = 'on_hold' WHERE status = 'expired'")
-    )
+    op.execute(sa.text("DELETE FROM venue_booking_requests WHERE status = 'expired'"))
     for value in ADDED_HISTORY_KIND_VALUES:
         op.execute(
             sa.text("DELETE FROM event_history_entries WHERE kind = :value").bindparams(value=value)
