@@ -239,3 +239,12 @@ describe('SCRUM-93 changing, withdrawing and cancelling venue arrangements again
     'refuses withdraw, change and cancel all once the event is Confirmed, naming its status (lands with SCRUM-93 AC10 on the backend)',
   )
 })
+
+describe("SCRUM-24 Venue Staff's list of events against the backend", () => {
+  // GET /api/events/requests/with-venue-bookings exists (ADR-0085), but no screen calls it yet,
+  // so there is no API function to check. These land with the Venue Staff events screen.
+  it.todo('refuses the list without a token (401) and to a role other than Venue Staff (403)')
+  it.todo(
+    'lists an event with a booking request as name, date, times and status, or says there are none',
+  )
+})

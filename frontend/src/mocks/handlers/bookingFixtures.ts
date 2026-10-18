@@ -6,6 +6,8 @@ import { MOCK_ACCOUNTS } from '../fixtures/accounts'
 export interface MockBookingEvent {
   id: number
   reference: string
+  /** For Venue Staff's list of events (SCRUM-24 AC4). */
+  name: string
   coordinator_id: number
   status: 'approved' | 'confirmed'
   expected_attendance: number
@@ -24,6 +26,7 @@ export interface MockBookingVenue {
 const APPROVED_EVENT: MockBookingEvent = {
   id: 101,
   reference: 'EVR-BOOK0101',
+  name: 'Partner Summit',
   coordinator_id: MOCK_ACCOUNTS.coordinator.id,
   status: 'approved',
   expected_attendance: 80,
@@ -49,6 +52,7 @@ export const MOCK_BOOKING_EVENTS = {
     ...APPROVED_EVENT,
     id: 104,
     reference: 'EVR-BOOK0104',
+    name: 'Product Showcase',
     proposed_date: '2026-12-01',
     start_time: '10:00:00',
   },
@@ -56,6 +60,7 @@ export const MOCK_BOOKING_EVENTS = {
     ...APPROVED_EVENT,
     id: 105,
     reference: 'EVR-BOOK0105',
+    name: 'Design Workshop',
     proposed_date: '2026-11-20',
   },
   multiVenue: {

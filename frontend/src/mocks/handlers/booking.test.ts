@@ -811,3 +811,68 @@ describe('SCRUM-93 booking mock: who may change, withdraw or cancel', () => {
     },
   )
 })
+
+describe("SCRUM-24 booking mock: Venue Staff's list of events", () => {
+  const EVENTS_URL = '/api/events/requests/with-venue-bookings'
+
+  function eventsWithVenueBookings() {
+    return apiRequest<{ event_requests: Record<string, unknown>[] }>(EVENTS_URL)
+  }
+
+  async function listedReferences(): Promise<unknown[]> {
+    sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.venueStaff))
+    const body = await eventsWithVenueBookings()
+    return body.event_requests.map((row) => row.reference)
+  }
+
+  it('lists each event with an active booking request, newest first', async () => {
+    // 106 has a withdrawn arrangement beside its rejected ones, and 108 a released one beside an
+    // expired one, so both stay listed; 101 to 103 have none.
+    expect(await listedReferences()).toEqual([
+      'EVR-BOOK0109',
+      'EVR-BOOK0108',
+      'EVR-BOOK0107',
+      'EVR-BOOK0106',
+      'EVR-BOOK0105',
+      'EVR-BOOK0104',
+    ])
+  })
+
+  it('shows each event as its summary row, with no message', async () => {
+    sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.venueStaff))
+
+    const body = await eventsWithVenueBookings()
+
+    expect(Object.keys(body)).toEqual(['event_requests'])
+    expect(body.event_requests).toContainEqual({
+      reference: 'EVR-BOOK0105',
+      name: 'Design Workshop',
+      proposed_date: '2026-11-20',
+      end_date: null,
+      start_time: '09:00:00',
+      end_time: '17:00:00',
+      status: 'approved',
+    })
+  })
+
+  it('adds an event once a request is raised for it, and drops it once that is withdrawn', async () => {
+    const raised = await raisePending()
+    const withRequest = await listedReferences()
+    sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.coordinator))
+    await withdraw(APPROVED_EVENT.reference, raised)
+
+    const afterWithdrawing = await listedReferences()
+
+    expect(withRequest).toContain(APPROVED_EVENT.reference)
+    expect(afterWithdrawing).not.toContain(APPROVED_EVENT.reference)
+  })
+
+  it('answers 401 without a token and 403 to anyone but Venue Staff', async () => {
+    sendRequestsAs(null)
+    const signedOut = await errorOf(eventsWithVenueBookings())
+    sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.coordinator))
+    const coordinator = await errorOf(eventsWithVenueBookings())
+
+    expect([signedOut.status, coordinator.status]).toEqual([401, 403])
+  })
+})
