@@ -16,7 +16,9 @@ import { findRegion, serveRecordInStatus, statusShownFor } from '../test/recordP
  * the backend accepts it in, with the backend's refusals and every reason they give
  * (ADR-0075). The mock in src/mocks/handlers/eventPlanning.ts holds Hana's EVR-PLAN0001
  * (approved; arrangement 42 pending, equipment request 43 unanswered), EVR-PLAN0002 (approved
- * and settled), EVR-PLAN0005 (confirmed, ended; registration open for 50 with 30 registered,
+ * and settled), EVR-PLAN0003 (in Safety Review, approved by the Safety Officer and settled),
+ * EVR-PLAN0004 (in Safety Review, not approved, arrangement 48 rejected, equipment request 49
+ * unanswered), EVR-PLAN0005 (confirmed, ended; registration open for 50 with 30 registered,
  * though its organiser didn't ask for it) and EVR-PLAN0006 (confirmed, not yet ended; its
  * organiser asked for registration and nothing is set).
  */
@@ -24,12 +26,15 @@ import { findRegion, serveRecordInStatus, statusShownFor } from '../test/recordP
 const HANA = mockSessionFor(MOCK_ACCOUNTS.planningCoordinator)
 const APPROVED_WITH_GAPS = 'EVR-PLAN0001'
 const APPROVED_AND_SETTLED = 'EVR-PLAN0002'
+const READY_TO_CONFIRM = 'EVR-PLAN0003'
+const HELD_BACK_EVERYWHERE = 'EVR-PLAN0004'
 const CONFIRMED_AND_ENDED = 'EVR-PLAN0005'
 const CONFIRMED_NOT_ENDED = 'EVR-PLAN0006'
 
 /** The actions each status offers; every status not named offers none. */
 const OFFERED_BY_STATUS: [EventRequestStatus, string[]][] = [
   [EVENT_REQUEST_STATUS.APPROVED, ['Send to safety review']],
+  [EVENT_REQUEST_STATUS.SAFETY_REVIEW, ['Confirm event']],
   [EVENT_REQUEST_STATUS.CONFIRMED, ['Save registration', 'Mark completed']],
 ]
 const STATUSES_OFFERING_NOTHING = Object.values(EVENT_REQUEST_STATUS).filter(
@@ -335,5 +340,56 @@ describe('SCRUM-69 registration settings', () => {
 
     expect(save).toBeDisabled()
     expect(save).toHaveAttribute('aria-busy', 'true')
+  })
+})
+
+describe('SCRUM-49 confirming an event', () => {
+  it('confirms it, and the page shows Confirmed with what a confirmed event offers', async () => {
+    const requests = recordRequests()
+    const { user } = openAsHana(READY_TO_CONFIRM)
+
+    await user.click(await screen.findByRole('button', { name: 'Confirm event' }))
+
+    expect(await screen.findByRole('button', { name: 'Mark completed' })).toBeInTheDocument()
+    expect(statusShownFor(READY_TO_CONFIRM)).toBe('Confirmed')
+    expect(screen.queryByRole('button', { name: 'Confirm event' })).not.toBeInTheDocument()
+    const sent = requests.find((request) => request.method === 'POST')
+    expect(sent?.url).toMatch(new RegExp(`/api/events/requests/${READY_TO_CONFIRM}/confirm$`))
+  })
+
+  it('lists every approval still missing, in the order the backend gives them', async () => {
+    const { user } = openAsHana(HELD_BACK_EVERYWHERE)
+
+    await user.click(await screen.findByRole('button', { name: 'Confirm event' }))
+
+    const alert = await within(await findRegion('Confirm the event')).findByRole('alert')
+    expect(alert).toHaveTextContent(
+      'The event can be confirmed once the Safety Officer has approved it',
+    )
+    expect(
+      within(alert)
+        .getAllByRole('listitem')
+        .map((item) => item.textContent),
+    ).toEqual([
+      'The Safety Officer has not approved the event.',
+      'Venue arrangement 48 is rejected.',
+      'Equipment request 49 has no outcome from Technical Support.',
+    ])
+    expect(statusShownFor(HELD_BACK_EVERYWHERE)).toBe('Safety review')
+  })
+
+  it("shows the backend's own words for a refusal, as they come", async () => {
+    refuseAction(READY_TO_CONFIRM, 'confirm', {
+      error: 'confirmation_not_allowed',
+      message: 'Not yet, says the backend.',
+      details: { safety_check: ['Only the backend could say this about the safety check.'] },
+    })
+    const { user } = openAsHana(READY_TO_CONFIRM)
+
+    await user.click(await screen.findByRole('button', { name: 'Confirm event' }))
+
+    const alert = await within(await findRegion('Confirm the event')).findByRole('alert')
+    expect(alert).toHaveTextContent('Not yet, says the backend.')
+    expect(alert).toHaveTextContent('Only the backend could say this about the safety check.')
   })
 })
