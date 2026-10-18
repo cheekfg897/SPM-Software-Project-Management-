@@ -85,7 +85,7 @@ describe('SCRUM-25 the venue list', () => {
   })
 })
 
-describe('SCRUM-25 who reaches the venue pages (ADR-0053)', () => {
+describe('SCRUM-25 who reaches the venue pages (ADR-0067)', () => {
   it.each(STAFF_ACCOUNTS.map((account) => [account.role, account] as const))(
     'gives %s a Venues link in the header that opens the list',
     async (_role, account) => {

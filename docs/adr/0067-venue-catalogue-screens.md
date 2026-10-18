@@ -1,4 +1,4 @@
-# ADR-0053: The web app's venue catalogue screens: staff browse, Venue Staff edit
+# ADR-0067: The web app's venue catalogue screens: staff browse, Venue Staff edit
 
 - **Status:** Accepted; the points marked *default to review* wait for the Product Owner
 - **Date:** 2026-10-17

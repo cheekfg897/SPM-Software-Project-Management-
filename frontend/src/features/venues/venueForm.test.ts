@@ -48,7 +48,7 @@ describe('SCRUM-25 what the venue form sends', () => {
     })
   })
 
-  it('sends an empty capacity as null, so the backend refuses it (ADR-0053)', () => {
+  it('sends an empty capacity as null, so the backend refuses it (ADR-0067)', () => {
     const details = venueFromForm(formWith({ ...FILLED_IN, capacity: '' }))
 
     expect(details.capacity).toBeNull()

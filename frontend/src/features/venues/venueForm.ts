@@ -49,7 +49,7 @@ function openingHours(form: FormData): OpeningPeriod[] {
 }
 
 /**
- * What the venue form sends, as the backend names it (ADR-0053). Every check is the backend's:
+ * What the venue form sends, as the backend names it (ADR-0067). Every check is the backend's:
  * an empty capacity goes as null so it is refused, and an empty setup or turnaround time is left
  * out, so a new venue takes the standard time and a change keeps the venue's own.
  */

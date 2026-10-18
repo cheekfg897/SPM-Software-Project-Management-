@@ -42,7 +42,7 @@ export interface Venue {
 
 /**
  * What the venue form sends. `capacity` is null when the field was left empty, so the backend
- * refuses it rather than a change keeping the old value (ADR-0053). The two times are left out
+ * refuses it rather than a change keeping the old value (ADR-0067). The two times are left out
  * to take the standard time on a new venue, or to keep the venue's own on a change.
  */
 export interface VenueDetails {
