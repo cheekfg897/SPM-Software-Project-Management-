@@ -381,14 +381,18 @@ describe('SCRUM-24 AC9, AC10 an event record against the backend', () => {
 })
 
 describe('SCRUM-24 AC2 a coordinator assigned events against the backend', () => {
-  // The staff account is a coordinator made fresh for each CI run, so nothing is assigned to it.
-  it('gives a coordinator with nothing assigned an empty list and the message saying so', async () => {
+  // Other files' tests may assign events to the same CI coordinator first, so the list may or
+  // may not be empty here; the message must come with an empty list and only then.
+  it('adds the "none assigned" message to the list exactly when it is empty', async () => {
     await signInAs(staffAccount())
 
-    expect(await fetchAssignedEventRequests()).toEqual({
-      event_requests: [],
-      message: NO_ASSIGNED_MESSAGE,
-    })
+    const list = await fetchAssignedEventRequests()
+
+    if (list.event_requests.length === 0) {
+      expect(list).toEqual({ event_requests: [], message: NO_ASSIGNED_MESSAGE })
+    } else {
+      expect(Object.keys(list)).toEqual(['event_requests'])
+    }
   })
 
   it('refuses an organiser', async () => {
