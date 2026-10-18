@@ -1,12 +1,11 @@
 import { useId } from 'react'
 
-import { Button, ErrorAlert, Spinner } from '@/components/ui'
-
 import type { BookingRequest } from '../api'
 import { STATUS_LABELS } from '../constants'
 import { usePendingBookingRequests } from '../hooks'
 
 import { BookingDecisionForm } from './BookingDecisionForm'
+import { BookingQueryList } from './BookingQueryList'
 import { BookingRequestDetails } from './BookingRequestDetails'
 import { HoldForm } from './HoldForm'
 
@@ -39,38 +38,13 @@ function WaitingRequest({ request }: { request: BookingRequest }) {
 export function PendingDecisionQueue() {
   const queue = usePendingBookingRequests()
 
-  if (queue.isPending) {
-    return (
-      <p role="status" className="text-ink-muted flex items-center gap-3">
-        <Spinner />
-        Loading booking requests…
-      </p>
-    )
-  }
-  if (queue.isError) {
-    return (
-      <div className="space-y-4">
-        <ErrorAlert error={queue.error} />
-        <Button variant="secondary" onClick={() => void queue.refetch()}>
-          Try again
-        </Button>
-      </div>
-    )
-  }
-  if (queue.data.length === 0) {
-    return (
-      <p className="border-line text-ink-muted rounded-2xl border border-dashed px-6 py-16 text-center">
-        No booking requests are waiting for a decision.
-      </p>
-    )
-  }
   return (
-    <ul className="space-y-5">
-      {queue.data.map((request) => (
-        <li key={request.id}>
-          <WaitingRequest request={request} />
-        </li>
-      ))}
-    </ul>
+    <BookingQueryList
+      query={queue}
+      loadingText="Loading booking requests…"
+      emptyText="No booking requests are waiting for a decision."
+    >
+      {(request) => <WaitingRequest request={request} />}
+    </BookingQueryList>
   )
 }
