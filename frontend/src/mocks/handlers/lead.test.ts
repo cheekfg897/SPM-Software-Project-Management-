@@ -29,6 +29,7 @@ const EVENTS = {
   underReviewHeldByAisha: 'EVR-LEAD0004',
   awaitingClarificationHeldByChloe: 'EVR-LEAD0005',
   approvedHeldByChloe: 'EVR-LEAD0003',
+  safetyReviewHeldByAisha: 'EVR-LEAD0013',
   confirmedHeldByAisha: 'EVR-LEAD0006',
   completedHeldByChloe: 'EVR-LEAD0008',
   cancelledHeldByAisha: 'EVR-LEAD0009',
@@ -136,6 +137,7 @@ describe('SCRUM-96 Lead mock: the active list and the workload', () => {
       EVENTS.queuedFirst,
       EVENTS.awaitingClarificationHeldByChloe,
       EVENTS.underReviewHeldByAisha,
+      EVENTS.safetyReviewHeldByAisha,
       EVENTS.approvedHeldByChloe,
       EVENTS.confirmedHeldByAisha,
     ])
@@ -176,7 +178,11 @@ describe('SCRUM-96 Lead mock: the active list and the workload', () => {
     expect(await workloadByName()).toEqual([
       {
         coordinator: 'Aisha Karim',
-        references: [EVENTS.underReviewHeldByAisha, EVENTS.confirmedHeldByAisha],
+        references: [
+          EVENTS.underReviewHeldByAisha,
+          EVENTS.safetyReviewHeldByAisha,
+          EVENTS.confirmedHeldByAisha,
+        ],
       },
       {
         coordinator: 'Chloe Lim',
@@ -209,7 +215,12 @@ describe('SCRUM-96 Lead mock: the active list and the workload', () => {
 
     expect(await workloadByName()).toContainEqual({
       coordinator: 'Aisha Karim',
-      references: [EVENTS.queuedSecond, EVENTS.underReviewHeldByAisha, EVENTS.confirmedHeldByAisha],
+      references: [
+        EVENTS.queuedSecond,
+        EVENTS.underReviewHeldByAisha,
+        EVENTS.safetyReviewHeldByAisha,
+        EVENTS.confirmedHeldByAisha,
+      ],
     })
     const assigned = (await fetchActiveEvents()).event_requests.find(
       (row) => row.reference === EVENTS.queuedSecond,
@@ -234,6 +245,7 @@ describe('SCRUM-96 Lead mock: reassigning an event', () => {
         coordinator: 'Aisha Karim',
         references: [
           EVENTS.underReviewHeldByAisha,
+          EVENTS.safetyReviewHeldByAisha,
           EVENTS.approvedHeldByChloe,
           EVENTS.confirmedHeldByAisha,
         ],
@@ -255,14 +267,15 @@ describe('SCRUM-96 Lead mock: reassigning an event', () => {
     expect(moved.coordinator.full_name).toBe('Aisha Karim')
   })
 
-  it.each([EVENTS.underReviewHeldByAisha, EVENTS.confirmedHeldByAisha])(
-    'reassigns Aisha’s %s, whatever its active status',
-    async (reference) => {
-      const moved = await reassign(reference, CHLOE.email)
+  it.each([
+    EVENTS.underReviewHeldByAisha,
+    EVENTS.safetyReviewHeldByAisha,
+    EVENTS.confirmedHeldByAisha,
+  ])('reassigns Aisha’s %s, whatever its active status', async (reference) => {
+    const moved = await reassign(reference, CHLOE.email)
 
-      expect(moved.coordinator.full_name).toBe('Chloe Lim')
-    },
-  )
+    expect(moved.coordinator.full_name).toBe('Chloe Lim')
+  })
 
   it('matches the email and the reference ignoring case', async () => {
     const moved = await reassign(
@@ -325,7 +338,7 @@ describe('SCRUM-96 Lead mock: reassigning an event', () => {
         status: 409,
         code: 'request_not_reassignable',
         message:
-          'Only a submitted, under-review, awaiting-clarification, approved or confirmed event request can be reassigned.',
+          'Only a submitted, under-review, awaiting-clarification, approved, safety-review or confirmed event request can be reassigned.',
         fields: {},
       })
     },

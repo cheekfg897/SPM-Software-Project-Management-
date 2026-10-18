@@ -159,6 +159,7 @@ describe('SCRUM-96 the Lead oversight page: the active events', () => {
       'Annual Partner Summit',
       'Founders’ Fireside Chat',
       'Quarterly Town Hall',
+      'Rooftop Film Night',
       'Harbourfront Gala Dinner',
       'Year-End Volunteer Fair',
     ])
