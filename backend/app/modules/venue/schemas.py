@@ -23,7 +23,7 @@ from marshmallow import (
 )
 
 from app.common.clock import as_utc, local_today, to_business_time
-from app.common.fields import BusinessDateTime
+from app.common.fields import BusinessDateTime, PositiveId
 from app.common.preparation import PreparationNotesSchema
 from app.common.validation import TimeRangeSchema, not_blank
 from app.modules.venue.models import (
@@ -458,8 +458,9 @@ class RaiseBookingRequestSchema(TimeRangeSchema):
     required_layout = fields.String(validate=validate.OneOf(LayoutType.values()))
     justification = fields.String(validate=not_blank)
     #: The flagged arrangement this request replaces (SCRUM-92 AC6); the service checks
-    #: it is one of the event's and needs an alternative venue.
-    replaces_request_id = fields.Integer()
+    #: it is one of the event's and needs an alternative venue. A whole number, so
+    #: ``1.5`` or ``"1"`` can't name arrangement 1.
+    replaces_request_id = PositiveId("replaces_request_id")
 
 
 class ChangeArrangementSchema(Schema):
