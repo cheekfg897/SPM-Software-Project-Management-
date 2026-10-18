@@ -378,8 +378,8 @@ class VenueBookingRequest(db.Model):  # type: ignore[name-defined]
         # AC6: one Pending request per event, venue and period. A partial index, so
         # requests that are no longer Pending (SCRUM-43) don't block a new one. A
         # Conflicting request is a Pending one that clashes (SCRUM-44), so it still
-        # counts. The unit suite runs on SQLite, which has partial indexes too, so it
-        # enforces it.
+        # counts, and so does one On Hold (SCRUM-42 AC7, SCRUM-75). The unit suite runs
+        # on SQLite, which has partial indexes too, so it enforces it.
         Index(
             "uq_venue_booking_requests_pending",
             "event_id",
@@ -387,8 +387,8 @@ class VenueBookingRequest(db.Model):  # type: ignore[name-defined]
             "starts_at",
             "ends_at",
             unique=True,
-            postgresql_where=text("status IN ('pending', 'conflicting')"),
-            sqlite_where=text("status IN ('pending', 'conflicting')"),
+            postgresql_where=text("status IN ('pending', 'conflicting', 'on_hold')"),
+            sqlite_where=text("status IN ('pending', 'conflicting', 'on_hold')"),
         ),
     )
 
