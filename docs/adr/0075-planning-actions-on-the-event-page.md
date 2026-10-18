@@ -93,21 +93,24 @@ stored requests as `eventRequests.ts`, so the record the page reads afterwards s
 It decides as the backend does: the assigned coordinator only (`404` for anyone else's, `403`
 for another role), the same check order, status changes, codes, messages and field messages.
 The venue arrangements, equipment requests and registrations the backend would count live with
-each mock event as `planning` (its active arrangements with their status, the ids of equipment
+each mock event as `planning` (its arrangements with their status, the ids of equipment
 requests without an outcome, whether the Safety Officer approved, the registration settings and
 the number registered), and the gap messages are built from them as `_venue_gaps` and
 `_equipment_gaps` build them. An event with no `planning` has no venue arranged, nothing
 waiting on Technical Support, no safety approval and registration closed. The other feature
 mocks (booking, equipment) keep their own copies of events, so an arrangement withdrawn there
-doesn't change this one. Sending an event to Safety Review again voids an earlier approval
-(ADR-0047 decision 18). An event ends at `end_date` + `end_time`, Singapore time, and the mock's
-"now" is `MOCK_NOW`. No notification is raised: the notifications mock seeds its own.
+doesn't change this one. The mock has no Safety Officer route, so an approval is part of the
+data, not something an action sets. An event ends at `end_date` + `end_time`, Singapore time,
+and the mock's "now" is `MOCK_NOW`. No notification is raised: the notifications mock seeds its
+own.
 
 A new coordinator, Hana Yusof (mock account 40), has six events of organisation 2, so the
 actions change nothing another test reads: two approved (one with a pending venue arrangement and
-an unanswered equipment request, one settled), two in Safety Review (one approved by the Safety
-Officer, one not and with a rejected arrangement), and two confirmed (one ended, with 30
-registered, one still to come).
+an unanswered equipment request, one settled; each also has a withdrawn arrangement the gate must
+ignore), two in Safety Review (one approved by the Safety Officer and settled, one not, with a
+rejected arrangement and an unanswered equipment request), and two confirmed (one ending exactly
+at `MOCK_NOW`, open for 50 with 30 registered; one that began the day before and ends a minute
+after it, whose organiser asked for registration).
 
 ## Consequences
 - The coordinator can take an event from Approved to Completed in the web app, so the lifecycle
