@@ -1438,6 +1438,20 @@ def list_arranged_venues(event_id: int, *, session: Session | None = None) -> li
     return arranged
 
 
+def list_booked_venues(event_id: int, *, session: Session | None = None) -> list[ArrangedVenue]:
+    """The venues booked for the event, earliest period first (SCRUM-69 AC3).
+
+    A venue is booked once Venue Staff approve its arrangement (SCRUM-43); one that is
+    only asked for or held is not, and a withdrawn or released one is left out, as
+    :func:`list_active_arrangements` does.
+    """
+    booked = []
+    for arrangement in list_active_arrangements(event_id, session=session):
+        if arrangement.status is BookingRequestStatus.APPROVED:
+            booked.append(_arranged_venue(arrangement, session))
+    return booked
+
+
 def _arrangement_of_event(
     event_id: int, arrangement_id: int, session: Session
 ) -> VenueBookingRequest:

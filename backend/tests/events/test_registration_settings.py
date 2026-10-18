@@ -6,9 +6,11 @@ needs a capacity. AC4: enabling needs a confirmed event. AC6: a change records w
 it and when, in the event history. A capacity outside 1 to the largest Postgres integer
 is refused, and only the event's own coordinator may change the settings.
 
-AC5: the capacity cannot drop below the number already registered (SCRUM-52 adds the
-registrations it counts, ADR-0043). AC3 (capacity within the booked venue's) is
-deferred, so nothing here tests it (ADR-0043).
+AC3: the capacity cannot exceed what the venue booked for the event holds, a booked
+venue being an arrangement Venue Staff approved; with several, the largest is the
+limit, a default pending the team's rule on SCRUM-54 (ADR-0043). AC5: the capacity
+cannot drop below the number already registered (SCRUM-52 adds the registrations it
+counts, ADR-0043).
 
 Runs against ``db_session`` with ``saved_users`` and ``saved_event_request``
 (``EVR-AAAAAAAA``, ``submitted``, assigned to Event Coordinator 3), so lookups are real
@@ -46,7 +48,8 @@ from app.modules.events.services import (
     update_registration_settings,
 )
 from app.modules.registration.models import Registration, RegistrationStatus
-from tests.events.cases import NOT_CONFIRMED_STATUSES
+from app.modules.venue.models import BookingRequestStatus, Venue
+from tests.events.cases import NOT_CONFIRMED_STATUSES, SaveArrangement
 
 pytestmark = pytest.mark.scrum_69
 
@@ -54,6 +57,7 @@ Update = Callable[[int, dict[str, Any]], EventRequest]
 SettingsOf = Callable[[], tuple[bool, int | None]]
 HistoryOf = Callable[[int], list[tuple[EventHistoryKind, int | None, dict[str, Any] | None]]]
 SetStatus = Callable[[EventRequestStatus], None]
+BookVenue = Callable[[int, BookingRequestStatus], None]
 
 REFERENCE = "EVR-AAAAAAAA"
 #: The Event Coordinator ``saved_event_request`` is assigned to.
@@ -66,6 +70,11 @@ ENABLE_WITH_100 = {"registration_enabled": True, "registration_capacity": 100}
 
 #: The largest capacity a Postgres ``INTEGER`` column holds.
 LARGEST_CAPACITY = 2_147_483_647
+
+#: Every arrangement status but Approved: a venue asked for or held, but not booked.
+NOT_BOOKED_STATUSES = [
+    status for status in BookingRequestStatus if status is not BookingRequestStatus.APPROVED
+]
 
 
 def _field_change(field: str, previous_value: Any, new_value: Any) -> dict[str, Any]:
@@ -121,6 +130,23 @@ def settings_of(
         return reloaded.registration_enabled, reloaded.registration_capacity
 
     return _settings
+
+
+@pytest.fixture()
+def book_venue(
+    saved_event_request: EventRequest,
+    make_venue: Callable[..., Venue],
+    save: Callable[..., None],
+    save_arrangement: SaveArrangement,
+) -> BookVenue:
+    """Save a venue holding ``capacity``, arranged for the event with ``status``."""
+
+    def _book(capacity: int, status: BookingRequestStatus) -> None:
+        venue = make_venue(name=f"Hall for {capacity}", capacity=capacity)
+        save(venue)
+        save_arrangement(saved_event_request, venue, status)
+
+    return _book
 
 
 @pytest.fixture()
@@ -310,6 +336,136 @@ def test_a_value_of_the_wrong_kind_is_refused_on_its_field(
     assert exc_info.value.details is not None
     assert set(exc_info.value.details) == {field}
     assert settings_of() == (False, None)
+
+
+# --------------------------------------------------------------------------
+# AC3 — the capacity cannot exceed what the booked venue holds
+# --------------------------------------------------------------------------
+
+APPROVED = BookingRequestStatus.APPROVED
+
+
+def test_a_capacity_above_what_the_booked_venue_holds_is_refused(
+    update: Update,
+    confirmed_event_request: EventRequest,
+    book_venue: BookVenue,
+    settings_of: SettingsOf,
+) -> None:
+    book_venue(100, APPROVED)
+
+    with pytest.raises(ValidationError) as exc_info:
+        update(COORDINATOR_ID, {"registration_enabled": True, "registration_capacity": 101})
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.details == {
+        "registration_capacity": ["Capacity cannot be more than the 100 places the venue holds."]
+    }
+    assert settings_of() == (False, None)
+
+
+def test_a_capacity_equal_to_what_the_booked_venue_holds_is_accepted(
+    update: Update,
+    confirmed_event_request: EventRequest,
+    book_venue: BookVenue,
+    settings_of: SettingsOf,
+) -> None:
+    book_venue(100, APPROVED)
+
+    update(COORDINATOR_ID, ENABLE_WITH_100)
+
+    assert settings_of() == (True, 100)
+
+
+def test_a_capacity_above_the_booked_venue_is_refused_while_registration_is_off(
+    update: Update, book_venue: BookVenue, settings_of: SettingsOf
+) -> None:
+    book_venue(100, APPROVED)
+
+    with pytest.raises(ValidationError) as exc_info:
+        update(COORDINATOR_ID, {"registration_enabled": False, "registration_capacity": 101})
+
+    assert exc_info.value.details == {
+        "registration_capacity": ["Capacity cannot be more than the 100 places the venue holds."]
+    }
+    assert settings_of() == (False, None)
+
+
+@pytest.mark.parametrize("status", NOT_BOOKED_STATUSES, ids=lambda status: status.value)
+def test_a_venue_that_is_not_booked_sets_no_limit(
+    update: Update, book_venue: BookVenue, settings_of: SettingsOf, status: BookingRequestStatus
+) -> None:
+    """Only an approved arrangement has booked its venue; the others may never."""
+    book_venue(100, status)
+
+    update(COORDINATOR_ID, {"registration_enabled": False, "registration_capacity": 500})
+
+    assert settings_of() == (False, 500)
+
+
+def test_with_several_venues_booked_the_largest_is_the_limit(
+    update: Update,
+    confirmed_event_request: EventRequest,
+    book_venue: BookVenue,
+    settings_of: SettingsOf,
+) -> None:
+    """A default pending the team's multi-venue rule on SCRUM-54 (ADR-0043)."""
+    book_venue(250, APPROVED)
+    book_venue(100, APPROVED)
+
+    update(COORDINATOR_ID, {"registration_enabled": True, "registration_capacity": 250})
+
+    assert settings_of() == (True, 250)
+
+
+def test_with_several_venues_booked_a_capacity_above_the_largest_is_refused(
+    update: Update,
+    confirmed_event_request: EventRequest,
+    book_venue: BookVenue,
+    settings_of: SettingsOf,
+) -> None:
+    book_venue(100, APPROVED)
+    book_venue(250, APPROVED)
+
+    with pytest.raises(ValidationError) as exc_info:
+        update(COORDINATOR_ID, {"registration_enabled": True, "registration_capacity": 251})
+
+    assert exc_info.value.details == {
+        "registration_capacity": ["Capacity cannot be more than the 250 places the venue holds."]
+    }
+    assert settings_of() == (False, None)
+
+
+def test_registration_can_be_turned_off_when_the_booked_venue_holds_fewer(
+    update: Update,
+    confirmed_event_request: EventRequest,
+    book_venue: BookVenue,
+    settings_of: SettingsOf,
+) -> None:
+    """Even when the venue was booked after the capacity was set."""
+    update(COORDINATOR_ID, {"registration_enabled": True, "registration_capacity": 500})
+    book_venue(100, APPROVED)
+
+    update(COORDINATOR_ID, {"registration_enabled": False})
+
+    assert settings_of() == (False, 500)
+
+
+def test_registration_cannot_be_turned_back_on_above_the_booked_venue(
+    update: Update,
+    confirmed_event_request: EventRequest,
+    book_venue: BookVenue,
+    settings_of: SettingsOf,
+) -> None:
+    update(COORDINATOR_ID, {"registration_enabled": False, "registration_capacity": 500})
+    book_venue(100, APPROVED)
+
+    with pytest.raises(ValidationError) as exc_info:
+        update(COORDINATOR_ID, {"registration_enabled": True})
+
+    assert exc_info.value.details == {
+        "registration_capacity": ["Capacity cannot be more than the 100 places the venue holds."]
+    }
+    assert settings_of() == (False, 500)
 
 
 # --------------------------------------------------------------------------
