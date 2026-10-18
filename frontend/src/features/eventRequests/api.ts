@@ -213,6 +213,11 @@ export function sendToSafetyReview(reference: string): Promise<EventRequest> {
   return apiRequest<EventRequest>(`${requestPath(reference)}/safety-review`, { method: 'POST' })
 }
 
+/** Mark a confirmed event completed once it has ended; there is no body (SCRUM-68, ADR-0027). */
+export function completeEvent(reference: string): Promise<EventRequest> {
+  return apiRequest<EventRequest>(`${requestPath(reference)}/complete`, { method: 'POST' })
+}
+
 /**
  * A row of a staff list that carries only the backend's `EVENT_LIST_FIELDS`: the event's
  * reference, name, dates, times and status (SCRUM-24 AC8, ADR-0026).
