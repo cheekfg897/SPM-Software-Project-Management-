@@ -1,6 +1,6 @@
 # ADR-0034: Event Coordinators see and open only the events assigned to them; the unassigned queue waits for the Lead
 
-- **Status:** Accepted; the Lead's queue taken up by [ADR-0036](0036-event-coordinator-lead.md); a coordinator's access to other events' history, left open here, closed by [ADR-0041](0041-lead-oversight-and-reassignment.md); the Safety Officer's list (AC6), blocked here, built by [ADR-0047](0047-safety-officer-and-safety-review.md)
+- **Status:** Accepted; the Lead's queue taken up by [ADR-0036](0036-event-coordinator-lead.md); a coordinator's access to other events' history, left open here, closed by [ADR-0041](0041-lead-oversight-and-reassignment.md); the Safety Officer's list (AC6), blocked here, built by [ADR-0047](0047-safety-officer-and-safety-review.md); Venue Staff's list (AC4), blocked here, built by [ADR-0085](0085-venue-staff-event-list.md)
 - **Date:** 2026-10-05
 - **Story:** SCRUM-24 See the events my role is involved in
 - **Supersedes:** [ADR-0026](0026-role-event-lists.md) decisions 1 (the coordinator's `/requests/unassigned` route), 3, 8 (coordinators opening unassigned requests) and 9
@@ -25,7 +25,7 @@ The Lead role isn't built yet (SCRUM-95), and automatic assignment (SCRUM-30) st
 ## Blocked
 SCRUM-24's ACs that can't be built on the current domain model:
 - **AC3** (the Lead's unassigned queue and active events): blocked by SCRUM-95/96.
-- **AC4** (Venue Staff's list): blocked by SCRUM-42 (booking requests and bookings). It also needs a link between Venue Staff and the venues they're responsible for, which no ticket covers yet.
+- **AC4** (Venue Staff's list): blocked by SCRUM-42 (booking requests and bookings). It also needs a link between Venue Staff and the venues they're responsible for, which no ticket covers yet. *Built on 2026-10-19 by [ADR-0085](0085-venue-staff-event-list.md): SCRUM-42 has merged, and Venue Staff are not assigned to venues after all.*
 - **AC6** (the Safety Officer's list): blocked by SCRUM-97.
 - **AC7** (the Attendee's list): blocked by SCRUM-52 (registering for a confirmed event).
 
