@@ -6,6 +6,7 @@ import { RETIRED_STATUSES, STATUS_LABELS } from '../constants'
 import { ArrangementActions } from './ArrangementActions'
 import { BookingRequestDetails } from './BookingRequestDetails'
 import { CancelAllArrangements } from './CancelAllArrangements'
+import { PreparationSummary } from './PreparationSummary'
 
 interface BookingRequestListProps {
   reference: string
@@ -39,6 +40,8 @@ function BookingRequestItem({
       {request.decision_reason !== null && (
         <p className="text-ink-muted">Reason: {request.decision_reason}</p>
       )}
+      {/* Venue Staff prepare a booking once it is approved (SCRUM-84). */}
+      {request.status === 'approved' && <PreparationSummary preparation={request} />}
       {!RETIRED_STATUSES.includes(request.status) && (
         <ArrangementActions reference={reference} arrangement={request} />
       )}
