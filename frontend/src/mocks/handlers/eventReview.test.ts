@@ -1,4 +1,5 @@
 import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
+import { ROLE } from '@/config/roles'
 import {
   decideEventRequest,
   fetchAssignedEventRequests,
@@ -12,6 +13,7 @@ import { MOCK_ACCOUNTS } from '../fixtures/accounts'
 
 import { MOCK_NOW } from './catalogueFixtures'
 import {
+  accountsOfEveryRoleBut,
   expectInvalid,
   expectNotAnObject,
   NOT_FOUND,
@@ -70,6 +72,7 @@ const CLARIFICATION_OUTSTANDING = {
 }
 const REASON_REQUIRED = 'A reason is required to reject a request or to change a decision.'
 const OUTCOME_MESSAGE = 'Outcome must be approved or rejected.'
+const EVERY_OTHER_ROLE = accountsOfEveryRoleBut(ROLE.EVENT_COORDINATOR)
 
 /** Send `body` to /decide as it is, whatever its shape. */
 function decideWith(reference: string, body: unknown) {
@@ -126,6 +129,15 @@ describe('SCRUM-31 AC3 mock: starting a review', () => {
     signInAs(PRIYA)
     expect(await statusOf(SUBMITTED)).toBe('submitted')
   })
+
+  it.each(EVERY_OTHER_ROLE)(
+    'refuses the %s role before looking for the request (AC5)',
+    async (_role, account) => {
+      signInAs(account)
+
+      expect(await refusal(startEventRequestReview(SUBMITTED))).toMatchObject(NOT_PERMITTED)
+    },
+  )
 })
 
 describe('SCRUM-31 AC4, AC6 mock: deciding', () => {
@@ -243,6 +255,17 @@ describe('SCRUM-31 AC4, AC6 mock: deciding', () => {
     expect(organiser).toMatchObject(NOT_PERMITTED)
     expect(visitor).toMatchObject(NOT_SIGNED_IN)
   })
+
+  it.each(EVERY_OTHER_ROLE)(
+    'refuses the %s role before looking for the request (AC5)',
+    async (_role, account) => {
+      signInAs(account)
+
+      expect(await refusal(decideWith(SUBMITTED, { outcome: 'approved' }))).toMatchObject(
+        NOT_PERMITTED,
+      )
+    },
+  )
 })
 
 describe('SCRUM-32 AC3 mock: deciding while a question is outstanding', () => {
