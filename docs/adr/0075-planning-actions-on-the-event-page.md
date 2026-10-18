@@ -65,8 +65,8 @@ may do, not how the page offers it.
 3. **A refusal lists every reason the backend gives.** The two gates answer with a message and
    `details` naming each gap. The alert shows the message and, under it, every message in
    `details`, in the backend's words and order. Nothing is rewritten: "Venue arrangement 12 is
-   pending." is already plain. `ErrorAlert` gains an optional `listDetails` so the same alert
-   does it; forms keep showing field messages under their fields instead.
+   pending." is already plain. `RefusalAlert`, beside `ErrorAlert` in `components/ui`, does it;
+   forms keep `ErrorAlert` and show field messages under their fields instead.
 4. **The registration settings form.** An Open/Closed choice and a Capacity box, then
    "Save registration".
    - **The record doesn't carry the current settings.** `GET /api/events/requests/<reference>`
