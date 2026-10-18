@@ -219,6 +219,49 @@ export function fetchEventHistory(reference: string): Promise<EventHistory> {
   return apiRequest<EventHistory>(`${requestPath(reference)}/history`)
 }
 
+/**
+ * What the assigned coordinator may change on an event (SCRUM-33 AC1, AC2; ADR-0025): only the
+ * fields sent change. Dates are "2026-11-20" and times "19:00", business time; a text field
+ * sent empty or as null is emptied.
+ */
+export interface EventEditChanges {
+  description?: string | null
+  programme_notes?: string | null
+  accessibility_needs?: string | null
+  internal_planning_notes?: string | null
+  proposed_date?: string | null
+  end_date?: string | null
+  start_time?: string | null
+  end_time?: string | null
+  expected_attendance?: number | null
+  venue_requirements?: string | null
+  equipment_requirements?: string | null
+}
+
+/** One field an edit changed, as the history records it (SCRUM-33 AC4, ADR-0025). */
+export interface FieldChange {
+  field: string
+  previous_value: string | number | null
+  new_value: string | number | null
+  /** A change that raises a reassessment of the event's arrangements (AC2). */
+  significant: boolean
+}
+
+/** The edited event, with the notes only staff see, and what the edit changed. */
+export interface EditedEventRequest extends EventRequest {
+  programme_notes: string | null
+  internal_planning_notes: string | null
+  changes: FieldChange[]
+}
+
+/** Change the fields sent on an event assigned to the coordinator (SCRUM-33). */
+export function editEventRequest(
+  reference: string,
+  changes: EventEditChanges,
+): Promise<EditedEventRequest> {
+  return apiRequest<EditedEventRequest>(requestPath(reference), { method: 'PATCH', body: changes })
+}
+
 /** Who registered for an event, for its organisation's organisers or its coordinator (SCRUM-55). */
 export function fetchRegistrants(reference: string): Promise<RegistrantList> {
   return apiRequest<RegistrantList>(`${requestPath(reference)}/registrations`)

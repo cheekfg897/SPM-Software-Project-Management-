@@ -7,6 +7,7 @@ import {
   completeEvent,
   confirmEvent,
   decideEventRequest,
+  editEventRequest,
   eventHistoryKey,
   eventRequestKeys,
   fetchAssignedEventRequests,
@@ -26,7 +27,12 @@ import {
   updateRegistrationSettings,
   WITH_EQUIPMENT_KEY,
 } from './api'
-import type { DecisionChoice, EventRequestDetails, RegistrationChanges } from './api'
+import type {
+  DecisionChoice,
+  EventEditChanges,
+  EventRequestDetails,
+  RegistrationChanges,
+} from './api'
 
 /** The signed-in organiser's event requests, read for whoever is signed in. */
 export function useMyEventRequests() {
@@ -178,6 +184,18 @@ export function useEventHistory(reference: string) {
     /* v8 ignore next -- the record page is for signed-in organisers and coordinators only (RequireRole), so a viewer is always there */
     queryKey: eventHistoryKey(reference, viewer?.id ?? null),
     queryFn: () => fetchEventHistory(reference),
+  })
+}
+
+/**
+ * Change the fields sent on an event assigned to the coordinator (SCRUM-33). Afterwards the
+ * record, its history and the lists are read again, so they show what the backend saved.
+ */
+export function useEditEventRequest(reference: string) {
+  const refresh = useRefreshEventRequests()
+  return useMutation({
+    mutationFn: (changes: EventEditChanges) => editEventRequest(reference, changes),
+    onSuccess: refresh,
   })
 }
 
