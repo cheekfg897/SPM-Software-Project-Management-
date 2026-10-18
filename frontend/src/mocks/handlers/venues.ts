@@ -16,7 +16,7 @@ import { errorResponse, notAllowed, notAuthenticated, validationError } from '..
 import { accountForRequest } from './auth'
 import { MOCK_VENUE_BLOCKS, MOCK_VENUE_BOOKINGS, MOCK_VENUES } from './venueFixtures'
 import type { MockVenueBlock, MockVenueBooking } from './venueFixtures'
-import { newVenueErrors, venueChangeErrors } from './venueRules'
+import { deactivationErrors, newVenueErrors, venueChangeErrors } from './venueRules'
 
 /**
  * The venue catalogue routes (SCRUM-25, SCRUM-67), answering as backend/app/modules/venue/
@@ -204,20 +204,14 @@ function blockOverlaps(venue: Venue): BlockOverlapWarning[] {
   return warnings
 }
 
-/** Setting `is_active` on a venue, for the deactivate and reactivate routes. */
-function setActive(isActive: boolean) {
-  return ({ request, params }: { request: Request; params: Record<string, unknown> }) => {
-    const refusal = checkVenueStaff(request)
-    if (refusal !== null) {
-      return refusal
-    }
-    const venue = findVenue(params.venueId)
-    if (venue === undefined) {
-      return venueNotFound()
-    }
-    venue.is_active = isActive
-    return HttpResponse.json(venue)
+/** Setting `is_active` on a venue, once the request has been let through. */
+function setActive(venueId: unknown, isActive: boolean) {
+  const venue = findVenue(venueId)
+  if (venue === undefined) {
+    return venueNotFound()
   }
+  venue.is_active = isActive
+  return HttpResponse.json(venue)
 }
 
 export const venueHandlers: RequestHandler[] = [
@@ -298,6 +292,25 @@ export const venueHandlers: RequestHandler[] = [
     })
   }),
 
-  http.post(`${VENUE_PATH}/deactivate`, setActive(false)),
-  http.post(`${VENUE_PATH}/reactivate`, setActive(true)),
+  // The category and note are checked before the venue is looked for (SCRUM-92 AC9).
+  http.post(`${VENUE_PATH}/deactivate`, async ({ request, params }) => {
+    const refusal = checkVenueStaff(request)
+    if (refusal !== null) {
+      return refusal
+    }
+    const body = await readObject(request)
+    if (body === null) {
+      return errorResponse(400, 'validation_error', NOT_AN_OBJECT_MESSAGE)
+    }
+    const errors = deactivationErrors(body)
+    if (Object.keys(errors).length > 0) {
+      return validationError(errors)
+    }
+    return setActive(params.venueId, false)
+  }),
+
+  http.post(`${VENUE_PATH}/reactivate`, ({ request, params }) => {
+    const refusal = checkVenueStaff(request)
+    return refusal ?? setActive(params.venueId, true)
+  }),
 ]

@@ -63,11 +63,18 @@ async function errorOf(promise: Promise<unknown>): Promise<ApiError> {
   return error
 }
 
+/** A deactivation the backend accepts: a category and a note (SCRUM-92 AC9). */
+const DEACTIVATION = { category: 'maintenance', reason: 'Lift broken' }
+
+function deactivate(venueId: number, body: unknown = DEACTIVATION) {
+  return apiRequest<Venue>(`${venueUrl(venueId)}/deactivate`, { method: 'POST', body })
+}
+
 /** The writes only Venue Staff may make, each on a venue that exists. */
 const STAFF_WRITES: [string, () => Promise<unknown>][] = [
   ['create', () => create(newVenue())],
   ['change', () => change(MARINA_HALL.id, { name: 'Renamed' })],
-  ['deactivate', () => apiRequest(`${venueUrl(MARINA_HALL.id)}/deactivate`, { method: 'POST' })],
+  ['deactivate', () => deactivate(MARINA_HALL.id)],
   ['reactivate', () => apiRequest(`${venueUrl(ANNEXE_STUDIO.id)}/reactivate`, { method: 'POST' })],
 ]
 
@@ -143,10 +150,7 @@ describe('SCRUM-25 venue mock: only Venue Staff write', () => {
 
   it.each([
     ['change', () => change(UNKNOWN_VENUE_ID, { name: 'Renamed' })],
-    [
-      'deactivate',
-      () => apiRequest(`${venueUrl(UNKNOWN_VENUE_ID)}/deactivate`, { method: 'POST' }),
-    ],
+    ['deactivate', () => deactivate(UNKNOWN_VENUE_ID)],
     [
       'reactivate',
       () => apiRequest(`${venueUrl(UNKNOWN_VENUE_ID)}/reactivate`, { method: 'POST' }),
@@ -506,9 +510,7 @@ describe('SCRUM-25 venue mock: changing, deactivating and reactivating', () => {
   })
 
   it('takes a venue out of the list on deactivating and back on reactivating', async () => {
-    const deactivated = await apiRequest<Venue>(`${venueUrl(MARINA_HALL.id)}/deactivate`, {
-      method: 'POST',
-    })
+    const deactivated = await deactivate(MARINA_HALL.id)
     const listedWhileOff = await apiRequest<Venue[]>('/api/venues')
     const reactivated = await apiRequest<Venue>(`${venueUrl(MARINA_HALL.id)}/reactivate`, {
       method: 'POST',
@@ -519,6 +521,103 @@ describe('SCRUM-25 venue mock: changing, deactivating and reactivating', () => {
     expect(listedWhileOff.map((venue) => venue.id)).not.toContain(MARINA_HALL.id)
     expect(reactivated).toEqual(MARINA_HALL)
     expect(listedAgain.map((venue) => venue.id)).toContain(MARINA_HALL.id)
+  })
+})
+
+describe('SCRUM-25 venue mock: why a venue is deactivated (SCRUM-92 AC9, ADR-0053)', () => {
+  beforeEach(() => signInAs(ROLE.VENUE_STAFF))
+
+  const UNKNOWN_CATEGORY =
+    'Category must be one of maintenance, equipment_failure, renovation, safety_concern or other.'
+  const MISSING = 'Missing data for required field.'
+  const NULL = 'Field may not be null.'
+
+  it('refuses a deactivation with no body', async () => {
+    const error = await errorOf(
+      apiRequest(`${venueUrl(MARINA_HALL.id)}/deactivate`, { method: 'POST' }),
+    )
+
+    expect(error).toMatchObject({
+      status: 400,
+      code: 'validation_error',
+      message: 'Request body must be a JSON object.',
+    })
+  })
+
+  it.each([
+    ['nothing', {}, { category: [MISSING], reason: [MISSING] }],
+    ['nulls', { category: null, reason: null }, { category: [NULL], reason: [NULL] }],
+    ['an unknown category', { category: 'flood', reason: 'x' }, { category: [UNKNOWN_CATEGORY] }],
+    [
+      'a category in capitals',
+      { ...DEACTIVATION, category: 'MAINTENANCE' },
+      { category: [UNKNOWN_CATEGORY] },
+    ],
+    ['an empty category', { ...DEACTIVATION, category: '' }, { category: [UNKNOWN_CATEGORY] }],
+    [
+      'a category that is a number',
+      { ...DEACTIVATION, category: 1 },
+      { category: [UNKNOWN_CATEGORY] },
+    ],
+    [
+      'a category that is true',
+      { ...DEACTIVATION, category: true },
+      { category: [UNKNOWN_CATEGORY] },
+    ],
+    [
+      'a category in a list',
+      { ...DEACTIVATION, category: ['other'] },
+      { category: [UNKNOWN_CATEGORY] },
+    ],
+    ['an empty note', { ...DEACTIVATION, reason: '' }, { reason: ['Must not be blank.'] }],
+    ['a blank note', { ...DEACTIVATION, reason: '   ' }, { reason: ['Must not be blank.'] }],
+    [
+      'a note that is a number',
+      { ...DEACTIVATION, reason: 7 },
+      { reason: ['Not a valid string.'] },
+    ],
+    [
+      'a note of 501 characters',
+      { ...DEACTIVATION, reason: 'r'.repeat(501) },
+      { reason: ['Reason must be at most 500 characters.'] },
+    ],
+    ['an unknown field', { ...DEACTIVATION, note: 'Lift' }, { note: ['Unknown field.'] }],
+  ])('refuses %s, naming the field and why', async (_what, body, fieldErrors) => {
+    const error = await errorOf(deactivate(MARINA_HALL.id, body))
+
+    expect(error).toMatchObject({ status: 400, code: 'validation_error' })
+    expect(error.fieldErrors).toEqual(fieldErrors)
+    await expect(apiRequest(venueUrl(MARINA_HALL.id))).resolves.toMatchObject({ is_active: true })
+  })
+
+  it.each(['maintenance', 'equipment_failure', 'renovation', 'safety_concern', 'other'])(
+    'deactivates for the category %s',
+    async (category) => {
+      const deactivated = await deactivate(MARINA_HALL.id, { category, reason: 'Closed' })
+
+      expect(deactivated).toEqual({ ...MARINA_HALL, is_active: false })
+    },
+  )
+
+  it('measures the note once trimmed: 500 characters with spaces round them is accepted', async () => {
+    const reason = `  ${'r'.repeat(500)}  `
+
+    const deactivated = await deactivate(MARINA_HALL.id, { ...DEACTIVATION, reason })
+
+    expect(deactivated.is_active).toBe(false)
+  })
+
+  it('checks the body before looking for the venue', async () => {
+    const error = await errorOf(deactivate(UNKNOWN_VENUE_ID, {}))
+
+    expect(error).toMatchObject({ status: 400 })
+    expect(error.fieldErrors).toEqual({ category: [MISSING], reason: [MISSING] })
+  })
+
+  it('still checks the body when the venue is already deactivated', async () => {
+    const error = await errorOf(deactivate(ANNEXE_STUDIO.id, { category: 'other' }))
+
+    expect(error.fieldErrors).toEqual({ reason: [MISSING] })
   })
 })
 

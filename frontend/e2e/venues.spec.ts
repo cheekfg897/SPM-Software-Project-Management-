@@ -82,6 +82,10 @@ test('Venue Staff deactivate a venue, saying why, which leaves the list, then re
   await page.getByRole('link', { name: /Lawn Marquee/ }).click()
   await page.getByRole('button', { name: 'Deactivate venue' }).click()
   const question = page.getByRole('form', { name: 'Deactivate Lawn Marquee?' })
+  await question.getByRole('button', { name: 'Deactivate' }).click()
+  await expect(question.getByText(/Category must be one of/)).toBeVisible()
+  await expect(question.getByText('Must not be blank.')).toBeVisible()
+
   await question.getByLabel('Why').selectOption({ label: 'Safety concern' })
   await question.getByLabel('Note').fill('Fire doors failed inspection')
   await question.getByRole('button', { name: 'Deactivate' }).click()
