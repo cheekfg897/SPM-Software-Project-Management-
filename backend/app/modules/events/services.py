@@ -1496,6 +1496,36 @@ def _notify_technical_support(
     _raise_notifications(technical_support_ids, event_request, kind, session)
 
 
+#: The line fields whose change alters what Technical Support place for the event,
+#: unlike its technical notes (SCRUM-37 AC4).
+LINE_FIELDS_THAT_CHANGE_THE_EQUIPMENT = ("equipment_type_id", "quantity")
+
+
+def _changes_the_equipment(line: EventEquipmentLine, data: Mapping[str, Any]) -> bool:
+    """Whether ``data`` asks the line for a different equipment type or quantity."""
+    for field in LINE_FIELDS_THAT_CHANGE_THE_EQUIPMENT:
+        if field in data and data[field] != getattr(line, field):
+            return True
+    return False
+
+
+def _withdraw_safety_approval_for_line(
+    coordinator_id: int | str, line: EventEquipmentLine, change: str, session: Session
+) -> None:
+    """Withdraw the event's safety approval for a line ``change`` (SCRUM-37 AC4).
+
+    ``change`` is ``added``, ``changed`` or ``removed``; the entry names the line's
+    equipment type as it was before the change. Called before the line is written,
+    so the approval lookup never flushes a line the commit may still refuse.
+    """
+    withdraw_safety_approval(
+        line.event_request_id,
+        actor_id=int(coordinator_id),
+        details={"equipment_line_change": change, "equipment_type_id": line.equipment_type_id},
+        session=session,
+    )
+
+
 def _event_request_for_equipment_viewer(
     viewer_id: int | str, reference: str, viewer_role: Role, session: Session
 ) -> EventRequest:
@@ -1523,8 +1553,8 @@ def add_equipment_line(
     """Record one kind of equipment an event needs (SCRUM-37 AC1, AC3).
 
     Only the event's assigned coordinator may (ADR-0019). The line is saved with
-    status ``requested``; once it is saved, every Technical Support Staff member is
-    notified (AC5).
+    status ``requested``, with any safety approval withdrawn (AC4); once it is saved,
+    every Technical Support Staff member is notified (AC5).
 
     Args:
         coordinator_id: The caller's user id, taken from their token.
@@ -1551,6 +1581,7 @@ def add_equipment_line(
     line = EventEquipmentLine(
         event_request_id=event_request.id, status=EquipmentLineStatus.REQUESTED, **data
     )
+    _withdraw_safety_approval_for_line(coordinator_id, line, "added", sess)
     sess.add(line)
     _commit_line_or_conflict(sess)
     _notify_technical_support(event_request, NotificationKind.EQUIPMENT_REQUESTED, sess)
@@ -1631,7 +1662,8 @@ def update_equipment_line(
 
     Only the fields in ``payload`` change; ``notes`` is cleared only when sent as
     ``null``. Only the event's assigned coordinator may, while its equipment may still
-    change (ADR-0019).
+    change (ADR-0019). A new equipment type or quantity withdraws any safety approval
+    (AC4); new notes alone do not.
 
     Returns:
         The updated :class:`EventEquipmentLine`.
@@ -1654,6 +1686,8 @@ def update_equipment_line(
 
     if "quantity" in data:
         _check_quantity_covers_outcome(line, data["quantity"])
+    if _changes_the_equipment(line, data):
+        _withdraw_safety_approval_for_line(coordinator_id, line, "changed", sess)
 
     for key, value in data.items():
         setattr(line, key, value)
@@ -1667,7 +1701,7 @@ def remove_equipment_line(
     """Delete one of an event's equipment lines (SCRUM-37 AC2).
 
     Only the event's assigned coordinator may, while its equipment may still change.
-    Nobody is notified (ADR-0019).
+    Any safety approval is withdrawn (AC4). Nobody is notified (ADR-0019).
 
     Raises:
         NotFoundError: 404 — no such event request among the coordinator's own, or no
@@ -1677,6 +1711,7 @@ def remove_equipment_line(
     sess = resolve_session(session)
     event_request = _event_request_with_editable_equipment(coordinator_id, reference, sess)
     line = _line_of_event(event_request, line_id, sess)
+    _withdraw_safety_approval_for_line(coordinator_id, line, "removed", sess)
     sess.delete(line)
     sess.commit()
 

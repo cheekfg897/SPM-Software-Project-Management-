@@ -1,6 +1,6 @@
 # ADR-0019: Equipment lines are recorded per event by Event Coordinators while the request awaits review
 
-- **Status:** Accepted; a draft is `404` to staff, not `409`, superseded by [ADR-0024](0024-draft-event-requests.md); decision 3 superseded by [ADR-0028](0028-review-and-decide.md): equipment may also change while `approved`, and the refusal is `409 equipment_not_editable`
+- **Status:** Accepted; a draft is `404` to staff, not `409`, superseded by [ADR-0024](0024-draft-event-requests.md); decision 3 superseded by [ADR-0028](0028-review-and-decide.md): equipment may also change while `approved`, and the refusal is `409 equipment_not_editable`; decision 11 adds the safety approval part of the reworked AC4 (Week 7); the rest of that AC is not built yet
 - **Date:** 2026-09-25
 - **Story:** SCRUM-37 Record what equipment an event needs
 
@@ -27,6 +27,7 @@ Several things are left open:
 8. **Editing is partial.** `PATCH` may change `equipment_type_id`, `quantity` and `notes`; only the fields sent change, and `notes` is cleared only when sent as `null`. An empty body changes nothing and returns `200`.
 9. **"By when" is the event's own date and times.** `GET /api/events/requests/<reference>/equipment` returns `{"event": {...}, "equipment_lines": [...]}`, where `event` holds `reference`, `name`, `proposed_date`, `end_date`, `start_time` and `end_time`, dumped by the request's own schema so the names and formats match `GET /api/events/requests/<reference>`. `end_date` is included because an overnight event ends the day after it starts (ADR-0002). Lines have no needed-by date of their own: that would need a migration, and nothing asks for lines needed at different times.
 10. **Rolling back migration 0011 deletes `equipment_requested` notifications,** because Postgres can't remove the enum value and those rows would have no kind to go back to. The same lossy rollback as migration 0006 (ADR-0012).
+11. **A line change withdraws a safety approval (reworked AC4).** Adding a line, removing one, or changing its `equipment_type_id` or `quantity` to a different value withdraws the event's safety approval, if it has one, through `withdraw_safety_approval` ([ADR-0025](0025-event-edits-significant-changes-and-history.md) decision 25, [ADR-0053](0053-flag-bookings-when-a-venue-becomes-unavailable.md) decision 13). The `safety_approval_withdrawn` entry has the coordinator as actor and `details = {"equipment_line_change": "added" | "changed" | "removed", "equipment_type_id": ...}`, the line's type before the change. It is internal-only and is saved in the line's own commit, so a line refused as a duplicate leaves the approval in place. Nobody is notified ([ADR-0087](0087-withdrawn-safety-approval-returns-the-event-to-approved.md)). A line can only change while the event is `approved` or earlier, so this matters only for an Approved event that kept its approval when a flagged venue took it back from Confirmed (ADR-0053 decision 7). **Default to review:** a new equipment type counts like a new quantity, since it changes what is placed; new technical notes alone, or the values already saved, do not.
 
 Also:
 - **Lines live in the events module,** since they belong to an event request and AC4 puts them on the event record. The foreign key to `equipment_types` is database-level only, and the type is checked through `equipment.services.get_equipment_type`: an unknown type is a `400` on `equipment_type_id`.
@@ -43,6 +44,7 @@ Also:
 - Technical Support read by when to arrange equipment from the event's date and start time; setup time (ADR-0011) is not subtracted, since the event has no venue booking yet.
 
 ## Revisit when
+- The rest of the reworked AC4 is built (marking the change in the event history, clearing a changed line's outcome, releasing a removed line's reservation, telling Technical Support, and letting lines change in Safety Review): the safety withdrawal of decision 11 stays where it is.
 - SCRUM-24 adds per-role event views: fold the equipment sub-resource into the event detail those roles see.
 - SCRUM-46 starts: decide how reservation changes a line's status and what editing a reserved line does.
 - Technical Support Staff ask for one notification per request instead of one per line.
