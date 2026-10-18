@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import UTC, datetime
+from typing import Any
 
 import pytest
 from sqlalchemy import select
@@ -36,6 +37,7 @@ ORGANISER_ID = 7
 STARTS_AT = datetime(2026, 11, 3, 1, 0, tzinfo=UTC)
 ENDS_AT = datetime(2026, 11, 3, 9, 30, tzinfo=UTC)
 IN_PROGRESS = {"status": "in_progress", "notes": "Projector mounted, cables to run."}
+UNKNOWN_STATUS_MESSAGE = "Status must be not_started, in_progress or ready."
 
 
 @pytest.fixture()
@@ -52,7 +54,7 @@ def reservation(
     return reservation
 
 
-def _record(reservation: EquipmentReservation, payload: dict[str, str], session: Session) -> None:
+def _record(reservation: EquipmentReservation, payload: dict[str, Any], session: Session) -> None:
     services.update_preparation_details(
         reservation.id, payload, updated_by=TECHNICAL_SUPPORT_ID, session=session
     )
@@ -83,12 +85,17 @@ def test_a_reservation_starts_as_not_started_with_no_notes(
     assert reservation.preparation_notes is None
 
 
+@pytest.mark.parametrize(
+    "next_update",
+    [{"status": "ready"}, {"status": "ready", "notes": None}],
+    ids=["notes left out", "notes null"],
+)
 def test_the_next_update_replaces_the_details_and_notes_may_be_left_out(
-    db_session: Session, reservation: EquipmentReservation
+    db_session: Session, reservation: EquipmentReservation, next_update: dict[str, Any]
 ) -> None:
     _record(reservation, IN_PROGRESS, db_session)
 
-    _record(reservation, {"status": "ready"}, db_session)
+    _record(reservation, next_update, db_session)
 
     assert reservation.preparation_status is PreparationStatus.READY
     assert reservation.preparation_notes is None
@@ -268,19 +275,25 @@ def test_an_unknown_reservation_is_not_found(db_session: Session) -> None:
 
 
 @pytest.mark.parametrize(
-    ("payload", "field"),
+    ("payload", "field", "message"),
     [
-        ({"notes": "Cables run."}, "status"),
-        ({"status": "finished"}, "status"),
-        ({"status": "ready", "notes": "   "}, "notes"),
+        ({"notes": "Cables run."}, "status", "Missing data for required field."),
+        ({"status": "finished"}, "status", UNKNOWN_STATUS_MESSAGE),
+        ({"status": True}, "status", UNKNOWN_STATUS_MESSAGE),
+        ({"status": "ready", "notes": "   "}, "notes", "Must not be blank."),
+        ({"status": "ready", "notes": 5}, "notes", "Not a valid string."),
     ],
-    ids=["no status", "unknown status", "blank notes"],
+    ids=["no status", "unknown status", "boolean status", "blank notes", "numeric notes"],
 )
 def test_an_invalid_payload_is_a_400_naming_the_field(
-    db_session: Session, reservation: EquipmentReservation, payload: dict[str, str], field: str
+    db_session: Session,
+    reservation: EquipmentReservation,
+    payload: dict[str, Any],
+    field: str,
+    message: str,
 ) -> None:
     with pytest.raises(ValidationError) as caught:
         _record(reservation, payload, db_session)
 
-    assert set(caught.value.details) == {field}
+    assert caught.value.details == {field: [message]}
     assert _preparation_entries(db_session) == []
