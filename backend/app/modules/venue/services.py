@@ -1652,28 +1652,36 @@ def _events_of(
     return event_services.get_events_for_booking(event_ids, session=session)
 
 
+def _requests_by_event_date(
+    statuses: Iterable[BookingRequestStatus], session: Session | None
+) -> list[BookingRequestAsShown]:
+    """Every request with one of ``statuses``, the earliest event first, with its event.
+
+    The order is the event's date, then its start time, then the request's id, so a list
+    read twice is in the same order. The events are read through the events service and
+    the ordering is done here, because the date lives in the events module and this
+    module may not join across it.
+    """
+    requests = list(
+        resolve_session(session).scalars(
+            select(VenueBookingRequest).where(VenueBookingRequest.status.in_(statuses))
+        )
+    )
+    events = _events_of(requests, session)
+    listed = [(events[request.event_id], request) for request in requests]
+    listed.sort(key=lambda pair: (pair[0].proposed_date, pair[0].start_time, pair[1].id))
+    return [show_booking_request(request, event) for event, request in listed]
+
+
 def list_pending_booking_requests(*, session: Session | None = None) -> list[BookingRequestAsShown]:
     """Every request waiting for a decision, the earliest event first (AC1, AC2).
 
     That includes the Conflicting ones (SCRUM-44), shown with their status.
 
     Any Venue Staff member sees the whole queue: staff are not assigned to venues
-    (ADR-0035 decision 1). The order is the event's date, then its start time, then the
-    request's id, so a queue read twice is in the same order. The events are read
-    through the events service and the ordering is done here, because the date lives in
-    the events module and this module may not join across it.
+    (ADR-0035 decision 1).
     """
-    requests = list(
-        resolve_session(session).scalars(
-            select(VenueBookingRequest).where(
-                VenueBookingRequest.status.in_(DECIDABLE_REQUEST_STATUSES)
-            )
-        )
-    )
-    events = _events_of(requests, session)
-    waiting = [(events[request.event_id], request) for request in requests]
-    waiting.sort(key=lambda pair: (pair[0].proposed_date, pair[0].start_time, pair[1].id))
-    return [show_booking_request(request, event) for event, request in waiting]
+    return _requests_by_event_date(DECIDABLE_REQUEST_STATUSES, session)
 
 
 def _event_of(request: VenueBookingRequest, session: Session | None) -> EventForBooking:
@@ -2031,6 +2039,18 @@ def decide_booking_request(
 PREPARATION_NOT_APPROVED_MESSAGE = (
     "Preparation can only be recorded for an approved booking; this one is {status}."
 )
+
+
+def list_approved_booking_requests(
+    *, session: Session | None = None
+) -> list[BookingRequestAsShown]:
+    """Every approved booking, the earliest event first, with its preparation details.
+
+    Where Venue Staff find the bookings to prepare (SCRUM-84 AC1, ADR-0080): their
+    queue holds only the requests still to decide. Any Venue Staff member sees every
+    booking, as for the queue (ADR-0035 decision 1).
+    """
+    return _requests_by_event_date([BookingRequestStatus.APPROVED], session)
 
 
 def update_preparation_details(
