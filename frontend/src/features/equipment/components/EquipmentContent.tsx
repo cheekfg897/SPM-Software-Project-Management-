@@ -57,7 +57,7 @@ export function EquipmentContent({ reference }: EquipmentContentProps) {
         <h2 id="reservations-heading" className="text-xl font-semibold">
           Reserved for this event
         </h2>
-        <ReservationList reservations={reservations.data} />
+        <ReservationList reference={reference} reservations={reservations.data} />
       </section>
     </div>
   )
