@@ -8,6 +8,7 @@ import {
   sendToSafetyReview,
   startEventRequestReview,
   submitEventRequest,
+  updateRegistrationSettings,
 } from '@/features/eventRequests/api'
 import { assignCoordinator } from '@/features/lead/api'
 import { apiRequest } from '@/lib/api'
@@ -18,7 +19,8 @@ import type { Credentials } from './backend'
 
 /**
  * The coordinator's planning actions against the running backend: sending an event to safety
- * review (SCRUM-97, ADR-0047) and marking it completed (SCRUM-68, ADR-0027) (ADR-0075).
+ * review (SCRUM-97, ADR-0047), marking it completed (SCRUM-68, ADR-0027) and its registration
+ * settings (SCRUM-69, ADR-0043) (ADR-0075).
  *
  * The refusals that need no event of the coordinator's run with the staff account every run has
  * (an Event Coordinator) and new organisers. An event of the coordinator's needs a Lead to assign
@@ -278,6 +280,93 @@ describe('SCRUM-68 marking an event completed against the backend', () => {
       status: 409,
       code: 'request_not_completable',
       message: 'Only a confirmed event can be marked completed.',
+    })
+  })
+})
+
+describe('SCRUM-69 registration settings against the backend', () => {
+  it('refuses an organiser by role, and a visitor without a token', async () => {
+    const reference = await submittedEvent()
+
+    const change = { registration_enabled: false }
+    expect(await refusal(updateRegistrationSettings(reference, change))).toMatchObject(
+      NOT_PERMITTED,
+    )
+    sendRequestsAs(null)
+    expect(await refusal(updateRegistrationSettings(reference, change))).toMatchObject(
+      NOT_SIGNED_IN,
+    )
+  })
+
+  it('answers a coordinator an event not assigned to them as not found', async () => {
+    const reference = await submittedEvent()
+    await signInAs(staffAccount())
+
+    const error = await refusal(updateRegistrationSettings(reference, { registration_capacity: 5 }))
+
+    expect(error).toMatchObject(NOT_FOUND)
+  })
+
+  it.skipIf(!canAssign)(
+    'stores a capacity with registration closed, answering in the shape the page reads',
+    async () => {
+      const reference = await approvedEvent()
+
+      const settings = await updateRegistrationSettings(reference, {
+        registration_enabled: false,
+        registration_capacity: 50,
+      })
+
+      expect(settings).toEqual({
+        reference,
+        registration_required: false,
+        registration_enabled: false,
+        registration_capacity: 50,
+      })
+    },
+  )
+
+  it.skipIf(!canAssign)('asks for a capacity under its field to open registration', async () => {
+    const reference = await approvedEvent()
+
+    const error = await refusal(
+      updateRegistrationSettings(reference, { registration_enabled: true }),
+    )
+
+    expect(error).toMatchObject({ status: 400, code: 'validation_error' })
+    expect(error.fieldErrors).toEqual({
+      registration_capacity: ['A capacity is required to enable registration.'],
+    })
+  })
+
+  it.skipIf(!canAssign)('names a capacity that is not a whole number from 1 up', async () => {
+    const reference = await approvedEvent()
+
+    const zero = await refusal(updateRegistrationSettings(reference, { registration_capacity: 0 }))
+    const fraction = await refusal(
+      updateRegistrationSettings(reference, { registration_capacity: 1.5 }),
+    )
+
+    expect(zero.fieldErrors).toEqual({
+      registration_capacity: ['Capacity must be between 1 and 2147483647.'],
+    })
+    expect(fraction.fieldErrors).toEqual({ registration_capacity: ['Not a valid integer.'] })
+  })
+
+  it.skipIf(!canAssign)('refuses to open registration before the event is confirmed', async () => {
+    const reference = await approvedEvent()
+
+    const error = await refusal(
+      updateRegistrationSettings(reference, {
+        registration_enabled: true,
+        registration_capacity: 50,
+      }),
+    )
+
+    expect(error).toMatchObject({
+      status: 409,
+      code: 'registration_not_enablable',
+      message: 'Registration can be enabled only for a confirmed event.',
     })
   })
 })
