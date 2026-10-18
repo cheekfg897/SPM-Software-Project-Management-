@@ -2,6 +2,7 @@ import { ROLE } from '@/config/roles'
 import { register } from '@/features/auth/api'
 import { decideBookingRequest, raiseBookingRequest } from '@/features/booking/api'
 import {
+  completeEvent,
   decideEventRequest,
   fetchEventRequest,
   sendToSafetyReview,
@@ -17,7 +18,7 @@ import type { Credentials } from './backend'
 
 /**
  * The coordinator's planning actions against the running backend: sending an event to safety
- * review (SCRUM-97, ADR-0047) (ADR-0075).
+ * review (SCRUM-97, ADR-0047) and marking it completed (SCRUM-68, ADR-0027) (ADR-0075).
  *
  * The refusals that need no event of the coordinator's run with the staff account every run has
  * (an Event Coordinator) and new organisers. An event of the coordinator's needs a Lead to assign
@@ -252,4 +253,31 @@ describe('SCRUM-97 sending an event to safety review against the backend', () =>
       expect((await fetchEventRequest(reference)).status).toBe('safety_review')
     },
   )
+})
+
+describe('SCRUM-68 marking an event completed against the backend', () => {
+  it('refuses an organiser by role, and a visitor without a token', async () => {
+    const reference = await submittedEvent()
+
+    expect(await refusal(completeEvent(reference))).toMatchObject(NOT_PERMITTED)
+    sendRequestsAs(null)
+    expect(await refusal(completeEvent(reference))).toMatchObject(NOT_SIGNED_IN)
+  })
+
+  it('answers a coordinator an event not assigned to them as not found', async () => {
+    const reference = await submittedEvent()
+    await signInAs(staffAccount())
+
+    expect(await refusal(completeEvent(reference))).toMatchObject(NOT_FOUND)
+  })
+
+  it.skipIf(!canAssign)('refuses an event that is not confirmed', async () => {
+    const reference = await approvedEvent()
+
+    expect(await refusal(completeEvent(reference))).toMatchObject({
+      status: 409,
+      code: 'request_not_completable',
+      message: 'Only a confirmed event can be marked completed.',
+    })
+  })
 })
