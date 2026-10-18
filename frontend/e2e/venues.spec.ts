@@ -74,13 +74,17 @@ test('a longer turnaround saves, and shows the bookings it now overlaps (SCRUM-6
   )
 })
 
-test('Venue Staff deactivate a venue, which leaves the list, then reactivate it', async ({
+test('Venue Staff deactivate a venue, saying why, which leaves the list, then reactivate it', async ({
   page,
 }) => {
   await startOnVenues(page, MOCK_ACCOUNTS.venueStaff)
 
   await page.getByRole('link', { name: /Lawn Marquee/ }).click()
   await page.getByRole('button', { name: 'Deactivate venue' }).click()
+  const question = page.getByRole('form', { name: 'Deactivate Lawn Marquee?' })
+  await question.getByLabel('Why').selectOption({ label: 'Safety concern' })
+  await question.getByLabel('Note').fill('Fire doors failed inspection')
+  await question.getByRole('button', { name: 'Deactivate' }).click()
   await expect(page.getByText(/This venue is deactivated/)).toBeVisible()
 
   await openVenuesFromHeader(page)

@@ -103,8 +103,20 @@ export function updateVenue(venueId: number, changes: VenueDetails): Promise<Upd
   return apiRequest<UpdatedVenue>(VENUE_PATHS.venue(venueId), { method: 'PATCH', body: changes })
 }
 
-export function deactivateVenue(venueId: number): Promise<Venue> {
-  return apiRequest<Venue>(VENUE_PATHS.deactivate(venueId), { method: 'POST' })
+/**
+ * Why a venue is being deactivated (SCRUM-92 AC9, ADR-0053): one of UNAVAILABILITY_CATEGORIES
+ * and a note for the coordinators told. Both go as chosen and typed; the backend checks them.
+ */
+export interface Deactivation {
+  category: string
+  reason: string
+}
+
+export function deactivateVenue(venueId: number, deactivation: Deactivation): Promise<Venue> {
+  return apiRequest<Venue>(VENUE_PATHS.deactivate(venueId), {
+    method: 'POST',
+    body: deactivation,
+  })
 }
 
 export function reactivateVenue(venueId: number): Promise<Venue> {

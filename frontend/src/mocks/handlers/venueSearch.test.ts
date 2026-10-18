@@ -189,7 +189,9 @@ describe("SCRUM-35 venue search mock: the catalogue's venues, as the backend has
   })
 
   it('leaves out a venue the catalogue deactivated', async () => {
-    await asVenueStaff(() => deactivateVenue(MOCK_VENUES.orchidRoom.id))
+    await asVenueStaff(() =>
+      deactivateVenue(MOCK_VENUES.orchidRoom.id, { category: 'renovation', reason: 'New floor' }),
+    )
 
     expect(await namesFound()).not.toContain(MOCK_VENUES.orchidRoom.name)
   })
