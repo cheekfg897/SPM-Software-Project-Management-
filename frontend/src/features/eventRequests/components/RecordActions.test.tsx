@@ -16,7 +16,9 @@ import { findRegion, serveRecordInStatus, statusShownFor } from '../test/recordP
  * the backend accepts it in, with the backend's refusals and every reason they give
  * (ADR-0075). The mock in src/mocks/handlers/eventPlanning.ts holds Hana's EVR-PLAN0001
  * (approved; arrangement 42 pending, equipment request 43 unanswered), EVR-PLAN0002 (approved
- * and settled), EVR-PLAN0005 (confirmed, ended) and EVR-PLAN0006 (confirmed, not yet ended).
+ * and settled), EVR-PLAN0005 (confirmed, ended; registration open for 50 with 30 registered,
+ * though its organiser didn't ask for it) and EVR-PLAN0006 (confirmed, not yet ended; its
+ * organiser asked for registration and nothing is set).
  */
 
 const HANA = mockSessionFor(MOCK_ACCOUNTS.planningCoordinator)
@@ -28,7 +30,7 @@ const CONFIRMED_NOT_ENDED = 'EVR-PLAN0006'
 /** The actions each status offers; every status not named offers none. */
 const OFFERED_BY_STATUS: [EventRequestStatus, string[]][] = [
   [EVENT_REQUEST_STATUS.APPROVED, ['Send to safety review']],
-  [EVENT_REQUEST_STATUS.CONFIRMED, ['Mark completed']],
+  [EVENT_REQUEST_STATUS.CONFIRMED, ['Save registration', 'Mark completed']],
 ]
 const STATUSES_OFFERING_NOTHING = Object.values(EVENT_REQUEST_STATUS).filter(
   (status) => !OFFERED_BY_STATUS.some(([offering]) => offering === status),
@@ -192,5 +194,146 @@ describe('SCRUM-68 marking an event completed', () => {
 
     const alert = await within(await findRegion('Mark completed')).findByRole('alert')
     expect(alert).toHaveTextContent('Only the backend could say this about completing.')
+  })
+})
+
+describe('SCRUM-69 registration settings', () => {
+  /** The registration card, once the page has loaded. */
+  function registrationCard() {
+    return findRegion('Registration settings')
+  }
+
+  /** The body of the change the page sent. */
+  async function sentChange(requests: Request[]): Promise<unknown> {
+    const sent = requests.find((request) => request.method === 'PATCH')
+    expect(sent?.url).toMatch(/\/api\/events\/requests\/EVR-PLAN000[56]\/registration$/)
+    return sent?.json()
+  }
+
+  it.each([
+    [CONFIRMED_NOT_ENDED, 'Open'],
+    [CONFIRMED_AND_ENDED, 'Closed'],
+  ])(
+    "starts %s at the organiser's answer, %s, with the capacity empty",
+    async (reference, choice) => {
+      openAsHana(reference)
+
+      const card = await registrationCard()
+      expect(within(card).getByRole('radio', { name: choice })).toBeChecked()
+      expect(within(card).getByLabelText('Capacity')).toHaveValue(null)
+    },
+  )
+
+  it('opens registration with the capacity typed, and says what the backend now holds', async () => {
+    const requests = recordRequests()
+    const { user } = openAsHana(CONFIRMED_NOT_ENDED)
+    const card = await registrationCard()
+
+    await user.type(within(card).getByLabelText('Capacity'), '120')
+    await user.click(within(card).getByRole('button', { name: 'Save registration' }))
+
+    expect(await within(card).findByRole('status')).toHaveTextContent(
+      'Registration is open. Capacity: 120.',
+    )
+    expect(await sentChange(requests)).toEqual({
+      registration_enabled: true,
+      registration_capacity: 120,
+    })
+  })
+
+  it("closes registration, sending no capacity when the box is empty, so the event's is kept", async () => {
+    const requests = recordRequests()
+    const { user } = openAsHana(CONFIRMED_AND_ENDED)
+    const card = await registrationCard()
+
+    await user.click(within(card).getByRole('button', { name: 'Save registration' }))
+
+    expect(await within(card).findByRole('status')).toHaveTextContent(
+      'Registration is closed. Capacity: 50.',
+    )
+    expect(await sentChange(requests)).toEqual({ registration_enabled: false })
+  })
+
+  it("shows the backend's message under the capacity when opening without one", async () => {
+    const { user } = openAsHana(CONFIRMED_NOT_ENDED)
+    const card = await registrationCard()
+
+    await user.click(within(card).getByRole('button', { name: 'Save registration' }))
+
+    expect(await within(card).findByRole('alert')).toHaveTextContent('Invalid request.')
+    expect(within(card).getByLabelText('Capacity')).toHaveAccessibleDescription(
+      'A capacity is required to enable registration.',
+    )
+    expect(within(card).queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('shows the refusal of a capacity below the places taken under the box', async () => {
+    const { user } = openAsHana(CONFIRMED_AND_ENDED)
+    const card = await registrationCard()
+
+    await user.click(within(card).getByRole('radio', { name: 'Open' }))
+    await user.type(within(card).getByLabelText('Capacity'), '20')
+    await user.click(within(card).getByRole('button', { name: 'Save registration' }))
+
+    await within(card).findByRole('alert')
+    expect(within(card).getByLabelText('Capacity')).toHaveAccessibleDescription(
+      'Capacity cannot be lower than the 30 places already taken.',
+    )
+  })
+
+  it('sends the number as typed and leaves whole-number checks to the backend', async () => {
+    const requests = recordRequests()
+    const { user } = openAsHana(CONFIRMED_NOT_ENDED)
+    const card = await registrationCard()
+
+    await user.type(within(card).getByLabelText('Capacity'), '1.5')
+    await user.click(within(card).getByRole('button', { name: 'Save registration' }))
+
+    await within(card).findByRole('alert')
+    expect(within(card).getByLabelText('Capacity')).toHaveAccessibleDescription(
+      'Not a valid integer.',
+    )
+    expect(await sentChange(requests)).toEqual({
+      registration_enabled: true,
+      registration_capacity: 1.5,
+    })
+  })
+
+  it("shows the backend's own words for a refusal, as they come", async () => {
+    server.use(
+      http.patch(`/api/events/requests/${CONFIRMED_NOT_ENDED}/registration`, () =>
+        HttpResponse.json(
+          {
+            error: 'registration_not_enablable',
+            message: 'Only the backend could say this about registration.',
+          },
+          { status: 409 },
+        ),
+      ),
+    )
+    const { user } = openAsHana(CONFIRMED_NOT_ENDED)
+    const card = await registrationCard()
+
+    await user.type(within(card).getByLabelText('Capacity'), '120')
+    await user.click(within(card).getByRole('button', { name: 'Save registration' }))
+
+    expect(await within(card).findByRole('alert')).toHaveTextContent(
+      'Only the backend could say this about registration.',
+    )
+  })
+
+  it('says it is busy while the settings are being saved', async () => {
+    server.use(
+      http.patch(`/api/events/requests/${CONFIRMED_NOT_ENDED}/registration`, () =>
+        delay('infinite'),
+      ),
+    )
+    const { user } = openAsHana(CONFIRMED_NOT_ENDED)
+    const save = within(await registrationCard()).getByRole('button', { name: 'Save registration' })
+
+    await user.click(save)
+
+    expect(save).toBeDisabled()
+    expect(save).toHaveAttribute('aria-busy', 'true')
   })
 })
