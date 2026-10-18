@@ -47,7 +47,7 @@ from app.modules.events.services import (
 )
 from app.modules.notifications.services import NotificationKind
 from app.modules.venue.models import BookingRequestStatus
-from tests.events.cases import AddLine, Arrange
+from tests.events.cases import RETIRED_ARRANGEMENT_STATUSES, AddLine, Arrange
 
 pytestmark = pytest.mark.scrum_97
 
@@ -65,9 +65,6 @@ SAFETY_OFFICER_IDS = [21, 20]
 #: Technical Support 5 and 2.
 OTHER_USER_IDS = [9, 3, 4, 7, 5, 2]
 
-#: The retired statuses, which the gate ignores: Withdrawn (AC1) and Released, an
-#: arrangement a replacement took over from (SCRUM-92 AC7).
-RETIRED_ARRANGEMENT_STATUSES = [BookingRequestStatus.WITHDRAWN, BookingRequestStatus.RELEASED]
 #: Every arrangement status but Approved and the retired ones, which let an event
 #: through. Built from the enum, so a status added later is checked too.
 HOLDING_ARRANGEMENT_STATUSES = [

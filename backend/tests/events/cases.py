@@ -132,3 +132,12 @@ LOST_REASSIGNMENT_NOTIFICATION_CASES = [
 #: be saved. Shared by the ``lead_assigns`` fixture and the tests that read the audit
 #: entry back.
 LEAD_ID = 11
+
+#: Venue arrangements that no longer count towards their event: withdrawn by the
+#: coordinator (SCRUM-93), or released when a replacement was approved (SCRUM-92 AC7).
+RETIRED_ARRANGEMENT_STATUSES = [BookingRequestStatus.WITHDRAWN, BookingRequestStatus.RELEASED]
+#: Every other arrangement status, built from the enum so a status added later is
+#: checked too.
+ACTIVE_ARRANGEMENT_STATUSES = [
+    status for status in BookingRequestStatus if status not in RETIRED_ARRANGEMENT_STATUSES
+]
