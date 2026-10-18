@@ -4,6 +4,7 @@ import { ROUTES } from '../src/config/routes'
 import { MOCK_ACCOUNTS } from '../src/mocks/fixtures/accounts'
 import { MOCK_ORGANISATIONS } from '../src/mocks/handlers/organisationFixtures'
 
+import { expectHeaderControlsWithin } from './headerFits'
 import { signInAs } from './signInAs'
 
 /** SCRUM-66: staff find the client organisations from the header and record a new one. */
@@ -37,13 +38,7 @@ test('every header control fits on a small phone for staff', async ({ page }) =>
   await page.setViewportSize(SMALL_PHONE)
   await signInAs(page, MOCK_ACCOUNTS.coordinator)
   await page.goto(ROUTES.ORGANISATIONS)
-  const header = page.getByRole('banner')
-  await expect(header.getByRole('link', { name: 'Clients' })).toBeVisible()
+  await expect(page.getByRole('banner').getByRole('link', { name: 'Clients' })).toBeVisible()
 
-  const controls = await header.locator('a, button').all()
-  for (const control of controls) {
-    const box = await control.boundingBox()
-    expect(box, await control.innerText()).not.toBeNull()
-    expect(box!.x + box!.width, await control.innerText()).toBeLessThanOrEqual(SMALL_PHONE.width)
-  }
+  await expectHeaderControlsWithin(page, SMALL_PHONE.width)
 })
