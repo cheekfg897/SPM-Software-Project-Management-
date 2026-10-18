@@ -297,12 +297,13 @@ describe('SCRUM-34 only Venue Staff see and change blocks', () => {
   it('refuses a coordinator listing, adding or removing blocks (403)', async () => {
     await signInAs(staffAccount())
 
+    // Each call starts only when the one before has been refused, so none rejects unawaited.
     for (const call of [
-      fetchVenueBlocks(UNKNOWN_VENUE_ID),
-      blockVenue(UNKNOWN_VENUE_ID, FUTURE_BLOCK),
-      removeVenueBlock(UNKNOWN_VENUE_ID, UNKNOWN_VENUE_ID),
+      () => fetchVenueBlocks(UNKNOWN_VENUE_ID),
+      () => blockVenue(UNKNOWN_VENUE_ID, FUTURE_BLOCK),
+      () => removeVenueBlock(UNKNOWN_VENUE_ID, UNKNOWN_VENUE_ID),
     ]) {
-      const error = await refusal(call)
+      const error = await refusal(call())
       expect(error).toMatchObject({ status: 403, code: 'authorization_error' })
     }
   })
