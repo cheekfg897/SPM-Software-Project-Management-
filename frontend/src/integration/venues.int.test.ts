@@ -6,7 +6,7 @@ import {
   reactivateVenue,
   updateVenue,
 } from '@/features/venues/api'
-import type { VenueDetails } from '@/features/venues/api'
+import type { Deactivation, VenueDetails } from '@/features/venues/api'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
 
 import { refusal, signInAs, signInAsNewAttendee, staffAccount } from './backend'
@@ -39,6 +39,9 @@ function uniqueVenue(): VenueDetails {
     ],
   }
 }
+
+/** Why the venue is deactivated: what the backend needs since SCRUM-92 (ADR-0053). */
+const DEACTIVATION: Deactivation = { category: 'renovation', reason: 'Integration run' }
 
 function signInAsVenueStaff() {
   return signInAs({ email: VENUE_STAFF_EMAIL, password: VENUE_STAFF_PASSWORD })
@@ -99,7 +102,7 @@ describe('SCRUM-25 only Venue Staff change the catalogue (AC4)', () => {
     // Each call starts only when the one before has been refused, so none rejects unawaited.
     for (const write of [
       () => updateVenue(UNKNOWN_VENUE_ID, uniqueVenue()),
-      () => deactivateVenue(UNKNOWN_VENUE_ID),
+      () => deactivateVenue(UNKNOWN_VENUE_ID, DEACTIVATION),
       () => reactivateVenue(UNKNOWN_VENUE_ID),
     ]) {
       const error = await refusal(write())
@@ -190,7 +193,7 @@ describe.skipIf(!hasVenueStaff)('SCRUM-25 and SCRUM-67 Venue Staff keep the cata
     await signInAsVenueStaff()
     const created = await createVenue(uniqueVenue())
 
-    const deactivated = await deactivateVenue(created.id)
+    const deactivated = await deactivateVenue(created.id, DEACTIVATION)
     const listedWhileOff = await fetchVenues()
     const stillOpens = await fetchVenue(created.id)
     const reactivated = await reactivateVenue(created.id)

@@ -12,7 +12,7 @@ import {
   updateVenue,
   venueKeys,
 } from './api'
-import type { VenueDetails } from './api'
+import type { Deactivation, VenueDetails } from './api'
 
 /** Every venue query is read again after a change, so the list and each page agree (AC3). */
 function useInvalidateVenues() {
@@ -52,7 +52,10 @@ export function useUpdateVenue(venueId: number) {
 
 export function useDeactivateVenue(venueId: number) {
   const invalidateVenues = useInvalidateVenues()
-  return useMutation({ mutationFn: () => deactivateVenue(venueId), onSuccess: invalidateVenues })
+  return useMutation({
+    mutationFn: (deactivation: Deactivation) => deactivateVenue(venueId, deactivation),
+    onSuccess: invalidateVenues,
+  })
 }
 
 export function useReactivateVenue(venueId: number) {
