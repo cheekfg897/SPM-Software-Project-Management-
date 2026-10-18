@@ -35,6 +35,7 @@ describe('SCRUM-33 the kinds of history entry', () => {
       'coordinator_reassigned',
       'decision_recorded',
       'equipment_outcome_recorded',
+      'equipment_preparation_updated',
       'equipment_reserved',
       'event_completed',
       'event_confirmed',
@@ -371,6 +372,26 @@ describe('SCRUM-33 describing the equipment and the safety check', () => {
   })
 })
 
+describe("SCRUM-85 describing Technical Support's preparation of a reservation", () => {
+  it('gives the equipment, the status in words and the notes', () => {
+    const details = {
+      reservation_id: 21,
+      equipment_type_id: 3,
+      equipment_type_name: 'Projector',
+      status: 'ready',
+      notes: 'Lamps tested.',
+    }
+
+    expect(described('equipment_preparation_updated', details)).toEqual(
+      plain('Equipment preparation updated', [
+        ['Equipment', 'Projector'],
+        ['Status', 'Ready'],
+        ['Notes', 'Lamps tested.'],
+      ]),
+    )
+  })
+})
+
 describe('SCRUM-33 an entry missing some of its details', () => {
   it.each<[string, Record<string, unknown>, string[]]>([
     [
@@ -382,6 +403,7 @@ describe('SCRUM-33 an entry missing some of its details', () => {
     ['venue_booking_approved', { venue_id: null, reason: 'Closed.' }, ['Reason']],
     ['equipment_outcome_recorded', { status: 'unavailable', quantity: 4 }, ['Outcome']],
     ['equipment_outcome_recorded', { equipment_type_name: 'Projector' }, ['Equipment']],
+    ['equipment_preparation_updated', { status: 'done', notes: 'Lamps tested.' }, ['Notes']],
     ['safety_outcome_recorded', { reason: 'Too crowded.' }, ['Reason']],
     ['venue_preparation_updated', { venue_id: 12, status: 'done', notes: null }, ['Venue ID']],
   ])('leaves out of %s the facts it cannot make', (kind, details, labels) => {
