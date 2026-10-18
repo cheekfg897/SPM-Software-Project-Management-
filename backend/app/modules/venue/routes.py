@@ -287,6 +287,14 @@ def decide_booking_request(request_id: int) -> tuple[Response, int]:
 # --------------------------------------------------------------------------
 
 
+@bp.get("/booking-requests/approved")
+@requires_role(Role.VENUE_STAFF)
+def list_approved_booking_requests() -> tuple[Response, int]:
+    """Every approved booking, the earliest event first, to prepare (ADR-0080)."""
+    shown = services.list_approved_booking_requests()
+    return jsonify(_booking_request_schema.dump(shown, many=True)), 200
+
+
 @bp.put("/booking-requests/<int:request_id>/preparation")
 @requires_role(Role.VENUE_STAFF)
 def update_preparation_details(request_id: int) -> tuple[Response, int]:
