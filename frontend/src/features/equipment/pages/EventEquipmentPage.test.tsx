@@ -11,6 +11,8 @@ import { server } from '@/mocks/server'
 import { recordRequests } from '@/test/recordRequests'
 import { renderApp } from '@/test/render'
 
+import { reserveProjectors } from '../test/reserveProjectors'
+
 const TECHNICAL_SUPPORT = mockSessionFor(MOCK_ACCOUNTS.technicalSupport)
 const COORDINATOR = mockSessionFor(MOCK_ACCOUNTS.coordinator)
 const OPEN_PAGE = eventEquipmentPath(MOCK_OPEN_EVENT_REFERENCE)
@@ -20,14 +22,6 @@ function projectorCells(): (string | null)[] {
   const table = screen.getByRole('table', { name: 'Equipment availability' })
   const row = within(table).getByRole('cell', { name: 'Projector' }).closest('tr')
   return [...(row?.querySelectorAll('td') ?? [])].slice(0, 4).map((cell) => cell.textContent)
-}
-
-async function reserveProjectors(
-  user: ReturnType<typeof renderApp>['user'],
-  quantity: string,
-): Promise<void> {
-  await user.type(await screen.findByLabelText('Quantity of Projector'), quantity)
-  await user.click(screen.getByRole('button', { name: 'Reserve Projector' }))
 }
 
 describe('SCRUM-45 equipment page: what is free for the event', () => {
