@@ -71,13 +71,19 @@ may do, not how the page offers it.
    "Save registration".
    - **The record doesn't carry the current settings.** `GET /api/events/requests/<reference>`
      has no `registration_enabled` or `registration_capacity`, and no other route returns
-     `registration_enabled`. So the choice starts at what the organiser asked for
-     (`registration_required`, SCRUM-69 AC1's default) and the box starts empty.
-   - **What is sent:** `registration_enabled` always, as chosen, and `registration_capacity`
-     only when a number is typed. An empty box keeps the capacity the event has (ADR-0043
-     decision 3), so turning registration off or on again needs no number once one is stored.
-     The number is sent as typed; whole-number, range and "at least the number registered"
-     checks are the backend's, shown under the box.
+     `registration_enabled`. So the form doesn't guess: neither Open nor Closed is picked and
+     the box starts empty. The card says what the organiser asked for, and that leaving the
+     choice unpicked keeps registration as it is (until a capacity is first saved, the backend
+     follows the organiser's answer, SCRUM-69 AC1).
+   - **What is sent:** only what the coordinator changes. `registration_enabled` only when Open
+     or Closed is picked, and `registration_capacity` only when a number is typed; "Save
+     registration" stays disabled until one of them is. A field left out keeps what the event
+     has (ADR-0043 decision 3), so a new capacity alone never opens or closes registration,
+     and turning registration off or on again needs no number once one is stored. (Changed in
+     review: the first version always sent the choice, starting at the organiser's answer, so
+     saving only a new capacity on an event whose organiser hadn't asked closed its open
+     registration.) The number is sent as typed; whole-number, range and "at least the number
+     registered" checks are the backend's, shown under the box.
    - **Once saved, the card says what the backend now holds**, from its reply: "Registration is
      open." or "Registration is closed.", and "Capacity: 120." when there is one. It is the
      reply, not a guess, but it lasts only while the page is open (see Consequences).
@@ -116,8 +122,8 @@ after it, whose organiser asked for registration).
 - The coordinator can take an event from Approved to Completed in the web app, so the lifecycle
   ADR-0047 and ADR-0051 set up can run in a browser.
 - **The registration form can't show the current settings when the page opens.** A coordinator
-  who reopens the page sees the organiser's answer and an empty box, not what was saved. Saving
-  with the box empty keeps the stored capacity, so nothing is lost, but the page can't show it.
+  who reopens the page sees nothing picked and an empty box, not what was saved. Saving only
+  what changed keeps the rest, so nothing is lost, but the page can't show it.
   Listed under Tickets to open: add `registration_enabled` and `registration_capacity` to the
   event record, then start the form from them.
 - SCRUM-69 AC3 (capacity within the booked venue's) is still deferred on the backend
