@@ -3544,11 +3544,12 @@ def record_equipment_outcome(
 ) -> EventEquipmentLine:
     """Record, or revise, how much of an equipment line Technical Support will provide.
 
-    SCRUM-48 AC1-AC5. The status follows from the quantity provided; a shortfall needs
-    a note, and a line met in full keeps none. Every call adds a history entry, so a
-    revision leaves the earlier outcome on record. The history entry is saved with the
-    outcome; the event's coordinator is told afterwards (ADR-0015), with the equipment,
-    the outcome and the note (SCRUM-50 AC4, ADR-0055).
+    SCRUM-48 AC1-AC5, AC7. The status follows from the quantity provided; a shortfall
+    needs a note, and a line met in full keeps none. Every call adds a history entry,
+    so a revision leaves the earlier outcome on record. A revision, a line that already
+    had an outcome, also withdraws a safety approval (AC7, ADR-0087). Both are saved
+    with the outcome; the event's coordinator is told afterwards (ADR-0015), with the
+    equipment, the outcome and the note (SCRUM-50 AC4, ADR-0055).
 
     Args:
         reviewer_id: The Technical Support user's id, taken from their token.
@@ -3575,6 +3576,7 @@ def record_equipment_outcome(
     line = _line_of_event(event_request, line_id, sess)
     _check_outcome_is_possible(line, outcome)
     equipment_type = equipment_services.get_equipment_type(line.equipment_type_id, session=sess)
+    previous_provided_quantity = line.provided_quantity
 
     line.provided_quantity = outcome["provided_quantity"]
     line.status = outcome_status_for(line.quantity, line.provided_quantity)
@@ -3598,6 +3600,18 @@ def record_equipment_outcome(
         session=sess,
         now=now,
     )
+    is_revision = previous_provided_quantity is not None
+    if is_revision:
+        withdraw_safety_approval(
+            event_request.id,
+            actor_id=reviewer,
+            details={
+                "equipment_line_id": line.id,
+                "equipment_type_name": equipment_type.name,
+                "previous_provided_quantity": previous_provided_quantity,
+            },
+            session=sess,
+        )
     sess.commit()
     _notify_assigned_coordinator(
         event_request,
