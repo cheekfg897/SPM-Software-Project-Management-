@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
 
+import { expectHeaderControlsWithin } from './headerFits'
+
 /** Every page a visitor can open without signing in. */
 const PUBLIC_PATHS = ['/', '/events', '/login', '/signup', '/staff/login']
 
@@ -58,14 +60,7 @@ for (const path of PUBLIC_PATHS) {
 test('every header control fits on a small phone', async ({ page }) => {
   await page.setViewportSize(SMALL_PHONE)
   await page.goto('/')
-  const header = page.getByRole('banner')
-  await expect(header.getByRole('link', { name: 'Sign up' })).toBeVisible()
+  await expect(page.getByRole('banner').getByRole('link', { name: 'Sign up' })).toBeVisible()
 
-  const controls = await header.locator('a, button').all()
-  expect(controls.length).toBeGreaterThan(0)
-  for (const control of controls) {
-    const box = await control.boundingBox()
-    expect(box, await control.innerText()).not.toBeNull()
-    expect(box!.x + box!.width, await control.innerText()).toBeLessThanOrEqual(SMALL_PHONE.width)
-  }
+  await expectHeaderControlsWithin(page, SMALL_PHONE.width)
 })
