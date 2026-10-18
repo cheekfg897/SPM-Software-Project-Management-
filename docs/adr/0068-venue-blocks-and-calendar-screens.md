@@ -39,9 +39,11 @@ stories leave these open for the web app:
    shows the period it holds the venue (padded by setup and turnaround, ADR-0011) and, beside it,
    the event's own times. Kinds are "Booked", "Tentative" and "Blocked".
 5. **Venue Staff block the venue from the same page**, with a start, an end (date and time, in
-   business time, sent without an offset) and a reason, and see its blocks listed underneath with
-   a Remove button each. Other staff see neither: the blocks list is Venue Staff's only
-   (ADR-0016), and they see blocks in the calendar as the backend words them.
+   business time, sent without an offset), a category from the five the backend takes
+   (UNAVAILABILITY_CATEGORIES, SCRUM-92 AC2, ADR-0053) and a reason, and see its blocks listed
+   underneath with their category and a Remove button each. Other staff see neither: the blocks
+   list is Venue Staff's only (ADR-0016), and they see blocks in the calendar as the backend
+   words them.
 6. **A block that cuts into confirmed bookings is still saved**, and the page then says which:
    each booking, its event, and the period it holds the venue (SCRUM-34 AC2). *Default to review:*
    the report stays until the next block is saved; it isn't stored anywhere.
