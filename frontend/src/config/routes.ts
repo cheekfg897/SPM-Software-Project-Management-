@@ -11,10 +11,10 @@ export const ROUTES = {
   NEW_EVENT_REQUEST: '/organiser/requests/new',
   /** A route pattern: `:reference` is one of the organiser's own drafts. */
   EDIT_DRAFT: '/organiser/requests/:reference/edit',
-  /** A route pattern: one of the organisation's requests, as its organisers see it (ADR-0046). */
+  /** A route pattern: one of the organisation's requests, as its organisers see it (ADR-0056). */
   ORGANISER_REQUEST: '/organiser/requests/:reference',
   STAFF_HOME: '/staff',
-  /** A route pattern: an event's record, as its assigned coordinator sees it (ADR-0046). */
+  /** A route pattern: an event's record, as its assigned coordinator sees it (ADR-0056). */
   COORDINATOR_EVENT: '/events/:reference',
   /** A route pattern: `:reference` is the event's `EVR-…` reference. */
   VENUE_REQUESTS: '/events/:reference/venue-requests',

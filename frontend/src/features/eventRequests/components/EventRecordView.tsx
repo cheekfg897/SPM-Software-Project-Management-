@@ -157,7 +157,7 @@ function CoordinatorLinks({ reference }: { reference: string }) {
 /**
  * An event request's record, with the sections the backend sent: its details, its coordinator,
  * and its decision, clarifications and programme notes once there are any (SCRUM-24 AC9,
- * ADR-0046). Which record a viewer may open is the backend's call.
+ * ADR-0056). Which record a viewer may open is the backend's call.
  */
 export function EventRecordView({ record }: { record: EventRecord }) {
   return (

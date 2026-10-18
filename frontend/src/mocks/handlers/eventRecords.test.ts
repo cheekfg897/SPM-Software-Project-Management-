@@ -8,7 +8,7 @@ import type { MockAccount } from '../fixtures/accounts'
 /**
  * The mock of a coordinator's assigned events (GET /api/events/requests/assigned) and of an
  * event's record (GET /api/events/requests/<reference>), pinned to what the backend sends
- * (SCRUM-24 AC2, AC9, AC10, AC11; ADR-0026, ADR-0034, ADR-0046). The integration tests check the
+ * (SCRUM-24 AC2, AC9, AC10, AC11; ADR-0026, ADR-0034, ADR-0056). The integration tests check the
  * same shapes against the running backend.
  */
 

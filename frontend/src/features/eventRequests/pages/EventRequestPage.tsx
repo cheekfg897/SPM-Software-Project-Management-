@@ -11,7 +11,7 @@ const UNNAMED_TITLE = 'Event request'
 
 /**
  * One event's record, for an organiser of its organisation or its assigned coordinator, each
- * at their own address (SCRUM-24 AC9, AC10; ADR-0046). Anyone else gets the backend's "not
+ * at their own address (SCRUM-24 AC9, AC10; ADR-0056). Anyone else gets the backend's "not
  * found", shown as it comes.
  */
 export function EventRequestPage() {

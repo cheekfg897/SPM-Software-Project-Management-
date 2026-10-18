@@ -25,7 +25,7 @@ import type { MockEventRequest } from './eventRequestFixtures'
  * Event requests: an organiser's list (SCRUM-7, SCRUM-24, ADR-0020), submitting one
  * (SCRUM-19), saving, changing and submitting a draft (SCRUM-20, ADR-0024), a coordinator's
  * list of the events assigned to them, and opening one's record as either (SCRUM-24 AC2, AC9,
- * AC10; ADR-0046). Who sees what, the order, and every check are decided here as the backend
+ * AC10; ADR-0056). Who sees what, the order, and every check are decided here as the backend
  * decides them, never in the UI.
  */
 

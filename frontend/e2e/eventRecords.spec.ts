@@ -7,7 +7,7 @@ import { signInAs } from './signInAs'
 
 /**
  * SCRUM-24 AC2, AC9: a coordinator finds their events on Staff home and works on one; an
- * organiser opens a request to see where it stands (ADR-0046). Against the mock backend.
+ * organiser opens a request to see where it stands (ADR-0056). Against the mock backend.
  */
 
 test('SCRUM-24: a coordinator logs in, opens an assigned event and goes on to its venue requests', async ({
