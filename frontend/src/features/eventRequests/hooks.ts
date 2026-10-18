@@ -14,6 +14,8 @@ import {
   fetchEventRequest,
   fetchEventRequestsWithEquipment,
   fetchMyEventRequests,
+  fetchRegistrants,
+  registrantsKey,
   requestClarification,
   saveDraftEventRequest,
   sendToSafetyReview,
@@ -176,6 +178,16 @@ export function useEventHistory(reference: string) {
     /* v8 ignore next -- the record page is for signed-in organisers and coordinators only (RequireRole), so a viewer is always there */
     queryKey: eventHistoryKey(reference, viewer?.id ?? null),
     queryFn: () => fetchEventHistory(reference),
+  })
+}
+
+/** Who registered for an event, read for whoever is signed in: who may read it depends on them. */
+export function useRegistrants(reference: string) {
+  const viewer = useAppSelector(selectSessionUser)
+  return useQuery({
+    /* v8 ignore next -- the record page is for signed-in organisers and coordinators only (RequireRole), so a viewer is always there */
+    queryKey: registrantsKey(reference, viewer?.id ?? null),
+    queryFn: () => fetchRegistrants(reference),
   })
 }
 

@@ -1,5 +1,9 @@
 import { fetchCurrentUser, register } from '@/features/auth/api'
-import { fetchEventHistory, submitEventRequest } from '@/features/eventRequests/api'
+import {
+  fetchEventHistory,
+  fetchRegistrants,
+  submitEventRequest,
+} from '@/features/eventRequests/api'
 import { assignCoordinator } from '@/features/lead/api'
 import { createOrganisation } from '@/features/organisations/api'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
@@ -16,7 +20,9 @@ import type { Credentials } from './backend'
 
 /**
  * The sections of an event's record read from routes of their own, against the running
- * backend: its history (SCRUM-33 AC4, AC5; ADR-0025, ADR-0076).
+ * backend: its history (SCRUM-33 AC4, AC5; ADR-0025) and who registered (SCRUM-55), ADR-0076.
+ * A registrant's own shape can't be checked here: registering needs a confirmed event with
+ * registration open, which takes a Safety Officer, Venue Staff and Technical Support account.
  *
  * Only the Event Coordinator Lead assigns a coordinator (SCRUM-95), and Lead accounts are made
  * with `flask create-staff-user` like the staff account, so the checks that need an event
@@ -30,6 +36,8 @@ const hasLead = LEAD_EMAIL !== '' && LEAD_PASSWORD !== ''
 
 const NOT_FOUND = { status: 404, code: 'not_found', message: 'Event request not found.' }
 const NOT_PERMITTED = { status: 403, code: 'authorization_error' }
+/** An event's registrants before anyone registers or a capacity is set (SCRUM-69). */
+const NOBODY_REGISTERED = { capacity: null, registered_count: 0, places_left: null, items: [] }
 
 /** A date a month from now, as the backend reads dates ("2026-11-20"): never in the past. */
 const EVENT_DATE = new Date(Date.now() + 30 * 24 * 60 * 60_000).toISOString().slice(0, 10)
@@ -125,4 +133,37 @@ describe('SCRUM-33 AC5 an event history against the backend', () => {
       expect(organisersCopy).toEqual({ history })
     },
   )
+})
+
+describe('SCRUM-55 an event registrants against the backend', () => {
+  it('gives the organiser of a new request nobody and no capacity, in the shape the page reads (AC1, AC4)', async () => {
+    const { reference } = await submittedByNewOrganiser()
+
+    expect(await fetchRegistrants(reference)).toEqual(NOBODY_REGISTERED)
+  })
+
+  it("answers another organisation's organiser, and a coordinator it isn't assigned to, as not found", async () => {
+    const { reference } = await submittedByNewOrganiser()
+    await signInAs(await newOrganiserAccount())
+    const otherOrganiser = await refusal(fetchRegistrants(reference))
+    await signInAs(staffAccount())
+    const coordinator = await refusal(fetchRegistrants(reference))
+
+    expect(otherOrganiser).toMatchObject(NOT_FOUND)
+    expect(coordinator).toMatchObject(NOT_FOUND)
+  })
+
+  it('refuses an attendee (AC5)', async () => {
+    const { reference } = await submittedByNewOrganiser()
+    await signInAsNewAttendee()
+
+    expect(await refusal(fetchRegistrants(reference))).toMatchObject(NOT_PERMITTED)
+  })
+
+  it.skipIf(!hasLead)('gives the assigned coordinator the same list (AC2)', async () => {
+    const { reference } = await submittedByNewOrganiser()
+    await assignToStaffCoordinator(reference)
+
+    expect(await fetchRegistrants(reference)).toEqual(NOBODY_REGISTERED)
+  })
 })
