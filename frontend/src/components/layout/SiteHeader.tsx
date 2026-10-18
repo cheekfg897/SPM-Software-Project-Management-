@@ -17,10 +17,11 @@ const BESIDE_THE_LOGO = 'ml-1 gap-4 sm:ml-2 sm:gap-6'
 /**
  * Staff's links don't fit beside the logo and Log out on a phone or a tablet, so up to lg they
  * take a row of their own under the bar. Each link stays on one line; on a small phone the row
- * needs closer gaps to fit them all.
+ * has closer gaps, and wraps onto a second line when the links still don't fit (PageContainer
+ * leaves room for that).
  */
 const STAFF_LINKS_ROW =
-  'col-span-3 row-start-2 gap-3 pb-3 whitespace-nowrap sm:gap-6 lg:col-span-1 lg:col-start-2 lg:row-start-1 lg:ml-2 lg:pb-0'
+  'col-span-3 row-start-2 flex-wrap gap-x-3 gap-y-2 pb-3 whitespace-nowrap sm:gap-x-6 lg:col-span-1 lg:col-start-2 lg:row-start-1 lg:ml-2 lg:pb-0'
 
 function SessionActions() {
   const user = useAppSelector(selectSessionUser)

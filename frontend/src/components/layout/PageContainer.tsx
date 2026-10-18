@@ -6,10 +6,13 @@ interface PageContainerProps {
   children?: ReactNode
 }
 
-/** The standard page frame: space for the fixed header, a width limit, and the page's h1. */
+/**
+ * The standard page frame: space for the fixed header, a width limit, and the page's h1. On a
+ * small phone the space is taller, because staff's header links can take two lines there.
+ */
 export function PageContainer({ title, description, children }: PageContainerProps) {
   return (
-    <main className="mx-auto max-w-6xl px-4 pt-28 pb-20 sm:px-6">
+    <main className="mx-auto max-w-6xl px-4 pt-32 pb-20 sm:px-6 sm:pt-28">
       <h1 className="font-display text-4xl font-semibold tracking-tight">{title}</h1>
       {description !== undefined && <p className="text-ink-muted mt-3 max-w-2xl">{description}</p>}
       {children}
