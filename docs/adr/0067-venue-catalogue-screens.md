@@ -1,16 +1,17 @@
 # ADR-0067: The web app's venue catalogue screens: staff browse, Venue Staff edit
 
 - **Status:** Accepted; the points marked *default to review* wait for the Product Owner
-- **Date:** 2026-10-17
+- **Date:** 2026-10-17; decision 7 changed 2026-10-19 for SCRUM-92's deactivation reason
 - **Story:** SCRUM-25 Update venue catalogue (AC1 to AC6), SCRUM-67 Record setup and turnaround
   time for a venue (AC1, AC2, AC4, AC5)
 - **Builds on:** ADR-0008 (opening hours), ADR-0011 and ADR-0033 (setup, turnaround and what a
-  change reports)
+  change reports), ADR-0053 (what a deactivation flags, and its category and note)
 
 ## Context
 The backend has had the venue catalogue since Sprint 2: `GET /api/venues` (active venues, by
 name), `GET /api/venues/<id>` (active or not), and, for Venue Staff only, `POST /api/venues`,
-`PATCH /api/venues/<id>`, `POST /api/venues/<id>/deactivate` and `/reactivate`. The web app had
+`PATCH /api/venues/<id>`, `POST /api/venues/<id>/deactivate` (with a category and a note since
+SCRUM-92) and `/reactivate`. The web app had
 no screen for any of them. The stories say what Venue Staff may do, not how the screens work, and
 the API leaves these open for a client:
 
@@ -50,9 +51,15 @@ the API leaves these open for a client:
 6. **A deactivated venue's page still opens**, marked Deactivated, with a Reactivate button. The
    list only shows what `GET /api/venues` returns, so a deactivated venue is reached through its
    address, for example from the confirmation the page shows after deactivating it.
-7. **Deactivating asks for no confirmation.** It can be undone with one click, and the button
-   says what it does: the venue leaves the list and search, and its bookings stay. *Default to
-   review.*
+7. **Deactivating asks why first, and that question is the confirmation.** Since SCRUM-92 the
+   backend needs a category and a note to deactivate (ADR-0053), and deactivating can't be undone
+   by one click: every booking and request that hasn't ended is flagged "Needs Alternative
+   Venue", a Confirmed event goes back to Approved and its coordinator is told, and reactivating
+   clears the flags but leaves those events Approved. So "Deactivate venue" opens a question that
+   says this, with the category (the five values in `src/config/unavailabilityCategories.ts`, none
+   chosen to start) and the note, then Deactivate or Keep it active. Both go as chosen and typed,
+   so the backend's messages show under their fields. Reactivating still takes one click. The
+   wording and the categories' labels are a *default to review*.
 8. **What the screens show is the backend's:** the list in its order, opening hours in its week
    order, and its messages. The only words of the web app's own are the empty list's ("No venues
    are listed yet."), because the backend sends a bare `[]`.
@@ -70,4 +77,6 @@ the API leaves these open for a client:
 - Venue Staff need to find a deactivated venue without its link: the backend lists inactive
   venues for them (a ticket to open), and the list gains a filter.
 - The backend's opening-hours messages number periods from 1.
-- The Product Owner wants a confirmation before deactivating, or venue pages for Organisers.
+- The Product Owner wants venue pages for Organisers.
+- The booking feature's `UnavailabilityCategory` type (from SCRUM-92 on main) and
+  `src/config/unavailabilityCategories.ts` meet: one should be built from the other.
