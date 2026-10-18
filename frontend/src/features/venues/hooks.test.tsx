@@ -1,7 +1,8 @@
-import { screen, waitFor } from '@testing-library/react'
+import { act, screen, waitFor } from '@testing-library/react'
 
 import { MOCK_ACCOUNTS, mockSessionFor } from '@/mocks/fixtures/accounts'
 import { MOCK_VENUES } from '@/mocks/handlers/venueFixtures'
+import { signedIn } from '@/store'
 import { renderHookWithProviders, renderWithProviders } from '@/test/render'
 
 import type { VenueDetails } from './api'
@@ -77,6 +78,22 @@ describe('SCRUM-26 the calendar hook', () => {
 
     await waitFor(() => expect(result.current.isError).toBe(true))
     expect(result.current.error).toMatchObject({ status: 401 })
+  })
+
+  it('reads the calendar again for whoever signs in next, since the reasons depend on the role', async () => {
+    const range = { range_start: '2026-11-10T00:00:00', range_end: '2026-11-11T00:00:00' }
+    const coordinator = { session: mockSessionFor(MOCK_ACCOUNTS.coordinator) }
+    const { result, store } = renderHookWithProviders(
+      () => useVenueCalendar(MOCK_VENUES.marinaHall.id, range),
+      coordinator,
+    )
+    await waitFor(() => expect(result.current.data?.at(-1)?.reason).toBe('maintenance'))
+
+    act(() => {
+      store.dispatch(signedIn(mockSessionFor(MOCK_ACCOUNTS.venueStaff)))
+    })
+
+    await waitFor(() => expect(result.current.data?.at(-1)?.reason).toBe('Stage lighting repair'))
   })
 })
 
