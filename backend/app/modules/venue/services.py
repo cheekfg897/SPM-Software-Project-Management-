@@ -945,6 +945,11 @@ OUTSIDE_OPENING_HOURS_MESSAGE = "The request falls outside the venue's operating
 MIDNIGHT = time(0)
 
 
+#: An arrangement id that isn't one of the event's (SCRUM-93), or that a replacement
+#: names (SCRUM-92 AC6).
+ARRANGEMENT_NOT_FOUND_MESSAGE = "Venue arrangement not found."
+NOT_FLAGGED_MESSAGE = "This venue arrangement does not need an alternative venue."
+
 PENDING_INDEX_NAME = "uq_venue_booking_requests_pending"
 DUPLICATE_REQUEST_MESSAGE = "A pending request for this event, venue and period already exists."
 
@@ -1125,6 +1130,55 @@ def _notify_venue_staff(event: EventForBooking, session: Session | None) -> None
     )
 
 
+def _check_replaceable(event_id: int, arrangement_id: int, session: Session | None) -> None:
+    """Refuse a replacement unless it names a flagged arrangement of the event (AC6).
+
+    An arrangement of another event is reported as missing, as ADR-0035 §6 does for
+    the arrangement routes, so it is not discoverable.
+
+    Raises:
+        ValidationError: 400 — on ``replaces_request_id``: no such arrangement on the
+            event, or it doesn't need an alternative venue.
+    """
+    replaced = resolve_session(session).get(VenueBookingRequest, arrangement_id)
+    if replaced is None or replaced.event_id != event_id:
+        raise ValidationError(
+            "Invalid request.", details={"replaces_request_id": [ARRANGEMENT_NOT_FOUND_MESSAGE]}
+        )
+    if not replaced.needs_alternative_venue:
+        raise ValidationError(
+            "Invalid request.", details={"replaces_request_id": [NOT_FLAGGED_MESSAGE]}
+        )
+
+
+def _event_to_book_for(
+    reference: str, data: Mapping[str, Any], requested_by: int, session: Session | None
+) -> EventForBooking:
+    """The event a request is raised for, checked for the kind of request it is.
+
+    An ordinary request needs an approved event (SCRUM-42). A replacement for a
+    flagged arrangement may also be raised in Safety Review, where a flag leaves an
+    event that was not yet Confirmed (SCRUM-92 AC3, AC6, ADR-0053).
+
+    Raises:
+        NotFoundError: 404 — no such event, or ``requested_by`` doesn't coordinate it.
+        ConflictError: 409 — the event isn't at a status that allows the request.
+        ValidationError: 400 — a replacement for an arrangement that isn't flagged.
+    """
+    from app.modules.events import services as event_services  # circular at import time
+
+    replaces = data.get("replaces_request_id")
+    if replaces is None:
+        return event_services.get_approved_event_for_coordinator(
+            reference, requested_by, session=session
+        )
+    event = event_services.get_event_for_replacement_booking(
+        reference, requested_by, session=session
+    )
+    _check_replaceable(event.id, replaces, session)
+    return event
+
+
 def raise_booking_request(
     reference: str,
     payload: Mapping[str, Any] | None,
@@ -1145,18 +1199,19 @@ def raise_booking_request(
     The venue must be open for the whole period: hours are agreed outside the system,
     so a request outside them is refused rather than queued for Venue Staff (AC2).
 
+    A request with ``replaces_request_id`` replaces one of the event's arrangements that
+    needs an alternative venue (SCRUM-92 AC6); approving it releases that one (AC7).
+
     Raises:
         ValidationError: 400 — invalid payload, unknown venue, a period outside the
-            venue's operating hours, or no justification.
+            venue's operating hours, no justification, or a replacement for an
+            arrangement that isn't the event's or isn't flagged.
         NotFoundError: 404 — no such event, or ``requested_by`` doesn't coordinate it.
-        ConflictError: 409 — the event isn't approved.
+        ConflictError: 409 — the event isn't approved (or, for a replacement, in
+            Safety Review).
     """
-    from app.modules.events import services as event_services  # circular at import time
-
     data = load_or_raise(RaiseBookingRequestSchema(), payload)
-    event = event_services.get_approved_event_for_coordinator(
-        reference, requested_by, session=session
-    )
+    event = _event_to_book_for(reference, data, requested_by, session)
     data.setdefault("expected_occupancy", event.expected_attendance)
     data.setdefault("required_layout", None)
 
@@ -1204,7 +1259,6 @@ def list_booking_requests_for_event(
 # --------------------------------------------------------------------------
 
 
-ARRANGEMENT_NOT_FOUND_MESSAGE = "Venue arrangement not found."
 WITHDRAW_NOT_ALLOWED_MESSAGE = (
     "Only a pending, conflicting, rejected or expired arrangement can be withdrawn;"
     " this one is {status}."
@@ -1754,6 +1808,53 @@ def _booking_to_approve(request: VenueBookingRequest, session: Session | None) -
     return _booking_for(request)
 
 
+def _booking_made_by(arrangement: VenueBookingRequest, session: Session | None) -> Booking | None:
+    """The booking approving ``arrangement`` made, if it still holds the venue (AC3).
+
+    The booking has no link to its request, so it is the event's booking at the
+    request's venue for exactly the request's period.
+    """
+    stmt = select(Booking).where(
+        Booking.venue_id == arrangement.venue_id,
+        Booking.event_id == arrangement.event_id,
+        Booking.start_time == arrangement.starts_at,
+        Booking.end_time == arrangement.ends_at,
+        Booking.status.in_(HOLDING_BOOKING_STATUSES),
+    )
+    return resolve_session(session).scalars(stmt).first()
+
+
+def _release_replaced(
+    replacement: VenueBookingRequest, decided_by: int, session: Session | None
+) -> None:
+    """Release what an approved replacement replaces, without committing (SCRUM-92).
+
+    The replaced arrangement is Released and its booking cancelled, unless it has
+    already stopped holding its venue, say to an earlier replacement (AC7). Whatever
+    it was, the event's venues changed, so a safety approval it had no longer counts
+    (AC10). An approval of an ordinary request does nothing here.
+    """
+    from app.modules.events import services as event_services  # circular at import time
+
+    if replacement.replaces_request_id is None:
+        return
+    replaced = resolve_session(session).get(VenueBookingRequest, replacement.replaces_request_id)
+    if replaced.status in FLAGGABLE_REQUEST_STATUSES:
+        booking = _booking_made_by(replaced, session)
+        if booking is not None:
+            booking.status = BookingStatus.CANCELLED
+        replaced.status = BookingRequestStatus.RELEASED
+    event_services.withdraw_safety_approval(
+        replacement.event_id,
+        actor_id=decided_by,
+        details={
+            "venue_booking_request_id": replacement.id,
+            "replaces_request_id": replaced.id,
+        },
+        session=session,
+    )
+
+
 def _save_decision(
     request: VenueBookingRequest,
     decision: BookingDecision,
@@ -1783,6 +1884,7 @@ def _save_decision(
             "venue_id": request.venue_id,
             "booking_id": booking.id if booking is not None else None,
             "reason": request.decision_reason,
+            "replaces_request_id": request.replaces_request_id,
         },
         session=session,
     )
@@ -1810,6 +1912,9 @@ def decide_booking_request(
     every other Pending request at the venue that clashes with it is marked Conflicting
     in the same commit. A request On Hold (SCRUM-75) is decided too: approving it turns
     its hold into the confirmed booking, and rejecting it releases the venue.
+
+    Approving a replacement releases the arrangement it replaces and withdraws the
+    event's safety approval, in the same commit (SCRUM-92 AC7, AC10, ADR-0053).
 
     Args:
         request_id: The request's own id, as the queue lists it.
@@ -1840,6 +1945,7 @@ def decide_booking_request(
     if decision is BookingDecision.APPROVED:
         booking = _booking_to_approve(request, session)
         _mark_clashing_requests_conflicting(request, session)
+        _release_replaced(request, decided_by, session)
     elif request.status is BookingRequestStatus.ON_HOLD:
         # Rejecting a hold releases the venue at once (SCRUM-75 AC7).
         request.booking.status = BookingStatus.CANCELLED

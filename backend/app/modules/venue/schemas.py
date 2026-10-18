@@ -457,6 +457,9 @@ class RaiseBookingRequestSchema(TimeRangeSchema):
     )
     required_layout = fields.String(validate=validate.OneOf(LayoutType.values()))
     justification = fields.String(validate=not_blank)
+    #: The flagged arrangement this request replaces (SCRUM-92 AC6); the service checks
+    #: it is one of the event's and needs an alternative venue.
+    replaces_request_id = fields.Integer()
 
 
 class ChangeArrangementSchema(Schema):
@@ -600,6 +603,7 @@ class VenueBookingRequestSchema(Schema):
     unavailability = fields.List(
         fields.Nested(AlternativeVenueFlagSchema), attribute="request.flags", dump_only=True
     )
+    replaces_request_id = fields.Integer(attribute="request.replaces_request_id", dump_only=True)
     event_proposed_date = fields.Date(attribute="proposed_date", dump_only=True)
     event_end_date = fields.Date(attribute="end_date", dump_only=True)
     event_start_time = fields.Time(attribute="start_time", dump_only=True)
