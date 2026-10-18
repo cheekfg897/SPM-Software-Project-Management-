@@ -2,10 +2,11 @@
 
 AC6: the assigned coordinator may decide an approved or rejected request again, with
 a reason, and the status follows the new decision; the same outcome may be given
-again (ADR-0028). AC7: no new decision once the event has an equipment request (and,
-with SCRUM-42, a venue booking request); the first decision is never blocked. AC8:
-every decision stays in the history and the latest is current. AC10: the organiser is
-told of each new decision.
+again (ADR-0028). AC7: no new decision once the event has an equipment request or a
+venue booking request that is still one of its arrangements, whatever Venue Staff made
+of it; a withdrawn or released one no longer counts (ADR-0084). The first decision is
+never blocked. AC8: every decision stays in the history and the latest is current.
+AC10: the organiser is told of each new decision.
 
 Runs against ``db_session`` with ``saved_users`` and ``saved_event_request``
 (``EVR-AAAAAAAA``, by organiser 7, submitted, assigned to Event Coordinator 3).
@@ -38,7 +39,14 @@ from app.modules.notifications.services import (
     NotificationKind,
     list_notifications_for_recipient,
 )
-from tests.events.cases import APPROVAL_REASON, REJECTION_REASON
+from app.modules.venue.models import BookingRequestStatus
+from tests.events.cases import (
+    ACTIVE_ARRANGEMENT_STATUSES,
+    APPROVAL_REASON,
+    REJECTION_REASON,
+    RETIRED_ARRANGEMENT_STATUSES,
+    Arrange,
+)
 
 pytestmark = pytest.mark.scrum_31
 
@@ -192,6 +200,42 @@ def test_a_new_decision_is_not_allowed_once_the_event_has_an_equipment_request(
     assert len(_decisions_in(history_of(saved_event_request.id))) == 1
 
 
+@pytest.mark.parametrize("status", ACTIVE_ARRANGEMENT_STATUSES, ids=lambda status: status.value)
+def test_a_new_decision_is_not_allowed_once_the_event_has_a_venue_booking_request(
+    decide: Decide,
+    arrange: Arrange,
+    reload_event_request: ReloadEventRequest,
+    history_of: HistoryOf,
+    saved_event_request: EventRequest,
+    status: BookingRequestStatus,
+) -> None:
+    """Whatever Venue Staff made of the request, it is still one of the event's."""
+    decide(COORDINATOR_ID, "approved")
+    arrange(status)
+
+    _assert_decision_locked(decide)
+
+    assert reload_event_request(saved_event_request.id).status is EventRequestStatus.APPROVED
+    assert len(_decisions_in(history_of(saved_event_request.id))) == 1
+
+
+@pytest.mark.parametrize("status", RETIRED_ARRANGEMENT_STATUSES, ids=lambda status: status.value)
+def test_a_retired_venue_booking_request_does_not_lock_the_decision(
+    decide: Decide,
+    arrange: Arrange,
+    reload_event_request: ReloadEventRequest,
+    saved_event_request: EventRequest,
+    status: BookingRequestStatus,
+) -> None:
+    """A withdrawn or released request is no longer one of the event's (ADR-0084)."""
+    decide(COORDINATOR_ID, "approved")
+    arrange(status)
+
+    decide(COORDINATOR_ID, "rejected", CHANGE_REASON)
+
+    assert reload_event_request(saved_event_request.id).status is EventRequestStatus.REJECTED
+
+
 def test_the_lock_is_checked_before_the_payload(
     decide: Decide, request_equipment: Callable[[], None]
 ) -> None:
@@ -210,6 +254,19 @@ def test_the_first_decision_is_not_blocked_by_an_equipment_request(
     saved_event_request: EventRequest,
 ) -> None:
     request_equipment()
+
+    decide(COORDINATOR_ID, "approved")
+
+    assert reload_event_request(saved_event_request.id).status is EventRequestStatus.APPROVED
+
+
+def test_the_first_decision_is_not_blocked_by_a_venue_booking_request(
+    decide: Decide,
+    arrange: Arrange,
+    reload_event_request: ReloadEventRequest,
+    saved_event_request: EventRequest,
+) -> None:
+    arrange(BookingRequestStatus.PENDING)
 
     decide(COORDINATOR_ID, "approved")
 
