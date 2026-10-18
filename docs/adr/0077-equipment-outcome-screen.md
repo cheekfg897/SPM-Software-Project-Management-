@@ -67,11 +67,12 @@ Also:
   waits as a todo with SCRUM-37's.
 
 ## Deferred, each with what it needs
-- **AC4, the outcome and the note in the notification:** the backend's notification says only
-  "Technical Support has recorded the outcome of your equipment request." The bell shows the
-  backend's words; the outcome and note are on the Equipment page. Needs the backend to put
-  them in the notification. The mock backend does not add a notification either: its
-  notifications cannot be added to by another handler yet.
+- **AC4, the outcome and the note in the notification:** delivered by the backend since this
+  was written (SCRUM-50, ADR-0055 decision 5): the `equipment_outcome_recorded` notice's
+  `detail` now reads, for example, "Projector: partially fulfilled, 6 of 10 provided. Note:
+  Only six in stock", and the notifications page already shows a notice's `detail` as sent, so
+  nothing changes here. The mock backend still adds no notification when an outcome is
+  recorded: its notifications cannot be added to by another handler yet.
 - **AC5, the Event Organiser's view:** the organiser's record sends each line's status but not
   the quantity provided, and organisers may not read the equipment types the lines are named
   from (`GET /api/equipment/types` is internal only). The organiser's request page shows no
@@ -98,5 +99,4 @@ Also:
 - The backend refuses outcomes on closed events, or sends the event's status with its lines:
   hide the buttons outside the statuses that accept an outcome.
 - The backend sends the organiser the quantity provided: show it on the organiser's request.
-- The notification carries the outcome and the note.
 - The Safety Officer's screen merges: share the status words with it.
