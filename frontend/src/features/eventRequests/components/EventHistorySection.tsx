@@ -1,10 +1,11 @@
-import { Badge, EmptyState, ErrorAlert, Spinner } from '@/components/ui'
+import { EmptyState, ErrorAlert, Spinner } from '@/components/ui'
 import { formatDateTime } from '@/lib/formatDate'
 
 import type { EventHistoryEntry } from '../api'
 import { describeHistoryEntry } from '../eventHistory'
 import { useEventHistory } from '../hooks'
 
+import { DescribedEntryView } from './DescribedEntryView'
 import { RecordSection } from './RecordSection'
 
 const NOTHING_YET = 'Nothing has been recorded for this event yet.'
@@ -17,27 +18,13 @@ function whenAndWho({ occurred_at: occurredAt, actor_name: actorName }: EventHis
 
 /** One entry on the timeline: what happened, what its details say, then when and by whom. */
 function HistoryItem({ entry }: { entry: EventHistoryEntry }) {
-  const { title, isSignificant, facts } = describeHistoryEntry(entry)
   return (
     <li className="relative">
       <span
         aria-hidden="true"
         className="bg-flare absolute top-2 -left-[29px] size-2.5 rounded-full"
       />
-      <div className="flex flex-wrap items-center gap-2">
-        <h3 className="text-ink font-medium">{title}</h3>
-        {isSignificant && <Badge>Significant change</Badge>}
-      </div>
-      {facts.length > 0 && (
-        <dl className="mt-2 grid gap-x-4 gap-y-1 text-sm sm:grid-cols-[minmax(0,10rem)_1fr]">
-          {facts.map(({ label, value }) => (
-            <div key={label} className="contents">
-              <dt className="text-ink-muted">{label}</dt>
-              <dd className="text-ink whitespace-pre-line">{value}</dd>
-            </div>
-          ))}
-        </dl>
-      )}
+      <DescribedEntryView described={describeHistoryEntry(entry)} />
       <p className="text-ink-faint mt-2 text-sm">{whenAndWho(entry)}</p>
     </li>
   )
