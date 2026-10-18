@@ -33,6 +33,11 @@ const INTERNAL_ONLY_KINDS: readonly string[] = [
   EVENT_HISTORY_KIND.EQUIPMENT_RESERVED,
   EVENT_HISTORY_KIND.EQUIPMENT_OUTCOME_RECORDED,
   EVENT_HISTORY_KIND.SAFETY_OUTCOME_RECORDED,
+  // Kinds the page has no wording for yet (it shows them as a plain line), kept internal too.
+  'venue_preparation_updated',
+  'equipment_preparation_updated',
+  'alternative_venue_needed',
+  'safety_approval_withdrawn',
 ]
 /** Fields whose changes the backend never shows an organiser (INTERNAL_ONLY_FIELDS). */
 const INTERNAL_ONLY_FIELDS: readonly unknown[] = ['internal_planning_notes']
