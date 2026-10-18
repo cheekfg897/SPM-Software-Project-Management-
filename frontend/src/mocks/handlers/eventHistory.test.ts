@@ -5,6 +5,8 @@ import { sendRequestsAs } from '@/test/sendRequestsAs'
 import { MOCK_ACCOUNTS, mockTokenFor } from '../fixtures/accounts'
 import type { MockAccount } from '../fixtures/accounts'
 
+import { addToHistory } from './eventRecordSections'
+
 /**
  * The mock of an event's history (GET /api/events/requests/<reference>/history), pinned to
  * what the backend sends (SCRUM-33 AC4, AC5; ADR-0025): who may read it, and what an organiser
@@ -17,9 +19,26 @@ const CHLOES = 'EVR-7K2M9QXA'
 const MARCUSES = 'EVR-W9CR5E7M'
 const A_DRAFT = 'EVR-3HD8PL2W'
 const NOT_FOUND = { status: 404, code: 'not_found', message: 'Event request not found.' }
+/** INTERNAL_ONLY_KINDS in events/services.py on main, written out. */
+const INTERNAL_ONLY_KINDS = [
+  'equipment_reserved',
+  'equipment_outcome_recorded',
+  'safety_outcome_recorded',
+  'venue_preparation_updated',
+  'equipment_preparation_updated',
+  'alternative_venue_needed',
+  'safety_approval_withdrawn',
+]
 
 function signInAs(account: MockAccount | null) {
   sendRequestsAs(account === null ? null : mockTokenFor(account))
+}
+
+/** Add an entry of `kind` to Partner Summit's history, as the backend would write it. */
+function recordOnPartnerSummit(kind: string) {
+  addToHistory(CHLOES, [
+    { kind, occurred_at: '2026-10-09T09:00:00+08:00', actor_name: 'Vera Goh', details: {} },
+  ])
 }
 
 async function kindsSeenBy(account: MockAccount, reference: string) {
@@ -83,6 +102,22 @@ describe('SCRUM-33 mock of an event history: what each viewer sees', () => {
       'safety_review_requested',
       'safety_outcome_recorded',
     ])
+  })
+
+  it.each(INTERNAL_ONLY_KINDS)(
+    'keeps %s entries from an organiser but not from staff',
+    async (kind) => {
+      recordOnPartnerSummit(kind)
+
+      expect(await kindsSeenBy(MOCK_ACCOUNTS.organiser, CHLOES)).not.toContain(kind)
+      expect(await kindsSeenBy(MOCK_ACCOUNTS.coordinator, CHLOES)).toContain(kind)
+    },
+  )
+
+  it('shows an organiser a kind the backend does not keep internal, such as an expired hold', async () => {
+    recordOnPartnerSummit('venue_hold_expired')
+
+    expect(await kindsSeenBy(MOCK_ACCOUNTS.organiser, CHLOES)).toContain('venue_hold_expired')
   })
 
   it('gives an event with nothing recorded yet an empty history', async () => {
