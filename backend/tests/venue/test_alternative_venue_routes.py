@@ -2,7 +2,7 @@
 
 The deactivate route passes its body to the service, which needs the category and note
 (AC9). A booking request shows whether it needs an alternative venue, each reason with
-its period in business time (AC1). Routes are
+its period in business time, and the arrangement it replaces (AC1, AC6). Routes are
 called through the registered view with the service mocked, as the other venue route
 tests are.
 """
@@ -68,6 +68,7 @@ def test_a_flagged_request_shows_each_reason_and_period_in_business_time(
     shown: BookingRequestAsShown,
 ) -> None:
     shown.request.status = BookingRequestStatus.APPROVED
+    shown.request.replaces_request_id = 7
     shown.request.flags = [
         _flag(
             UnavailabilityCategory.EQUIPMENT_FAILURE,
@@ -80,6 +81,7 @@ def test_a_flagged_request_shows_each_reason_and_period_in_business_time(
     body = VenueBookingRequestSchema().dump(shown)
 
     assert body["needs_alternative_venue"] is True
+    assert body["replaces_request_id"] == 7
     assert body["unavailability"] == [
         {
             "category": "equipment_failure",

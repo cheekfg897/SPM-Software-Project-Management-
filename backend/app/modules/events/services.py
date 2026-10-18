@@ -1127,6 +1127,33 @@ def get_approved_event_for_coordinator(
     return event
 
 
+#: Where a replacement venue may be requested from (SCRUM-92 AC6): the planning stage,
+#: and Safety Review, which a flag leaves an event in because only a Confirmed event
+#: goes back to Approved (AC3, ADR-0053).
+REPLACEMENT_BOOKING_STATUSES: frozenset[EventRequestStatus] = frozenset(
+    {EventRequestStatus.APPROVED, EventRequestStatus.SAFETY_REVIEW}
+)
+
+
+def get_event_for_replacement_booking(
+    reference: str, coordinator_id: int | str, *, session: Session | None = None
+) -> EventForBooking:
+    """The coordinator's own event, if it may raise a replacement venue (SCRUM-92 AC6).
+
+    Raises:
+        NotFoundError: 404 — no such event, or it isn't assigned to this coordinator.
+        ConflictError: 409 — the event is neither approved nor in Safety Review; the
+            message names its status.
+    """
+    event = get_event_for_coordinator(reference, coordinator_id, session=session)
+    if event.status not in REPLACEMENT_BOOKING_STATUSES:
+        raise ConflictError(
+            "Only an approved event or one in Safety Review can replace a venue;"
+            f" this one is {event.status.value}."
+        )
+    return event
+
+
 def record_alternative_venue_needed(
     event_id: int, *, details: dict[str, Any], session: Session | None = None
 ) -> None:
@@ -2052,8 +2079,9 @@ INTERNAL_ONLY_KINDS: frozenset[EventHistoryKind] = frozenset(
         EventHistoryKind.VENUE_PREPARATION_UPDATED,
         EventHistoryKind.EQUIPMENT_PREPARATION_UPDATED,
         # Venue Staff's note on why a venue is unavailable, which the calendar shows
-        # only to them (SCRUM-92, ADR-0053).
+        # only to them, and the safety check it unsettles (SCRUM-92, ADR-0053).
         EventHistoryKind.ALTERNATIVE_VENUE_NEEDED,
+        EventHistoryKind.SAFETY_APPROVAL_WITHDRAWN,
     }
 )
 
@@ -3881,11 +3909,13 @@ def _equipment_for_safety_review(
     return equipment
 
 
-#: The history kinds that open or settle a safety check. The newest of them says
-#: whether the event's current check is approved (SCRUM-98, ADR-0047).
+#: The history kinds that open, settle or unsettle a safety check. The newest of them
+#: says whether the event's current check is approved (SCRUM-98, ADR-0047); a
+#: replacement venue withdraws an approval (SCRUM-92 AC10, ADR-0053).
 SAFETY_CHECK_KINDS = (
     EventHistoryKind.SAFETY_REVIEW_REQUESTED,
     EventHistoryKind.SAFETY_OUTCOME_RECORDED,
+    EventHistoryKind.SAFETY_APPROVAL_WITHDRAWN,
 )
 
 
@@ -3913,6 +3943,42 @@ def has_safety_approval(event_id: int, *, session: Session | None = None) -> boo
     if latest is None or latest.kind is not EventHistoryKind.SAFETY_OUTCOME_RECORDED:
         return False
     return latest.details["outcome"] == SafetyOutcome.APPROVED.value
+
+
+def withdraw_safety_approval(
+    event_id: int,
+    *,
+    actor_id: int,
+    details: dict[str, Any],
+    session: Session | None = None,
+) -> None:
+    """Withdraw the event's safety approval, if it has one, without committing.
+
+    SCRUM-92 AC10: once a replacement venue is approved, the event must pass a new
+    safety check before it can be confirmed or prepared. The withdrawal is a history
+    entry, which ``has_safety_approval`` then reads as no approval. An event in Safety
+    Review goes back to Approved, so the coordinator can send it again. An event with
+    no approval is left alone. The entry rides in the caller's transaction (ADR-0018).
+
+    Args:
+        event_id: The event request's id.
+        actor_id: The Venue Staff user who approved the replacement.
+        details: The replacement and the arrangement it replaced.
+        session: Database session; defaults to ``db.session``.
+    """
+    sess = resolve_session(session)
+    if not has_safety_approval(event_id, session=sess):
+        return
+    event_request = sess.get(EventRequest, event_id)
+    if event_request.status is EventRequestStatus.SAFETY_REVIEW:
+        event_request.status = EventRequestStatus.APPROVED
+    record_event_history(
+        event_request,
+        EventHistoryKind.SAFETY_APPROVAL_WITHDRAWN,
+        actor_id=actor_id,
+        details=details,
+        session=sess,
+    )
 
 
 def list_events_awaiting_safety_review(
