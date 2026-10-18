@@ -9,7 +9,7 @@ import { renderApp } from '@/test/render'
 
 /**
  * SCRUM-24 AC2, AC8, AC9, AC11: an Event Coordinator's Staff home lists the events assigned to
- * them, each opening its record (ADR-0046). The rows come from the mock in
+ * them, each opening its record (ADR-0056). The rows come from the mock in
  * src/mocks/handlers/eventRequests.ts: Chloe has five; Daniel has none.
  */
 

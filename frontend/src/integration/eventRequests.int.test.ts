@@ -19,7 +19,7 @@ import type { Credentials } from './backend'
  * Event requests against the running backend: the organiser's list (SCRUM-7, SCRUM-20 AC4,
  * SCRUM-24 AC11), submitting one (SCRUM-19), saving, changing and submitting a draft (SCRUM-20,
  * ADR-0024), a coordinator's assigned list and an event's record (SCRUM-24 AC2, AC9, AC10;
- * ADR-0046).
+ * ADR-0056).
  * Each test records its own client organisation, which only staff may do (SCRUM-66), so these
  * tests sign in as the staff account INTEGRATION_STAFF_EMAIL / INTEGRATION_STAFF_PASSWORD.
  */
@@ -50,7 +50,7 @@ const EVENT_REQUEST_FIELDS = [
   'venue_requirements',
 ]
 
-/** What the frontend's EventRecord type reads on top of the request (ADR-0046). */
+/** What the frontend's EventRecord type reads on top of the request (ADR-0056). */
 const RECORD_FIELDS = ['clarifications', 'coordinator', 'decision', 'programme_notes']
 
 /** A date `days` from now, as the backend reads dates ("2026-11-20"). */

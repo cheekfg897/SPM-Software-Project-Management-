@@ -10,7 +10,7 @@ import { sendRequestsAs } from '@/test/sendRequestsAs'
 
 /**
  * SCRUM-24 AC9, AC10: opening an event shows its record, with the sections the backend sends,
- * to an organiser of its organisation or to its assigned coordinator (ADR-0046). The records
+ * to an organiser of its organisation or to its assigned coordinator (ADR-0056). The records
  * come from the mock in src/mocks/handlers/eventRequests.ts: Chloe coordinates EVR-7K2M9QXA
  * "Partner Summit" and EVR-B6YF2K8V "Customer Roadshow"; Marcus decided EVR-W9CR5E7M and
  * EVR-M1XJ7T3D; EVR-Q4ZT6N1B has no coordinator; EVR-N5QS3V9C is another organisation's.

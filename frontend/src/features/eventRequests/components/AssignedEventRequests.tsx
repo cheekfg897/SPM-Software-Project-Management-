@@ -11,7 +11,7 @@ import { RequestList } from './RequestList'
 
 const TITLE = 'Your assigned events'
 
-/** A coordinator opens an event's record at their own address (ADR-0046). */
+/** A coordinator opens an event's record at their own address (ADR-0056). */
 function pathFor(request: EventRequest): string {
   return coordinatorEventPath(request.reference)
 }
@@ -31,7 +31,7 @@ function AssignedList() {
 
 /**
  * On Staff home, an Event Coordinator's assigned events, newest first, each opening its record
- * (SCRUM-24 AC2, AC9, AC11; ADR-0046). Other staff roles' lists come later, so they see none
+ * (SCRUM-24 AC2, AC9, AC11; ADR-0056). Other staff roles' lists come later, so they see none
  * and nothing is asked for.
  */
 export function AssignedEventRequests() {

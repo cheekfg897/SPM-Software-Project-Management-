@@ -1,4 +1,4 @@
-# ADR-0046: One event detail page for organisers and coordinators, and a coordinator's list on Staff home
+# ADR-0056: One event detail page for organisers and coordinators, and a coordinator's list on Staff home
 
 - **Status:** Accepted
 - **Date:** 2026-10-16

@@ -9,7 +9,7 @@ export interface MockCoordinator {
   email: string
 }
 
-/** What an event's record shows besides the request and its coordinator (ADR-0046). */
+/** What an event's record shows besides the request and its coordinator (ADR-0056). */
 export type MockRecordSections = Pick<
   EventRecord,
   'programme_notes' | 'decision' | 'clarifications'

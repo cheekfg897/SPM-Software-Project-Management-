@@ -76,8 +76,8 @@ export interface Clarification {
 /**
  * An event request's record: the request, the coordinator's note the organiser may see, who
  * the coordinator is (null until one is assigned), the decision (null until one is made) and
- * the clarification exchange, oldest first (SCRUM-24 AC9, ADR-0026, ADR-0046). The record's
- * equipment lines aren't read here (ADR-0046).
+ * the clarification exchange, oldest first (SCRUM-24 AC9, ADR-0026, ADR-0056). The record's
+ * equipment lines aren't read here (ADR-0056).
  */
 export interface EventRecord extends EventRequest {
   programme_notes: string | null
