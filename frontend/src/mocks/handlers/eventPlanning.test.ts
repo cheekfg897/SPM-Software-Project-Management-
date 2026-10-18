@@ -5,10 +5,13 @@ import {
   sendToSafetyReview,
   updateRegistrationSettings,
 } from '@/features/eventRequests/api'
+import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
+import type { EventRequestStatus } from '@/config/eventStatus'
 import { apiRequest, fieldErrorsOf } from '@/lib/api'
 import { refusal } from '@/test/refusal'
 
 import { MOCK_ACCOUNTS } from '../fixtures/accounts'
+import type { MockAccount } from '../fixtures/accounts'
 
 import {
   expectInvalid,
@@ -422,3 +425,94 @@ describe('SCRUM-49 mock: confirming an event', () => {
     expect(await statusOf(READY_TO_CONFIRM)).toBe('safety_review')
   })
 })
+
+/** The statuses no mock coordinator holds an event in: drafts are hidden from staff, and nothing cancels one. */
+type HeldStatus = Exclude<EventRequestStatus, 'draft' | 'cancelled'>
+
+/** A coordinator's own event in each status the mocks hold one in. Completed is reached by completing it. */
+const ASSIGNED_IN_STATUS: Record<HeldStatus, { account: MockAccount; reference: string }> = {
+  submitted: { account: MOCK_ACCOUNTS.reviewingCoordinator, reference: 'EVR-RV4K8N2P' },
+  under_review: { account: CHLOE, reference: 'EVR-7K2M9QXA' },
+  awaiting_clarification: { account: CHLOE, reference: 'EVR-B6YF2K8V' },
+  approved: { account: HANA, reference: APPROVED_AND_SETTLED },
+  safety_review: { account: HANA, reference: 'EVR-PLAN0003' },
+  confirmed: { account: HANA, reference: ENDS_A_MINUTE_AFTER_NOW },
+  completed: { account: HANA, reference: ENDED_AT_NOW },
+  rejected: { account: MOCK_ACCOUNTS.reviewingCoordinator, reference: 'EVR-RV9H6C1W' },
+}
+
+/** Every held status but `allowed`. The Record above has exactly HeldStatus as its keys. */
+function statusesOtherThan(allowed: HeldStatus): HeldStatus[] {
+  const held = Object.keys(ASSIGNED_IN_STATUS) as HeldStatus[]
+  return held.filter((status) => status !== allowed)
+}
+
+/** Sign in as the coordinator of an event in `status`, and give its reference. */
+async function ownEventIn(status: HeldStatus): Promise<string> {
+  const { account, reference } = ASSIGNED_IN_STATUS[status]
+  signInAs(account)
+  if (status === EVENT_REQUEST_STATUS.COMPLETED) {
+    await completeEvent(reference)
+  }
+  expect(await statusOf(reference)).toBe(status)
+  return reference
+}
+
+/** Each planning action, the one status the backend takes it in, and its refusal for any other. */
+const STATUS_GATES = [
+  {
+    action: 'sending to safety review',
+    allowed: EVENT_REQUEST_STATUS.APPROVED,
+    act: sendToSafetyReview,
+    refused: {
+      code: 'safety_review_not_allowed',
+      message: 'Only an approved event can go to Safety Review.',
+    },
+  },
+  {
+    action: 'confirming',
+    allowed: EVENT_REQUEST_STATUS.SAFETY_REVIEW,
+    act: confirmEvent,
+    refused: {
+      code: 'confirmation_not_allowed',
+      message: 'Only an event in Safety Review can be confirmed.',
+    },
+  },
+  {
+    action: 'marking completed',
+    allowed: EVENT_REQUEST_STATUS.CONFIRMED,
+    act: completeEvent,
+    refused: {
+      code: 'request_not_completable',
+      message: 'Only a confirmed event can be marked completed.',
+    },
+  },
+  {
+    action: 'opening registration',
+    allowed: EVENT_REQUEST_STATUS.CONFIRMED,
+    act: (reference: string) =>
+      updateRegistrationSettings(reference, {
+        registration_enabled: true,
+        registration_capacity: 40,
+      }),
+    refused: {
+      code: 'registration_not_enablable',
+      message: 'Registration can be enabled only for a confirmed event.',
+    },
+  },
+] as const
+
+describe.each(STATUS_GATES)(
+  'SCRUM-97, SCRUM-49, SCRUM-68, SCRUM-69 mock: $action',
+  ({ allowed, act, refused }) => {
+    it.each(statusesOtherThan(allowed))(
+      'refuses an event that is %s, and leaves it there',
+      async (status) => {
+        const reference = await ownEventIn(status)
+
+        expect(await refusal(act(reference))).toMatchObject({ status: 409, ...refused })
+        expect(await statusOf(reference)).toBe(status)
+      },
+    )
+  },
+)
