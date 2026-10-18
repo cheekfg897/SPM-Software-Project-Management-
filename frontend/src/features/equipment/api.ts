@@ -1,3 +1,4 @@
+import type { PreparationStatus, PreparationUpdate } from '@/config/preparation'
 import { apiRequest } from '@/lib/api'
 
 /** One event's equipment, by its EVR- reference, escaped so it stays one path segment. */
@@ -20,6 +21,8 @@ const EQUIPMENT_PATHS = {
   LINES: linesPath,
   LINE: (reference: string, lineId: number) => `${linesPath(reference)}/${lineId}`,
   OUTCOME: (reference: string, lineId: number) => `${linesPath(reference)}/${lineId}/outcome`,
+  preparationFor: (reservationId: number) =>
+    `/api/equipment/reservations/${reservationId}/preparation`,
 } as const
 
 /** An equipment type: the catalogue's (SCRUM-27), which the lines are named from. */
@@ -33,9 +36,6 @@ export interface EquipmentAvailability {
   requested: number
   shortfall: number
 }
-
-/** How far Technical Support have got in preparing a reservation (SCRUM-85). */
-export type PreparationStatus = 'not_started' | 'in_progress' | 'ready'
 
 /** Equipment held for an event. `reserved_by` is the reserver's name, null once their account is gone. */
 export interface EquipmentReservation {
@@ -196,5 +196,16 @@ export function recordEquipmentOutcome(
   return apiRequest<EquipmentLine>(EQUIPMENT_PATHS.OUTCOME(reference, lineId), {
     method: 'POST',
     body,
+  })
+}
+
+/** Record a reservation's preparation status and notes (SCRUM-85). Technical Support Staff only. */
+export function updateReservationPreparation(
+  reservationId: number,
+  update: PreparationUpdate,
+): Promise<EquipmentReservation> {
+  return apiRequest<EquipmentReservation>(EQUIPMENT_PATHS.preparationFor(reservationId), {
+    method: 'PUT',
+    body: update,
   })
 }
