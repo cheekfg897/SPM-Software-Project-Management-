@@ -144,10 +144,46 @@ export interface MockEquipmentLine {
   reviewed_at: string | null
 }
 
+/** Statuses whose events keep their equipment as it is: a coordinator can't add a line to them. */
+const LOCKED_EQUIPMENT_STATUSES: readonly EventRequestStatus[] = [
+  EVENT_REQUEST_STATUS.AWAITING_CLARIFICATION,
+  EVENT_REQUEST_STATUS.SAFETY_REVIEW,
+  EVENT_REQUEST_STATUS.CONFIRMED,
+  EVENT_REQUEST_STATUS.COMPLETED,
+  EVENT_REQUEST_STATUS.CANCELLED,
+  EVENT_REQUEST_STATUS.REJECTED,
+]
+/** Ids for those lines: after the open event's, before any added through the mock. */
+const FIRST_LOCKED_EVENT_LINE_ID = 51
+
+/**
+ * Two microphones asked for on each of the mock coordinator's events in those statuses, so
+ * Technical Support have a line to record an outcome on there (SCRUM-48, ADR-0040 decision 12).
+ */
+function linesOnLockedEvents(): MockEquipmentLine[] {
+  const locked: MockEquipmentLine[] = []
+  for (const [index, status] of LOCKED_EQUIPMENT_STATUSES.entries()) {
+    locked.push({
+      id: FIRST_LOCKED_EVENT_LINE_ID + index,
+      event_reference: mockStatusEventReference(status),
+      equipment_type_id: 2,
+      quantity: 2,
+      notes: null,
+      status: 'requested',
+      provided_quantity: null,
+      outcome_note: null,
+      reviewed_by: null,
+      reviewed_at: null,
+    })
+  }
+  return locked
+}
+
 /**
  * The open event's lines. Projectors first, though "Microphone" sorts before it: the backend
  * keeps the order the lines were added. The microphones have been reviewed and will all be
- * provided, so their quantity can't go below four.
+ * provided, so their quantity can't go below four. Then one line on each event whose equipment
+ * can no longer change.
  */
 export const MOCK_EQUIPMENT_LINES: readonly MockEquipmentLine[] = [
   {
@@ -174,4 +210,5 @@ export const MOCK_EQUIPMENT_LINES: readonly MockEquipmentLine[] = [
     reviewed_by: MOCK_ACCOUNTS.technicalSupport.full_name,
     reviewed_at: '2026-10-05T10:00:00+08:00',
   },
+  ...linesOnLockedEvents(),
 ]
