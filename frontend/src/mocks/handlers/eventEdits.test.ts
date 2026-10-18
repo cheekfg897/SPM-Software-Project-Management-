@@ -181,6 +181,23 @@ describe('SCRUM-33 mock of an edit: what is refused', () => {
     })
   })
 
+  // A value of the wrong type is refused with marshmallow's own words, as on the backend.
+  it.each([
+    [{ expected_attendance: '300' }, 'expected_attendance', 'Not a valid integer.'],
+    [{ expected_attendance: 1.5 }, 'expected_attendance', 'Not a valid integer.'],
+    [{ expected_attendance: true }, 'expected_attendance', 'Not a valid integer.'],
+    [{ description: 42 }, 'description', 'Not a valid string.'],
+    [{ internal_planning_notes: ['Call AV.'] }, 'internal_planning_notes', 'Not a valid string.'],
+    [{ proposed_date: '19 Nov 2026' }, 'proposed_date', 'Not a valid date.'],
+    [{ end_date: 20261119 }, 'end_date', 'Not a valid date.'],
+    [{ start_time: '10am' }, 'start_time', 'Not a valid time.'],
+    [{ end_time: '18:00:00+08:00' }, 'end_time', 'Time must not include a timezone offset.'],
+  ])('refuses the wrong type %j with the message on %s', async (changes, field, message) => {
+    const error = await fieldErrorsOf(changes)
+
+    expect(error).toMatchObject({ status: 400, fieldErrors: { [field]: [message] } })
+  })
+
   it('checks the window only once every field has passed its own rules', async () => {
     const error = await fieldErrorsOf({ end_time: '08:00', expected_attendance: 0 })
 
