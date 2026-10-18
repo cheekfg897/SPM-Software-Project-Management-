@@ -206,6 +206,14 @@ export function answerClarification(reference: string, response: string): Promis
 }
 
 /**
+ * Send an approved event to the Safety Officer; there is no body. A refusal's `details` name
+ * each venue or equipment gap holding it back (SCRUM-97, ADR-0047).
+ */
+export function sendToSafetyReview(reference: string): Promise<EventRequest> {
+  return apiRequest<EventRequest>(`${requestPath(reference)}/safety-review`, { method: 'POST' })
+}
+
+/**
  * A row of a staff list that carries only the backend's `EVENT_LIST_FIELDS`: the event's
  * reference, name, dates, times and status (SCRUM-24 AC8, ADR-0026).
  */
