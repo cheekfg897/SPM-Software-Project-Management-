@@ -28,6 +28,7 @@ from app.modules.venue.models import (
 )
 from tests.venue.conftest import (
     COORDINATOR_ID,
+    SECOND_PERIOD,
     VENUE_STAFF_ID,
     SavedEvent,
     approve_safety,
@@ -38,6 +39,8 @@ from tests.venue.conftest import (
 pytestmark = pytest.mark.scrum_84
 
 IN_PROGRESS = {"status": "in_progress", "notes": "Chairs set out, stage to do."}
+#: A Venue Staff id no fixture uses, so a hard-coded actor can't pass by chance.
+OTHER_VENUE_STAFF_ID = 42
 #: Every status but approved, built from the enum so a status added later is tested.
 NOT_APPROVED_STATUSES = [
     status for status in BookingRequestStatus if status is not BookingRequestStatus.APPROVED
@@ -153,15 +156,28 @@ def test_any_other_field_of_the_booking_is_refused(
 def test_each_update_records_who_and_when(
     db_session: Session, venue: Venue, saved_event: SavedEvent
 ) -> None:
-    """AC4: one history entry per update, with the user, the time and the details."""
-    booking = _approved_booking(venue, saved_event(), db_session)
+    """AC4: one history entry per update, with the user, the time and the details.
+
+    Another event's two requests are saved first, so the booking, its event and the
+    venue have different ids and a mixed-up id shows. The update is made by user 42,
+    whom no fixture uses.
+    """
+    other_event = saved_event()
+    raise_booking(venue, other_event, db_session)
+    raise_booking(venue, other_event, db_session, **SECOND_PERIOD)
+    event = saved_event()
+    booking = _approved_booking(venue, event, db_session)
+    assert len({booking.id, event.id, venue.id}) == 3
     before = datetime.now(UTC)
 
-    _record(booking, IN_PROGRESS, db_session)
-    _record(booking, {"status": "ready"}, db_session)
+    for payload in (IN_PROGRESS, {"status": "ready"}):
+        services.update_preparation_details(
+            booking.id, payload, updated_by=OTHER_VENUE_STAFF_ID, session=db_session
+        )
 
     first, second = _preparation_entries(db_session)
-    assert first.actor_id == VENUE_STAFF_ID
+    assert first.event_request_id == event.id
+    assert first.actor_id == OTHER_VENUE_STAFF_ID
     assert first.occurred_at.replace(tzinfo=UTC) >= before
     assert first.details == {
         "venue_booking_request_id": booking.id,
