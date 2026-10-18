@@ -216,14 +216,15 @@ describe('SCRUM-69 registration settings', () => {
   }
 
   it.each([
-    [CONFIRMED_NOT_ENDED, 'Open'],
-    [CONFIRMED_AND_ENDED, 'Closed'],
+    [CONFIRMED_NOT_ENDED, 'Open', 'The organiser asked for registration.'],
+    [CONFIRMED_AND_ENDED, 'Closed', 'The organiser did not ask for registration.'],
   ])(
     "starts %s at the organiser's answer, %s, with the capacity empty",
-    async (reference, choice) => {
+    async (reference, choice, answer) => {
       openAsHana(reference)
 
       const card = await registrationCard()
+      expect(card).toHaveTextContent(answer)
       expect(within(card).getByRole('radio', { name: choice })).toBeChecked()
       expect(within(card).getByLabelText('Capacity')).toHaveValue(null)
     },
@@ -272,7 +273,8 @@ describe('SCRUM-69 registration settings', () => {
     expect(within(card).queryByRole('status')).not.toBeInTheDocument()
   })
 
-  it('shows the refusal of a capacity below the places taken under the box', async () => {
+  it('opens registration as chosen, and shows the refusal of a capacity below the places taken', async () => {
+    const requests = recordRequests()
     const { user } = openAsHana(CONFIRMED_AND_ENDED)
     const card = await registrationCard()
 
@@ -284,6 +286,33 @@ describe('SCRUM-69 registration settings', () => {
     expect(within(card).getByLabelText('Capacity')).toHaveAccessibleDescription(
       'Capacity cannot be lower than the 30 places already taken.',
     )
+    expect(await sentChange(requests)).toEqual({
+      registration_enabled: true,
+      registration_capacity: 20,
+    })
+  })
+
+  it('says only that registration is closed when the event has no capacity', async () => {
+    const { user } = openAsHana(CONFIRMED_NOT_ENDED)
+    const card = await registrationCard()
+
+    await user.click(within(card).getByRole('radio', { name: 'Closed' }))
+    await user.click(within(card).getByRole('button', { name: 'Save registration' }))
+
+    expect(await within(card).findByRole('status')).toHaveTextContent(/^Registration is closed\.$/)
+  })
+
+  it('stops saying what was saved once a later save is refused', async () => {
+    const { user } = openAsHana(CONFIRMED_AND_ENDED)
+    const card = await registrationCard()
+    await user.click(within(card).getByRole('button', { name: 'Save registration' }))
+    await within(card).findByRole('status')
+
+    await user.type(within(card).getByLabelText('Capacity'), '20')
+    await user.click(within(card).getByRole('button', { name: 'Save registration' }))
+
+    await within(card).findByRole('alert')
+    expect(within(card).queryByRole('status')).not.toBeInTheDocument()
   })
 
   it('sends the number as typed and leaves whole-number checks to the backend', async () => {
