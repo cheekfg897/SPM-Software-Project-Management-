@@ -2,7 +2,7 @@ import { render, screen, within } from '@testing-library/react'
 
 import { ApiError } from '@/lib/api'
 
-import { ErrorAlert } from './ErrorAlert'
+import { ErrorAlert, RefusalAlert } from './ErrorAlert'
 
 describe('ErrorAlert', () => {
   it("shows the backend's message", () => {
@@ -24,7 +24,7 @@ describe('ErrorAlert', () => {
   })
 })
 
-describe('ErrorAlert listing the details', () => {
+describe('RefusalAlert', () => {
   /** A refusal whose details are reasons, as the backend sends a gate's gaps (ADR-0051). */
   const GAPS = new ApiError(409, 'confirmation_not_allowed', 'Not ready, says the backend.', {
     safety_check: ['The Safety Officer has not approved the event.'],
@@ -32,7 +32,7 @@ describe('ErrorAlert listing the details', () => {
   })
 
   it("lists every message in the details under the backend's message, in its order", () => {
-    render(<ErrorAlert error={GAPS} listDetails />)
+    render(<RefusalAlert error={GAPS} />)
 
     const alert = screen.getByRole('alert')
     expect(alert).toHaveTextContent('Not ready, says the backend.')
@@ -44,15 +44,21 @@ describe('ErrorAlert listing the details', () => {
     ])
   })
 
-  it('leaves the details out unless asked, so a form can show them under its fields', () => {
+  it('differs from ErrorAlert, which leaves the same details to the form, under its fields', () => {
     render(<ErrorAlert error={GAPS} />)
 
     expect(screen.getByRole('alert')).toHaveTextContent('Not ready, says the backend.')
     expect(screen.queryByRole('list')).not.toBeInTheDocument()
   })
 
+  it('shows nothing when there is no error', () => {
+    const { container } = render(<RefusalAlert error={null} />)
+
+    expect(container).toBeEmptyDOMElement()
+  })
+
   it('draws no list for a refusal with no details', () => {
-    render(<ErrorAlert error={new ApiError(409, 'conflict', 'Already done.')} listDetails />)
+    render(<RefusalAlert error={new ApiError(409, 'conflict', 'Already done.')} />)
 
     expect(screen.getByRole('alert')).toHaveTextContent('Already done.')
     expect(screen.queryByRole('list')).not.toBeInTheDocument()

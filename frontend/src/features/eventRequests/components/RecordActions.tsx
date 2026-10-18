@@ -1,4 +1,4 @@
-import { Button, ErrorAlert } from '@/components/ui'
+import { Button, ErrorAlert, RefusalAlert } from '@/components/ui'
 import type { EventRequestStatus } from '@/config/eventStatus'
 
 import type { EventRecord } from '../api'
@@ -16,7 +16,7 @@ function SendToSafetyReview({ record }: { record: EventRecord }) {
       title="Send to safety review"
       description="The Safety Officer is asked to check the event. Every venue arrangement must be approved and every equipment request answered first."
     >
-      <ErrorAlert error={send.error} listDetails />
+      <RefusalAlert error={send.error} />
       <Button isPending={send.isPending} onClick={() => send.mutate()}>
         Send to safety review
       </Button>
@@ -35,7 +35,7 @@ function ConfirmEvent({ record }: { record: EventRecord }) {
       title="Confirm the event"
       description="Once the Safety Officer has approved it and every venue and equipment request is settled. The organiser is told."
     >
-      <ErrorAlert error={confirm.error} listDetails />
+      <RefusalAlert error={confirm.error} />
       <Button isPending={confirm.isPending} onClick={() => confirm.mutate()}>
         Confirm event
       </Button>
