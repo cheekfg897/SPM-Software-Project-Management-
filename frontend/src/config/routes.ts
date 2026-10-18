@@ -20,6 +20,8 @@ export const ROUTES = {
   BOOKING_DECISIONS: '/staff/venue-requests',
   /** The Safety Officer's events awaiting the safety check (SCRUM-97, SCRUM-98). */
   SAFETY_REVIEW: '/staff/safety-review',
+  /** A coordinator's venue search and suitability check (SCRUM-35, SCRUM-36). */
+  VENUE_SEARCH: '/staff/venue-search',
 } as const
 
 export type RoutePath = (typeof ROUTES)[keyof typeof ROUTES]

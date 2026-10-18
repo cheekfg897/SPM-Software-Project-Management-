@@ -22,6 +22,7 @@ import { LandingPage } from '@/features/landing/pages/LandingPage'
 import { NotificationsPage } from '@/features/notifications/pages/NotificationsPage'
 import { UnassignedQueuePage } from '@/features/lead/pages/UnassignedQueuePage'
 import { SafetyReviewPage } from '@/features/safety/pages/SafetyReviewPage'
+import { VenueSearchPage } from '@/features/venueSearch/pages/VenueSearchPage'
 
 import { NotFoundPage } from './NotFoundPage'
 
@@ -129,6 +130,14 @@ export const appRoutes: RouteObject[] = [
         element: (
           <RequireRole allowedRoles={SAFETY_OFFICER_ROLES} loginRoute={ROUTES.STAFF_LOGIN}>
             <SafetyReviewPage />
+          </RequireRole>
+        ),
+      },
+      {
+        path: ROUTES.VENUE_SEARCH,
+        element: (
+          <RequireRole allowedRoles={COORDINATOR_ROLES} loginRoute={ROUTES.STAFF_LOGIN}>
+            <VenueSearchPage />
           </RequireRole>
         ),
       },
