@@ -28,12 +28,16 @@ function useRereadEventRequests(reference: string) {
 }
 
 /**
- * What to run after Venue Staff act on a request: their queue is read again, so a request leaves
- * it, or shows its new status, because the backend says so.
+ * What to run after Venue Staff act on a request: their queue and their approved bookings are
+ * read again, so a request leaves the queue, shows its new status, or moves down to the approved
+ * bookings (SCRUM-84), because the backend says so.
  */
 function useRereadQueue() {
   const queryClient = useQueryClient()
-  return () => queryClient.invalidateQueries({ queryKey: bookingKeys.pending() })
+  return async () => {
+    await queryClient.invalidateQueries({ queryKey: bookingKeys.pending() })
+    await queryClient.invalidateQueries({ queryKey: bookingKeys.approved() })
+  }
 }
 
 /** The booking requests raised for one of the coordinator's events. */
@@ -86,8 +90,9 @@ export function usePendingBookingRequests() {
 }
 
 /**
- * Approve or reject one request. Afterwards the queue is read again, so the request leaves
- * it because the backend says so rather than because the cache was edited here.
+ * Approve or reject one request. Afterwards the queue and the approved bookings are read again,
+ * so the request moves between them because the backend says so rather than because the cache
+ * was edited here (SCRUM-84).
  */
 export function useDecideBookingRequest(requestId: number) {
   const reread = useRereadQueue()

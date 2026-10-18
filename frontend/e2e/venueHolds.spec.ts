@@ -17,7 +17,9 @@ test('Venue Staff hold a venue, move the expiry, then give final approval', asyn
   await signInAs(page, MOCK_ACCOUNTS.venueStaff)
   await page.goto(ROUTES.BOOKING_DECISIONS)
 
-  const breakout = page.getByRole('article', { name: BREAKOUT_ROOM })
+  // The approved bookings under the queue can hold a request with the same name (SCRUM-84).
+  const queue = page.getByRole('region', { name: 'Waiting for a decision' })
+  const breakout = queue.getByRole('article', { name: BREAKOUT_ROOM })
   await expect(breakout.getByText('Pending')).toBeVisible()
 
   await breakout.getByLabel(`Hold expiry for ${BREAKOUT_ROOM}`).fill('2026-11-15T17:00')
@@ -31,5 +33,7 @@ test('Venue Staff hold a venue, move the expiry, then give final approval', asyn
 
   await breakout.getByRole('button', { name: `Approve ${BREAKOUT_ROOM}` }).click()
   await expect(breakout).toHaveCount(0)
-  await expect(page.getByRole('article', { name: 'Main hall' })).toBeVisible()
+  await expect(queue.getByRole('article', { name: 'Main hall' })).toBeVisible()
+  const approved = page.getByRole('region', { name: 'Approved bookings' })
+  await expect(approved.getByRole('article', { name: BREAKOUT_ROOM })).toBeVisible()
 })
