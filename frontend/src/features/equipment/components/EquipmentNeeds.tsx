@@ -9,9 +9,12 @@ import { selectSessionUser, useAppSelector } from '@/store'
 import type { EquipmentLine, EquipmentLineStatus, EquipmentType, EventEquipmentLines } from '../api'
 import { EQUIPMENT_LINE_STATUS_LABELS } from '../constants'
 import { equipmentTypeName } from '../equipmentTypeName'
+import { hasOutcome } from '../lineOutcome'
 
 import { AddLineForm } from './AddLineForm'
 import { ChangeLineForm } from './ChangeLineForm'
+import { OutcomeForm } from './OutcomeForm'
+import { OutcomeSummary } from './OutcomeSummary'
 import { RemoveLineConfirm } from './RemoveLineConfirm'
 
 /**
@@ -19,6 +22,8 @@ import { RemoveLineConfirm } from './RemoveLineConfirm'
  * the lines of an event assigned to them, so one who sees the lines is that event's (ADR-0065).
  */
 const EQUIPMENT_LINE_EDITOR_ROLES: readonly Role[] = [ROLE.EVENT_COORDINATOR]
+/** Only Technical Support record a line's outcome, on any event (SCRUM-48, ADR-0040). */
+const EQUIPMENT_OUTCOME_RECORDER_ROLES: readonly Role[] = [ROLE.TECHNICAL_SUPPORT_STAFF]
 
 /** Each status's colour, beside its words (ADR-0065). */
 const STATUS_TONES: Record<EquipmentLineStatus, string> = {
@@ -28,10 +33,10 @@ const STATUS_TONES: Record<EquipmentLineStatus, string> = {
   unavailable: 'text-danger',
 }
 
-/** The line a coordinator is changing or about to remove. */
+/** The line a coordinator is changing or about to remove, or Technical Support are reviewing. */
 interface LineSelection {
   line: EquipmentLine
-  action: 'change' | 'remove'
+  action: 'change' | 'remove' | 'outcome'
 }
 
 function readColumns(equipmentTypes: EquipmentType[]): DataTableColumn<EquipmentLine>[] {
@@ -53,6 +58,7 @@ function readColumns(equipmentTypes: EquipmentType[]): DataTableColumn<Equipment
         </span>
       ),
     },
+    { header: 'Outcome', cell: (line) => <OutcomeSummary line={line} /> },
   ]
 }
 
@@ -63,12 +69,14 @@ interface EquipmentNeedsProps {
 }
 
 /**
- * What the event needs (SCRUM-37): its equipment lines in the order the backend sent them, and
- * for its coordinator the controls to add, change and remove them, one at a time.
+ * What the event needs (SCRUM-37): its equipment lines in the order the backend sent them, each
+ * with Technical Support's outcome (SCRUM-48). Its coordinator gets the controls to add, change
+ * and remove lines, and Technical Support to record or revise each outcome, one at a time.
  */
 export function EquipmentNeeds({ reference, needs, equipmentTypes }: EquipmentNeedsProps) {
   const user = useAppSelector(selectSessionUser)
   const canEdit = user !== null && EQUIPMENT_LINE_EDITOR_ROLES.includes(user.role)
+  const canRecordOutcome = user !== null && EQUIPMENT_OUTCOME_RECORDER_ROLES.includes(user.role)
   const [selection, setSelection] = useState<LineSelection | null>(null)
   const lines = needs.equipment_lines
 
@@ -101,8 +109,28 @@ export function EquipmentNeeds({ reference, needs, equipmentTypes }: EquipmentNe
       </div>
     ),
   }
-  const shownColumns = readColumns(equipmentTypes)
-  const columns = canEdit ? [...shownColumns, actionsColumn] : shownColumns
+  const reviewColumn: DataTableColumn<EquipmentLine> = {
+    header: 'Review',
+    cell: (line) => {
+      const verb = hasOutcome(line) ? 'Revise' : 'Record'
+      return (
+        <Button
+          variant="secondary"
+          aria-label={`${verb} outcome for ${nameOf(line)}`}
+          onClick={() => setSelection({ line, action: 'outcome' })}
+        >
+          {verb} outcome
+        </Button>
+      )
+    },
+  }
+  const columns = readColumns(equipmentTypes)
+  if (canEdit) {
+    columns.push(actionsColumn)
+  }
+  if (canRecordOutcome) {
+    columns.push(reviewColumn)
+  }
 
   return (
     <section aria-labelledby="needs-heading" className="space-y-4">
@@ -132,6 +160,15 @@ export function EquipmentNeeds({ reference, needs, equipmentTypes }: EquipmentNe
           reference={reference}
           equipmentTypes={equipmentTypes}
           line={selection.line}
+          onDone={closeSelection}
+        />
+      )}
+      {selection?.action === 'outcome' && (
+        <OutcomeForm
+          key={selection.line.id}
+          reference={reference}
+          line={selection.line}
+          lineName={nameOf(selection.line)}
           onDone={closeSelection}
         />
       )}
