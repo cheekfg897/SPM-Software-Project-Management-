@@ -5,6 +5,7 @@ import { coordinatorEventPath, organiserRequestPath, ROUTES } from '@/config/rou
 import { fetchEventRequest } from '@/features/eventRequests/api'
 import { MOCK_ACCOUNTS, mockSessionFor, mockTokenFor } from '@/mocks/fixtures/accounts'
 import { server } from '@/mocks/server'
+import { signedIn } from '@/store'
 import { renderApp } from '@/test/render'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
 
@@ -230,6 +231,16 @@ describe('SCRUM-24 AC9, AC10 event record: what a coordinator sees', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent(NOT_FOUND_MESSAGE)
     expect(screen.queryByRole('link', { name: 'Venue requests' })).not.toBeInTheDocument()
+  })
+
+  it("reads the record again for the next coordinator to sign in, never showing the last one's", async () => {
+    const { store } = openAsCoordinator('EVR-7K2M9QXA')
+    await screen.findByRole('heading', { level: 1, name: 'Partner Summit' })
+
+    store.dispatch(signedIn(mockSessionFor(MOCK_ACCOUNTS.freshCoordinator)))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(NOT_FOUND_MESSAGE)
+    expect(screen.queryByRole('heading', { name: 'Partner Summit' })).not.toBeInTheDocument()
   })
 })
 
