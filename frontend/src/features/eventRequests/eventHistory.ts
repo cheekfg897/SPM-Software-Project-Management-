@@ -30,6 +30,7 @@ export const EVENT_HISTORY_KIND = {
   VENUE_ARRANGEMENT_CHANGED: 'venue_arrangement_changed',
   VENUE_ARRANGEMENT_WITHDRAWN: 'venue_arrangement_withdrawn',
   EQUIPMENT_OUTCOME_RECORDED: 'equipment_outcome_recorded',
+  EQUIPMENT_PREPARATION_UPDATED: 'equipment_preparation_updated',
   SAFETY_REVIEW_REQUESTED: 'safety_review_requested',
   SAFETY_OUTCOME_RECORDED: 'safety_outcome_recorded',
   EVENT_CONFIRMED: 'event_confirmed',
@@ -251,6 +252,12 @@ const DESCRIBE_KIND: Record<EventHistoryKind, (details: Details) => DescribedEnt
   venue_arrangement_withdrawn: (details) =>
     entry('Venue arrangement withdrawn', [['Venue ID', numberIn(details, 'venue_id')]]),
   equipment_outcome_recorded: equipmentOutcomeRecorded,
+  equipment_preparation_updated: (details) =>
+    entry('Equipment preparation updated', [
+      ['Equipment', textIn(details, 'equipment_type_name')],
+      ['Status', preparationStatusLabel(details.status)],
+      ['Notes', textIn(details, 'notes')],
+    ]),
   safety_review_requested: () => entry('Sent for safety review'),
   safety_outcome_recorded: safetyOutcomeRecorded,
   event_confirmed: () => entry('Event confirmed'),
