@@ -25,6 +25,7 @@ async function blockVenue(user: User, start: string, end: string, reason: string
   const section = await blocksSection()
   await user.type(section.getByLabelText('Starts'), start)
   await user.type(section.getByLabelText('Ends'), end)
+  await user.selectOptions(section.getByLabelText('Category'), 'Safety concern')
   await user.type(section.getByLabelText('Reason'), reason)
   await user.click(section.getByRole('button', { name: 'Block venue' }))
 }
@@ -46,6 +47,7 @@ describe('SCRUM-34 blocking a venue (AC1)', () => {
     const blocks = list.getAllByRole('listitem')
     expect(blocks).toHaveLength(1)
     expect(blocks[0]).toHaveTextContent('Stage lighting repair')
+    expect(blocks[0]).toHaveTextContent('Equipment failure')
     expect(blocks[0]).toHaveTextContent('10 Nov, 5:30 pm – 10 Nov, 8:00 pm')
   })
 
@@ -58,6 +60,7 @@ describe('SCRUM-34 blocking a venue (AC1)', () => {
     expect(await bodyOf(requests, 'POST')).toEqual({
       start_time: '2026-11-12T10:00',
       end_time: '2026-11-12T11:30',
+      category: 'safety_concern',
       reason: 'Fire alarm test',
     })
     await waitFor(async () =>
@@ -67,6 +70,8 @@ describe('SCRUM-34 blocking a venue (AC1)', () => {
     )
     const list = within(screen.getByRole('list', { name: 'Blocks' }))
     expect(list.getByText('Fire alarm test')).toBeInTheDocument()
+    expect(list.getByText(/Safety concern/)).toBeInTheDocument()
+    expect((await blocksSection()).getByLabelText('Category')).toHaveValue('')
     expect((await blocksSection()).getByLabelText('Reason')).toHaveValue('')
     expect(screen.queryByText(CONFLICT_HEADING)).not.toBeInTheDocument()
   })
@@ -80,6 +85,9 @@ describe('SCRUM-34 blocking a venue (AC1)', () => {
     expect(await section.findByText('Must not be blank.')).toBeInTheDocument()
     expect(section.getByLabelText('Starts')).toHaveAccessibleDescription('Not a valid datetime.')
     expect(section.getByLabelText('Ends')).toHaveAccessibleDescription('Not a valid datetime.')
+    expect(section.getByLabelText('Category')).toHaveAccessibleDescription(
+      'Category must be one of maintenance, equipment_failure, renovation, safety_concern or other.',
+    )
   })
 
   it('shows the backend message when the end is before the start', async () => {

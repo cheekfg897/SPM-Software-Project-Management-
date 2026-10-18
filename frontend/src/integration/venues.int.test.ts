@@ -249,6 +249,7 @@ const FUTURE_DAY = { range_start: '2099-03-02T00:00:00', range_end: '2099-03-03T
 const FUTURE_BLOCK = {
   start_time: '2099-03-02T10:00',
   end_time: '2099-03-02T12:00',
+  category: 'renovation',
   reason: '  Integration maintenance  ',
 }
 
@@ -327,10 +328,11 @@ describe.skipIf(!hasVenueStaff)('SCRUM-34 and SCRUM-26 Venue Staff block a venue
       venue_id: venue.id,
       start_time: '2099-03-02T10:00:00+08:00',
       end_time: '2099-03-02T12:00:00+08:00',
+      category: 'renovation',
       reason: 'Integration maintenance',
       conflicting_bookings: [],
     })
-    expect(listed.map((block) => block.id)).toEqual([created.id])
+    expect(listed.map((block) => [block.id, block.category])).toEqual([[created.id, 'renovation']])
     expect(staffCalendar).toEqual([
       {
         start_time: '2099-03-02T10:00:00+08:00',
@@ -345,7 +347,7 @@ describe.skipIf(!hasVenueStaff)('SCRUM-34 and SCRUM-26 Venue Staff block a venue
     expect(afterRemoval).toEqual([])
   })
 
-  it('refuses a block that ended before today, and a blank reason, by field', async () => {
+  it('refuses a block that ended before today, a blank reason and an unknown category, by field', async () => {
     await signInAsVenueStaff()
     const venue = await createVenue(uniqueVenue())
 
@@ -357,9 +359,17 @@ describe.skipIf(!hasVenueStaff)('SCRUM-34 and SCRUM-26 Venue Staff block a venue
       }),
     )
     const blank = await refusal(blockVenue(venue.id, { ...FUTURE_BLOCK, reason: '   ' }))
+    const unknownCategory = await refusal(
+      blockVenue(venue.id, { ...FUTURE_BLOCK, category: 'flood' }),
+    )
 
     expect(past.fieldErrors).toEqual({ end_time: ['Block cannot end before today.'] })
     expect(blank.fieldErrors).toEqual({ reason: ['Must not be blank.'] })
+    expect(unknownCategory.fieldErrors).toEqual({
+      category: [
+        'Category must be one of maintenance, equipment_failure, renovation, safety_concern or other.',
+      ],
+    })
   })
 
   it('answers 404 for a block that belongs to another venue', async () => {

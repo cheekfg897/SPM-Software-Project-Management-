@@ -1,3 +1,4 @@
+import type { UnavailabilityCategory } from '@/config/unavailabilityCategories'
 import type { OpeningPeriod, Venue } from '@/features/venues/api'
 import type { Weekday } from '@/features/venues/constants'
 
@@ -19,6 +20,7 @@ export interface MockVenueBlock {
   venue_id: number
   start_time: string
   end_time: string
+  category: UnavailabilityCategory
   reason: string
 }
 
@@ -249,6 +251,7 @@ export const MOCK_VENUE_BLOCKS: readonly MockVenueBlock[] = [
     venue_id: MOCK_VENUES.marinaHall.id,
     start_time: '2026-11-10T17:30:00+08:00',
     end_time: '2026-11-10T20:00:00+08:00',
+    category: 'equipment_failure',
     reason: 'Stage lighting repair',
   },
   {
@@ -256,6 +259,7 @@ export const MOCK_VENUE_BLOCKS: readonly MockVenueBlock[] = [
     venue_id: MOCK_VENUES.boardroomTwo.id,
     start_time: '2026-11-10T14:10:00+08:00',
     end_time: '2026-11-10T16:00:00+08:00',
+    category: 'maintenance',
     reason: 'Carpet cleaning',
   },
   {
@@ -263,6 +267,7 @@ export const MOCK_VENUE_BLOCKS: readonly MockVenueBlock[] = [
     venue_id: MOCK_VENUES.boardroomFive.id,
     start_time: '2026-11-22T09:00:00+08:00',
     end_time: '2026-11-22T18:00:00+08:00',
+    category: 'other',
     reason: 'Board meeting',
   },
 ]

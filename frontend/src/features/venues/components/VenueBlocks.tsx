@@ -1,7 +1,8 @@
 import { useId } from 'react'
 import type { FormEvent } from 'react'
 
-import { Button, ErrorAlert, Spinner, TextAreaField, TextField } from '@/components/ui'
+import { Button, ErrorAlert, SelectField, Spinner, TextAreaField, TextField } from '@/components/ui'
+import { UNAVAILABILITY_CATEGORIES } from '@/config/unavailabilityCategories'
 import { formText } from '@/features/auth/formText'
 import { fieldErrorsOf } from '@/lib/api'
 import { formatDateTime, formatShortDate, formatTimeRange } from '@/lib/formatDate'
@@ -10,6 +11,12 @@ import type { ConflictingBooking, VenueBlock } from '../api'
 import { useBlockVenue, useRemoveVenueBlock, useVenueBlocks } from '../hooks'
 
 import { VenueSection } from './VenueSection'
+
+/** A category's words, e.g. "Equipment failure". */
+function categoryLabel(block: VenueBlock): string {
+  const category = UNAVAILABILITY_CATEGORIES.find((each) => each.value === block.category)
+  return category?.label ?? block.category
+}
 
 /** e.g. "Booking 512 for event 101, 10 Nov, 8:30 am – 12:30 pm". */
 function conflictText(conflict: ConflictingBooking): string {
@@ -41,7 +48,10 @@ function ConflictReport({ conflicts }: { conflicts: ConflictingBooking[] }) {
   )
 }
 
-/** A start, an end and a reason. The times go as typed: business time (ADR-0068). */
+/**
+ * A start, an end, a category and a reason. The times go as typed, in business time, and the
+ * category as chosen, so the backend's messages show under the field they are for (ADR-0068).
+ */
 function BlockForm({ venueId }: { venueId: number }) {
   const block = useBlockVenue(venueId)
   const fieldErrors = fieldErrorsOf(block.error)
@@ -55,6 +65,7 @@ function BlockForm({ venueId }: { venueId: number }) {
       {
         start_time: formText(form, 'start_time'),
         end_time: formText(form, 'end_time'),
+        category: formText(form, 'category'),
         reason: formText(form, 'reason'),
       },
       { onSuccess: () => formElement.reset() },
@@ -79,6 +90,13 @@ function BlockForm({ venueId }: { venueId: number }) {
           errors={fieldErrors.end_time}
         />
       </div>
+      <SelectField
+        label="Category"
+        name="category"
+        options={UNAVAILABILITY_CATEGORIES}
+        emptyLabel="Choose one"
+        errors={fieldErrors.category}
+      />
       <TextAreaField label="Reason" name="reason" errors={fieldErrors.reason} />
       <Button type="submit" isPending={block.isPending}>
         Block venue
@@ -100,7 +118,8 @@ function BlockRow({ block, isRemoving, onRemove }: BlockRowProps) {
       <div className="min-w-0">
         <p className="text-ink">{block.reason}</p>
         <p className="text-ink-muted text-sm">
-          {formatDateTime(block.start_time)} – {formatDateTime(block.end_time)}
+          {categoryLabel(block)}, {formatDateTime(block.start_time)} –{' '}
+          {formatDateTime(block.end_time)}
         </p>
       </div>
       <Button

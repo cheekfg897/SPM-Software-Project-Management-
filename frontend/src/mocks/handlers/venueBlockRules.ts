@@ -2,7 +2,12 @@ import { BUSINESS_UTC_OFFSET } from '@/config/time'
 import type { FieldErrors } from '@/lib/api'
 
 import { MOCK_TODAY } from './catalogueFixtures'
-import { MISSING_MESSAGE } from './venueRules'
+import {
+  MISSING_MESSAGE,
+  NULL_MESSAGE,
+  unavailabilityErrors,
+  unknownFieldErrors,
+} from './venueRules'
 
 /**
  * The backend's checks on a block (BlockVenueSchema, SCRUM-34, ADR-0016) and on the calendar's
@@ -12,7 +17,6 @@ import { MISSING_MESSAGE } from './venueRules'
  */
 
 const NOT_DATETIME_MESSAGE = 'Not a valid datetime.'
-const REASON_MAX_LENGTH = 500
 /** An ISO date-time, with or without seconds and an offset, as fields.DateTime takes it. */
 const ISO_DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(Z|[+-]\d{2}:\d{2})?$/
 
@@ -39,6 +43,10 @@ function instantField(
     errors[field] = [MISSING_MESSAGE]
     return null
   }
+  if (body[field] === null) {
+    errors[field] = [NULL_MESSAGE]
+    return null
+  }
   const instant = instantOf(body[field])
   if (instant === null) {
     errors[field] = [NOT_DATETIME_MESSAGE]
@@ -51,21 +59,18 @@ function businessDateOf(instant: number): string {
   return new Date(instant + 8 * 60 * 60_000).toISOString().slice(0, 10)
 }
 
-/** What blocking a venue is refused for (BlockVenueSchema). */
+/** The fields BlockVenueSchema declares: the period, and UnavailabilitySchema's category and note. */
+const BLOCK_FIELDS: readonly string[] = ['start_time', 'end_time', 'category', 'reason']
+
+/**
+ * What blocking a venue is refused for (BlockVenueSchema): a field left out, bad or unknown, and
+ * only once every field is valid, the period's own rules.
+ */
 export function blockErrors(body: Record<string, unknown>): FieldErrors {
-  const errors: FieldErrors = {}
+  const errors = unknownFieldErrors(body, BLOCK_FIELDS)
   const start = instantField(body, 'start_time', errors)
   const end = instantField(body, 'end_time', errors)
-  const reason = body.reason
-  if (reason === undefined) {
-    errors.reason = [MISSING_MESSAGE]
-  } else if (typeof reason !== 'string') {
-    errors.reason = ['Not a valid string.']
-  } else if (reason.trim() === '') {
-    errors.reason = ['Must not be blank.']
-  } else if (reason.trim().length > REASON_MAX_LENGTH) {
-    errors.reason = [`Reason must be at most ${REASON_MAX_LENGTH} characters.`]
-  }
+  Object.assign(errors, unavailabilityErrors(body))
   if (Object.keys(errors).length > 0 || start === null || end === null) {
     return errors
   }
