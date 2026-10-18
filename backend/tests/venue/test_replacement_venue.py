@@ -20,6 +20,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.common.errors import ConflictError, ValidationError
+from app.modules.auth.models import User
+from app.modules.auth.permissions import Role
 from app.modules.events import services as event_services
 from app.modules.events.models import (
     EventHistoryEntry,
@@ -53,6 +55,8 @@ from tests.venue.conftest import (
 pytestmark = pytest.mark.scrum_92
 
 NOT_FLAGGED_MESSAGE = "This venue arrangement does not need an alternative venue."
+#: The ``saved_users`` organiser, of client organisation 3.
+ORGANISER_ID = 7
 #: AC6: the planning stage, and Safety Review, which a flag leaves an event in (AC3).
 MAY_REPLACE = {EventRequestStatus.APPROVED, EventRequestStatus.SAFETY_REVIEW}
 #: A draft is left out: a coordinator gets a 404 for it, not a 409 (ADR-0024).
@@ -523,6 +527,32 @@ def test_a_rejected_replacement_keeps_the_safety_approval(
     decide(replacement.id, "rejected", db_session, reason="Booked out.")
 
     assert event_services.has_safety_approval(flagged.event.id, session=db_session) is True
+
+
+def _history_kinds(
+    session: Session, event: EventRequest, viewer_id: int, viewer_role: Role
+) -> list[EventHistoryKind]:
+    entries = event_services.list_event_history(
+        viewer_id, event.reference, viewer_role=viewer_role, session=session
+    )
+    return [entry.kind for entry in entries]
+
+
+def test_the_withdrawal_is_for_internal_eyes_only(
+    db_session: Session, flagged: Flagged, saved_users: list[User]
+) -> None:
+    """ADR-0053 §7: hidden from organisers, like the safety outcome it unsettles."""
+    flagged.event.organisation_id = 3
+    approve_safety(flagged.event, db_session)
+    decide(_replace(flagged, db_session).id, "approved", db_session)
+
+    withdrawn = EventHistoryKind.SAFETY_APPROVAL_WITHDRAWN
+    organiser_sees = _history_kinds(db_session, flagged.event, ORGANISER_ID, Role.EVENT_ORGANISER)
+    coordinator_sees = _history_kinds(
+        db_session, flagged.event, COORDINATOR_ID, Role.EVENT_COORDINATOR
+    )
+    assert withdrawn not in organiser_sees
+    assert withdrawn in coordinator_sees
 
 
 def test_the_event_can_pass_a_new_safety_check_after_the_withdrawal(
