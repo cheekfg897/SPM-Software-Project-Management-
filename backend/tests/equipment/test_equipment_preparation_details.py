@@ -27,6 +27,8 @@ from tests.equipment.conftest import MakeReservation, approve_safety
 pytestmark = pytest.mark.scrum_85
 
 TECHNICAL_SUPPORT_ID = 5
+#: A Technical Support id no fixture uses, so a hard-coded actor can't pass by chance.
+OTHER_TECHNICAL_SUPPORT_ID = 42
 COORDINATOR_ID = 3
 STARTS_AT = datetime(2026, 11, 3, 1, 0, tzinfo=UTC)
 ENDS_AT = datetime(2026, 11, 3, 9, 30, tzinfo=UTC)
@@ -136,16 +138,38 @@ def test_any_other_field_of_the_reservation_is_refused(
 
 
 def test_each_update_records_who_and_when(
-    db_session: Session, reservation: EquipmentReservation, equipment_type: EquipmentType
+    db_session: Session,
+    equipment_type: EquipmentType,
+    saved_event_request: EventRequest,
+    make_event_request: Callable[..., EventRequest],
+    make_reservation: MakeReservation,
+    save: Callable[..., None],
 ) -> None:
-    """AC4: one history entry per update, with the user, the time and the details."""
+    """AC4: one history entry per update, with the user, the time and the details.
+
+    The reservation is a second event's, saved after two of the first event's, so the
+    reservation, its event and its equipment type have different ids and a mixed-up
+    id shows. The update is made by user 42, whom no fixture uses.
+    """
+    event = make_event_request(reference="EVR-BBBBBBBB")
+    save(event)
+    save(make_reservation(equipment_type, 1, STARTS_AT, ENDS_AT))
+    save(make_reservation(equipment_type, 1, STARTS_AT, ENDS_AT))
+    reservation = make_reservation(equipment_type, 4, STARTS_AT, ENDS_AT)
+    reservation.event_id = event.id
+    save(reservation)
+    approve_safety(event, save)
+    assert len({reservation.id, event.id, equipment_type.id}) == 3
     before = datetime.now(UTC)
 
-    _record(reservation, IN_PROGRESS, db_session)
-    _record(reservation, {"status": "ready"}, db_session)
+    for payload in (IN_PROGRESS, {"status": "ready"}):
+        services.update_preparation_details(
+            reservation.id, payload, updated_by=OTHER_TECHNICAL_SUPPORT_ID, session=db_session
+        )
 
     first, second = _preparation_entries(db_session)
-    assert first.actor_id == TECHNICAL_SUPPORT_ID
+    assert first.event_request_id == event.id
+    assert first.actor_id == OTHER_TECHNICAL_SUPPORT_ID
     assert first.occurred_at.replace(tzinfo=UTC) >= before
     assert first.details == {
         "reservation_id": reservation.id,
