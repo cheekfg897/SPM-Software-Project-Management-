@@ -3351,6 +3351,29 @@ def _check_outcome_is_possible(line: EventEquipmentLine, outcome: Mapping[str, A
         raise ValidationError("Invalid request.", details={"note": [OUTCOME_NOTE_REQUIRED_MESSAGE]})
 
 
+#: How an outcome notice names each outcome (SCRUM-50 AC4).
+OUTCOME_WORDS = {
+    EquipmentLineStatus.FULFILLED: "fulfilled",
+    EquipmentLineStatus.PARTIALLY_FULFILLED: "partially fulfilled",
+    EquipmentLineStatus.UNAVAILABLE: "unavailable",
+}
+
+
+def _outcome_notice_detail(line: EventEquipmentLine, equipment_name: str) -> str:
+    """The outcome as the coordinator is told it, with the note if there is one (AC4).
+
+    For example ``"Projector: partially fulfilled, 6 of 10 provided. Note: Only six in
+    stock"`` (ADR-0055).
+    """
+    detail = (
+        f"{equipment_name}: {OUTCOME_WORDS[line.status]},"
+        f" {line.provided_quantity} of {line.quantity} provided."
+    )
+    if line.outcome_note is None:
+        return detail
+    return f"{detail} Note: {line.outcome_note}"
+
+
 def record_equipment_outcome(
     reviewer_id: int | str,
     reference: str,
@@ -3365,7 +3388,8 @@ def record_equipment_outcome(
     SCRUM-48 AC1-AC5. The status follows from the quantity provided; a shortfall needs
     a note, and a line met in full keeps none. Every call adds a history entry, so a
     revision leaves the earlier outcome on record. The history entry is saved with the
-    outcome; the event's coordinator is told afterwards (ADR-0015).
+    outcome; the event's coordinator is told afterwards (ADR-0015), with the equipment,
+    the outcome and the note (SCRUM-50 AC4, ADR-0055).
 
     Args:
         reviewer_id: The Technical Support user's id, taken from their token.
@@ -3416,7 +3440,12 @@ def record_equipment_outcome(
         now=now,
     )
     sess.commit()
-    _notify_assigned_coordinator(event_request, NotificationKind.EQUIPMENT_OUTCOME_RECORDED, sess)
+    _notify_assigned_coordinator(
+        event_request,
+        NotificationKind.EQUIPMENT_OUTCOME_RECORDED,
+        sess,
+        detail=_outcome_notice_detail(line, equipment_type.name),
+    )
     return line
 
 
