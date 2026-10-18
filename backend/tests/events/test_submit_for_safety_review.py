@@ -65,13 +65,15 @@ SAFETY_OFFICER_IDS = [21, 20]
 #: Technical Support 5 and 2.
 OTHER_USER_IDS = [9, 3, 4, 7, 5, 2]
 
-#: Every arrangement status but the two that let an event through: Approved, and
-#: Withdrawn, which is retired and ignored (AC1). Built from the enum, so a status
-#: added later is checked too.
+#: The retired statuses, which the gate ignores: Withdrawn (AC1) and Released, an
+#: arrangement a replacement took over from (SCRUM-92 AC7).
+RETIRED_ARRANGEMENT_STATUSES = [BookingRequestStatus.WITHDRAWN, BookingRequestStatus.RELEASED]
+#: Every arrangement status but Approved and the retired ones, which let an event
+#: through. Built from the enum, so a status added later is checked too.
 HOLDING_ARRANGEMENT_STATUSES = [
     status
     for status in BookingRequestStatus
-    if status not in {BookingRequestStatus.APPROVED, BookingRequestStatus.WITHDRAWN}
+    if status is not BookingRequestStatus.APPROVED and status not in RETIRED_ARRANGEMENT_STATUSES
 ]
 #: Every event status but approved, the one an event is sent from (ADR-0047). A draft
 #: is left out: it has no coordinator, so it is a 404, not a 409 (ADR-0024).
@@ -184,9 +186,12 @@ def test_an_arrangement_that_is_not_approved_holds_the_event_back(
     _assert_still_approved(approved_event, reload_event_request, history_of)
 
 
-def test_a_withdrawn_arrangement_is_ignored(db_session: Session, arrange: Arrange) -> None:
+@pytest.mark.parametrize("retired", RETIRED_ARRANGEMENT_STATUSES, ids=lambda status: status.value)
+def test_a_retired_arrangement_is_ignored(
+    db_session: Session, arrange: Arrange, retired: BookingRequestStatus
+) -> None:
     arrange(BookingRequestStatus.APPROVED)
-    arrange(BookingRequestStatus.WITHDRAWN)
+    arrange(retired)
 
     assert _submit(db_session).status is EventRequestStatus.SAFETY_REVIEW
 

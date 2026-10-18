@@ -218,6 +218,7 @@ def test_a_new_block_lists_a_conflicting_booking_it_cuts_into(
     payload = {
         "start_time": at(9, 15).isoformat(),
         "end_time": at(9, 45).isoformat(),
+        "category": "maintenance",
         "reason": "Repairs",
     }
 

@@ -59,9 +59,10 @@ def test_the_previous_values_are_what_exists_after_the_migrations_below(
 def test_the_migrations_value_lists_are_the_models_values(load_migration: LoadMigration) -> None:
     migration = load_migration(MIGRATION)
 
-    assert _after(migration, "REQUEST_STATUS") == {s.value for s in BookingRequestStatus}
-    assert _after(migration, "NOTIFICATION_KIND") == {k.value for k in NotificationKind}
-    assert _after(migration, "HISTORY_KIND") == {k.value for k in EventHistoryKind}
+    # Subset, not equality: later migrations (0039 SCRUM-92) add further values.
+    assert _after(migration, "REQUEST_STATUS") <= {s.value for s in BookingRequestStatus}
+    assert _after(migration, "NOTIFICATION_KIND") <= {k.value for k in NotificationKind}
+    assert _after(migration, "HISTORY_KIND") <= {k.value for k in EventHistoryKind}
 
 
 def test_the_revision_follows_0036_and_fits_alembics_version_column(

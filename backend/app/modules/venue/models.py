@@ -156,6 +156,28 @@ class BookingRequestStatus(str, enum.Enum):
     #: venue is free again (SCRUM-94, ADR-0052). Like a rejected request, it stays one
     #: of the event's arrangements until the coordinator withdraws it.
     EXPIRED = "expired"
+    #: Venue Staff approved a replacement for this arrangement after its venue became
+    #: unavailable, so it no longer holds the venue (SCRUM-92 AC7, ADR-0053).
+    RELEASED = "released"
+
+
+class UnavailabilityCategory(str, enum.Enum):
+    """Why a venue can't be used for a period (SCRUM-92 AC2, ADR-0053).
+
+    Venue Staff choose one when they block or deactivate a venue, and add a note in
+    ``reason``, the free text a block has carried since SCRUM-34.
+    """
+
+    MAINTENANCE = "maintenance"
+    EQUIPMENT_FAILURE = "equipment_failure"
+    RENOVATION = "renovation"
+    SAFETY_CONCERN = "safety_concern"
+    OTHER = "other"
+
+    @property
+    def label(self) -> str:
+        """How a notification words it, e.g. ``"equipment failure"``."""
+        return self.value.replace("_", " ")
 
 
 class BookingDecision(str, enum.Enum):
@@ -211,7 +233,30 @@ class PreparationStatus(str, enum.Enum):
 #: arrangement being approved, so a rejected one must keep them waiting. ``ON_HOLD``
 #: stays out too, because SCRUM-75 treats a held arrangement as one of the event's
 #: active venues.
-RETIRED_REQUEST_STATUSES = frozenset({BookingRequestStatus.WITHDRAWN})
+RETIRED_REQUEST_STATUSES = frozenset(
+    {BookingRequestStatus.WITHDRAWN, BookingRequestStatus.RELEASED}
+)
+
+#: Arrangements a venue becoming unavailable can leave needing another venue: a
+#: confirmed booking, or a request Venue Staff can still decide (SCRUM-92 AC1). A
+#: decided, withdrawn or released one has nothing left to lose. SCRUM-75 adds On Hold.
+FLAGGABLE_REQUEST_STATUSES = frozenset(
+    {
+        BookingRequestStatus.PENDING,
+        BookingRequestStatus.CONFLICTING,
+        BookingRequestStatus.APPROVED,
+    }
+)
+
+
+def _category_enum() -> Enum:
+    """The column type for :class:`UnavailabilityCategory`, shared by two tables."""
+    return Enum(
+        UnavailabilityCategory,
+        name="unavailability_category",
+        # Store the enum *values* (snake_case), not the member names.
+        values_callable=lambda enum_cls: [m.value for m in enum_cls],
+    )
 
 
 class Venue(db.Model):  # type: ignore[name-defined]
@@ -375,6 +420,8 @@ class VenueBlock(db.Model):  # type: ignore[name-defined]
     )
     start_time: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)
     end_time: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)
+    #: What kind of unavailability it is (SCRUM-92 AC2); ``reason`` is the note.
+    category: Mapped[UnavailabilityCategory] = mapped_column(_category_enum(), nullable=False)
     reason: Mapped[str] = mapped_column(Text, nullable=False, default="")
 
 
@@ -455,6 +502,11 @@ class VenueBookingRequest(db.Model):  # type: ignore[name-defined]
     )
     booking: Mapped[Booking | None] = relationship()
     requested_by: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+    #: The arrangement this one replaces because its venue became unavailable; approving
+    #: this one releases that one (SCRUM-92 AC6, AC7).
+    replaces_request_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("venue_booking_requests.id"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -463,4 +515,56 @@ class VenueBookingRequest(db.Model):  # type: ignore[name-defined]
         server_default=func.now(),
         onupdate=func.now(),
         nullable=False,
+    )
+
+    #: Why the arrangement needs an alternative venue, one flag per block or
+    #: deactivation that caused it, earliest first (SCRUM-92 AC1).
+    flags: Mapped[list[AlternativeVenueFlag]] = relationship(
+        lazy="selectin",
+        cascade="all, delete-orphan",
+        order_by="(AlternativeVenueFlag.starts_at, AlternativeVenueFlag.id)",
+    )
+
+    @property
+    def needs_alternative_venue(self) -> bool:
+        """Whether the arrangement is flagged "Needs Alternative Venue" (SCRUM-92 AC1).
+
+        Only while it still holds or asks for its venue: once it is released, withdrawn
+        or decided against, its flags stay as the record of why, but nothing is needed.
+        """
+        if self.status not in FLAGGABLE_REQUEST_STATUSES:
+            return False
+        return len(self.flags) > 0
+
+
+class AlternativeVenueFlag(db.Model):  # type: ignore[name-defined]
+    """One reason an arrangement needs an alternative venue (SCRUM-92 AC1, ADR-0053).
+
+    A block over the arrangement's period makes one, which removing the block deletes
+    (AC8). Deactivating the venue makes one with no block and no end, which
+    reactivating it deletes (AC9). The category, note and period are copied from the
+    block or the deactivation, so the flag says what the coordinator was told.
+    """
+
+    __tablename__ = "alternative_venue_flags"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    booking_request_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("venue_booking_requests.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    #: The block that caused it, or ``None`` when the venue was deactivated.
+    venue_block_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("venue_blocks.id", ondelete="CASCADE"), index=True, nullable=True
+    )
+    category: Mapped[UnavailabilityCategory] = mapped_column(_category_enum(), nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    #: The period the venue is unavailable; ``ends_at`` is ``None`` for a deactivation,
+    #: which lasts until the venue is reactivated.
+    starts_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)
+    ends_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
