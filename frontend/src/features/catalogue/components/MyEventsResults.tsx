@@ -1,10 +1,21 @@
 import { ButtonLink, EmptyState, ErrorAlert, Spinner } from '@/components/ui'
 import { ROUTES } from '@/config/routes'
 
+import type { MyEvent } from '../api'
+import { MY_EVENTS_WHEN } from '../constants'
 import { useMyEvents } from '../hooks'
 
 import { DayTimeline } from './DayTimeline'
 import { MyEventCard } from './MyEventCard'
+import { WithdrawAction } from './WithdrawAction'
+
+/**
+ * Whether to offer withdrawing: a place still held, at an event under Upcoming. Everything under
+ * Past has ended, so its withdrawals have closed (SCRUM-53 AC5, docs/adr/0083).
+ */
+function canOfferWithdrawal(event: MyEvent, when: string): boolean {
+  return when === MY_EVENTS_WHEN.UPCOMING && event.status === 'registered'
+}
 
 /**
  * The Attendee's events in one half, on the day timeline, in the backend's order. With none,
@@ -39,7 +50,11 @@ export function MyEventsResults({ when }: { when: string }) {
     <DayTimeline
       events={registrations}
       keyOf={(event) => event.event_id}
-      renderEvent={(event) => <MyEventCard event={event} />}
+      renderEvent={(event) => (
+        <MyEventCard event={event}>
+          {canOfferWithdrawal(event, when) && <WithdrawAction event={event} />}
+        </MyEventCard>
+      )}
     />
   )
 }

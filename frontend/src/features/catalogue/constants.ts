@@ -1,3 +1,5 @@
+import type { RegistrationStatus } from './api'
+
 /** The date presets the catalogue accepts as `when` (docs/adr/0032). The backend resolves them. */
 export const WHEN = {
   UPCOMING: 'upcoming',
@@ -7,6 +9,12 @@ export const WHEN = {
 } as const
 
 export type When = (typeof WHEN)[keyof typeof WHEN]
+
+/** How a registration's own status reads on My events (SCRUM-53). */
+export const REGISTRATION_STATUS_LABELS: Record<RegistrationStatus, string> = {
+  registered: 'Registered',
+  withdrawn: 'Withdrawn',
+}
 
 /** The two halves of an Attendee's own events (docs/adr/0044). The backend splits them. */
 export const MY_EVENTS_WHEN = {

@@ -3,7 +3,13 @@ import { useSearchParams } from 'react-router'
 
 import { selectSessionUser, useAppSelector } from '@/store'
 
-import { catalogueKeys, fetchCatalogue, fetchMyEvents, registerForEvent } from './api'
+import {
+  catalogueKeys,
+  fetchCatalogue,
+  fetchMyEvents,
+  registerForEvent,
+  withdrawFromEvent,
+} from './api'
 import { MY_EVENTS_WHEN } from './constants'
 import type { MyEventsWhen, When } from './constants'
 import { readCatalogueParams, withPage, withPreset, withRangeEnd, withSearch } from './searchParams'
@@ -79,6 +85,18 @@ export function useRegisterForEvent() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: registerForEvent,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: catalogueKeys.all }),
+  })
+}
+
+/**
+ * Withdraw from an event (SCRUM-53). Afterwards the Attendee's own events and every catalogue
+ * page are read again, so the registration's status and the places left come from the backend.
+ */
+export function useWithdrawFromEvent() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: withdrawFromEvent,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: catalogueKeys.all }),
   })
 }
