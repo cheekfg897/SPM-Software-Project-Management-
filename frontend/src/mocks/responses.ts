@@ -9,9 +9,20 @@ export const INVALID_TOKEN_MESSAGE = 'Missing, invalid or expired token.'
 /** The backend's message when a signed-in user's role may not use a route (app/common/decorators.py). */
 export const NOT_PERMITTED_MESSAGE = 'You do not have permission to perform this action.'
 
-/** An error in the backend's shape: `{"error", "message", "details?"}`. */
-export function errorResponse(status: number, error: string, message: string) {
-  return HttpResponse.json({ error, message }, { status })
+/**
+ * An error in the backend's shape: `{"error", "message", "details?"}`, with `details` only for
+ * a refusal that carries them, such as when withdrawals closed (SCRUM-53).
+ */
+export function errorResponse(
+  status: number,
+  error: string,
+  message: string,
+  details?: Record<string, unknown>,
+) {
+  if (details === undefined) {
+    return HttpResponse.json({ error, message }, { status })
+  }
+  return HttpResponse.json({ error, message, details }, { status })
 }
 
 /**

@@ -10,6 +10,8 @@ import type { CatalogueParams } from './searchParams'
 const CATALOGUE_PATHS = {
   EVENTS: '/api/events/catalogue',
   MY_EVENTS: '/api/events/registrations',
+  /** POST registers the signed-in Attendee; DELETE withdraws them (SCRUM-53). */
+  registrationsFor: (eventId: number) => `/api/events/catalogue/${eventId}/registrations`,
 } as const
 
 export interface CatalogueEvent {
@@ -36,11 +38,14 @@ export interface CataloguePage {
   total_pages: number
 }
 
-/** A place held at an event, as the backend returns it on registering. */
+/** Whether the Attendee holds the place, or gave it up (SCRUM-53). */
+export type RegistrationStatus = 'registered' | 'withdrawn'
+
+/** A place at an event, as the backend returns it on registering or withdrawing. */
 export interface Registration {
   id: number
   event_id: number
-  status: 'registered' | 'withdrawn'
+  status: RegistrationStatus
   registered_at: string
   /** When the Attendee withdrew (SCRUM-53); `null` while they hold the place. */
   withdrawn_at: string | null
@@ -55,7 +60,7 @@ export interface MyEvent {
   ends_at: string
   event_status: EventRequestStatus
   /** The registration's own status. */
-  status: 'registered' | 'withdrawn'
+  status: RegistrationStatus
   registered_at: string
   /** When the Attendee withdrew (SCRUM-53); `null` while they hold the place. */
   withdrawn_at: string | null
@@ -97,7 +102,17 @@ export function fetchMyEvents(when: string): Promise<MyEventList> {
 
 /** Register the signed-in Attendee for an event. No body: the account is the registration. */
 export function registerForEvent(eventId: number): Promise<Registration> {
-  return apiRequest<Registration>(`${CATALOGUE_PATHS.EVENTS}/${eventId}/registrations`, {
+  return apiRequest<Registration>(CATALOGUE_PATHS.registrationsFor(eventId), {
     method: 'POST',
+  })
+}
+
+/**
+ * Withdraw the signed-in Attendee from an event, giving the place back (SCRUM-53). The backend
+ * refuses once withdrawals have closed, with when they closed in the error's details.
+ */
+export function withdrawFromEvent(eventId: number): Promise<Registration> {
+  return apiRequest<Registration>(CATALOGUE_PATHS.registrationsFor(eventId), {
+    method: 'DELETE',
   })
 }

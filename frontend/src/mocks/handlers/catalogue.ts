@@ -2,6 +2,7 @@ import { http, HttpResponse } from 'msw'
 import type { RequestHandler } from 'msw'
 
 import { ROLE } from '@/config/roles'
+import type { RegistrationStatus } from '@/features/catalogue/api'
 import { MY_EVENTS_WHEN, WHEN } from '@/features/catalogue/constants'
 import type { FieldErrors } from '@/lib/api'
 
@@ -29,6 +30,7 @@ import type { MockCatalogueEvent, MockUnlistedEvent } from './catalogueFixtures'
 
 const CATALOGUE_PATH = '/api/events/catalogue'
 const MY_EVENTS_PATH = '/api/events/registrations'
+const REGISTRATIONS_PATH = `${CATALOGUE_PATH}/:eventId/registrations`
 const KNOWN_MY_EVENTS_WHEN: readonly string[] = Object.values(MY_EVENTS_WHEN)
 /** What an empty half of an Attendee's events says, as the backend words it. */
 const NO_MY_EVENTS_MESSAGE: Record<string, string> = {
@@ -177,35 +179,84 @@ function matchesQuery(event: MockCatalogueEvent, query: CatalogueQuery): boolean
   return true
 }
 
-/** Who has registered for each event: event id to user ids. */
-const registrations = new Map<number, Set<number>>()
-let lastRegistrationId = 0
-
-function registeredUsers(eventId: number): Set<number> {
-  const users = registrations.get(eventId) ?? new Set<number>()
-  registrations.set(eventId, users)
-  return users
+/** One user's registration for one event, as the backend keeps it: withdrawing keeps the row. */
+interface MockRegistration {
+  id: number
+  event_id: number
+  user_id: number
+  status: RegistrationStatus
+  registered_at: string
+  withdrawn_at: string | null
 }
 
-/** Forget every registration made since, keeping the fixture's own. Runs after every test. */
+let registrations: MockRegistration[] = []
+
+function registrationOf(eventId: number, userId: number): MockRegistration | undefined {
+  return registrations.find(
+    (registration) => registration.event_id === eventId && registration.user_id === userId,
+  )
+}
+
+/** Hold a place for the user, reusing a withdrawn registration as the backend does (ADR-0032). */
+function holdPlace(eventId: number, userId: number): MockRegistration {
+  const withdrawn = registrationOf(eventId, userId)
+  if (withdrawn !== undefined) {
+    withdrawn.status = 'registered'
+    withdrawn.registered_at = MOCK_NOW
+    withdrawn.withdrawn_at = null
+    return withdrawn
+  }
+  const registration: MockRegistration = {
+    id: registrations.length + 1,
+    event_id: eventId,
+    user_id: userId,
+    status: 'registered',
+    registered_at: MOCK_NOW,
+    withdrawn_at: null,
+  }
+  registrations.push(registration)
+  return registration
+}
+
+/** The registration as the backend's RegistrationSchema sends it: without whose it is. */
+function registrationBody(registration: MockRegistration) {
+  return {
+    id: registration.id,
+    event_id: registration.event_id,
+    status: registration.status,
+    registered_at: registration.registered_at,
+    withdrawn_at: registration.withdrawn_at,
+  }
+}
+
+/**
+ * Forget every registration made or withdrawn since, keeping the fixture's own: the mock
+ * attendee's catalogue events and the events the catalogue no longer lists. Runs after every
+ * test.
+ */
 export function resetMockCatalogue(): void {
-  registrations.clear()
-  lastRegistrationId = 0
+  registrations = []
   for (const eventId of MOCK_ATTENDEE_REGISTRATIONS) {
-    registeredUsers(eventId).add(MOCK_ACCOUNTS.attendee.id)
+    holdPlace(eventId, MOCK_ACCOUNTS.attendee.id)
+  }
+  for (const event of MOCK_ATTENDEE_UNLISTED_EVENTS) {
+    holdPlace(event.id, MOCK_ACCOUNTS.attendee.id)
   }
 }
 resetMockCatalogue()
 
 function toItem(event: MockCatalogueEvent, userId: number | null) {
   const { taken, ...fields } = event
-  const users = registeredUsers(event.id)
-  const placesLeft = Math.max(event.capacity - taken - users.size, 0)
+  const held = registrations.filter(
+    (registration) => registration.event_id === event.id && registration.status === 'registered',
+  )
+  const placesLeft = Math.max(event.capacity - taken - held.length, 0)
+  const own = userId === null ? undefined : registrationOf(event.id, userId)
   return {
     ...fields,
     places_left: placesLeft,
     is_full: placesLeft === 0,
-    is_registered: userId !== null && users.has(userId),
+    is_registered: own?.status === 'registered',
   }
 }
 
@@ -216,38 +267,45 @@ interface MyEventRow {
   starts_at: string
   ends_at: string
   event_status: string
-  status: 'registered' | 'withdrawn'
+  status: RegistrationStatus
   registered_at: string
   withdrawn_at: string | null
 }
 
-function myEventRow(
-  event: MockCatalogueEvent | MockUnlistedEvent,
-  eventStatus: string,
-): MyEventRow {
-  return {
-    event_id: event.id,
-    name: event.name,
-    starts_at: event.starts_at,
-    ends_at: event.ends_at,
-    event_status: eventStatus,
-    status: 'registered',
-    registered_at: MOCK_NOW,
-    withdrawn_at: null,
-  }
+/** An event the mock knows, with the event's own status. */
+interface KnownEvent {
+  event: MockCatalogueEvent | MockUnlistedEvent
+  status: string
 }
 
-/** Every event `userId` registered for, in no particular order. */
+/** Every event the mock knows: the catalogue's, which are confirmed, and the unlisted ones. */
+function knownEvents(): KnownEvent[] {
+  const known: KnownEvent[] = []
+  for (const event of MOCK_CATALOGUE_EVENTS) {
+    known.push({ event, status: 'confirmed' })
+  }
+  for (const event of MOCK_ATTENDEE_UNLISTED_EVENTS) {
+    known.push({ event, status: event.event_status })
+  }
+  return known
+}
+
+/** Every event `userId` registered for, held or withdrawn, in no particular order. */
 function myEventRows(userId: number): MyEventRow[] {
   const rows: MyEventRow[] = []
-  for (const event of MOCK_CATALOGUE_EVENTS) {
-    if (registeredUsers(event.id).has(userId)) {
-      rows.push(myEventRow(event, 'confirmed'))
-    }
-  }
-  if (userId === MOCK_ACCOUNTS.attendee.id) {
-    for (const event of MOCK_ATTENDEE_UNLISTED_EVENTS) {
-      rows.push(myEventRow(event, event.event_status))
+  for (const { event, status } of knownEvents()) {
+    const registration = registrationOf(event.id, userId)
+    if (registration !== undefined) {
+      rows.push({
+        event_id: event.id,
+        name: event.name,
+        starts_at: event.starts_at,
+        ends_at: event.ends_at,
+        event_status: status,
+        status: registration.status,
+        registered_at: registration.registered_at,
+        withdrawn_at: registration.withdrawn_at,
+      })
     }
   }
   return rows
@@ -295,7 +353,7 @@ export const catalogueHandlers: RequestHandler[] = [
     })
   }),
 
-  http.post(`${CATALOGUE_PATH}/:eventId/registrations`, ({ request, params }) => {
+  http.post(REGISTRATIONS_PATH, ({ request, params }) => {
     const user = accountForRequest(request)
     if (user === undefined) {
       return notAuthenticated()
@@ -316,18 +374,40 @@ export const catalogueHandlers: RequestHandler[] = [
       return errorResponse(409, 'event_full', 'This event is full.')
     }
 
-    registeredUsers(event.id).add(user.id)
-    lastRegistrationId += 1
-    return HttpResponse.json(
-      {
-        id: lastRegistrationId,
-        event_id: event.id,
-        status: 'registered',
-        registered_at: MOCK_NOW,
-        withdrawn_at: null,
-      },
-      { status: 201 },
-    )
+    return HttpResponse.json(registrationBody(holdPlace(event.id, user.id)), { status: 201 })
+  }),
+
+  http.delete(REGISTRATIONS_PATH, ({ request, params }) => {
+    const user = accountForRequest(request)
+    if (user === undefined) {
+      return notAuthenticated()
+    }
+    if (user.role !== ROLE.ATTENDEE) {
+      return notAllowed()
+    }
+
+    const registration = registrationOf(Number(params.eventId), user.id)
+    if (registration === undefined) {
+      return errorResponse(404, 'not_found', 'Registration not found.')
+    }
+    if (registration.status === 'withdrawn') {
+      return errorResponse(409, 'already_withdrawn', 'You have already withdrawn from this event.')
+    }
+    // Withdrawals close when the event starts, until the customer sets a cut-off (ADR-0032).
+    const known = knownEvents().find(({ event }) => event.id === registration.event_id)
+    if (known === undefined) {
+      throw new Error(`Mock registration ${registration.id} names an event the mock lacks.`)
+    }
+    const closesAt = known.event.starts_at
+    if (new Date(MOCK_NOW) >= new Date(closesAt)) {
+      return errorResponse(409, 'withdrawal_closed', 'Withdrawals for this event have closed.', {
+        withdrawal_closed_at: closesAt,
+      })
+    }
+
+    registration.status = 'withdrawn'
+    registration.withdrawn_at = MOCK_NOW
+    return HttpResponse.json(registrationBody(registration))
   }),
 
   http.get(MY_EVENTS_PATH, ({ request }) => {
