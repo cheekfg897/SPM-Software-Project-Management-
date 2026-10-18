@@ -14,9 +14,17 @@ import { renderApp } from '@/test/render'
 
 const QUEUE_URL = '/api/venues/booking-requests'
 
+/**
+ * The queue, as distinct from the approved bookings under it (SCRUM-84), which can hold a
+ * request with the same purpose.
+ */
+function queue() {
+  return within(screen.getByRole('region', { name: 'Waiting for a decision' }))
+}
+
 /** The queue entry for one request, found by the purpose its heading gives it. */
 async function findRequest(purpose: string) {
-  return within(await screen.findByRole('article', { name: purpose }))
+  return within(await queue().findByRole('article', { name: purpose }))
 }
 
 function renderQueue() {
@@ -41,7 +49,9 @@ describe('SCRUM-43 the venue booking decisions screen', () => {
     renderQueue()
     await findRequest('Breakout room')
 
-    const purposes = screen.getAllByRole('heading', { level: 3 }).map((entry) => entry.textContent)
+    const purposes = queue()
+      .getAllByRole('heading', { level: 3 })
+      .map((entry) => entry.textContent)
 
     // The studio is already on hold, waiting for final approval (SCRUM-75).
     expect(purposes).toEqual(['Breakout room', 'Studio', 'Main hall'])
@@ -54,11 +64,13 @@ describe('SCRUM-43 the venue booking decisions screen', () => {
 
     await user.click(breakout.getByRole('button', { name: /^Approve/ }))
 
-    await waitFor(() => expect(screen.queryByRole('article', { name: 'Breakout room' })).toBeNull())
+    await waitFor(() =>
+      expect(queue().queryByRole('article', { name: 'Breakout room' })).toBeNull(),
+    )
     const decision = requests.find((sent) => sent.method === 'POST')
     expect(decision?.url).toContain(`${QUEUE_URL}/9001/decision`)
     await expect(decision?.json()).resolves.toEqual({ outcome: 'approved' })
-    expect(await screen.findByRole('article', { name: 'Main hall' })).toBeInTheDocument()
+    expect(await queue().findByRole('article', { name: 'Main hall' })).toBeInTheDocument()
   })
 
   it('shows the backend field error when a rejection has no reason', async () => {
@@ -68,7 +80,7 @@ describe('SCRUM-43 the venue booking decisions screen', () => {
     await user.click(breakout.getByRole('button', { name: /^Reject/ }))
 
     expect(await breakout.findByText(REJECTION_REASON_REQUIRED_MESSAGE)).toBeInTheDocument()
-    expect(screen.getByRole('article', { name: 'Breakout room' })).toBeInTheDocument()
+    expect(queue().getByRole('article', { name: 'Breakout room' })).toBeInTheDocument()
   })
 
   it('sends the reason with a rejection and takes the request out of the queue', async () => {
@@ -79,7 +91,9 @@ describe('SCRUM-43 the venue booking decisions screen', () => {
     await user.type(breakout.getByLabelText(/^Reason/), 'Closed for repairs')
     await user.click(breakout.getByRole('button', { name: /^Reject/ }))
 
-    await waitFor(() => expect(screen.queryByRole('article', { name: 'Breakout room' })).toBeNull())
+    await waitFor(() =>
+      expect(queue().queryByRole('article', { name: 'Breakout room' })).toBeNull(),
+    )
     const decision = requests.find((sent) => sent.method === 'POST')
     await expect(decision?.json()).resolves.toEqual({
       outcome: 'rejected',
@@ -219,7 +233,7 @@ describe('SCRUM-75 holding a venue from the venue booking decisions screen', () 
       await view.user.click(breakout.getByRole('button', { name: `${decision} Breakout room` }))
 
       await waitFor(() =>
-        expect(screen.queryByRole('article', { name: 'Breakout room' })).toBeNull(),
+        expect(queue().queryByRole('article', { name: 'Breakout room' })).toBeNull(),
       )
     },
   )

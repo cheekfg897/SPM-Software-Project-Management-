@@ -1,17 +1,36 @@
 import { PageContainer } from '@/components/layout'
 
+import { ApprovedBookings } from '../components/ApprovedBookings'
 import { PendingDecisionQueue } from '../components/PendingDecisionQueue'
 
-/** Venue Staff's queue of booking requests waiting for a decision or a hold (SCRUM-43, SCRUM-75). */
+/**
+ * Venue Staff's booking requests: the queue waiting for a decision or a hold (SCRUM-43,
+ * SCRUM-75), and the approved bookings whose preparation they record (SCRUM-84, ADR-0080).
+ */
 export function BookingDecisionsPage() {
   return (
     <PageContainer
       title="Venue booking requests"
       description="Approve a request to book the venue, hold it until an expiry while its event's venues are finalised, or reject it with a reason. The coordinator is told each time."
     >
-      <div className="mt-10">
+      <section className="mt-10 space-y-6" aria-labelledby="waiting-heading">
+        <h2 id="waiting-heading" className="text-xl font-semibold">
+          Waiting for a decision
+        </h2>
         <PendingDecisionQueue />
-      </div>
+      </section>
+      <section className="mt-16 space-y-6" aria-labelledby="approved-heading">
+        <div className="space-y-2">
+          <h2 id="approved-heading" className="text-xl font-semibold">
+            Approved bookings
+          </h2>
+          <p className="text-ink-muted">
+            Record how far each venue&apos;s preparation has got. The event&apos;s coordinator sees
+            it.
+          </p>
+        </div>
+        <ApprovedBookings />
+      </section>
     </PageContainer>
   )
 }
