@@ -49,6 +49,7 @@ from app.modules.events.services import (
     list_event_requests_for_coordinator,
     list_event_requests_for_organiser,
     list_event_requests_with_equipment,
+    list_event_requests_with_venue_bookings,
     list_events_awaiting_safety_review,
     list_requests_for_each_coordinator,
     list_unassigned_requests,
@@ -92,6 +93,7 @@ _registration_settings_schema = RegistrationSettingsSchema()
 NO_ORGANISATION_REQUESTS_MESSAGE = "Your organisation has no event requests yet."
 NO_ASSIGNED_REQUESTS_MESSAGE = "No event requests are assigned to you yet."
 NO_EQUIPMENT_REQUESTS_MESSAGE = "No events have an equipment request yet."
+NO_VENUE_BOOKINGS_MESSAGE = "No events have a venue booking request yet."
 NO_UNASSIGNED_REQUESTS_MESSAGE = "No event requests are waiting to be assigned."
 NO_ACTIVE_REQUESTS_MESSAGE = "There are no active event requests."
 NO_WORKLOAD_MESSAGE = "No coordinator has an active event request."
@@ -145,8 +147,8 @@ def submit_request() -> tuple[Response, int]:
     return jsonify(_event_request_schema.dump(event_request)), 201
 
 
-# TODO: SCRUM-42 adds Venue Staff's list (AC4), in the same shape (ADR-0026).
-# The Attendee's (AC7) is the registration module's GET /api/events/registrations
+# Venue Staff's list (AC4) is /requests/with-venue-bookings below (ADR-0085). The
+# Attendee's (AC7) is the registration module's GET /api/events/registrations
 # (ADR-0044).
 @bp.get("/requests")
 @requires_role(Role.EVENT_ORGANISER)
@@ -277,6 +279,20 @@ def list_requests_with_equipment() -> tuple[Response, int]:
     event_requests = list_event_requests_with_equipment()
     listed = _event_list_row_schema.dump(event_requests, many=True)
     return jsonify(_event_list_body(listed, NO_EQUIPMENT_REQUESTS_MESSAGE)), 200
+
+
+@bp.get("/requests/with-venue-bookings")
+@requires_role(Role.VENUE_STAFF)
+def list_requests_with_venue_bookings() -> tuple[Response, int]:
+    """Every event with a venue booking request or a booking, newest first (AC4).
+
+    The same rows as Technical Support's ``/with-equipment``: ``EVENT_LIST_FIELDS``.
+    One list for all Venue Staff (ADR-0085). SCRUM-43's ``/api/venues/booking-requests``
+    stays their queue of requests still to decide.
+    """
+    event_requests = list_event_requests_with_venue_bookings()
+    listed = _event_list_row_schema.dump(event_requests, many=True)
+    return jsonify(_event_list_body(listed, NO_VENUE_BOOKINGS_MESSAGE)), 200
 
 
 @bp.get("/requests/<reference>")

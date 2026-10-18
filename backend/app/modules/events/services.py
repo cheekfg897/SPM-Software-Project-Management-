@@ -2215,6 +2215,24 @@ def list_event_requests_with_equipment(*, session: Session | None = None) -> lis
     )
 
 
+def list_event_requests_with_venue_bookings(
+    *, session: Session | None = None
+) -> list[EventRequest]:
+    """Every event with a venue booking request or a booking, newest first (AC4).
+
+    Whatever the event's status or date, and whatever Venue Staff made of the request:
+    this is everything Venue Staff are involved in, as Technical Support's list is for
+    equipment. A withdrawn or released request no longer counts (ADR-0085). Every
+    Venue Staff user sees the same list, since none is assigned to particular venues
+    (ADR-0035 decision 1).
+    """
+    from app.modules.venue import services as venue_services  # circular at import time
+
+    sess = resolve_session(session)
+    event_ids = venue_services.list_event_ids_with_active_arrangements(session=sess)
+    return _list_event_requests_newest_first(EventRequest.id.in_(event_ids), sess)
+
+
 # --------------------------------------------------------------------------
 # SCRUM-95 — the Event Coordinator Lead's queue of unassigned requests
 # --------------------------------------------------------------------------
