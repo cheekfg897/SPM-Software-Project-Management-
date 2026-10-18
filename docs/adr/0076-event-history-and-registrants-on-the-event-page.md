@@ -6,7 +6,7 @@
 - **Stories:** SCRUM-33 Update event information and flag significant changes (AC4, AC5);
   SCRUM-55 See who has registered for an event (AC1 to AC5)
 - **Extends:** [ADR-0025](0025-event-edits-significant-changes-and-history.md),
-  [ADR-0046](0046-event-request-detail-page.md)
+  [ADR-0056](0056-event-request-detail-page.md)
 
 ## Context
 The backend has two read routes the web app doesn't use yet:
@@ -15,8 +15,10 @@ The backend has two read routes the web app doesn't use yet:
   any event's history but a draft's, an Event Coordinator only an event assigned to them, and an
   Event Organiser their organisation's events. The organiser's copy leaves out the kinds in
   `INTERNAL_ONLY_KINDS` (`equipment_reserved`, `equipment_outcome_recorded`,
-  `safety_outcome_recorded`) and any `field_changed` entry about `internal_planning_notes`. Each
-  entry is `{kind, occurred_at, actor_name, details}`, oldest first, with no user ids;
+  `safety_outcome_recorded`, `venue_preparation_updated`, `equipment_preparation_updated`,
+  `alternative_venue_needed`, `safety_approval_withdrawn`) and any `field_changed` entry about
+  `internal_planning_notes`. Each entry is `{kind, occurred_at, actor_name, details}`, oldest
+  first, with no user ids;
   `actor_name` is null for the system or a removed account.
 - `GET /api/events/requests/<reference>/registrations` (SCRUM-55): an organiser of the event's
   organisation or its assigned coordinator; anyone else's event is `404`, and an attendee is
@@ -24,7 +26,7 @@ The backend has two read routes the web app doesn't use yet:
   `{name, email, registered_at, status}`, oldest first. `capacity` and `places_left` are null
   until the coordinator sets a capacity (SCRUM-69, ADR-0043).
 
-ADR-0046 deferred the history to its own section because each of its kinds (18 on `main` today)
+ADR-0056 deferred the history to its own section because each of its kinds (23 on `main` today)
 needs its own wording. SCRUM-33 AC5 says the history is visible to internal users and to the
 organiser for their own event; SCRUM-55 AC3 lists what each registrant shows and AC4 asks for
 the count against the capacity. Open: where they go, how each kind reads, what a kind the
@@ -60,9 +62,11 @@ backend adds later does to the page, and when the registrants show.
    (AC4). The numbers are the backend's; the page counts nothing itself.
 8. **The Registrants section shows whatever the event's registration setting**, since the
    backend answers for every event the viewer is responsible for, and registrations made while
-   registration was open stay after it closes. With none, it says "No one has registered yet."
+   registration was open stay after it closes. A registrant who withdrew (SCRUM-53) is still
+   listed, as "Withdrawn", and the backend leaves them out of the count. With none, it says
+   "No one has registered yet."
 9. **Who sees them is the backend's call**: the page only reaches organisers and coordinators
-   (ADR-0046), both of whom the two routes answer. AC5 (an attendee can't see other attendees)
+   (ADR-0056), both of whom the two routes answer. AC5 (an attendee can't see other attendees)
    holds because no attendee page reads the route, and the backend refuses it with `403`.
 
 **The mock** (`src/mocks/handlers/eventRecordSections.ts`) answers both routes through the
@@ -70,20 +74,20 @@ event record mock's own lookups (`eventRequests.ts`), with the backend's roles, 
 filter, refusals and messages. Its data (`eventRecordSectionFixtures.ts`) is keyed by
 reference: the mock organiser's Partner Summit and Leadership Offsite each hold entries an
 organiser must not see next to ones they must, and Chloe's confirmed Year-End Town Hall has a
-full history and three registrants.
+full history, three registrants and one who withdrew.
 
 ## Consequences
 - A new history kind on the backend shows at once as a plain line; wording it is one entry in
   `EVENT_HISTORY_KIND` and one in the wording table, which the typecheck then insists on.
-- `EVENT_HISTORY_KIND` copies the backend's enum. The unit test pins today's 18 kinds; nothing
-  checks the two stay equal, so a backend PR adding a kind should add its wording too.
+- `EVENT_HISTORY_KIND` copies 18 of the backend's 23 kinds. The other five (venue and equipment
+  preparation, an expired hold, an alternative venue needed and a withdrawn safety approval)
+  show as plain lines until they are worded. Nothing checks the two lists stay equal, so a
+  backend PR adding a kind should add its wording too.
 - The integration tests that need an event assigned to the staff account read an optional
   Event Coordinator Lead from `INTEGRATION_LEAD_EMAIL` / `INTEGRATION_LEAD_PASSWORD` and skip
-  without one, like the Venue Staff checks. CI doesn't make a Lead yet, so they run locally only.
+  without one, like the Venue Staff checks. CI makes one (`frontend.yml`), so they run there.
 
 ## Revisit when
 - The backend names venues in their history entries, or organisers may read venue names.
 - The customer wants the newest history entries first, or the history paged.
-- SCRUM-53 adds registration statuses besides `registered`: the status column shows the
-  backend's value worded from its name, and the count stays the backend's.
 - The team decides the Registrants section should show only while registration is enabled.

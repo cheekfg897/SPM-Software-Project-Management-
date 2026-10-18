@@ -68,7 +68,7 @@ them.
   yet (`_reassess_arrangements` still says `TODO: SCRUM-58`), so the page says only that
   arrangements will be reassessed, not which.
 - The integration tests for the edit need an event assigned to the staff account, so they run
-  only with the optional Lead account (ADR-0076).
+  only with a Lead account (ADR-0076), which CI makes.
 
 ## Revisit when
 - The backend returns the internal planning notes to the assigned coordinator: open the field
