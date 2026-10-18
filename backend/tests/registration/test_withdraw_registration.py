@@ -34,6 +34,7 @@ from app.modules.registration.services import (
     WithdrawalClosedError,
     count_registered,
     list_catalogue,
+    list_registrants,
     register_for_event,
     withdraw_registration,
 )
@@ -334,6 +335,47 @@ def test_the_catalogue_stops_showing_a_withdrawn_attendee_as_registered(
     after = list_catalogue({}, ATTENDEE, session=db_session, now=now)
     assert [entry.is_registered for entry in before.items] == [True]
     assert [entry.is_registered for entry in after.items] == [False]
+
+
+# --------------------------------------------------------------------------
+# AC6 — the Event Organiser sees the withdrawal in the event's registration list
+# --------------------------------------------------------------------------
+
+
+def test_the_organiser_sees_a_withdrawal_in_the_registration_list_but_it_is_not_counted(
+    db_session: Session,
+    register: Act,
+    withdraw: Act,
+    make_open_event: Callable[..., EventRequest],
+    make_user: Callable[..., User],
+    save: Callable[..., None],
+    saved_users: list[User],
+) -> None:
+    """``saved_users`` has organiser 7, whose organisation owns these events."""
+    event = make_open_event(capacity=5)
+    save(
+        make_user(
+            email="alice@example.com", full_name="Alice Tan", role=Role.ATTENDEE, user_id=ATTENDEE
+        )
+    )
+    save(
+        make_user(
+            email="bob@example.com", full_name="Bob Ong", role=Role.ATTENDEE, user_id=OTHER_ATTENDEE
+        )
+    )
+    register(ATTENDEE, event.id)
+    register(OTHER_ATTENDEE, event.id)
+
+    withdraw(ATTENDEE, event.id)
+
+    listing = list_registrants(
+        7, event.reference, viewer_role=Role.EVENT_ORGANISER, session=db_session
+    )
+    assert [(row.name, row.status) for row in listing.items] == [
+        ("Alice Tan", RegistrationStatus.WITHDRAWN),
+        ("Bob Ong", RegistrationStatus.REGISTERED),
+    ]
+    assert (listing.registered_count, listing.places_left) == (1, 4)
 
 
 # --------------------------------------------------------------------------
