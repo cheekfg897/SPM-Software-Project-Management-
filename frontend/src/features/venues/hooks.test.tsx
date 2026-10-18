@@ -7,7 +7,7 @@ import { renderHookWithProviders, renderWithProviders } from '@/test/render'
 import type { VenueDetails } from './api'
 import { useCreateVenue, useIsVenueStaff, useUpdateVenue, useVenue, useVenues } from './hooks'
 
-const GARDEN = MOCK_VENUES.gardenPavilion
+const MARQUEE = MOCK_VENUES.lawnMarquee
 const SESSION = { session: mockSessionFor(MOCK_ACCOUNTS.venueStaff) }
 
 const SKYLINE_ROOM: VenueDetails = {
@@ -26,19 +26,19 @@ const SKYLINE_ROOM: VenueDetails = {
  */
 function VenuesProbe() {
   const venues = useVenues()
-  const garden = useVenue(GARDEN.id)
+  const marquee = useVenue(MARQUEE.id)
   const create = useCreateVenue()
-  const update = useUpdateVenue(GARDEN.id)
+  const update = useUpdateVenue(MARQUEE.id)
   return (
     <div>
       <p>{venues.data ? `${venues.data.length} venues` : 'loading the list'}</p>
-      <p>{garden.data ? `Called ${garden.data.name}` : 'loading the venue'}</p>
+      <p>{marquee.data ? `Called ${marquee.data.name}` : 'loading the venue'}</p>
       <button type="button" onClick={() => create.mutate(SKYLINE_ROOM)}>
         Add
       </button>
       <button
         type="button"
-        onClick={() => update.mutate({ ...SKYLINE_ROOM, name: 'Garden Marquee' })}
+        onClick={() => update.mutate({ ...SKYLINE_ROOM, name: 'Lawn Pavilion' })}
       >
         Rename
       </button>
@@ -65,19 +65,19 @@ describe('SCRUM-25 who the venue pages treat as Venue Staff (AC4)', () => {
 describe('SCRUM-25 venue hooks read the venues again after a change (AC3)', () => {
   it('shows a venue added while the list is on screen', async () => {
     const { user } = renderWithProviders(<VenuesProbe />, SESSION)
-    expect(await screen.findByText('3 venues')).toBeInTheDocument()
+    expect(await screen.findByText('7 venues')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Add' }))
 
-    expect(await screen.findByText('4 venues')).toBeInTheDocument()
+    expect(await screen.findByText('8 venues')).toBeInTheDocument()
   })
 
   it('shows a venue’s new name while it is on screen', async () => {
     const { user } = renderWithProviders(<VenuesProbe />, SESSION)
-    expect(await screen.findByText('Called Garden Pavilion')).toBeInTheDocument()
+    expect(await screen.findByText('Called Lawn Marquee')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Rename' }))
 
-    expect(await screen.findByText('Called Garden Marquee')).toBeInTheDocument()
+    expect(await screen.findByText('Called Lawn Pavilion')).toBeInTheDocument()
   })
 })

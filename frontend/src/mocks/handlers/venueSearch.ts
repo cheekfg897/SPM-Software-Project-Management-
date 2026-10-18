@@ -4,6 +4,7 @@ import type { RequestHandler } from 'msw'
 import { ROLE } from '@/config/roles'
 import type { Role } from '@/config/roles'
 import type { VenueMatch } from '@/features/venueSearch/api'
+import type { Venue } from '@/features/venues/api'
 
 import {
   errorResponse,
@@ -14,8 +15,6 @@ import {
 } from '../responses'
 
 import { accountForRequest } from './auth'
-import { MOCK_SEARCH_VENUES } from './venueSearchFixtures'
-import type { MockSearchVenue } from './venueSearchFixtures'
 import {
   instantOf,
   isFree,
@@ -26,10 +25,12 @@ import {
   unmetRequirements,
 } from './venueSearchRules'
 import type { MockRequirements, MockUnmetRequirement } from './venueSearchRules'
+import { currentMockVenues } from './venues'
 
 /**
- * The venue module's search (SCRUM-35), venue list and suitability check (SCRUM-36), answering
- * as backend/app/modules/venue/routes.py does, error bodies included.
+ * The venue module's search (SCRUM-35) and suitability check (SCRUM-36), answering as
+ * backend/app/modules/venue/routes.py does, error bodies included. They read the venues the
+ * catalogue mock holds (venues.ts), which also answers the venue list.
  */
 
 const VENUES_PATH = '/api/venues'
@@ -38,8 +39,6 @@ const SUITABILITY_PATH = `${VENUES_PATH}/:venueId/suitability`
 const VENUE_NOT_FOUND_MESSAGE = 'Venue not found.'
 /** The backend's NO_MATCHES_MESSAGE (venue/routes.py, SCRUM-35 AC4). */
 const NO_MATCHES_MESSAGE = 'No venues match your search criteria.'
-
-const venues: readonly MockSearchVenue[] = Object.values(MOCK_SEARCH_VENUES)
 
 /** The response to refuse a caller whose role isn't in `allowed`, or null to go on. */
 function refusalFor(request: Request, allowed: readonly Role[]) {
@@ -62,7 +61,7 @@ function locationFilter(value: unknown): string | null {
 }
 
 /** It offers everything asked for, so what it meets is exactly what was requested. */
-function toMatch(venue: MockSearchVenue, requirements: MockRequirements): VenueMatch {
+function toMatch(venue: Venue, requirements: MockRequirements): VenueMatch {
   return {
     id: venue.id,
     name: venue.name,
@@ -88,7 +87,7 @@ function search(body: Record<string, unknown>): VenueMatch[] {
   const requirements = requirementsFrom(body)
 
   const matches: VenueMatch[] = []
-  for (const venue of venues) {
+  for (const venue of currentMockVenues()) {
     const isCandidate =
       venue.is_active &&
       venue.capacity >= minCapacity &&
@@ -103,10 +102,7 @@ function search(body: Record<string, unknown>): VenueMatch[] {
 }
 
 /** Capacity first, then what `unmetRequirements` finds, as check_venue_suitability lists them. */
-function suitabilityReasons(
-  venue: MockSearchVenue,
-  body: Record<string, unknown>,
-): MockUnmetRequirement[] {
+function suitabilityReasons(venue: Venue, body: Record<string, unknown>): MockUnmetRequirement[] {
   const reasons: MockUnmetRequirement[] = []
   const attendance = Number(body.expected_attendance)
   if (venue.capacity < attendance) {
@@ -120,14 +116,6 @@ function suitabilityReasons(
 }
 
 export const venueSearchHandlers: RequestHandler[] = [
-  http.get(VENUES_PATH, ({ request }) => {
-    const user = accountForRequest(request)
-    if (user === undefined) {
-      return notAuthenticated()
-    }
-    return HttpResponse.json(venues.filter((venue) => venue.is_active).sort(byName))
-  }),
-
   http.post(SEARCH_PATH, async ({ request }) => {
     const refusal = refusalFor(request, [ROLE.EVENT_COORDINATOR])
     if (refusal !== null) {
@@ -159,7 +147,7 @@ export const venueSearchHandlers: RequestHandler[] = [
     if (Object.keys(errors).length > 0) {
       return validationError(errors)
     }
-    const venue = venues.find((candidate) => candidate.id === Number(params.venueId))
+    const venue = currentMockVenues().find((candidate) => candidate.id === Number(params.venueId))
     if (venue === undefined) {
       return errorResponse(404, 'not_found', VENUE_NOT_FOUND_MESSAGE)
     }

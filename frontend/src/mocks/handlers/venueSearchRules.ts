@@ -1,7 +1,7 @@
+import type { Venue } from '@/features/venues/api'
 import type { FieldErrors } from '@/lib/api'
 
-import { MOCK_VENUE_BLOCKS, MOCK_VENUE_BOOKINGS } from './venueSearchFixtures'
-import type { MockSearchVenue, MockVenuePeriod } from './venueSearchFixtures'
+import { MOCK_VENUE_BLOCKS, MOCK_VENUE_BOOKINGS } from './venueFixtures'
 
 /**
  * The venue module's rules for search (SCRUM-35) and the suitability check (SCRUM-36), as
@@ -109,7 +109,7 @@ function missingItems(required: string[], offered: readonly string[]): string[] 
 
 /** Each facility, accessibility or layout requirement the venue fails, in the backend's order. */
 export function unmetRequirements(
-  venue: MockSearchVenue,
+  venue: Venue,
   requirements: MockRequirements,
 ): MockUnmetRequirement[] {
   const unmet: MockUnmetRequirement[] = []
@@ -120,7 +120,9 @@ export function unmetRequirements(
     unmet.push({ requirement: 'accessibility', message: `The venue does not offer ${item}.` })
   }
   const layout = requirements.layout
-  if (layout !== null && !venue.supported_layouts.includes(layout)) {
+  // Widened to text: the body may name a layout the venue type doesn't know.
+  const supportedLayouts: readonly string[] = venue.supported_layouts
+  if (layout !== null && !supportedLayouts.includes(layout)) {
     unmet.push({
       requirement: 'layout',
       message: `The venue does not support the ${layout} layout.`,
@@ -165,7 +167,11 @@ export function searchErrors(body: Record<string, unknown>): FieldErrors {
 }
 
 /** Whether `period` overlaps `start`-`end`; periods that only touch don't. */
-function overlaps(period: MockVenuePeriod, start: number, end: number): boolean {
+function overlaps(
+  period: { start_time: string; end_time: string },
+  start: number,
+  end: number,
+): boolean {
   return Date.parse(period.start_time) < end && Date.parse(period.end_time) > start
 }
 
@@ -175,7 +181,7 @@ const MINUTE = 60_000
  * Whether the venue is free from `start` to `end`: no block overlaps the period itself, and no
  * booking that wasn't cancelled comes within the venue's setup plus turnaround of it (ADR-0011).
  */
-export function isFree(venue: MockSearchVenue, start: number, end: number): boolean {
+export function isFree(venue: Venue, start: number, end: number): boolean {
   const gap = (venue.setup_minutes + venue.turnaround_minutes) * MINUTE
   const blocked = MOCK_VENUE_BLOCKS.some(
     (block) => block.venue_id === venue.id && overlaps(block, start, end),

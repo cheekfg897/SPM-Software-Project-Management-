@@ -10,7 +10,10 @@ import { renderApp } from '@/test/render'
 
 const COORDINATOR = { session: mockSessionFor(MOCK_ACCOUNTS.coordinator) }
 const SEARCH_URL = '/api/venues/search'
-/** 20 November, 09:00 to 17:00, for 120 people: the Garden Pavilion and Harbourfront Hall fit. */
+/**
+ * 20 November, 09:00 to 17:00, for 120 people: the Garden Pavilion, Harbourfront Hall, Lawn
+ * Marquee and Marina Hall fit.
+ */
 const SEARCHED_PATH = `${ROUTES.VENUE_SEARCH}?date=2026-11-20&start=09:00&end=17:00&min_capacity=120`
 
 type View = ReturnType<typeof renderApp>

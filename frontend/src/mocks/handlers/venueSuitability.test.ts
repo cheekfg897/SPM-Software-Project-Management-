@@ -6,15 +6,15 @@ import { sendRequestsAs } from '@/test/sendRequestsAs'
 
 import { MOCK_ACCOUNTS, mockTokenFor } from '../fixtures/accounts'
 
-import { MOCK_SEARCH_VENUES } from './venueSearchFixtures'
+import { MOCK_VENUES } from './venueFixtures'
 
 /**
  * The venue list and the suitability check, as the venue search page reads them (SCRUM-36),
  * pinned to what backend/app/modules/venue/routes.py and services.py answer.
  */
 
-const ORCHID_ROOM = MOCK_SEARCH_VENUES.orchidRoom
-const HARBOURFRONT_HALL = MOCK_SEARCH_VENUES.harbourfrontHall
+const ORCHID_ROOM = MOCK_VENUES.orchidRoom
+const HARBOURFRONT_HALL = MOCK_VENUES.harbourfrontHall
 /** An id no mock venue has. */
 const UNKNOWN_VENUE_ID = 999
 
@@ -46,11 +46,14 @@ describe('SCRUM-36 venue list mock', () => {
 
     expect(venues.map((venue) => venue.name)).toEqual([
       'Boardroom Five',
+      'Boardroom Two',
       'Garden Pavilion',
       'Harbourfront Hall',
+      'Lawn Marquee',
+      'Marina Hall',
       'Orchid Room',
     ])
-    expect(venues[2]).toEqual(HARBOURFRONT_HALL)
+    expect(venues[3]).toEqual(HARBOURFRONT_HALL)
   })
 })
 
@@ -157,7 +160,7 @@ describe('SCRUM-36 suitability mock: the answer', () => {
   })
 
   it('checks a deactivated venue too, as the backend describes any venue by id', async () => {
-    const result = await checkSuitability(MOCK_SEARCH_VENUES.archiveStudio.id, needs())
+    const result = await checkSuitability(MOCK_VENUES.archiveStudio.id, needs())
 
     expect(result.suitable).toBe(true)
   })

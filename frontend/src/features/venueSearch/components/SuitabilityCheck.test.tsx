@@ -3,14 +3,14 @@ import { http, HttpResponse } from 'msw'
 
 import { ROUTES } from '@/config/routes'
 import { MOCK_ACCOUNTS, mockSessionFor } from '@/mocks/fixtures/accounts'
-import { MOCK_SEARCH_VENUES } from '@/mocks/handlers/venueSearchFixtures'
+import { MOCK_VENUES } from '@/mocks/handlers/venueFixtures'
 import { errorResponse } from '@/mocks/responses'
 import { server } from '@/mocks/server'
 import { recordRequests } from '@/test/recordRequests'
 import { renderApp } from '@/test/render'
 
 const COORDINATOR = { session: mockSessionFor(MOCK_ACCOUNTS.coordinator) }
-const ORCHID_ROOM = MOCK_SEARCH_VENUES.orchidRoom
+const ORCHID_ROOM = MOCK_VENUES.orchidRoom
 /** 120 people needing step-free access: the Orchid Room holds 100 and has none. */
 const SEARCHED_PATH =
   `${ROUTES.VENUE_SEARCH}?date=2026-11-20&start=09:00&end=17:00&min_capacity=120` +
@@ -48,8 +48,11 @@ describe('SCRUM-36 checking a venue against the search', () => {
     ).toEqual([
       'Choose a venue',
       'Boardroom Five',
+      'Boardroom Two',
       'Garden Pavilion',
       'Harbourfront Hall',
+      'Lawn Marquee',
+      'Marina Hall',
       'Orchid Room',
     ])
   })

@@ -79,18 +79,18 @@ test('Venue Staff deactivate a venue, which leaves the list, then reactivate it'
 }) => {
   await startOnVenues(page, MOCK_ACCOUNTS.venueStaff)
 
-  await page.getByRole('link', { name: /Garden Pavilion/ }).click()
+  await page.getByRole('link', { name: /Lawn Marquee/ }).click()
   await page.getByRole('button', { name: 'Deactivate venue' }).click()
   await expect(page.getByText(/This venue is deactivated/)).toBeVisible()
 
   await openVenuesFromHeader(page)
-  await expect(page.getByRole('link', { name: /Garden Pavilion/ })).toHaveCount(0)
+  await expect(page.getByRole('link', { name: /Lawn Marquee/ })).toHaveCount(0)
 
   await page.goBack()
   await page.getByRole('button', { name: 'Reactivate venue' }).click()
   await expect(page.getByText(/This venue is deactivated/)).toHaveCount(0)
   await openVenuesFromHeader(page)
-  await expect(page.getByRole('link', { name: /Garden Pavilion/ })).toBeVisible()
+  await expect(page.getByRole('link', { name: /Lawn Marquee/ })).toBeVisible()
 })
 
 test('an Event Coordinator reads a venue but is offered no changes', async ({ page }) => {

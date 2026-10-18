@@ -6,7 +6,7 @@ import { sendRequestsAs } from '@/test/sendRequestsAs'
 
 import { MOCK_ACCOUNTS, mockTokenFor } from '../fixtures/accounts'
 
-import { MOCK_SEARCH_VENUES } from './venueSearchFixtures'
+import { MOCK_VENUES } from './venueFixtures'
 
 /**
  * The venue search mock stands in for `POST /api/venues/search` (SCRUM-35), so these tests pin
@@ -66,8 +66,11 @@ describe('SCRUM-35 venue search mock: what it finds', () => {
 
     expect(body.results.map((venue) => venue.name)).toEqual([
       'Boardroom Five',
+      'Boardroom Two',
       'Garden Pavilion',
       'Harbourfront Hall',
+      'Lawn Marquee',
+      'Marina Hall',
       'Orchid Room',
     ])
     expect(body).not.toHaveProperty('message')
@@ -82,17 +85,25 @@ describe('SCRUM-35 venue search mock: what it finds', () => {
       }),
     )
 
+    const matched = {
+      facilities: ['projector', 'stage'],
+      accessibility_features: ['hearing loop'],
+      layout: 'theatre',
+    }
     expect(results).toEqual([
       {
-        id: MOCK_SEARCH_VENUES.harbourfrontHall.id,
+        id: MOCK_VENUES.harbourfrontHall.id,
         name: 'Harbourfront Hall',
         capacity: 300,
         location: 'Marina Bay, Level 1',
-        matched_requirements: {
-          facilities: ['projector', 'stage'],
-          accessibility_features: ['hearing loop'],
-          layout: 'theatre',
-        },
+        matched_requirements: matched,
+      },
+      {
+        id: MOCK_VENUES.marinaHall.id,
+        name: 'Marina Hall',
+        capacity: 200,
+        location: 'Level 1, Marina Wing',
+        matched_requirements: matched,
       },
     ])
   })
@@ -101,16 +112,21 @@ describe('SCRUM-35 venue search mock: what it finds', () => {
     expect(await namesFound({ min_capacity: 150 })).toEqual([
       'Garden Pavilion',
       'Harbourfront Hall',
+      'Marina Hall',
     ])
-    expect(await namesFound({ min_capacity: 151 })).toEqual(['Harbourfront Hall'])
+    expect(await namesFound({ min_capacity: 151 })).toEqual(['Harbourfront Hall', 'Marina Hall'])
   })
 
   it('matches any venue whose location contains the text, whatever its case', async () => {
-    expect(await namesFound({ location: 'marina' })).toEqual(['Harbourfront Hall', 'Orchid Room'])
+    expect(await namesFound({ location: 'marina' })).toEqual([
+      'Harbourfront Hall',
+      'Marina Hall',
+      'Orchid Room',
+    ])
   })
 
   it('treats a blank location as anywhere', async () => {
-    expect(await namesFound({ location: '   ' })).toHaveLength(4)
+    expect(await namesFound({ location: '   ' })).toHaveLength(7)
   })
 
   it.each([
@@ -118,19 +134,23 @@ describe('SCRUM-35 venue search mock: what it finds', () => {
     [
       'an accessibility need',
       { required_accessibility: ['step-free access'] },
-      ['Garden Pavilion', 'Harbourfront Hall'],
+      ['Garden Pavilion', 'Harbourfront Hall', 'Marina Hall'],
     ],
-    ['a layout', { required_layout: 'boardroom' }, ['Boardroom Five', 'Orchid Room']],
+    [
+      'a layout',
+      { required_layout: 'boardroom' },
+      ['Boardroom Five', 'Boardroom Two', 'Orchid Room'],
+    ],
   ])('leaves out a venue that lacks %s', async (_what, overrides, expected) => {
     expect(await namesFound(overrides)).toEqual(expected)
   })
 
   it.each([
     ['classroom', ['Orchid Room']],
-    ['theatre', ['Harbourfront Hall']],
-    ['boardroom', ['Boardroom Five', 'Orchid Room']],
-    ['banquet', ['Garden Pavilion', 'Harbourfront Hall']],
-    ['exhibition', ['Harbourfront Hall']],
+    ['theatre', ['Harbourfront Hall', 'Marina Hall']],
+    ['boardroom', ['Boardroom Five', 'Boardroom Two', 'Orchid Room']],
+    ['banquet', ['Garden Pavilion', 'Harbourfront Hall', 'Lawn Marquee', 'Marina Hall']],
+    ['exhibition', ['Harbourfront Hall', 'Lawn Marquee']],
     ['other', ['Garden Pavilion']],
   ])('finds the venues supporting the %s layout', async (layout, expected) => {
     expect(await namesFound({ required_layout: layout })).toEqual(expected)
