@@ -1,4 +1,4 @@
-# ADR-0055: The coordinator changes, withdraws or cancels venue arrangements from the event's Venue requests page, and the backend decides which it allows
+# ADR-0069: The coordinator changes, withdraws or cancels venue arrangements from the event's Venue requests page, and the backend decides which it allows
 
 - **Status:** Accepted; the choices in decision 7 are defaults to review with the team
 - **Date:** 2026-10-17
