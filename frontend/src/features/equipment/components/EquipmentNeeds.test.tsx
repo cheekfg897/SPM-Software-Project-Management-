@@ -72,6 +72,26 @@ async function addLine(user: User, values: { type?: string; quantity?: string; n
   await user.click(screen.getByRole('button', { name: 'Add line' }))
 }
 
+/** The cells of the line whose equipment is `name`, in the order the table shows them. */
+function cellsOf(name: string): HTMLTableCellElement[] {
+  const row = within(linesTable()).getByRole('cell', { name }).closest('tr')
+  return Array.from(row?.querySelectorAll('td') ?? [])
+}
+
+/** The Outcome cell of the line whose equipment is `name`. */
+function outcomeCell(name: string): HTMLElement {
+  const cell = cellsOf(name)[4]
+  if (cell === undefined) {
+    throw new Error(`No outcome cell for ${name}`)
+  }
+  return cell
+}
+
+/** The Status cell's words for the line whose equipment is `name`. */
+function statusOf(name: string): string | null | undefined {
+  return cellsOf(name)[3]?.textContent
+}
+
 /** Make the backend refuse every change or removal of a line with `message`. */
 function refuseLineWith(method: 'patch' | 'delete', message: string) {
   server.use(
@@ -105,7 +125,9 @@ describe('SCRUM-37 equipment page: what the event needs (AC5)', () => {
     renderApp(OPEN_PAGE, { session: TECHNICAL_SUPPORT })
 
     await screen.findByRole('table', { name: 'Equipment lines' })
-    expect(within(linesTable()).getAllByRole('columnheader')).toHaveLength(4)
+    expect(
+      within(linesTable()).queryByRole('columnheader', { name: 'Change or remove' }),
+    ).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Change|Remove|Add line/ })).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Equipment type')).not.toBeInTheDocument()
   })
@@ -409,5 +431,283 @@ describe('SCRUM-37 equipment page: removing a line (AC2)', () => {
     )
     expect(screen.getByText('Remove Microphone from this event?')).toBeInTheDocument()
     expect(lineRows()).toHaveLength(2)
+  })
+})
+
+describe('SCRUM-48 equipment page: the outcome beside each line (AC1, AC2, AC5)', () => {
+  it("shows the coordinator each line's outcome, and who reviewed it when", async () => {
+    await openAsCoordinator()
+
+    expect(within(linesTable()).getByRole('columnheader', { name: 'Outcome' })).toBeInTheDocument()
+    expect(outcomeCell('Projector')).toHaveTextContent('Not reviewed yet')
+    const microphone = within(outcomeCell('Microphone'))
+    expect(microphone.getByText('4 of 4 provided')).toBeInTheDocument()
+    expect(microphone.getByText('Reviewed by Tariq Hassan, 5 Oct, 10:00 am')).toBeInTheDocument()
+  })
+
+  it('shows the shortfall, the note and the reviewer for part or none of a request', async () => {
+    const reviewed = {
+      notes: null,
+      reviewed_at: '2026-10-06T09:15:00+08:00',
+    }
+    server.use(
+      http.get(LINES_PATH, () =>
+        HttpResponse.json({
+          event: { reference: MOCK_OPEN_EVENT_REFERENCE, name: 'Annual Partner Summit' },
+          equipment_lines: [
+            {
+              ...reviewed,
+              id: 81,
+              equipment_type_id: 2,
+              quantity: 10,
+              status: 'partially_fulfilled',
+              provided_quantity: 6,
+              shortfall: 4,
+              outcome_note: 'Four are out for repair; the venue has two more.',
+              reviewed_by: 'Nadia Rahim',
+            },
+            {
+              ...reviewed,
+              id: 82,
+              equipment_type_id: 3,
+              quantity: 3,
+              status: 'unavailable',
+              provided_quantity: 0,
+              shortfall: 3,
+              outcome_note: 'Both lecterns are booked that evening.',
+              // The reviewer's account is gone.
+              reviewed_by: null,
+            },
+          ],
+        }),
+      ),
+    )
+    renderApp(OPEN_PAGE, { session: COORDINATOR })
+
+    await screen.findByRole('table', { name: 'Equipment lines' })
+    expect(statusOf('Microphone')).toBe('Partially fulfilled')
+    const microphones = within(outcomeCell('Microphone'))
+    expect(microphones.getByText('6 of 10 provided, short by 4')).toBeInTheDocument()
+    expect(
+      microphones.getByText('Four are out for repair; the venue has two more.'),
+    ).toBeInTheDocument()
+    expect(microphones.getByText('Reviewed by Nadia Rahim, 6 Oct, 9:15 am')).toBeInTheDocument()
+    expect(statusOf('Lectern')).toBe('Unavailable')
+    const lecterns = within(outcomeCell('Lectern'))
+    expect(lecterns.getByText('0 of 3 provided, short by 3')).toBeInTheDocument()
+    expect(lecterns.getByText('Both lecterns are booked that evening.')).toBeInTheDocument()
+    expect(lecterns.getByText('Reviewed 6 Oct, 9:15 am')).toBeInTheDocument()
+  })
+})
+
+describe('SCRUM-48 equipment page: recording an outcome (AC1, AC2, AC3, AC6)', () => {
+  const OUTCOME_FORM = { name: 'Outcome for Projector' }
+
+  async function openAsTechnicalSupport() {
+    const rendered = renderApp(OPEN_PAGE, { session: TECHNICAL_SUPPORT })
+    await screen.findByRole('table', { name: 'Equipment lines' })
+    return rendered
+  }
+
+  /** Open the outcome form for `name`'s line with the button that says `action`. */
+  async function openOutcome(user: User, action: 'Record' | 'Revise', name: string) {
+    await user.click(
+      within(linesTable()).getByRole('button', { name: `${action} outcome for ${name}` }),
+    )
+    return screen.getByRole('form', { name: `Outcome for ${name}` })
+  }
+
+  /** Fill in the Projector's outcome form and save it. A value left undefined is not typed. */
+  async function recordProjector(user: User, values: { provided?: string; note?: string }) {
+    const form = await openOutcome(user, 'Record', 'Projector')
+    if (values.provided !== undefined) {
+      await user.type(within(form).getByLabelText('Quantity provided'), values.provided)
+    }
+    if (values.note !== undefined) {
+      await user.type(within(form).getByLabelText('Note for the coordinator'), values.note)
+    }
+    await user.click(within(form).getByRole('button', { name: 'Save outcome' }))
+    return form
+  }
+
+  /** The one outcome sent: to the Projector line's own path, with its body. */
+  async function sentOutcome(requests: Request[]) {
+    const sent = requests.filter((request) => request.method === 'POST')
+    expect(sent.map((request) => new URL(request.url).pathname)).toEqual([
+      `${LINES_PATH}/41/outcome`,
+    ])
+    return sentBody(requests, 'POST')
+  }
+
+  it('offers Technical Support to record an outcome for a line without one, and revise one that has one', async () => {
+    await openAsTechnicalSupport()
+
+    const table = within(linesTable())
+    expect(table.getByRole('button', { name: 'Record outcome for Projector' })).toHaveTextContent(
+      'Record outcome',
+    )
+    expect(table.getByRole('button', { name: 'Revise outcome for Microphone' })).toHaveTextContent(
+      'Revise outcome',
+    )
+  })
+
+  it('gives the coordinator no outcome controls', async () => {
+    await openAsCoordinator()
+
+    expect(screen.queryByRole('button', { name: /outcome/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('columnheader', { name: 'Review' })).not.toBeInTheDocument()
+  })
+
+  it('records part of a request with its note, and shows it beside the line (AC1)', async () => {
+    const requests = recordRequests()
+    const { user } = await openAsTechnicalSupport()
+
+    const form = await recordProjector(user, { provided: '6', note: 'Two are being repaired.' })
+
+    await waitFor(() => expect(form).not.toBeInTheDocument())
+    expect(await sentOutcome(requests)).toEqual({
+      provided_quantity: 6,
+      note: 'Two are being repaired.',
+    })
+    expect(statusOf('Projector')).toBe('Partially fulfilled')
+    const projector = within(outcomeCell('Projector'))
+    expect(projector.getByText('6 of 8 provided, short by 2')).toBeInTheDocument()
+    expect(projector.getByText('Two are being repaired.')).toBeInTheDocument()
+    expect(projector.getByText('Reviewed by Tariq Hassan, 6 Oct, 9:15 am')).toBeInTheDocument()
+  })
+
+  it('says how many were asked for', async () => {
+    const { user } = await openAsTechnicalSupport()
+
+    const form = await openOutcome(user, 'Record', 'Projector')
+
+    expect(within(form).getByText('8 asked for.')).toBeInTheDocument()
+  })
+
+  it("shows the backend's message under the note when part of it has none, and stays open (AC1)", async () => {
+    const requests = recordRequests()
+    const { user } = await openAsTechnicalSupport()
+
+    const form = await recordProjector(user, { provided: '6' })
+
+    expect(
+      await within(form).findByText('A note is required unless the whole request can be provided.'),
+    ).toBeInTheDocument()
+    expect(await sentOutcome(requests)).toEqual({ provided_quantity: 6 })
+    expect(within(form).getByLabelText('Note for the coordinator')).toBeInvalid()
+    expect(within(form).queryByRole('alert')).not.toBeInTheDocument()
+    expect(statusOf('Projector')).toBe('Awaiting Technical Support')
+  })
+
+  it('records the whole request with no note as fulfilled (AC2)', async () => {
+    const { user } = await openAsTechnicalSupport()
+
+    await recordProjector(user, { provided: '8' })
+
+    await waitFor(() => expect(statusOf('Projector')).toBe('Fulfilled'))
+    expect(within(outcomeCell('Projector')).getByText('8 of 8 provided')).toBeInTheDocument()
+  })
+
+  it('records none of it, with the reason, as unavailable (AC3)', async () => {
+    const { user } = await openAsTechnicalSupport()
+
+    await recordProjector(user, { provided: '0', note: 'All out on loan that week.' })
+
+    await waitFor(() => expect(statusOf('Projector')).toBe('Unavailable'))
+    const projector = within(outcomeCell('Projector'))
+    expect(projector.getByText('0 of 8 provided, short by 8')).toBeInTheDocument()
+    expect(projector.getByText('All out on loan that week.')).toBeInTheDocument()
+  })
+
+  it("shows the backend's message under the quantity for more than was asked for", async () => {
+    const { user } = await openAsTechnicalSupport()
+
+    const form = await recordProjector(user, { provided: '9' })
+
+    expect(
+      await within(form).findByText('Cannot provide more than was requested.'),
+    ).toBeInTheDocument()
+    expect(within(form).getByLabelText('Quantity provided')).toBeInvalid()
+  })
+
+  it('sends nothing for blank fields and shows what the backend says is missing', async () => {
+    const requests = recordRequests()
+    const { user } = await openAsTechnicalSupport()
+
+    const form = await recordProjector(user, {})
+
+    expect(await within(form).findByText('Missing data for required field.')).toBeInTheDocument()
+    expect(await sentOutcome(requests)).toEqual({})
+  })
+
+  it('revises an outcome, opening with the one recorded (AC6)', async () => {
+    const { user } = await openAsTechnicalSupport()
+    await recordProjector(user, { provided: '6', note: 'Two are being repaired.' })
+    await waitFor(() => expect(statusOf('Projector')).toBe('Partially fulfilled'))
+
+    const form = await openOutcome(user, 'Revise', 'Projector')
+    expect(within(form).getByLabelText('Quantity provided')).toHaveValue(6)
+    expect(within(form).getByLabelText('Note for the coordinator')).toHaveValue(
+      'Two are being repaired.',
+    )
+    await user.clear(within(form).getByLabelText('Quantity provided'))
+    await user.type(within(form).getByLabelText('Quantity provided'), '8')
+    await user.clear(within(form).getByLabelText('Note for the coordinator'))
+    await user.click(within(form).getByRole('button', { name: 'Save outcome' }))
+
+    await waitFor(() => expect(statusOf('Projector')).toBe('Fulfilled'))
+    expect(within(outcomeCell('Projector')).getByText('8 of 8 provided')).toBeInTheDocument()
+  })
+
+  it('opens a line met in full with its quantity and an empty note', async () => {
+    const { user } = await openAsTechnicalSupport()
+
+    const form = await openOutcome(user, 'Revise', 'Microphone')
+
+    expect(within(form).getByLabelText('Quantity provided')).toHaveValue(4)
+    expect(within(form).getByLabelText('Note for the coordinator')).toHaveValue('')
+  })
+
+  it('switches to another line with its own outcome', async () => {
+    const { user } = await openAsTechnicalSupport()
+    await openOutcome(user, 'Record', 'Projector')
+
+    const form = await openOutcome(user, 'Revise', 'Microphone')
+
+    expect(within(form).getByLabelText('Quantity provided')).toHaveValue(4)
+    expect(screen.queryByRole('form', OUTCOME_FORM)).not.toBeInTheDocument()
+  })
+
+  it('shows a refusal that is not about a field as an alert, and stays open (AC8)', async () => {
+    server.use(
+      http.post(`${LINES_PATH}/:lineId/outcome`, () =>
+        HttpResponse.json(
+          {
+            error: 'equipment_outcome_not_allowed',
+            message: 'An outcome cannot be recorded on a cancelled event.',
+          },
+          { status: 409 },
+        ),
+      ),
+    )
+    const { user } = await openAsTechnicalSupport()
+
+    const form = await recordProjector(user, { provided: '8' })
+
+    expect(await within(form).findByRole('alert')).toHaveTextContent(
+      'An outcome cannot be recorded on a cancelled event.',
+    )
+    expect(screen.getByRole('form', OUTCOME_FORM)).toBeInTheDocument()
+  })
+
+  it('closes without sending anything on cancel', async () => {
+    const requests = recordRequests()
+    const { user } = await openAsTechnicalSupport()
+    const form = await openOutcome(user, 'Record', 'Projector')
+
+    await user.click(within(form).getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.queryByRole('form', OUTCOME_FORM)).not.toBeInTheDocument()
+    expect(requests.some((request) => request.method === 'POST')).toBe(false)
   })
 })
