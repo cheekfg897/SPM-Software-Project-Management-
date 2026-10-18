@@ -275,7 +275,8 @@ export async function objectBodyOrRefusal(request: Request) {
 
 /**
  * Whether a decision may be made in the request's state: not once the event is past its
- * decision, and not a new one once it has an equipment request (SCRUM-31 AC7, ADR-0028).
+ * decision, and not a new one once it has an equipment request or a venue booking request that
+ * hasn't been withdrawn or released, which the fixture's flag stands for (SCRUM-31 AC7, ADR-0084).
  */
 function undecidableRefusal(stored: MockEventRequest) {
   const { status } = stored.request

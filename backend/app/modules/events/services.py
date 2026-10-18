@@ -2920,10 +2920,18 @@ def start_event_request_review(
     return event_request
 
 
-def _has_arrangements(event_request: EventRequest) -> bool:
-    """Whether arrangements have been made for the event (SCRUM-31 AC7, ADR-0028)."""
-    # TODO: SCRUM-42 also counts the event's venue booking requests here.
-    return len(event_request.equipment_lines) > 0
+def _has_arrangements(event_request: EventRequest, session: Session) -> bool:
+    """Whether arrangements have been made for the event (SCRUM-31 AC7, ADR-0028).
+
+    An equipment request, or a venue booking request that is still one of the event's
+    arrangements, whatever Venue Staff made of it. A withdrawn or released one is not,
+    just as a removed equipment request is gone (ADR-0084).
+    """
+    from app.modules.venue import services as venue_services  # circular at import time
+
+    if len(event_request.equipment_lines) > 0:
+        return True
+    return venue_services.count_active_arrangements(event_request.id, session=session) > 0
 
 
 def _event_request_decidable_by(
@@ -2943,7 +2951,7 @@ def _event_request_decidable_by(
     event_request = _event_request_assigned_to(coordinator_id, reference, session)
     if event_request.status not in DECIDABLE_STATUSES:
         raise RequestNotDecidableError(NOT_DECIDABLE_MESSAGE)
-    if event_request.status in DECIDED_STATUSES and _has_arrangements(event_request):
+    if event_request.status in DECIDED_STATUSES and _has_arrangements(event_request, session):
         raise DecisionLockedError(DECISION_LOCKED_MESSAGE)
     return event_request
 
