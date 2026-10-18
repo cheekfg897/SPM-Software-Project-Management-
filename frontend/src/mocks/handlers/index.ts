@@ -4,6 +4,7 @@ import { authHandlers, resetMockAccounts } from './auth'
 import { bookingHandlers, resetMockBooking } from './booking'
 import { catalogueHandlers, resetMockCatalogue } from './catalogue'
 import { eventRequestHandlers, resetMockEventRequests } from './eventRequests'
+import { eventRecordSectionHandlers } from './eventRecordSections'
 import { notificationHandlers, resetMockNotifications } from './notifications'
 import { equipmentHandlers, resetMockEquipment } from './equipment'
 import { leadHandlers, resetMockLeadQueue } from './lead'
@@ -24,6 +25,7 @@ export const handlers: RequestHandler[] = [
   ...authHandlers,
   ...catalogueHandlers,
   ...eventRequestHandlers,
+  ...eventRecordSectionHandlers,
   ...notificationHandlers,
   ...bookingHandlers,
   ...equipmentHandlers,

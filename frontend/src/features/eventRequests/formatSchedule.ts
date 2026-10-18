@@ -30,12 +30,12 @@ const NO_DATE_YET = 'Date to be set'
 type Schedule = Pick<EventRequest, 'proposed_date' | 'end_date' | 'start_time' | 'end_time'>
 
 /** e.g. "Thu, 12 Nov" for "2026-11-12". */
-function formatDay(date: string): string {
+export function formatDay(date: string): string {
   return DAY_FORMAT.format(new Date(`${date}T00:00:00Z`))
 }
 
 /** e.g. "9:00 am" for "09:00:00". */
-function formatTime(time: string): string {
+export function formatTime(time: string): string {
   return TIME_FORMAT.format(new Date(`1970-01-01T${time}Z`))
 }
 

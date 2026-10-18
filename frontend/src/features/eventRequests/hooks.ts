@@ -7,8 +7,10 @@ import {
   completeEvent,
   confirmEvent,
   decideEventRequest,
+  eventHistoryKey,
   eventRequestKeys,
   fetchAssignedEventRequests,
+  fetchEventHistory,
   fetchEventRequest,
   fetchEventRequestsWithEquipment,
   fetchMyEventRequests,
@@ -164,6 +166,16 @@ export function useEventRequest(reference: string) {
     /* v8 ignore next -- its pages are for signed-in organisers and coordinators only (RequireRole), so a viewer is always there */
     queryKey: eventRequestKeys.one(reference, viewer?.id ?? null),
     queryFn: () => fetchEventRequest(reference),
+  })
+}
+
+/** An event's history, read for whoever is signed in: an organiser is shown less (SCRUM-33). */
+export function useEventHistory(reference: string) {
+  const viewer = useAppSelector(selectSessionUser)
+  return useQuery({
+    /* v8 ignore next -- the record page is for signed-in organisers and coordinators only (RequireRole), so a viewer is always there */
+    queryKey: eventHistoryKey(reference, viewer?.id ?? null),
+    queryFn: () => fetchEventHistory(reference),
   })
 }
 

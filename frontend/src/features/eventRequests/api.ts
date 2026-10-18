@@ -161,6 +161,38 @@ export function fetchEventRequest(reference: string): Promise<EventRecord> {
   return apiRequest<EventRecord>(requestPath(reference))
 }
 
+/**
+ * One entry of an event's history (SCRUM-33, ADR-0025). `kind` is one of EVENT_HISTORY_KIND
+ * in eventHistory.ts, or one the backend has added since, so it is read as any string.
+ * `details` is shaped by the kind, and names people by name, never by id.
+ */
+export interface EventHistoryEntry {
+  kind: string
+  /** ISO date-time with an offset. */
+  occurred_at: string
+  /** Null for the system, or for someone whose account is gone. */
+  actor_name: string | null
+  details: Record<string, unknown>
+}
+
+export interface EventHistory {
+  history: EventHistoryEntry[]
+}
+
+/** An event's history: staff see all of it, an organiser what the backend shows them. */
+export function eventHistoryKey(reference: string, viewerId: number | null) {
+  return [...eventRequestKeys.all, 'history', viewerId, reference] as const
+}
+
+/**
+ * An event's history, oldest first (SCRUM-33 AC4, AC5). Staff may read it, a coordinator only
+ * for an event assigned to them, and an organiser for their organisation's events, without the
+ * entries the backend keeps internal.
+ */
+export function fetchEventHistory(reference: string): Promise<EventHistory> {
+  return apiRequest<EventHistory>(`${requestPath(reference)}/history`)
+}
+
 /** Move a submitted request assigned to the coordinator to under review (SCRUM-31 AC3). */
 export function startEventRequestReview(reference: string): Promise<EventRequest> {
   return apiRequest<EventRequest>(`${requestPath(reference)}/review`, { method: 'POST' })

@@ -104,7 +104,7 @@ function newestFirst(a: MockEventRequest, b: MockEventRequest): number {
 }
 
 /** The caller, if they hold one of `roles`; otherwise the refusal, as the decorators give it. */
-function callerOrRefusal(request: Request, roles: readonly Role[]) {
+export function callerOrRefusal(request: Request, roles: readonly Role[]) {
   const account = accountForRequest(request)
   if (account === undefined) {
     return { refusal: notAuthenticated() }
@@ -116,7 +116,7 @@ function callerOrRefusal(request: Request, roles: readonly Role[]) {
 }
 
 /** The caller, if they may work on their organisation's requests; otherwise the refusal. */
-function organiserOrRefusal(request: Request) {
+export function organiserOrRefusal(request: Request) {
   const found = callerOrRefusal(request, [ROLE.EVENT_ORGANISER])
   if ('refusal' in found) {
     return { refusal: found.refusal }
@@ -203,7 +203,7 @@ function savedDetails(request: EventRequest): Record<string, unknown> {
 }
 
 /** One of the organisation's requests the organiser may see (SCRUM-7, SCRUM-20 AC4). */
-function visibleRequest(organiserId: number, organisationId: number, reference: unknown) {
+export function visibleRequest(organiserId: number, organisationId: number, reference: unknown) {
   return storedRequests
     .filter(visibleTo(organiserId, organisationId))
     .find((stored) => stored.request.reference === reference)
@@ -233,9 +233,18 @@ function recordOf(stored: MockEventRequest) {
 }
 
 /** One of the coordinator's own assigned requests; no other, by any link (SCRUM-24 AC10). */
-function assignedRequest(coordinatorId: number, reference: unknown) {
+export function assignedRequest(coordinatorId: number, reference: unknown) {
   return storedRequests.find(
     (stored) => stored.request.reference === reference && stored.coordinator?.id === coordinatorId,
+  )
+}
+
+/** Any request but a draft, which staff never find (ADR-0024): for staff who see every event. */
+export function requestForStaff(reference: unknown) {
+  return storedRequests.find(
+    (stored) =>
+      stored.request.reference === reference &&
+      stored.request.status !== EVENT_REQUEST_STATUS.DRAFT,
   )
 }
 
