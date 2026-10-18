@@ -1,5 +1,5 @@
 import { LAYOUT_OPTIONS } from '@/config/roomLayouts'
-import { formatShortDate, formatTimeRange } from '@/lib/formatDate'
+import { formatDateTime, formatShortDate, formatTimeRange } from '@/lib/formatDate'
 
 import type { BookingRequest } from '../api'
 
@@ -17,7 +17,8 @@ function eventDates(request: BookingRequest): string {
 
 /**
  * What a booking request asks for and when its event runs, as the backend sent it
- * (SCRUM-42 AC4): the coordinator's list and Venue Staff's queue both show this.
+ * (SCRUM-42 AC4), with when its hold expires, or expired, if it has one (SCRUM-75 AC9,
+ * SCRUM-94 AC6): the coordinator's list and Venue Staff's queue both show this.
  */
 export function BookingRequestDetails({ request }: { request: BookingRequest }) {
   return (
@@ -32,6 +33,9 @@ export function BookingRequestDetails({ request }: { request: BookingRequest }) 
       <p className="text-ink-muted">
         Event: {eventDates(request)}, {request.event_start_time} – {request.event_end_time}
       </p>
+      {request.hold_expires_at !== null && (
+        <p className="text-ink-muted">Hold expiry: {formatDateTime(request.hold_expires_at)}</p>
+      )}
       {request.accessibility_needs !== null && (
         <p className="text-ink-muted">Accessibility: {request.accessibility_needs}</p>
       )}

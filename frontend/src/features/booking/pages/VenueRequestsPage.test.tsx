@@ -205,18 +205,31 @@ describe('SCRUM-42 venue requests page', () => {
   })
 })
 
-describe('SCRUM-94 expired holds on the venue requests page', () => {
-  it('shows a request whose hold ran out as Expired', async () => {
-    const expired: BookingRequest = {
+describe('SCRUM-75 and SCRUM-94 holds on the venue requests page', () => {
+  it.each([
+    ['on_hold', 'On hold'],
+    ['expired', 'Expired'],
+  ] as const)('shows a request %s as %s, with when its hold expires', async (status, label) => {
+    const held: BookingRequest = {
       ...EXISTING_REQUEST,
-      status: 'expired',
+      status,
       hold_expires_at: '2026-11-08T17:00:00+08:00',
     }
-    server.use(http.get(BOOKING_URL, () => HttpResponse.json([expired])))
+    server.use(http.get(BOOKING_URL, () => HttpResponse.json([held])))
 
     renderApp(APPROVED_PATH, SESSION)
 
     const item = await screen.findByRole('listitem', { name: /Opening keynote/ })
-    expect(item.textContent).toContain('Expired')
+    expect(item).toHaveTextContent(label)
+    expect(item).toHaveTextContent('Hold expiry: 8 Nov, 5:00 pm')
+  })
+
+  it('shows no expiry for a request that has no hold', async () => {
+    server.use(http.get(BOOKING_URL, () => HttpResponse.json([EXISTING_REQUEST])))
+
+    renderApp(APPROVED_PATH, SESSION)
+
+    const item = await screen.findByRole('listitem', { name: /Opening keynote/ })
+    expect(item).not.toHaveTextContent('Hold expiry')
   })
 })
