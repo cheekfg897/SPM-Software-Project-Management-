@@ -8,11 +8,17 @@ import {
   fetchEventAvailability,
   fetchEventEquipmentLines,
   fetchEventReservations,
+  recordEquipmentOutcome,
   removeEquipmentLine,
   reserveEquipment,
   updateEquipmentLine,
 } from './api'
-import type { EquipmentLineBody, EquipmentLineChange, ReserveEquipmentBody } from './api'
+import type {
+  EquipmentLineBody,
+  EquipmentLineChange,
+  EquipmentOutcomeChange,
+  ReserveEquipmentBody,
+} from './api'
 
 /** What is free of each equipment type for the event's period, with any shortfall. */
 export function useEventAvailability(reference: string) {
@@ -82,6 +88,15 @@ export function useRemoveEquipmentLine(reference: string) {
   const refresh = useRefreshEventEquipment(reference)
   return useMutation({
     mutationFn: (lineId: number) => removeEquipmentLine(reference, lineId),
+    onSettled: refresh,
+  })
+}
+
+/** Record or revise the outcome of one of the event's lines (SCRUM-48). */
+export function useRecordEquipmentOutcome(reference: string) {
+  const refresh = useRefreshEventEquipment(reference)
+  return useMutation({
+    mutationFn: (change: EquipmentOutcomeChange) => recordEquipmentOutcome(reference, change),
     onSettled: refresh,
   })
 }

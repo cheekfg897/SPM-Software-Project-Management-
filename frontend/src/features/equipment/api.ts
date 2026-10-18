@@ -19,6 +19,7 @@ const EQUIPMENT_PATHS = {
   RESERVATIONS: (reference: string) => `${eventPath(reference)}/reservations`,
   LINES: linesPath,
   LINE: (reference: string, lineId: number) => `${linesPath(reference)}/${lineId}`,
+  OUTCOME: (reference: string, lineId: number) => `${linesPath(reference)}/${lineId}/outcome`,
 } as const
 
 /** An equipment type: the catalogue's (SCRUM-27), which the lines are named from. */
@@ -110,6 +111,21 @@ export interface EquipmentLineChange {
   body: EquipmentLineBody
 }
 
+/**
+ * What recording a line's outcome sends (SCRUM-48): how many units will be provided, and the
+ * note for the coordinator. A blank field is not sent, so the backend says what is missing; the
+ * status is never sent, since it follows from the quantity (ADR-0040).
+ */
+export interface EquipmentOutcomeBody {
+  provided_quantity?: number
+  note?: string
+}
+
+export interface EquipmentOutcomeChange {
+  lineId: number
+  body: EquipmentOutcomeBody
+}
+
 export const equipmentKeys = {
   all: ['equipment'] as const,
   /** Everything about one event's equipment: a change to it can change every list below. */
@@ -170,4 +186,15 @@ export function updateEquipmentLine(
 /** Remove one of the event's lines. Its assigned coordinator only. */
 export function removeEquipmentLine(reference: string, lineId: number): Promise<void> {
   return apiRequest<void>(EQUIPMENT_PATHS.LINE(reference, lineId), { method: 'DELETE' })
+}
+
+/** Record or revise the outcome of one of the event's lines. Technical Support Staff only. */
+export function recordEquipmentOutcome(
+  reference: string,
+  { lineId, body }: EquipmentOutcomeChange,
+): Promise<EquipmentLine> {
+  return apiRequest<EquipmentLine>(EQUIPMENT_PATHS.OUTCOME(reference, lineId), {
+    method: 'POST',
+    body,
+  })
 }

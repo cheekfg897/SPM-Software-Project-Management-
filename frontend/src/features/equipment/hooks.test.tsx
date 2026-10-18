@@ -14,6 +14,7 @@ import {
   useEventAvailability,
   useEventEquipmentLines,
   useEventReservations,
+  useRecordEquipmentOutcome,
   useRemoveEquipmentLine,
   useReserveEquipment,
   useUpdateEquipmentLine,
@@ -179,4 +180,54 @@ describe('SCRUM-37 equipment line hooks', () => {
       await waitFor(() => expect(result.current.lines.data?.equipment_lines).toEqual([]))
     },
   )
+})
+
+describe('SCRUM-48 recording an outcome', () => {
+  function useOutcomeHooks() {
+    return {
+      lines: useEventEquipmentLines(MOCK_OPEN_EVENT_REFERENCE),
+      record: useRecordEquipmentOutcome(MOCK_OPEN_EVENT_REFERENCE),
+    }
+  }
+
+  async function renderOutcomeHooks() {
+    const rendered = renderHookWithProviders(useOutcomeHooks, { session: SESSION })
+    await waitFor(() => expect(rendered.result.current.lines.data?.equipment_lines).toHaveLength(2))
+    return rendered.result
+  }
+
+  it('reads the lines again afterwards, so the line shows its outcome', async () => {
+    const result = await renderOutcomeHooks()
+
+    act(() => {
+      result.current.record.mutate({ lineId: 41, body: { provided_quantity: 8 } })
+    })
+
+    await waitFor(() =>
+      expect(result.current.lines.data?.equipment_lines[0]).toMatchObject({
+        id: 41,
+        status: 'fulfilled',
+        provided_quantity: 8,
+      }),
+    )
+  })
+
+  it('reads the lines again after a refusal, to show what the backend has now', async () => {
+    const result = await renderOutcomeHooks()
+    // Meanwhile the coordinator removed every line, which is why the outcome is refused.
+    server.use(
+      http.get(`/api/events/requests/${MOCK_OPEN_EVENT_REFERENCE}/equipment`, () =>
+        HttpResponse.json({ event: { name: 'Annual Partner Summit' }, equipment_lines: [] }),
+      ),
+    )
+
+    act(() => {
+      result.current.record.mutate({ lineId: 999, body: { provided_quantity: 1 } })
+    })
+
+    await waitFor(() =>
+      expect(result.current.record.error?.message).toBe('Equipment line not found.'),
+    )
+    await waitFor(() => expect(result.current.lines.data?.equipment_lines).toEqual([]))
+  })
 })

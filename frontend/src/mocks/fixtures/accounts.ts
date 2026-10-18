@@ -136,6 +136,13 @@ export const MOCK_ACCOUNTS = {
     email: 'colin@connectsphere.test',
     full_name: 'Colin Tay',
   },
+  /** A second Technical Support member, so an outcome names whoever recorded it (SCRUM-48). */
+  secondTechnicalSupport: {
+    ...BASE_ACCOUNTS.technicalSupport,
+    id: 60,
+    email: 'nadia@connectsphere.test',
+    full_name: 'Nadia Rahim',
+  },
 } as const satisfies Record<string, MockAccount>
 
 const MOCK_TOKEN_PREFIX = 'mock-token-'
