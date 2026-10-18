@@ -25,7 +25,8 @@ import type { MockBookingEvent } from './bookingFixtures'
 
 /**
  * The venue module's booking request endpoints (SCRUM-42, SCRUM-43, SCRUM-93), answering as
- * backend/app/modules/venue/routes.py does, error bodies included.
+ * backend/app/modules/venue/routes.py does, error bodies included, and Venue Staff's list of
+ * events, which backend/app/modules/events/routes.py answers (SCRUM-24 AC4).
  */
 
 const BOOKING_PATH = '/api/venues/events/:reference/booking-requests'
@@ -34,6 +35,7 @@ const WITHDRAW_PATH = `${ARRANGEMENT_PATH}/withdraw`
 const CANCEL_ALL_PATH = `${BOOKING_PATH}/cancel-all`
 const PENDING_PATH = '/api/venues/booking-requests'
 const DECISION_PATH = `${PENDING_PATH}/:requestId/decision`
+const VENUE_STAFF_EVENTS_PATH = '/api/events/requests/with-venue-bookings'
 const REQUIRED_FIELDS = ['venue_id', 'starts_at', 'ends_at', 'purpose'] as const
 /** The backend's EVENT_REQUEST_NOT_FOUND_MESSAGE (events/services.py), also sent for another coordinator's event. */
 const EVENT_NOT_FOUND_MESSAGE = 'Event request not found.'
@@ -153,6 +155,34 @@ function waitingForDecision(): BookingRequest[] {
         left.event_start_time.localeCompare(right.event_start_time) ||
         left.id - right.id,
     )
+}
+
+/** Whether an arrangement still counts towards its event's venues: not retired (ADR-0039). */
+function isActive(arrangement: BookingRequest): boolean {
+  return !RETIRED_STATUSES.includes(arrangement.status)
+}
+
+/**
+ * Venue Staff's list: each event with an active booking request, newest first, as the backend's
+ * event list row (ADR-0085). The mock's ids stand in for the backend's creation times. The mock
+ * always holds the waiting requests, so its list is never empty and never carries the backend's
+ * empty-list message.
+ */
+function eventsWithVenueBookings() {
+  const listed = events.filter((event) =>
+    requests.some((existing) => existing.event_id === event.id && isActive(existing)),
+  )
+  return listed
+    .sort((left, right) => right.id - left.id)
+    .map(({ reference, name, proposed_date, end_date, start_time, end_time, status }) => ({
+      reference,
+      name,
+      proposed_date,
+      end_date,
+      start_time,
+      end_time,
+      status,
+    }))
 }
 
 function missingFieldErrors(body: Record<string, unknown>): FieldErrors {
@@ -384,6 +414,11 @@ export const bookingHandlers: RequestHandler[] = [
     return refusal ?? HttpResponse.json(waitingForDecision())
   }),
 
+  http.get(VENUE_STAFF_EVENTS_PATH, ({ request }) => {
+    const refusal = checkVenueStaff(request)
+    return refusal ?? HttpResponse.json({ event_requests: eventsWithVenueBookings() })
+  }),
+
   http.post(DECISION_PATH, async ({ request, params }) => {
     const refusal = checkVenueStaff(request)
     if (refusal !== null) {
@@ -455,9 +490,7 @@ export const bookingHandlers: RequestHandler[] = [
     if (event === undefined) {
       return notFound(EVENT_NOT_FOUND_MESSAGE)
     }
-    const active = requestsOf(event).filter(
-      (existing) => !RETIRED_STATUSES.includes(existing.status),
-    )
+    const active = requestsOf(event).filter(isActive)
     // The backend commits once, so one it cannot withdraw means none of them is.
     const stuck = active.find((existing) => !WITHDRAWABLE_STATUSES.includes(existing.status))
     if (stuck !== undefined) {
