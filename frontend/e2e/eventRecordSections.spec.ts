@@ -36,3 +36,31 @@ test('SCRUM-33, SCRUM-55: a coordinator opens an event and sees its history and 
   await expect(rows.nth(1)).toContainText('Hannah Lee')
   await expect(rows.nth(1)).toContainText('hannah.lee@example.com')
 })
+
+test('SCRUM-33: a coordinator changes the attendance, is told it is significant, and finds it in the history', async ({
+  page,
+}) => {
+  await page.goto('/staff/login')
+  await logIn(page, MOCK_ACCOUNTS.coordinator)
+  await expect(page).toHaveURL('/staff')
+
+  await page.goto('/events/EVR-7K2M9QXA')
+  await page.getByRole('link', { name: 'Edit event details' }).click()
+  await expect(page).toHaveURL('/events/EVR-7K2M9QXA/edit')
+  const attendance = page.getByLabel('Expected attendance')
+  // In mock mode the form arrives after the page: wait for its value before changing it.
+  await expect(attendance).toHaveValue('250')
+  await attendance.fill('320')
+  await page.getByRole('button', { name: 'Save changes' }).click()
+
+  const saved = page.getByRole('region', { name: 'Saved' })
+  await expect(saved).toContainText('Expected attendance changed')
+  await expect(saved.getByText('Significant change', { exact: true })).toBeVisible()
+  await saved.getByRole('link', { name: 'Back to the event' }).click()
+
+  await expect(page).toHaveURL('/events/EVR-7K2M9QXA')
+  const entries = page.getByRole('region', { name: 'History' }).getByRole('listitem')
+  await expect(entries).toHaveCount(5)
+  await expect(entries.last()).toContainText('Expected attendance changed')
+  await expect(entries.last()).toContainText('320')
+})

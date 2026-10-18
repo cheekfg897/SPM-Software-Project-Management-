@@ -19,6 +19,7 @@ import { EventEquipmentPage } from '@/features/equipment/pages/EventEquipmentPag
 import { AssignedEventRequests } from '@/features/eventRequests/components/AssignedEventRequests'
 import { MyEventRequests } from '@/features/eventRequests/components/MyEventRequests'
 import { EditDraftPage } from '@/features/eventRequests/pages/EditDraftPage'
+import { EditEventPage } from '@/features/eventRequests/pages/EditEventPage'
 import { EventRequestPage } from '@/features/eventRequests/pages/EventRequestPage'
 import { NewEventRequestPage } from '@/features/eventRequests/pages/NewEventRequestPage'
 import { LandingPage } from '@/features/landing/pages/LandingPage'
@@ -142,6 +143,14 @@ export const appRoutes: RouteObject[] = [
         element: (
           <RequireRole allowedRoles={COORDINATOR_ROLES} loginRoute={ROUTES.STAFF_LOGIN}>
             <EventRequestPage />
+          </RequireRole>
+        ),
+      },
+      {
+        path: ROUTES.EDIT_EVENT,
+        element: (
+          <RequireRole allowedRoles={COORDINATOR_ROLES} loginRoute={ROUTES.STAFF_LOGIN}>
+            <EditEventPage />
           </RequireRole>
         ),
       },

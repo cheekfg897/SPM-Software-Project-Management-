@@ -19,6 +19,8 @@ export const ROUTES = {
   /** A route pattern: `:reference` is the event's `EVR-…` reference. */
   VENUE_REQUESTS: '/events/:reference/venue-requests',
   EVENT_EQUIPMENT: '/events/:reference/equipment',
+  /** The assigned coordinator changes an event's details (SCRUM-33). */
+  EDIT_EVENT: '/events/:reference/edit',
   LEAD_QUEUE: '/staff/queue',
   /** Venue Staff's queue of booking requests waiting for a decision (SCRUM-43). */
   BOOKING_DECISIONS: '/staff/venue-requests',
@@ -81,6 +83,11 @@ export function venueRequestsPath(reference: string): string {
 /** The equipment page for one event, by its EVR- reference. */
 export function eventEquipmentPath(reference: string): string {
   return withReference(ROUTES.EVENT_EQUIPMENT, reference)
+}
+
+/** Where the assigned coordinator changes an event's details, by its EVR- reference. */
+export function editEventPath(reference: string): string {
+  return withReference(ROUTES.EDIT_EVENT, reference)
 }
 
 /** The page for editing one of the organiser's own drafts, by its EVR- reference. */
