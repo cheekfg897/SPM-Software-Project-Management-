@@ -1,3 +1,4 @@
+import { OTHER_STAFF } from '@/features/equipmentCatalogue/test/staff'
 import { ApiError, apiRequest } from '@/lib/api'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
 
@@ -30,12 +31,6 @@ const UNKNOWN_VENUE_ID = 99
 /** A valid new type kept in a store, for tests to change one field of. */
 const NEW_TYPE = { name: 'Folding table', total_quantity: 2, store_name: 'Jurong store' }
 
-/** Staff who read the catalogue but may not change it. */
-const OTHER_STAFF: [string, MockAccount][] = [
-  ['an Event Coordinator', MOCK_ACCOUNTS.coordinator],
-  ['the Event Coordinator Lead', MOCK_ACCOUNTS.lead],
-  ['Venue Staff', MOCK_ACCOUNTS.venueStaff],
-]
 const READERS: [string, MockAccount][] = [
   ...OTHER_STAFF,
   ['Technical Support', MOCK_ACCOUNTS.technicalSupport],
