@@ -5,7 +5,7 @@
 - **Stories:** SCRUM-85 Update equipment preparation details
 
 ## Context
-SCRUM-85 lets a Technical Support member record "preparation notes and a preparation status against an equipment reservation they are responsible for" (AC1), visible to the assigned coordinator and other internal users (AC2), changing nothing else of the event (AC3), with the user and time of each update (AC4), and only once the Safety Officer has approved the event (AC5, ADR-0047 decision 18). It mirrors SCRUM-84 (ADR-0048) for venues. The ACs do not say what the statuses are, who counts as "responsible", or how an update treats the notes already there.
+SCRUM-85 lets a Technical Support member record "preparation notes and a preparation status against an equipment reservation they are responsible for" (AC1), visible to the assigned coordinator and other internal users (AC2), changing nothing else of the event (AC3), with the user and time of each update (AC4), and only once the Safety Officer has approved the event (AC5, ADR-0047 decision 18). It mirrors SCRUM-84 (ADR-0049) for venues. The ACs do not say what the statuses are, who counts as "responsible", or how an update treats the notes already there.
 
 ## Decision
 1. **The reservation is the `equipment_reservations` row** (SCRUM-46): the units held for an event's period. The details live on it: `preparation_status` and `preparation_notes`.
