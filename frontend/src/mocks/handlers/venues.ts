@@ -176,15 +176,19 @@ function byStartThenId(
   return Date.parse(left.start_time) - Date.parse(right.start_time) || left.id - right.id
 }
 
-function confirmedBookingsOf(venue: Venue): MockVenueBooking[] {
+/** The statuses that hold a venue for good: confirmed, and Conflicting (HOLDING_BOOKING_STATUSES). */
+const HOLDING_STATUSES: readonly string[] = ['confirmed', 'conflicting']
+
+/** The venue's confirmed and Conflicting bookings, in start order (_holding_bookings). */
+function holdingBookingsOf(venue: Venue): MockVenueBooking[] {
   return bookings
-    .filter((booking) => booking.venue_id === venue.id && booking.status === 'confirmed')
+    .filter((booking) => booking.venue_id === venue.id && HOLDING_STATUSES.includes(booking.status))
     .sort(byStartThenId)
 }
 
 /** Each pair of the venue's confirmed bookings whose padded periods overlap. */
 function bookingOverlaps(venue: Venue): OverlapWarning[] {
-  const confirmed = confirmedBookingsOf(venue)
+  const confirmed = holdingBookingsOf(venue)
   const warnings: OverlapWarning[] = []
   confirmed.forEach((first, index) => {
     for (const second of confirmed.slice(index + 1)) {
@@ -202,7 +206,7 @@ function bookingOverlaps(venue: Venue): OverlapWarning[] {
 function blockOverlaps(venue: Venue): BlockOverlapWarning[] {
   const venueBlocks = blocks.filter((block) => block.venue_id === venue.id).sort(byStartThenId)
   const warnings: BlockOverlapWarning[] = []
-  for (const booking of confirmedBookingsOf(venue)) {
+  for (const booking of holdingBookingsOf(venue)) {
     for (const block of venueBlocks) {
       const blocked: [number, number] = [Date.parse(block.start_time), Date.parse(block.end_time)]
       const shared = sharedPeriod(heldPeriod(venue, booking), blocked)
@@ -223,7 +227,7 @@ function overlaps([start, end]: [number, number], [otherStart, otherEnd]: [numbe
 /** The venue's confirmed bookings whose padded period a block cuts into (_bookings_cut_by). */
 function bookingsCutBy(venue: Venue, blocked: [number, number]): ConflictingBooking[] {
   const conflicts: ConflictingBooking[] = []
-  for (const booking of confirmedBookingsOf(venue)) {
+  for (const booking of holdingBookingsOf(venue)) {
     const held = heldPeriod(venue, booking)
     if (overlaps(held, blocked)) {
       const [start, end] = held
@@ -251,14 +255,35 @@ function blockReason(block: MockVenueBlock, role: Role): string {
   return role === ROLE.VENUE_STAFF ? block.reason : 'maintenance'
 }
 
-const CALENDAR_KIND = { confirmed: 'confirmed_booking', tentative: 'tentative_hold' } as const
+/** A Conflicting booking still holds the venue, so it shows as the confirmed booking it is. */
+const CALENDAR_KIND = {
+  confirmed: 'confirmed_booking',
+  conflicting: 'confirmed_booking',
+  tentative: 'tentative_hold',
+} as const
 
-/** The venue's bookings that aren't cancelled and hold it at some time in `range`. */
+/**
+ * Whether a tentative hold's expiry has passed, so it no longer holds the venue (_booking_is_live,
+ * SCRUM-75). A hold without an expiry never lapses.
+ */
+function hasExpired(booking: MockVenueBooking): boolean {
+  const expiresAt = booking.hold_expires_at
+  return (
+    booking.status === 'tentative' && expiresAt !== undefined && Date.parse(expiresAt) <= Date.now()
+  )
+}
+
+/** The venue's live bookings that hold it at some time in `range`. */
 function bookingEntries(venue: Venue, range: [number, number], role: Role): CalendarEntry[] {
   const entries: CalendarEntry[] = []
   for (const booking of bookings) {
     const held = heldPeriod(venue, booking)
-    if (booking.venue_id !== venue.id || booking.status === 'cancelled' || !overlaps(held, range)) {
+    if (
+      booking.venue_id !== venue.id ||
+      booking.status === 'cancelled' ||
+      hasExpired(booking) ||
+      !overlaps(held, range)
+    ) {
       continue
     }
     const [start, end] = held

@@ -343,6 +343,53 @@ describe('SCRUM-34 venue mock: only Venue Staff see and change blocks', () => {
   })
 })
 
+describe('SCRUM-26 venue mock: which bookings still hold the venue (SCRUM-75, SCRUM-44)', () => {
+  /** Marina Hall on 14 Nov, where a Conflicting booking and two holds sit. */
+  const FOURTEEN_NOVEMBER = { range_start: '2026-11-14T00:00:00', range_end: '2026-11-15T00:00:00' }
+  /** When the earlier of the two holds on 14 Nov expires. */
+  const HOLD_EXPIRY = Date.parse('2026-11-01T09:00:00+08:00')
+
+  beforeEach(() => signInAs(ROLE.VENUE_STAFF))
+  afterEach(() => vi.useRealTimers())
+
+  function kindsOn14November() {
+    return calendar(MARINA_HALL.id, FOURTEEN_NOVEMBER).then((entries) =>
+      entries.map((entry) => [entry.kind, entry.event_start]),
+    )
+  }
+
+  it('shows a Conflicting booking as the confirmed booking it is, and a hold until it expires', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(HOLD_EXPIRY - 1)
+
+    expect(await kindsOn14November()).toEqual([
+      ['confirmed_booking', '2026-11-14T10:00:00+08:00'],
+      ['tentative_hold', '2026-11-14T13:00:00+08:00'],
+      ['tentative_hold', '2026-11-14T15:00:00+08:00'],
+    ])
+  })
+
+  it('leaves out a hold from the moment it expires, keeping one that expires later', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(HOLD_EXPIRY)
+
+    expect(await kindsOn14November()).toEqual([
+      ['confirmed_booking', '2026-11-14T10:00:00+08:00'],
+      ['tentative_hold', '2026-11-14T15:00:00+08:00'],
+    ])
+  })
+
+  it('lists a Conflicting booking a block cuts into, as the confirmed bookings are', async () => {
+    const created = await block(MARINA_HALL.id, {
+      ...MIDDAY_BLOCK,
+      start_time: '2026-11-14T10:30',
+      end_time: '2026-11-14T15:30',
+    })
+
+    expect(created.conflicting_bookings.map((conflict) => conflict.booking_id)).toEqual([531])
+  })
+})
+
 describe('SCRUM-26 venue mock: the calendar', () => {
   it('lists bookings padded by setup and turnaround with their event times, and blocks, in time order, as Venue Staff see them', async () => {
     signInAs(ROLE.VENUE_STAFF)
