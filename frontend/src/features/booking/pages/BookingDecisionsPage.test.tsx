@@ -3,7 +3,11 @@ import { http, HttpResponse } from 'msw'
 
 import { ROUTES } from '@/config/routes'
 import { MOCK_ACCOUNTS, mockSessionFor } from '@/mocks/fixtures/accounts'
-import { REJECTION_REASON_REQUIRED_MESSAGE } from '@/mocks/handlers/booking'
+import {
+  EXPIRY_NOT_BEFORE_EVENT_MESSAGE,
+  REJECTION_REASON_REQUIRED_MESSAGE,
+  SINGLE_VENUE_HOLD_MESSAGE,
+} from '@/mocks/handlers/booking'
 import { server } from '@/mocks/server'
 import { recordRequests } from '@/test/recordRequests'
 import { renderApp } from '@/test/render'
@@ -119,4 +123,104 @@ describe('SCRUM-43 the venue booking decisions screen', () => {
     await waitFor(() => expect(coordinator.router.state.location.pathname).toBe(ROUTES.STAFF_HOME))
     expect(router.state.location.pathname).toBe(ROUTES.BOOKING_DECISIONS)
   })
+})
+
+describe('SCRUM-75 holding a venue from the venue booking decisions screen', () => {
+  const HOLD_URL = `${QUEUE_URL}/9001/hold`
+
+  /** Type an expiry into the request's hold field from scratch, and send it with the button. */
+  async function sendExpiry(
+    view: ReturnType<typeof renderQueue>,
+    purpose: string,
+    expiry: string,
+    action: string,
+  ) {
+    const entry = await findRequest(purpose)
+    const field = entry.getByLabelText(`Hold expiry for ${purpose}`)
+    // The field keeps the expiry typed last, so it is cleared first.
+    await view.user.clear(field)
+    await view.user.type(field, expiry)
+    await view.user.click(entry.getByRole('button', { name: `${action} for ${purpose}` }))
+  }
+
+  /** Hold the Breakout room until 15 Nov, 5 pm, and wait for the queue to show it on hold. */
+  async function holdBreakoutRoom(view: ReturnType<typeof renderQueue>) {
+    await sendExpiry(view, 'Breakout room', '2026-11-15T17:00', 'Place hold')
+    const breakout = await findRequest('Breakout room')
+    await breakout.findByText('Hold expiry: 15 Nov, 5:00 pm')
+    return breakout
+  }
+
+  it('shows the status of each waiting request', async () => {
+    renderQueue()
+
+    const breakout = await findRequest('Breakout room')
+    expect(breakout.getByText('Pending')).toBeInTheDocument()
+  })
+
+  it('sends the typed expiry in Singapore time, then shows the request on hold with it', async () => {
+    const requests = recordRequests()
+    const view = renderQueue()
+
+    const breakout = await holdBreakoutRoom(view)
+
+    const sent = requests.find((request) => request.method === 'POST')
+    expect(sent?.url).toContain(HOLD_URL)
+    await expect(sent?.json()).resolves.toEqual({ expires_at: '2026-11-15T17:00:00+08:00' })
+    expect(breakout.getByText('On hold')).toBeInTheDocument()
+    expect(breakout.getByRole('button', { name: 'Change expiry for Breakout room' })).toBeVisible()
+  })
+
+  it("shows the backend's refusal on the card when the event has only that venue", async () => {
+    const view = renderQueue()
+
+    await sendExpiry(view, 'Main hall', '2026-11-15T17:00', 'Place hold')
+
+    const mainHall = await findRequest('Main hall')
+    expect(await mainHall.findByRole('alert')).toHaveTextContent(SINGLE_VENUE_HOLD_MESSAGE)
+    expect(mainHall.getByText('Pending')).toBeInTheDocument()
+  })
+
+  it("shows the backend's message under the expiry when it is not before the event starts", async () => {
+    const view = renderQueue()
+
+    await sendExpiry(view, 'Breakout room', '2026-11-21T09:00', 'Place hold')
+
+    const breakout = await findRequest('Breakout room')
+    await waitFor(() =>
+      expect(breakout.getByLabelText('Hold expiry for Breakout room')).toHaveAccessibleDescription(
+        EXPIRY_NOT_BEFORE_EVENT_MESSAGE,
+      ),
+    )
+    expect(breakout.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('moves the expiry of a request on hold', async () => {
+    const requests = recordRequests()
+    const view = renderQueue()
+    await holdBreakoutRoom(view)
+
+    await sendExpiry(view, 'Breakout room', '2026-11-18T12:00', 'Change expiry')
+
+    const breakout = await findRequest('Breakout room')
+    expect(await breakout.findByText('Hold expiry: 18 Nov, 12:00 pm')).toBeInTheDocument()
+    const moved = requests.find((request) => request.method === 'PATCH')
+    expect(moved?.url).toContain(HOLD_URL)
+    await expect(moved?.json()).resolves.toEqual({ expires_at: '2026-11-18T12:00:00+08:00' })
+  })
+
+  it.each(['Approve', 'Reject'])(
+    'decides a request on hold with %s, and it leaves the queue',
+    async (decision) => {
+      const view = renderQueue()
+      const breakout = await holdBreakoutRoom(view)
+
+      await view.user.type(breakout.getByLabelText('Reason for Breakout room'), 'Finalised')
+      await view.user.click(breakout.getByRole('button', { name: `${decision} Breakout room` }))
+
+      await waitFor(() =>
+        expect(screen.queryByRole('article', { name: 'Breakout room' })).toBeNull(),
+      )
+    },
+  )
 })

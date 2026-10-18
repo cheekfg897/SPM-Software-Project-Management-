@@ -4,13 +4,15 @@ import {
   bookingKeys,
   cancelAllArrangements,
   changeArrangement,
+  changeHoldExpiry,
   decideBookingRequest,
   fetchBookingRequests,
   fetchPendingBookingRequests,
+  placeBookingHold,
   raiseBookingRequest,
   withdrawArrangement,
 } from './api'
-import type { ArrangementChange, BookingDecision, RaiseBookingRequest } from './api'
+import type { ArrangementChange, BookingDecision, HoldExpiry, RaiseBookingRequest } from './api'
 
 /**
  * What to run after a change to the event's requests: their list is read again, so it shows
@@ -19,6 +21,15 @@ import type { ArrangementChange, BookingDecision, RaiseBookingRequest } from './
 function useRereadEventRequests(reference: string) {
   const queryClient = useQueryClient()
   return () => queryClient.invalidateQueries({ queryKey: bookingKeys.forEvent(reference) })
+}
+
+/**
+ * What to run after Venue Staff act on a request: their queue is read again, so a request leaves
+ * it, or shows its new status, because the backend says so.
+ */
+function useRereadQueue() {
+  const queryClient = useQueryClient()
+  return () => queryClient.invalidateQueries({ queryKey: bookingKeys.pending() })
 }
 
 /** The booking requests raised for one of the coordinator's events. */
@@ -75,9 +86,27 @@ export function usePendingBookingRequests() {
  * it because the backend says so rather than because the cache was edited here.
  */
 export function useDecideBookingRequest(requestId: number) {
-  const queryClient = useQueryClient()
+  const reread = useRereadQueue()
   return useMutation({
     mutationFn: (decision: BookingDecision) => decideBookingRequest(requestId, decision),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: bookingKeys.pending() }),
+    onSuccess: reread,
+  })
+}
+
+/** Hold the request's venue until an expiry (SCRUM-75). Afterwards the queue is read again. */
+export function usePlaceBookingHold(requestId: number) {
+  const reread = useRereadQueue()
+  return useMutation({
+    mutationFn: (hold: HoldExpiry) => placeBookingHold(requestId, hold),
+    onSuccess: reread,
+  })
+}
+
+/** Move the expiry of a request's hold (SCRUM-75 AC4). Afterwards the queue is read again. */
+export function useChangeHoldExpiry(requestId: number) {
+  const reread = useRereadQueue()
+  return useMutation({
+    mutationFn: (hold: HoldExpiry) => changeHoldExpiry(requestId, hold),
+    onSuccess: reread,
   })
 }
