@@ -1,3 +1,4 @@
+import { ROLE } from '@/config/roles'
 import { fetchRegistrants } from '@/features/eventRequests/api'
 import { refusal } from '@/test/refusal'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
@@ -13,14 +14,18 @@ import type { MockAccount } from '../fixtures/accounts'
  */
 
 /**
- * Chloe's confirmed event, in organisation 2, Sara's: 80 places, three registrants holding one,
- * and one who withdrew (SCRUM-53), who is listed but not counted.
+ * Chloe's confirmed event, in organisation 2, Sara's: 80 places, three people holding one, and
+ * one who withdrew (SCRUM-53), who is listed but not counted.
  */
 const TOWN_HALL = 'EVR-BOOK0102'
 /** Chloe's, under review, in the mock organiser's organisation: nobody registered yet. */
 const PARTNER_SUMMIT = 'EVR-7K2M9QXA'
 const NOT_FOUND = { status: 404, code: 'not_found', message: 'Event request not found.' }
 const NOT_PERMITTED = { status: 403, code: 'authorization_error' }
+/** Every role but the two the route lets in, so a role added later is checked too. */
+const REFUSED_ROLES = Object.values(ROLE).filter(
+  (role) => role !== ROLE.EVENT_ORGANISER && role !== ROLE.EVENT_COORDINATOR,
+)
 
 const TOWN_HALL_REGISTRANTS = {
   capacity: 80,
@@ -96,15 +101,16 @@ describe('SCRUM-55 mock of an event registrants: who is refused', () => {
     expect(await refusal(fetchRegistrants(TOWN_HALL))).toMatchObject(NOT_FOUND)
   })
 
-  it.each([
-    ['an attendee (AC5)', MOCK_ACCOUNTS.attendee],
-    ['the Lead', MOCK_ACCOUNTS.lead],
-    ['Technical Support', MOCK_ACCOUNTS.technicalSupport],
-  ])('refuses %s by role', async (_, account) => {
-    signInAs(account)
+  it.each(REFUSED_ROLES)(
+    'refuses an account with the %s role (AC5 for the attendee)',
+    async (role) => {
+      const account = Object.values(MOCK_ACCOUNTS).find((candidate) => candidate.role === role)
+      expect(account).toBeDefined()
+      signInAs(account ?? null)
 
-    expect(await refusal(fetchRegistrants(TOWN_HALL))).toMatchObject(NOT_PERMITTED)
-  })
+      expect(await refusal(fetchRegistrants(TOWN_HALL))).toMatchObject(NOT_PERMITTED)
+    },
+  )
 
   it('refuses an organiser with no organisation, and a visitor', async () => {
     signInAs(MOCK_ACCOUNTS.unlinkedOrganiser)
