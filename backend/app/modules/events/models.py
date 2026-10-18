@@ -160,6 +160,15 @@ class EventHistoryKind(str, enum.Enum):
     #: ``booking_id`` and ``expires_at`` (an ISO string), and ``actor_id`` is NULL,
     #: because the system expired it (SCRUM-94 AC6, ADR-0052).
     VENUE_HOLD_EXPIRED = "venue_hold_expired"
+    #: A block or deactivation left one of the event's venue arrangements needing an
+    #: alternative venue. ``details`` holds the arrangement, the venue, the category,
+    #: reason and period of the unavailability, and whether a Confirmed event went back
+    #: to Approved; ``actor_id`` is ``None`` (SCRUM-92 AC1, AC3, ADR-0053).
+    ALTERNATIVE_VENUE_NEEDED = "alternative_venue_needed"
+    #: A replacement venue was approved after the event passed its safety check, so the
+    #: approval no longer counts; ``details`` names the replacement arrangement and
+    #: ``actor_id`` is the Venue Staff user who approved it (SCRUM-92 AC10, ADR-0053).
+    SAFETY_APPROVAL_WITHDRAWN = "safety_approval_withdrawn"
 
 
 class SafetyOutcome(str, enum.Enum):

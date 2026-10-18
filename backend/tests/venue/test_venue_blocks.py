@@ -64,6 +64,7 @@ BLOCK_START, BLOCK_END = _at(3, 10), _at(3, 13)
 VALID_BLOCK = {
     "start_time": BLOCK_START.isoformat(),
     "end_time": BLOCK_END.isoformat(),
+    "category": "renovation",
     "reason": "Repainting",
 }
 #: The day before TODAY, in UTC. 15:59 UTC is 23:59 that day in Singapore; 16:30 UTC is
@@ -197,6 +198,7 @@ def test_the_block_route_returns_the_block_and_what_it_cuts_into_in_business_tim
         "venue_id": 1,
         "start_time": "2026-10-03T18:00:00+08:00",
         "end_time": "2026-10-03T21:00:00+08:00",
+        "category": "maintenance",
         "reason": "Repainting",
         "conflicting_bookings": [
             {
@@ -214,8 +216,10 @@ def test_the_block_route_returns_the_block_and_what_it_cuts_into_in_business_tim
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("missing", ["start_time", "end_time", "reason"])
-def test_reason_start_and_end_are_required(db_session: Session, venue: Venue, missing: str) -> None:
+@pytest.mark.parametrize("missing", ["start_time", "end_time", "category", "reason"])
+def test_the_period_category_and_reason_are_required(
+    db_session: Session, venue: Venue, missing: str
+) -> None:
     payload = dict(VALID_BLOCK)
     del payload[missing]
 
@@ -525,6 +529,7 @@ def test_the_list_route_shows_each_block_in_business_time(
             "venue_id": 1,
             "start_time": "2026-10-03T18:00:00+08:00",
             "end_time": "2026-10-03T21:00:00+08:00",
+            "category": "maintenance",
             "reason": "Repainting",
         }
     ]

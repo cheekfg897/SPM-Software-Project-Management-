@@ -7,7 +7,7 @@ from datetime import UTC, date, datetime, time, timedelta, timezone
 from typing import Any
 
 import pytest
-from sqlalchemy import event as sqlalchemy_event
+from sqlalchemy import event as sqlalchemy_event, select
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Session
 
@@ -23,6 +23,7 @@ from app.modules.venue.models import (
     Booking,
     BookingRequestStatus,
     BookingStatus,
+    UnavailabilityCategory,
     Venue,
     VenueBlock,
     VenueBookingRequest,
@@ -144,6 +145,64 @@ def locked_venue_reads(session: Session, action: Callable[[], object]) -> list[s
     return [sql for sql in sent if "FROM venues" in sql and "FOR UPDATE" in sql]
 
 
+#: The date a block's "not ended before today" rule is measured against (SCRUM-34).
+BLOCKING_DAY = date(2026, 10, 1)
+#: What a deactivation says about why the venue can't be used (SCRUM-92 AC9).
+DEACTIVATION = {"category": "renovation", "reason": "Closed for a refit."}
+
+
+def block(
+    venue: Venue, start: datetime, end: datetime, session: Session, **overrides: Any
+) -> VenueBlock:
+    """Block ``venue`` from ``start`` to ``end`` as Venue Staff, for maintenance."""
+    payload = {
+        "start_time": start.isoformat(),
+        "end_time": end.isoformat(),
+        "category": "maintenance",
+        "reason": "Aircon repair.",
+        **overrides,
+    }
+    saved, _ = services.block_venue(venue.id, payload, session=session, today=BLOCKING_DAY)
+    return saved
+
+
+def reload_request(session: Session, request_id: int) -> VenueBookingRequest:
+    """Read a booking request back from the database, flags and all."""
+    session.expire_all()
+    request = session.get(VenueBookingRequest, request_id)
+    assert request is not None
+    return request
+
+
+#: When the SCRUM-92 tests deactivate a venue: 20 October 2026, 12:00 in Singapore,
+#: before the default arrangement.
+DEACTIVATED_AT = datetime(2026, 10, 20, 12, 0, tzinfo=SINGAPORE)
+
+
+def reload_event(session: Session, event_id: int) -> EventRequest:
+    """Read an event back from the database rather than from the session's cache."""
+    session.expire_all()
+    event = session.get(EventRequest, event_id)
+    assert event is not None
+    return event
+
+
+def history_entries(session: Session, event_id: int) -> list[EventHistoryEntry]:
+    """The event's history entries, in the order they were written."""
+    stmt = (
+        select(EventHistoryEntry)
+        .where(EventHistoryEntry.event_request_id == event_id)
+        .order_by(EventHistoryEntry.id)
+    )
+    return list(session.scalars(stmt))
+
+
+def bookings(session: Session) -> list[tuple[int, BookingStatus]]:
+    """Every booking as (venue id, status), in the order they were made."""
+    stmt = select(Booking).order_by(Booking.id)
+    return [(booking.venue_id, booking.status) for booking in session.scalars(stmt)]
+
+
 SECOND_PERIOD = {
     "starts_at": "2026-11-01T13:00:00+08:00",
     "ends_at": "2026-11-01T16:00:00+08:00",
@@ -250,7 +309,13 @@ def make_block() -> Callable[..., VenueBlock]:
     def _make(
         venue: Venue, start: datetime, end: datetime, *, reason: str = "Maintenance"
     ) -> VenueBlock:
-        return VenueBlock(venue_id=venue.id, start_time=start, end_time=end, reason=reason)
+        return VenueBlock(
+            venue_id=venue.id,
+            start_time=start,
+            end_time=end,
+            category=UnavailabilityCategory.MAINTENANCE,
+            reason=reason,
+        )
 
     return _make
 

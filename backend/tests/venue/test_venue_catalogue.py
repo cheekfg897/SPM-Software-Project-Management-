@@ -19,6 +19,7 @@ from app.common.errors import NotFoundError, ValidationError
 from app.modules.venue import services
 from app.modules.venue.models import LIST_ITEM_MAX_LENGTH, LIST_MAX_ITEMS, LayoutType, Venue
 from app.modules.venue.schemas import VenueSchema
+from tests.venue.conftest import DEACTIVATION
 
 pytestmark = pytest.mark.scrum_25
 
@@ -339,7 +340,7 @@ def test_deactivate_saves_the_venue_as_inactive(
     venue = make_venue(is_active=True)
     save(venue)
 
-    services.deactivate_venue(venue.id, session=db_session)
+    services.deactivate_venue(venue.id, DEACTIVATION, session=db_session)
 
     assert reload_venue(venue.id).is_active is False
 
@@ -358,9 +359,11 @@ def test_reactivate_saves_the_venue_as_active(
     assert reload_venue(venue.id).is_active is True
 
 
-@pytest.mark.parametrize("action", [services.deactivate_venue, services.reactivate_venue])
-def test_deactivating_or_reactivating_an_unknown_venue_is_not_found(
-    db_session: Session, action: Callable[..., Venue]
-) -> None:
+def test_deactivating_an_unknown_venue_is_not_found(db_session: Session) -> None:
     with pytest.raises(NotFoundError):
-        action(999, session=db_session)
+        services.deactivate_venue(999, DEACTIVATION, session=db_session)
+
+
+def test_reactivating_an_unknown_venue_is_not_found(db_session: Session) -> None:
+    with pytest.raises(NotFoundError):
+        services.reactivate_venue(999, session=db_session)

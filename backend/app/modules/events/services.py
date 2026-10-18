@@ -1127,6 +1127,30 @@ def get_approved_event_for_coordinator(
     return event
 
 
+def record_alternative_venue_needed(
+    event_id: int, *, details: dict[str, Any], session: Session | None = None
+) -> None:
+    """Record that one of the event's venues became unavailable, without committing.
+
+    SCRUM-92 AC3: a Confirmed event goes back to Approved, the planning stage, for the
+    change to be reviewed; it is not cancelled, and an event at any other status keeps
+    it. The history entry says which, beside the venue module's ``details``. The system
+    did it, so the entry has no actor. It rides in the caller's transaction, with the
+    flag it records (ADR-0018).
+    """
+    event_request = resolve_session(session).get(EventRequest, event_id)
+    returned_to_planning = event_request.status is EventRequestStatus.CONFIRMED
+    if returned_to_planning:
+        event_request.status = EventRequestStatus.APPROVED
+    record_event_history(
+        event_request,
+        EventHistoryKind.ALTERNATIVE_VENUE_NEEDED,
+        actor_id=None,
+        details={**details, "returned_to_planning": returned_to_planning},
+        session=session,
+    )
+
+
 def record_venue_booking_requested(
     event_id: int,
     *,
@@ -2027,6 +2051,9 @@ INTERNAL_ONLY_KINDS: frozenset[EventHistoryKind] = frozenset(
         EventHistoryKind.SAFETY_OUTCOME_RECORDED,
         EventHistoryKind.VENUE_PREPARATION_UPDATED,
         EventHistoryKind.EQUIPMENT_PREPARATION_UPDATED,
+        # Venue Staff's note on why a venue is unavailable, which the calendar shows
+        # only to them (SCRUM-92, ADR-0053).
+        EventHistoryKind.ALTERNATIVE_VENUE_NEEDED,
     }
 )
 
@@ -2646,6 +2673,22 @@ def notify_coordinators_equipment_short(
             sess,
             detail=EQUIPMENT_SHORT_DETAIL,
         )
+
+
+def notify_coordinator_alternative_venue_needed(
+    event_id: int, *, detail: str, session: Session | None = None
+) -> None:
+    """Tell the event's assigned coordinator a venue became unavailable (SCRUM-92 AC5).
+
+    For the venue module, after the flag's own commit (ADR-0015). ``detail`` names the
+    venue, the reason and the period. With nobody assigned the flag stands, nobody is
+    told, and that is logged.
+    """
+    sess = resolve_session(session)
+    event_request = sess.get(EventRequest, event_id)
+    _notify_assigned_coordinator(
+        event_request, NotificationKind.ALTERNATIVE_VENUE_NEEDED, sess, detail=detail
+    )
 
 
 # --------------------------------------------------------------------------
@@ -3680,7 +3723,7 @@ def _venue_gaps(event_id: int, session: Session) -> list[str]:
     """Why the event's venues keep it out of Safety Review; empty when they don't.
 
     It needs at least one venue arranged, and every active arrangement approved
-    (SCRUM-97 AC1, ADR-0047).
+    (SCRUM-97 AC1, ADR-0047) and not needing an alternative venue (SCRUM-92).
     """
     from app.modules.venue import services as venue_services  # circular at import time
 
@@ -3690,6 +3733,9 @@ def _venue_gaps(event_id: int, session: Session) -> list[str]:
     gaps = []
     for arrangement in venue_services.list_unapproved_arrangements(event_id, session=session):
         gaps.append(f"Venue arrangement {arrangement.id} is {arrangement.status.value}.")
+    # SCRUM-49 AC6: an Approved booking whose venue became unavailable doesn't count.
+    for arrangement in venue_services.list_flagged_arrangements(event_id, session=session):
+        gaps.append(f"Venue arrangement {arrangement.id} needs an alternative venue.")
     return gaps
 
 

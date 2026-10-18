@@ -38,6 +38,7 @@ from app.modules.venue.models import (
     LayoutType,
     PreparationStatus,
     RequirementKind,
+    UnavailabilityCategory,
     Venue,
     VenueBookingRequest,
     Weekday,
@@ -321,30 +322,26 @@ class VenueMatchSchema(Schema):
         }
 
 
-class BlockVenueSchema(TimeRangeSchema):
-    """Payload for ``POST /api/venues/<id>/blocks`` (SCRUM-34, ADR-0016).
+CATEGORY_UNKNOWN_MESSAGE = (
+    "Category must be one of maintenance, equipment_failure, renovation, safety_concern or other."
+)
 
-    A block may start in the past, so a fault found part-way through can be recorded
-    from when it began, but it can't have ended before today. Opening hours aren't
-    checked.
 
-    Args:
-        today: The date "ended before today" is measured against. Defaults to today
-            in the business timezone; tests pass a fixed date.
+class UnavailabilitySchema(Schema):
+    """Why a venue can't be used: a category and a note (SCRUM-92 AC2, ADR-0053).
+
+    The payload for ``POST /api/venues/<id>/deactivate`` (AC9), and the part of a
+    block's payload that says why. The note keeps SCRUM-34's name, ``reason``, and its
+    rules: required, not blank, trimmed and at most 500 characters.
     """
 
-    start_time = fields.DateTime(required=True)
-    end_time = fields.DateTime(required=True)
+    category = fields.Enum(
+        UnavailabilityCategory,
+        by_value=True,
+        required=True,
+        error_messages={"unknown": CATEGORY_UNKNOWN_MESSAGE},
+    )
     reason = fields.String(required=True, validate=not_blank)
-
-    def __init__(self, *, today: date | None = None, **kwargs: Any) -> None:
-        super().__init__(**kwargs)
-        self._today = today
-
-    @property
-    def today(self) -> date:
-        """The reference date for the "not ended before today" rule."""
-        return self._today if self._today is not None else local_today()
 
     @validates("reason")
     def _reason_fits(self, value: str, **_: Any) -> None:
@@ -355,6 +352,36 @@ class BlockVenueSchema(TimeRangeSchema):
                 f"Reason must be at most {BLOCK_REASON_MAX_LENGTH} characters."
             )
 
+    @post_load
+    def _trim_reason(self, data: dict[str, Any], **_: Any) -> dict[str, Any]:
+        data["reason"] = data["reason"].strip()
+        return data
+
+
+class BlockVenueSchema(TimeRangeSchema, UnavailabilitySchema):
+    """Payload for ``POST /api/venues/<id>/blocks`` (SCRUM-34, ADR-0016).
+
+    A block may start in the past, so a fault found part-way through can be recorded
+    from when it began, but it can't have ended before today. Opening hours aren't
+    checked. Its category and note are :class:`UnavailabilitySchema`'s (SCRUM-92 AC2).
+
+    Args:
+        today: The date "ended before today" is measured against. Defaults to today
+            in the business timezone; tests pass a fixed date.
+    """
+
+    start_time = fields.DateTime(required=True)
+    end_time = fields.DateTime(required=True)
+
+    def __init__(self, *, today: date | None = None, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._today = today
+
+    @property
+    def today(self) -> date:
+        """The reference date for the "not ended before today" rule."""
+        return self._today if self._today is not None else local_today()
+
     @validates_schema
     def _does_not_end_before_today(self, data: dict[str, Any], **_: Any) -> None:
         ends_on = to_business_time(as_utc(data["end_time"])).date()
@@ -362,11 +389,6 @@ class BlockVenueSchema(TimeRangeSchema):
             raise MarshmallowValidationError(
                 "Block cannot end before today.", field_name="end_time"
             )
-
-    @post_load
-    def _trim_reason(self, data: dict[str, Any], **_: Any) -> dict[str, Any]:
-        data["reason"] = data["reason"].strip()
-        return data
 
 
 class VenueBlockSchema(Schema):
@@ -376,6 +398,7 @@ class VenueBlockSchema(Schema):
     venue_id = fields.Integer(dump_only=True)
     start_time = BusinessDateTime(dump_only=True)
     end_time = BusinessDateTime(dump_only=True)
+    category = fields.Enum(UnavailabilityCategory, by_value=True, dump_only=True)
     reason = fields.String(dump_only=True)
 
 
@@ -536,6 +559,19 @@ class HoldBookingRequestSchema(Schema):
         return data
 
 
+class AlternativeVenueFlagSchema(Schema):
+    """One reason an arrangement needs an alternative venue, in business time.
+
+    SCRUM-92 AC1. ``ends_at`` is ``null`` for a deactivated venue, which stays
+    unavailable until it is reactivated (AC9).
+    """
+
+    category = fields.Enum(UnavailabilityCategory, by_value=True, dump_only=True)
+    reason = fields.String(dump_only=True)
+    starts_at = BusinessDateTime(dump_only=True)
+    ends_at = BusinessDateTime(dump_only=True, allow_none=True)
+
+
 class VenueBookingRequestSchema(Schema):
     """A booking request as Venue Staff see it, in business time (AC4, ADR-0009)."""
 
@@ -558,6 +594,12 @@ class VenueBookingRequestSchema(Schema):
     preparation_notes = fields.String(attribute="request.preparation_notes", dump_only=True)
     #: When the request's hold expires; ``null`` unless it is On Hold (SCRUM-75).
     hold_expires_at = BusinessDateTime(dump_only=True, allow_none=True)
+    needs_alternative_venue = fields.Boolean(
+        attribute="request.needs_alternative_venue", dump_only=True
+    )
+    unavailability = fields.List(
+        fields.Nested(AlternativeVenueFlagSchema), attribute="request.flags", dump_only=True
+    )
     event_proposed_date = fields.Date(attribute="proposed_date", dump_only=True)
     event_end_date = fields.Date(attribute="end_date", dump_only=True)
     event_start_time = fields.Time(attribute="start_time", dump_only=True)

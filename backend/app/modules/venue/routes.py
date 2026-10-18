@@ -101,7 +101,7 @@ def update_venue(venue_id: int) -> tuple[Response, int]:
 @requires_role(Role.VENUE_STAFF)
 def deactivate_venue(venue_id: int) -> tuple[Response, int]:
     """Deactivate a venue (AC5)."""
-    venue = services.deactivate_venue(venue_id)
+    venue = services.deactivate_venue(venue_id, request.get_json(silent=True))
     return jsonify(_venue_schema.dump(venue)), 200
 
 

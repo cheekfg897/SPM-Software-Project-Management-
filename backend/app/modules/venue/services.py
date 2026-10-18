@@ -14,7 +14,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
 from flask import current_app
-from sqlalchemy import ColumnElement, and_, not_, or_, select
+from sqlalchemy import ColumnElement, and_, delete, not_, or_, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -28,9 +28,11 @@ from app.modules.auth.services import list_user_ids_with_role
 from app.modules.notifications.services import EventSummary, NotificationKind, notify_users
 from app.modules.venue.models import (
     DECIDABLE_REQUEST_STATUSES,
+    FLAGGABLE_REQUEST_STATUSES,
     HOLDABLE_REQUEST_STATUSES,
     HOLDING_BOOKING_STATUSES,
     RETIRED_REQUEST_STATUSES,
+    AlternativeVenueFlag,
     Booking,
     BookingDecision,
     BookingRequestStatus,
@@ -53,6 +55,7 @@ from app.modules.venue.schemas import (
     EditVenueSchema,
     HoldBookingRequestSchema,
     RaiseBookingRequestSchema,
+    UnavailabilitySchema,
     UpdatePreparationSchema,
     VenueSearchSchema,
     VenueSuitabilitySchema,
@@ -245,6 +248,131 @@ def _mark_conflicting(
             booking.status = BookingStatus.CONFLICTING
 
 
+# --------------------------------------------------------------------------
+# SCRUM-92 — flag the arrangements a venue becoming unavailable affects
+# --------------------------------------------------------------------------
+
+#: How a notice writes a time, in business time (SCRUM-92 AC5).
+NOTICE_TIME_FORMAT = "%Y-%m-%d %H:%M"
+#: How a notice ends a deactivation's period, which has no end (AC9).
+UNTIL_REACTIVATED = "until it is reactivated"
+
+
+@dataclass(frozen=True)
+class AlternativeVenueNotice:
+    """What the coordinator of one flagged arrangement's event is to be told (AC5)."""
+
+    event_id: int
+    detail: str
+
+
+def _notice_time(moment: datetime) -> str:
+    return to_business_time(as_utc(moment)).strftime(NOTICE_TIME_FORMAT)
+
+
+def _notice_detail(venue: Venue, flag: AlternativeVenueFlag) -> str:
+    """The venue, the reason and the period, as the coordinator is told (AC5).
+
+    For example ``"Main Hall is unavailable from 2026-11-01 10:00 to 2026-11-01 11:00
+    (equipment failure): Lift broken."``, in business time.
+    """
+    until = UNTIL_REACTIVATED if flag.ends_at is None else f"to {_notice_time(flag.ends_at)}"
+    return (
+        f"{venue.name} is unavailable from {_notice_time(flag.starts_at)} {until}"
+        f" ({flag.category.label}): {flag.reason}"
+    )
+
+
+def _flag_details(arrangement: VenueBookingRequest, flag: AlternativeVenueFlag) -> dict[str, Any]:
+    """The flag as the event's history entry records it, times in UTC (AC1)."""
+    ends_at = None
+    if flag.ends_at is not None:
+        ends_at = as_utc(flag.ends_at).isoformat()
+    return {
+        "venue_booking_request_id": arrangement.id,
+        "venue_id": arrangement.venue_id,
+        "category": flag.category.value,
+        "reason": flag.reason,
+        "starts_at": as_utc(flag.starts_at).isoformat(),
+        "ends_at": ends_at,
+    }
+
+
+def _flag_arrangements(
+    arrangements: list[VenueBookingRequest],
+    venue: Venue,
+    unavailability: Mapping[str, Any],
+    session: Session | None,
+) -> list[AlternativeVenueNotice]:
+    """Flag each arrangement "Needs Alternative Venue", without committing (AC1, AC3).
+
+    Each gets its own flag, made from ``unavailability`` (the flag's columns), and a
+    history entry on its event, which sends a Confirmed event back to Approved. The
+    notices are returned rather than sent, so they go out after the caller's commit
+    (ADR-0015).
+    """
+    from app.modules.events import services as event_services  # circular at import time
+
+    notices = []
+    for arrangement in arrangements:
+        flag = AlternativeVenueFlag(**unavailability)
+        arrangement.flags.append(flag)
+        event_services.record_alternative_venue_needed(
+            arrangement.event_id, details=_flag_details(arrangement, flag), session=session
+        )
+        notices.append(AlternativeVenueNotice(arrangement.event_id, _notice_detail(venue, flag)))
+    return notices
+
+
+def _tell_coordinators(notices: list[AlternativeVenueNotice], session: Session | None) -> None:
+    """Tell each flagged arrangement's coordinator, once the flags are saved (AC5)."""
+    from app.modules.events import services as event_services  # circular at import time
+
+    for notice in notices:
+        event_services.notify_coordinator_alternative_venue_needed(
+            notice.event_id, detail=notice.detail, session=session
+        )
+
+
+def _arrangements_held_during(
+    venue: Venue, start: datetime, end: datetime, session: Session
+) -> list[VenueBookingRequest]:
+    """The venue's live arrangements that hold it at any time in ``start``-``end``.
+
+    An arrangement holds the venue from its start minus setup to its end plus
+    turnaround (ADR-0011), the rule a block's conflicting bookings use (ADR-0016).
+    Earliest first.
+    """
+    setup, turnaround = _buffers(venue)
+    stmt = (
+        select(VenueBookingRequest)
+        .where(
+            VenueBookingRequest.venue_id == venue.id,
+            VenueBookingRequest.status.in_(FLAGGABLE_REQUEST_STATUSES),
+            VenueBookingRequest.starts_at < end + setup,
+            VenueBookingRequest.ends_at > start - turnaround,
+        )
+        .order_by(VenueBookingRequest.starts_at, VenueBookingRequest.id)
+    )
+    return list(session.scalars(stmt))
+
+
+def _arrangements_not_ended(
+    venue: Venue, now: datetime, session: Session
+) -> list[VenueBookingRequest]:
+    """The venue's live arrangements that end after ``now``, earliest first (AC9)."""
+    stmt = (
+        select(VenueBookingRequest)
+        .where(
+            VenueBookingRequest.venue_id == venue.id,
+            VenueBookingRequest.status.in_(FLAGGABLE_REQUEST_STATUSES),
+            VenueBookingRequest.ends_at > now,
+        )
+        .order_by(VenueBookingRequest.starts_at, VenueBookingRequest.id)
+    )
+    return list(session.scalars(stmt))
+
+
 def update_venue(
     venue_id: int, payload: Mapping[str, Any] | None, *, session: Session | None = None
 ) -> tuple[Venue, list[OverlapWarning], list[BlockOverlapWarning]]:
@@ -293,20 +421,67 @@ def update_venue(
     return venue, overlaps, block_overlaps
 
 
-def deactivate_venue(venue_id: int, *, session: Session | None = None) -> Venue:
-    """Deactivate a venue (SCRUM-25 AC5): drops out of listing and search."""
+def deactivate_venue(
+    venue_id: int,
+    payload: Mapping[str, Any] | None,
+    *,
+    session: Session | None = None,
+    now: datetime | None = None,
+) -> Venue:
+    """Deactivate a venue, saying why (SCRUM-25 AC5, SCRUM-92 AC9).
+
+    It drops out of listing and search. Every arrangement at it that has not ended is
+    flagged "Needs Alternative Venue" with the category and note, from ``now`` with no
+    end, as a block would flag it. The flags, their history entries and any Confirmed
+    event's return to Approved are saved with the deactivation, and each coordinator is
+    told afterwards (ADR-0053). Deactivating a venue that is already inactive changes
+    nothing, so its arrangements are not flagged twice.
+
+    Args:
+        venue_id: The venue to deactivate.
+        payload: Decoded JSON body: ``category`` and ``reason``, the note.
+        session: Database session; defaults to ``db.session``.
+        now: When it happened; defaults to the current instant.
+
+    Raises:
+        ValidationError: 400 — no category, or no note (details per field).
+        NotFoundError: 404 — no such venue.
+    """
+    data = load_or_raise(UnavailabilitySchema(), payload)
     sess = resolve_session(session)
     venue = get_venue(venue_id, session=sess)
+    if not venue.is_active:
+        return venue
+    if now is None:
+        now = datetime.now(timezone.utc)
+
     venue.is_active = False
+    unavailability = {**data, "venue_block_id": None, "starts_at": now, "ends_at": None}
+    arrangements = _arrangements_not_ended(venue, now, sess)
+    notices = _flag_arrangements(arrangements, venue, unavailability, session)
     sess.commit()
+    _tell_coordinators(notices, session)
     return venue
 
 
 def reactivate_venue(venue_id: int, *, session: Session | None = None) -> Venue:
-    """Reactivate a previously deactivated venue (SCRUM-25 AC6)."""
+    """Reactivate a previously deactivated venue (SCRUM-25 AC6, SCRUM-92 AC8).
+
+    The flags its deactivation left are cleared, so those arrangements stand again;
+    flags from blocks stay until each block is removed.
+    """
     sess = resolve_session(session)
     venue = get_venue(venue_id, session=sess)
     venue.is_active = True
+    arrangements_here = select(VenueBookingRequest.id).where(
+        VenueBookingRequest.venue_id == venue.id
+    )
+    sess.execute(
+        delete(AlternativeVenueFlag).where(
+            AlternativeVenueFlag.venue_block_id.is_(None),
+            AlternativeVenueFlag.booking_request_id.in_(arrangements_here),
+        )
+    )
     sess.commit()
     return venue
 
@@ -624,16 +799,22 @@ def block_venue(
     session: Session | None = None,
     today: date | None = None,
 ) -> tuple[VenueBlock, list[ConflictingBooking]]:
-    """Block a venue for a period, with a reason (SCRUM-34 AC1).
+    """Block a venue for a period, with a category and a note (SCRUM-34, SCRUM-92 AC2).
 
     The block is saved even if it cuts into confirmed bookings; those are returned
-    so Venue Staff can see what they're blocking (AC2, ADR-0016). Nothing happens to
-    the bookings themselves. Once saved, the calendar shows the block and search
-    leaves the venue out for that period (AC3).
+    so Venue Staff can see what they're blocking (AC2, ADR-0016). Once saved, the
+    calendar shows the block and search leaves the venue out for that period (AC3).
+
+    Every confirmed booking or Pending request the block cuts into is flagged "Needs
+    Alternative Venue" with the block's category, note and period (SCRUM-92 AC1); the
+    bookings themselves still hold the venue. The flags, their history entries and any
+    Confirmed event's return to Approved are saved with the block, and each event's
+    coordinator is told afterwards (AC3, AC5, ADR-0053).
 
     Args:
         venue_id: The venue to block.
-        payload: Decoded JSON body: ``start_time``, ``end_time`` and ``reason``.
+        payload: Decoded JSON body: ``start_time``, ``end_time``, ``category`` and
+            ``reason``, the note.
         session: Database session; defaults to ``db.session``.
         today: Reference date for the "not ended before today" rule; defaults to
             today in the business timezone.
@@ -651,7 +832,18 @@ def block_venue(
 
     block = VenueBlock(venue_id=venue.id, **data)
     sess.add(block)
+    sess.flush()
+    unavailability = {
+        "venue_block_id": block.id,
+        "category": block.category,
+        "reason": block.reason,
+        "starts_at": block.start_time,
+        "ends_at": block.end_time,
+    }
+    arrangements = _arrangements_held_during(venue, block.start_time, block.end_time, sess)
+    notices = _flag_arrangements(arrangements, venue, unavailability, session)
     sess.commit()
+    _tell_coordinators(notices, session)
     return block, _bookings_cut_by(venue, block, sess)
 
 
@@ -672,7 +864,8 @@ def list_venue_blocks(venue_id: int, *, session: Session | None = None) -> list[
 def remove_venue_block(venue_id: int, block_id: int, *, session: Session | None = None) -> None:
     """Delete a venue's block, making the period available again (SCRUM-34 AC4).
 
-    The block must belong to the venue in the request (ADR-0016).
+    The block must belong to the venue in the request (ADR-0016). The flags it left
+    are deleted with it, so those arrangements stand again (SCRUM-92 AC8).
 
     Raises:
         NotFoundError: 404 — no such venue, or no such block on that venue.
@@ -684,6 +877,8 @@ def remove_venue_block(venue_id: int, block_id: int, *, session: Session | None 
     )
     if block is None:
         raise NotFoundError("Block not found.")
+    left_by_block = AlternativeVenueFlag.venue_block_id == block.id
+    sess.execute(delete(AlternativeVenueFlag).where(left_by_block))
     sess.delete(block)
     sess.commit()
 
@@ -1067,6 +1262,21 @@ def list_unapproved_arrangements(
         if arrangement.status is not BookingRequestStatus.APPROVED:
             unapproved.append(arrangement)
     return unapproved
+
+
+def list_flagged_arrangements(
+    event_id: int, *, session: Session | None = None
+) -> list[VenueBookingRequest]:
+    """The event's active arrangements that need an alternative venue (SCRUM-92).
+
+    For SCRUM-49 AC6 and SCRUM-97, which hold the event back while any is listed.
+    Earliest period first.
+    """
+    flagged = []
+    for arrangement in list_active_arrangements(event_id, session=session):
+        if arrangement.needs_alternative_venue:
+            flagged.append(arrangement)
+    return flagged
 
 
 @dataclass(frozen=True)

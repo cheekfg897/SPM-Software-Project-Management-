@@ -87,6 +87,10 @@ class NotificationKind(str, enum.Enum):
     #: notification's ``detail`` (SCRUM-94, ADR-0052).
     VENUE_HOLD_EXPIRING = "venue_hold_expiring"
     VENUE_HOLD_EXPIRED = "venue_hold_expired"
+    #: Tells the event's assigned coordinator that a venue booked or requested for it
+    #: became unavailable; the venue, the reason and the period are the notification's
+    #: ``detail`` (SCRUM-92 AC5, ADR-0053).
+    ALTERNATIVE_VENUE_NEEDED = "alternative_venue_needed"
 
 
 class Notification(db.Model):  # type: ignore[name-defined]
