@@ -1,14 +1,18 @@
 /**
  * Helpers that take an event through the real backend to the point a check needs: submitted by
  * a new organiser, assigned by a Lead and approved by the staff account (an Event Coordinator),
- * then given venues by Venue Staff. The Lead and Venue Staff accounts are optional: they come
- * from INTEGRATION_LEAD_* and INTEGRATION_VENUE_STAFF_*, and the checks that need them skip
- * without them. CI makes both (frontend.yml).
+ * then given venues by Venue Staff, sent to Safety Review and approved by the Safety Officer.
+ * The Lead, Venue Staff and Safety Officer accounts are optional: they come from
+ * INTEGRATION_LEAD_*, INTEGRATION_VENUE_STAFF_* and INTEGRATION_SAFETY_OFFICER_*, and the checks
+ * that need them skip without them. CI makes all three (frontend.yml).
  */
 
 import { register } from '@/features/auth/api'
+import { decideBookingRequest, raiseBookingRequest } from '@/features/booking/api'
 import { assignCoordinator } from '@/features/lead/api'
 import { createOrganisation } from '@/features/organisations/api'
+import { recordSafetyOutcome } from '@/features/safety/api'
+import type { SafetyChecklist } from '@/features/safety/api'
 import { apiRequest } from '@/lib/api'
 
 import { newOrganiser, signInAs, staffAccount, uniqueEmail } from './backend'
@@ -32,6 +36,10 @@ export const LEAD = optionalAccount(
 export const VENUE_STAFF = optionalAccount(
   import.meta.env.INTEGRATION_VENUE_STAFF_EMAIL,
   import.meta.env.INTEGRATION_VENUE_STAFF_PASSWORD,
+)
+export const SAFETY_OFFICER = optionalAccount(
+  import.meta.env.INTEGRATION_SAFETY_OFFICER_EMAIL,
+  import.meta.env.INTEGRATION_SAFETY_OFFICER_PASSWORD,
 )
 
 /** The account, which the test's skip condition has already checked is set. */
@@ -114,4 +122,50 @@ export async function newVenue(): Promise<number> {
     },
   })
   return venue.id
+}
+
+/** A note on each of SCRUM-98 AC2's seven items. */
+export const CHECKLIST: SafetyChecklist = {
+  attendance_vs_capacity: '120 expected in a hall for 300.',
+  venue_layout: 'Theatre layout, aisles clear.',
+  emergency_access: 'Two exits, both signed.',
+  accessibility: 'Step-free entrance confirmed.',
+  equipment_placement: 'No equipment requested.',
+  crowd_movement: 'One-way flow at the doors.',
+  venue_restrictions: 'No open flames.',
+}
+
+/**
+ * An approved event with one venue booked and approved, as the staff account's to send: its
+ * reference, its name, the venue's id and the booking's id.
+ */
+export async function eventReadyForSafetyReview() {
+  const event = await approvedEvent()
+  const venueId = await newVenue()
+  await signInAs(staffAccount())
+  const booking = await raiseBookingRequest(event.reference, {
+    venue_id: venueId,
+    starts_at: `${EVENT_DATE}T09:00:00+08:00`,
+    ends_at: `${EVENT_DATE}T12:00:00+08:00`,
+    purpose: 'Integration safety check',
+  })
+  await signInAs(required(VENUE_STAFF))
+  await decideBookingRequest(booking.id, { outcome: 'approved' })
+  return { ...event, venueId, bookingId: booking.id }
+}
+
+/**
+ * An event the Safety Officer has approved, in Safety Review, with its one approved booking:
+ * what Venue Staff and Technical Support may prepare (SCRUM-84, SCRUM-85 AC5).
+ */
+export async function safetyApprovedEvent() {
+  const event = await eventReadyForSafetyReview()
+  await coordinatorPosts(event.reference, 'safety-review')
+  await signInAs(required(SAFETY_OFFICER))
+  await recordSafetyOutcome({
+    reference: event.reference,
+    outcome: 'approved',
+    checklist: CHECKLIST,
+  })
+  return event
 }

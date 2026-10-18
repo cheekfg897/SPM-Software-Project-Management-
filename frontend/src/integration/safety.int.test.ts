@@ -1,17 +1,16 @@
-import { decideBookingRequest, raiseBookingRequest } from '@/features/booking/api'
 import { fetchAwaitingSafetyReview, recordSafetyOutcome } from '@/features/safety/api'
 import type { SafetyChecklist } from '@/features/safety/api'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
 
 import { refusal, signInAs, signInAsNewAttendee, staffAccount } from './backend'
 import {
-  approvedEvent,
+  CHECKLIST,
   coordinatorPosts,
   EVENT_DATE,
+  eventReadyForSafetyReview,
   LEAD,
-  newVenue,
-  optionalAccount,
   required,
+  SAFETY_OFFICER,
   submittedEvent,
   VENUE_STAFF,
 } from './plannedEvent'
@@ -58,39 +57,8 @@ const EVENT_REQUEST_FIELDS = [
 /** A well-formed reference no database has, so the lookup finds nothing. */
 const UNKNOWN_REFERENCE = 'EVR-NOSUCH00'
 
-const SAFETY_OFFICER = optionalAccount(
-  import.meta.env.INTEGRATION_SAFETY_OFFICER_EMAIL,
-  import.meta.env.INTEGRATION_SAFETY_OFFICER_PASSWORD,
-)
 const hasSafetyOfficer = SAFETY_OFFICER !== null
 const canReachSafetyReview = hasSafetyOfficer && LEAD !== null && VENUE_STAFF !== null
-
-/** A note on each of SCRUM-98 AC2's seven items. */
-const CHECKLIST: SafetyChecklist = {
-  attendance_vs_capacity: '120 expected in a hall for 300.',
-  venue_layout: 'Theatre layout, aisles clear.',
-  emergency_access: 'Two exits, both signed.',
-  accessibility: 'Step-free entrance confirmed.',
-  equipment_placement: 'No equipment requested.',
-  crowd_movement: 'One-way flow at the doors.',
-  venue_restrictions: 'No open flames.',
-}
-
-/** An approved event with one venue booked and approved, as the staff account's to send. */
-async function eventReadyForSafetyReview() {
-  const event = await approvedEvent()
-  const venueId = await newVenue()
-  await signInAs(staffAccount())
-  const booking = await raiseBookingRequest(event.reference, {
-    venue_id: venueId,
-    starts_at: `${EVENT_DATE}T09:00:00+08:00`,
-    ends_at: `${EVENT_DATE}T12:00:00+08:00`,
-    purpose: 'Integration safety check',
-  })
-  await signInAs(required(VENUE_STAFF))
-  await decideBookingRequest(booking.id, { outcome: 'approved' })
-  return event
-}
 
 /** As the Safety Officer: the references on their list. */
 async function listedReferences(): Promise<string[]> {
