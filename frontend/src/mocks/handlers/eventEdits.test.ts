@@ -124,6 +124,15 @@ describe('SCRUM-33 mock of an edit: what changes', () => {
     ])
   })
 
+  it("keeps a longer event's length when its date moves on its own (ADR-0025)", async () => {
+    signInAs(MOCK_ACCOUNTS.coordinator)
+    await editEventRequest(PARTNER_SUMMIT, { end_date: '2026-11-14' })
+
+    const edited = await editEventRequest(PARTNER_SUMMIT, { proposed_date: '2026-11-19' })
+
+    expect(edited.end_date).toBe('2026-11-21')
+  })
+
   it('records nothing for a value that is already saved', async () => {
     signInAs(MOCK_ACCOUNTS.coordinator)
 
@@ -160,6 +169,7 @@ describe('SCRUM-33 mock of an edit: what is refused', () => {
     [{ end_time: null }, 'end_time', 'Field may not be null.'],
     [{ name: 'A new name' }, 'name', 'Unknown field.'],
     [{ end_time: '08:00' }, 'end_time', 'Event must end after it starts.'],
+    [{ end_time: '09:00' }, 'end_time', 'Event must end after it starts.'],
     [{ end_date: '2026-11-11' }, 'end_date', 'End date cannot be before the proposed date.'],
   ])('refuses %j with the message on %s', async (changes, field, message) => {
     const error = await fieldErrorsOf(changes)
