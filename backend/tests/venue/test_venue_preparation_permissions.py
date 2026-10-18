@@ -18,9 +18,11 @@ from app.modules.auth.models import User
 from app.modules.auth.permissions import ALL_ROLES, Role
 from app.modules.venue import services
 from app.modules.venue.schemas import BookingRequestAsShown
-from tests.venue.conftest import VENUE_STAFF_ID
 
 pytestmark = pytest.mark.scrum_84
+
+#: An id no fixture uses, so a route that hard-codes its user can't pass by chance.
+VENUE_STAFF_ID = 42
 
 CallRoute = Callable[..., Any]
 ReplaceServices = Callable[[ModuleType, dict[str, Any]], dict[str, MagicMock]]
