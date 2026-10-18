@@ -16,7 +16,7 @@ function hasOverlaps(saved: UpdatedVenue): boolean {
 
 /**
  * The venue's details to change (SCRUM-25 AC1, SCRUM-67 AC1). Every field is sent, so an emptied
- * required one is refused by the backend rather than kept (ADR-0053). Once saved, it goes back
+ * required one is refused by the backend rather than kept (ADR-0067). Once saved, it goes back
  * to the venue's page, which shows the change, unless a new setup or turnaround time made
  * bookings overlap: then it shows what the backend reported first (SCRUM-67 AC4).
  */

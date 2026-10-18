@@ -13,7 +13,7 @@ import { VenueSection } from './VenueSection'
 
 /**
  * What a new venue's form starts with: open every day 09:00 to 18:00, the hours the backend
- * gives a venue sent without any. Sending them keeps "no periods" meaning closed (ADR-0053).
+ * gives a venue sent without any. Sending them keeps "no periods" meaning closed (ADR-0067).
  */
 const STANDARD_HOURS: OpeningPeriod[] = WEEKDAYS.map(({ value }) => ({
   open: { day: value, time: '09:00' },

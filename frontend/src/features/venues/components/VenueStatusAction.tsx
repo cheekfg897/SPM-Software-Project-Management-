@@ -32,7 +32,7 @@ function StatusAction({ title, consequence, mutation }: StatusActionProps) {
 
 /**
  * Deactivating an active venue (SCRUM-25 AC5) or reactivating a deactivated one (AC6). It asks
- * for no confirmation: either one undoes the other (ADR-0053).
+ * for no confirmation: either one undoes the other (ADR-0067).
  */
 export function VenueStatusAction({ venue }: { venue: Venue }) {
   const deactivate = useDeactivateVenue(venue.id)

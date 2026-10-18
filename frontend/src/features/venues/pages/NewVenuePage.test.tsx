@@ -53,7 +53,7 @@ describe('SCRUM-25 adding a venue', () => {
     ).toBeInTheDocument()
   })
 
-  it('starts with the standard hours, every day 09:00 to 18:00, and sends them (ADR-0053)', async () => {
+  it('starts with the standard hours, every day 09:00 to 18:00, and sends them (ADR-0067)', async () => {
     const requests = recordRequests()
     const { user, router } = openNewVenueForm()
 

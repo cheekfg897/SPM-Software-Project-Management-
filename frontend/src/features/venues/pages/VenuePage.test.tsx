@@ -119,7 +119,7 @@ describe('SCRUM-25 a venue page', () => {
   it.each([
     { account: MOCK_ACCOUNTS.organiser, home: '/organiser' },
     { account: MOCK_ACCOUNTS.attendee, home: '/my-events' },
-  ])('sends $account.role home rather than show them a venue (ADR-0053)', ({ account, home }) => {
+  ])('sends $account.role home rather than show them a venue (ADR-0067)', ({ account, home }) => {
     const { router } = renderApp('/venues/1', { session: mockSessionFor(account) })
 
     expect(router.state.location.pathname).toBe(home)
