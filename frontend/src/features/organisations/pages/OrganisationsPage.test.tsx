@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 
+import { INTERNAL_ROLES } from '@/config/roles'
 import { ROUTES } from '@/config/routes'
 import { MOCK_ACCOUNTS, mockSessionFor } from '@/mocks/fixtures/accounts'
 import type { MockAccount } from '@/mocks/fixtures/accounts'
@@ -20,6 +21,7 @@ const STAFF = [
   MOCK_ACCOUNTS.lead,
   MOCK_ACCOUNTS.venueStaff,
   MOCK_ACCOUNTS.technicalSupport,
+  MOCK_ACCOUNTS.safetyOfficer,
 ]
 
 type AppView = ReturnType<typeof renderApp>
@@ -56,6 +58,10 @@ function recordButton(view: AppView) {
 }
 
 describe('SCRUM-66 client organisations page', () => {
+  it('tries every staff role, so a role left out of the page or the link shows', () => {
+    expect(STAFF.map((account) => account.role).sort()).toEqual([...INTERNAL_ROLES].sort())
+  })
+
   it('lists each organisation with its ID and contact details, in the backend’s order', async () => {
     openAs(MOCK_ACCOUNTS.venueStaff)
 
