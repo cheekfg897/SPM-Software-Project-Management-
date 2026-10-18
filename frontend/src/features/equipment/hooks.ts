@@ -5,7 +5,6 @@ import { selectSessionUser, useAppSelector } from '@/store'
 import {
   addEquipmentLine,
   equipmentKeys,
-  fetchEquipmentTypes,
   fetchEventAvailability,
   fetchEventEquipmentLines,
   fetchEventReservations,
@@ -14,11 +13,6 @@ import {
   updateEquipmentLine,
 } from './api'
 import type { EquipmentLineBody, EquipmentLineChange, ReserveEquipmentBody } from './api'
-
-/** Every equipment type in the catalogue, by name: where an equipment line's name comes from. */
-export function useEquipmentTypes() {
-  return useQuery({ queryKey: equipmentKeys.types(), queryFn: fetchEquipmentTypes })
-}
 
 /** What is free of each equipment type for the event's period, with any shortfall. */
 export function useEventAvailability(reference: string) {

@@ -1,5 +1,6 @@
 import { fetchEventRequestsWithEquipment } from '@/features/eventRequests/api'
-import { fetchEquipmentAwaitingAction, fetchEquipmentTypes } from '@/features/techSupport/api'
+import { fetchEquipmentTypes } from '@/features/equipmentCatalogue/api'
+import { fetchEquipmentAwaitingAction } from '@/features/techSupport/api'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
 
 import { refusal, signInAs, signInAsNewAttendee, staffAccount } from './backend'

@@ -2,10 +2,11 @@ import { useId } from 'react'
 
 import { ErrorAlert, Spinner } from '@/components/ui'
 import { ROLE } from '@/config/roles'
+import { useEquipmentTypes } from '@/features/equipmentCatalogue/hooks'
 import { selectSessionUser, useAppSelector } from '@/store'
 
 import type { EquipmentType } from '../api'
-import { useEquipmentAwaitingAction, useEquipmentTypes } from '../hooks'
+import { useEquipmentAwaitingAction } from '../hooks'
 
 import { EquipmentQueueRow } from './EquipmentQueueRow'
 

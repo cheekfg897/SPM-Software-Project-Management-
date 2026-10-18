@@ -1,10 +1,9 @@
 import type { EventRequest } from '@/features/eventRequests/api'
 import { apiRequest } from '@/lib/api'
 
-/** Technical Support's queue (backend/app/modules/events) and the equipment catalogue's types. */
+/** Technical Support's queue (backend/app/modules/events). */
 const TECH_SUPPORT_PATHS = {
   AWAITING_EQUIPMENT: '/api/events/requests/awaiting-equipment',
-  EQUIPMENT_TYPES: '/api/equipment/types',
 } as const
 
 /** An event as the equipment lists show it: its name, dates and times (ADR-0019, ADR-0022). */
@@ -40,32 +39,19 @@ export interface EquipmentAwaitingList {
   equipment_requests: EquipmentAwaitingAction[]
 }
 
-/** An equipment type in the catalogue (SCRUM-27). The queue's lines are named from these. */
-export interface EquipmentType {
-  id: number
-  name: string
-  description: string | null
-  total_quantity: number
-  venue_id: number | null
-  store_name: string | null
-}
+/** An equipment type: the catalogue's (SCRUM-27), which the queue's lines are named from. */
+export type { EquipmentType } from '@/features/equipmentCatalogue/api'
 
 /**
- * Both answers are the same for every Technical Support member and nobody else asks, so the
- * viewer isn't part of either key; signing out clears the cache (ADR-0061).
+ * The queue is the same for every Technical Support member and nobody else asks, so the viewer
+ * isn't part of its key; signing out clears the cache (ADR-0061).
  */
 export const techSupportKeys = {
   all: ['techSupport'] as const,
   awaitingEquipment: () => [...techSupportKeys.all, 'awaitingEquipment'] as const,
-  equipmentTypes: () => [...techSupportKeys.all, 'equipmentTypes'] as const,
 }
 
 /** Every upcoming event's equipment still awaiting Technical Support, soonest first (SCRUM-38). */
 export function fetchEquipmentAwaitingAction(): Promise<EquipmentAwaitingList> {
   return apiRequest<EquipmentAwaitingList>(TECH_SUPPORT_PATHS.AWAITING_EQUIPMENT)
-}
-
-/** Every equipment type, by name. Any staff role may read them. */
-export function fetchEquipmentTypes(): Promise<EquipmentType[]> {
-  return apiRequest<EquipmentType[]>(TECH_SUPPORT_PATHS.EQUIPMENT_TYPES)
 }

@@ -15,22 +15,14 @@ function linesPath(reference: string): string {
  * lines (backend/app/modules/events/routes.py, SCRUM-37). Events are named by EVR- reference.
  */
 const EQUIPMENT_PATHS = {
-  TYPES: '/api/equipment/types',
   AVAILABILITY: (reference: string) => `${eventPath(reference)}/availability`,
   RESERVATIONS: (reference: string) => `${eventPath(reference)}/reservations`,
   LINES: linesPath,
   LINE: (reference: string, lineId: number) => `${linesPath(reference)}/${lineId}`,
 } as const
 
-/** An equipment type in the catalogue (SCRUM-27). */
-export interface EquipmentType {
-  id: number
-  name: string
-  description: string | null
-  total_quantity: number
-  venue_id: number | null
-  store_name: string | null
-}
+/** An equipment type: the catalogue's (SCRUM-27), which the lines are named from. */
+export type { EquipmentType } from '@/features/equipmentCatalogue/api'
 
 /** What is free of one equipment type for the event's own period, against what it asks for. */
 export interface EquipmentAvailability {
@@ -120,8 +112,6 @@ export interface EquipmentLineChange {
 
 export const equipmentKeys = {
   all: ['equipment'] as const,
-  /** The catalogue's equipment types: the same for every member of staff. */
-  types: () => [...equipmentKeys.all, 'types'] as const,
   /** Everything about one event's equipment: a change to it can change every list below. */
   event: (reference: string) => [...equipmentKeys.all, 'event', reference] as const,
   availability: (reference: string) => [...equipmentKeys.event(reference), 'availability'] as const,
@@ -129,10 +119,6 @@ export const equipmentKeys = {
   /** A coordinator reads only their own event's lines, so the answer depends on who asks. */
   lines: (reference: string, viewerId: number | null) =>
     [...equipmentKeys.event(reference), 'lines', viewerId] as const,
-}
-
-export function fetchEquipmentTypes(): Promise<EquipmentType[]> {
-  return apiRequest<EquipmentType[]>(EQUIPMENT_PATHS.TYPES)
 }
 
 export function fetchEventAvailability(reference: string): Promise<EquipmentAvailability[]> {
