@@ -56,7 +56,6 @@ FLAGGED_STATUSES = {
     BookingRequestStatus.APPROVED,
 }
 NOT_FLAGGED_STATUSES = [status for status in BookingRequestStatus if status not in FLAGGED_STATUSES]
-#: Tuesday 20 October 2026, 12:00 in Singapore: before the default arrangement.
 
 
 def _flags(session: Session, request_id: int) -> list[Flag]:
