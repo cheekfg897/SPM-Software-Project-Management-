@@ -1,10 +1,10 @@
 import {
   addEquipmentLine,
-  fetchEquipmentTypes,
   fetchEventEquipmentLines,
   removeEquipmentLine,
   updateEquipmentLine,
 } from '@/features/equipment/api'
+import { fetchEquipmentTypes } from '@/features/equipmentCatalogue/api'
 import { apiRequest } from '@/lib/api'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
 

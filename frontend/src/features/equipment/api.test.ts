@@ -2,7 +2,6 @@ import { recordRequests } from '@/test/recordRequests'
 
 import {
   addEquipmentLine,
-  fetchEquipmentTypes,
   fetchEventAvailability,
   fetchEventEquipmentLines,
   fetchEventReservations,
@@ -58,7 +57,6 @@ describe('SCRUM-37 equipment line API paths', () => {
       `PATCH ${LINES}/${LINE_ID}`,
     ],
     ['removes a line', () => removeEquipmentLine(REFERENCE, LINE_ID), `DELETE ${LINES}/${LINE_ID}`],
-    ['reads the equipment types', () => fetchEquipmentTypes(), 'GET /api/equipment/types'],
   ])('%s at its own path, with the reference as one segment', async (_name, send, expected) => {
     await expect(sentRequest(send)).resolves.toBe(expected)
   })

@@ -1,11 +1,7 @@
 import { ErrorAlert, Spinner } from '@/components/ui'
+import { useEquipmentTypes } from '@/features/equipmentCatalogue/hooks'
 
-import {
-  useEquipmentTypes,
-  useEventAvailability,
-  useEventEquipmentLines,
-  useEventReservations,
-} from '../hooks'
+import { useEventAvailability, useEventEquipmentLines, useEventReservations } from '../hooks'
 
 import { AvailabilityTable } from './AvailabilityTable'
 import { EquipmentNeeds } from './EquipmentNeeds'
