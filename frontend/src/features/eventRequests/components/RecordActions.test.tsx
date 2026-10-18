@@ -216,25 +216,45 @@ describe('SCRUM-69 registration settings', () => {
   }
 
   it.each([
-    [CONFIRMED_NOT_ENDED, 'Open', 'The organiser asked for registration.'],
-    [CONFIRMED_AND_ENDED, 'Closed', 'The organiser did not ask for registration.'],
+    [CONFIRMED_NOT_ENDED, 'The organiser asked for registration.'],
+    [CONFIRMED_AND_ENDED, 'The organiser did not ask for registration.'],
   ])(
-    "starts %s at the organiser's answer, %s, with the capacity empty",
-    async (reference, choice, answer) => {
+    'starts %s with nothing chosen or typed, and nothing to save yet',
+    async (reference, answer) => {
       openAsHana(reference)
 
       const card = await registrationCard()
       expect(card).toHaveTextContent(answer)
-      expect(within(card).getByRole('radio', { name: choice })).toBeChecked()
+      expect(card).toHaveTextContent(
+        'Pick one only to change it; left unpicked, registration stays as it is.',
+      )
+      expect(within(card).getByRole('radio', { name: 'Open' })).not.toBeChecked()
+      expect(within(card).getByRole('radio', { name: 'Closed' })).not.toBeChecked()
       expect(within(card).getByLabelText('Capacity')).toHaveValue(null)
+      expect(within(card).getByRole('button', { name: 'Save registration' })).toBeDisabled()
     },
   )
 
-  it('opens registration with the capacity typed, and says what the backend now holds', async () => {
+  it('keeps registration open when only a new capacity is saved, sending just the capacity', async () => {
+    const requests = recordRequests()
+    const { user } = openAsHana(CONFIRMED_AND_ENDED)
+    const card = await registrationCard()
+
+    await user.type(within(card).getByLabelText('Capacity'), '60')
+    await user.click(within(card).getByRole('button', { name: 'Save registration' }))
+
+    expect(await within(card).findByRole('status')).toHaveTextContent(
+      'Registration is open. Capacity: 60.',
+    )
+    expect(await sentChange(requests)).toEqual({ registration_capacity: 60 })
+  })
+
+  it('opens registration with the capacity typed when Open is picked, sending both', async () => {
     const requests = recordRequests()
     const { user } = openAsHana(CONFIRMED_NOT_ENDED)
     const card = await registrationCard()
 
+    await user.click(within(card).getByRole('radio', { name: 'Open' }))
     await user.type(within(card).getByLabelText('Capacity'), '120')
     await user.click(within(card).getByRole('button', { name: 'Save registration' }))
 
@@ -247,11 +267,12 @@ describe('SCRUM-69 registration settings', () => {
     })
   })
 
-  it("closes registration, sending no capacity when the box is empty, so the event's is kept", async () => {
+  it("closes registration when Closed is picked, sending no capacity, so the event's is kept", async () => {
     const requests = recordRequests()
     const { user } = openAsHana(CONFIRMED_AND_ENDED)
     const card = await registrationCard()
 
+    await user.click(within(card).getByRole('radio', { name: 'Closed' }))
     await user.click(within(card).getByRole('button', { name: 'Save registration' }))
 
     expect(await within(card).findByRole('status')).toHaveTextContent(
@@ -264,6 +285,7 @@ describe('SCRUM-69 registration settings', () => {
     const { user } = openAsHana(CONFIRMED_NOT_ENDED)
     const card = await registrationCard()
 
+    await user.click(within(card).getByRole('radio', { name: 'Open' }))
     await user.click(within(card).getByRole('button', { name: 'Save registration' }))
 
     expect(await within(card).findByRole('alert')).toHaveTextContent('Invalid request.')
@@ -305,6 +327,7 @@ describe('SCRUM-69 registration settings', () => {
   it('stops saying what was saved once a later save is refused', async () => {
     const { user } = openAsHana(CONFIRMED_AND_ENDED)
     const card = await registrationCard()
+    await user.click(within(card).getByRole('radio', { name: 'Closed' }))
     await user.click(within(card).getByRole('button', { name: 'Save registration' }))
     await within(card).findByRole('status')
 
@@ -327,10 +350,7 @@ describe('SCRUM-69 registration settings', () => {
     expect(within(card).getByLabelText('Capacity')).toHaveAccessibleDescription(
       'Not a valid integer.',
     )
-    expect(await sentChange(requests)).toEqual({
-      registration_enabled: true,
-      registration_capacity: 1.5,
-    })
+    expect(await sentChange(requests)).toEqual({ registration_capacity: 1.5 })
   })
 
   it("shows the backend's own words for a refusal, as they come", async () => {
@@ -363,8 +383,10 @@ describe('SCRUM-69 registration settings', () => {
       ),
     )
     const { user } = openAsHana(CONFIRMED_NOT_ENDED)
-    const save = within(await registrationCard()).getByRole('button', { name: 'Save registration' })
+    const card = await registrationCard()
+    const save = within(card).getByRole('button', { name: 'Save registration' })
 
+    await user.type(within(card).getByLabelText('Capacity'), '120')
     await user.click(save)
 
     expect(save).toBeDisabled()
