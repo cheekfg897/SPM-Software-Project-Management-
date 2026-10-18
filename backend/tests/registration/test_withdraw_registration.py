@@ -33,6 +33,7 @@ from app.modules.registration.services import (
     MyRegistration,
     WithdrawalClosedError,
     count_registered,
+    list_catalogue,
     register_for_event,
     withdraw_registration,
 )
@@ -316,6 +317,23 @@ def test_my_list_shows_a_withdrawn_registration_with_its_status_and_when(
         "Kept": (RegistrationStatus.REGISTERED, None),
         "Dropped": (RegistrationStatus.WITHDRAWN, now),
     }
+
+
+def test_the_catalogue_stops_showing_a_withdrawn_attendee_as_registered(
+    db_session: Session,
+    now: datetime,
+    register: Act,
+    withdraw: Act,
+    open_event: EventRequest,
+) -> None:
+    register(ATTENDEE, open_event.id)
+    before = list_catalogue({}, ATTENDEE, session=db_session, now=now)
+
+    withdraw(ATTENDEE, open_event.id)
+
+    after = list_catalogue({}, ATTENDEE, session=db_session, now=now)
+    assert [entry.is_registered for entry in before.items] == [True]
+    assert [entry.is_registered for entry in after.items] == [False]
 
 
 # --------------------------------------------------------------------------
