@@ -10,7 +10,8 @@ undoes the change.
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from unittest.mock import patch
 
 import pytest
@@ -53,6 +54,26 @@ def _detail(venue: Venue) -> str:
         f"{venue.name}: a change to its setup or turnaround time makes this event's booking"
         " overlap another booking or a block."
     )
+
+
+@contextmanager
+def _commit_fails(session: Session, failing_commit: int) -> Iterator[None]:
+    """Make the session's ``failing_commit``-th commit fail; the others save as usual.
+
+    The first commit saves the change and its marks; each later one is one booking's
+    notices.
+    """
+    real_commit = session.commit
+    commits: list[str] = []
+
+    def commit_or_fail() -> None:
+        commits.append("commit")
+        if len(commits) == failing_commit:
+            raise OperationalError("INSERT", {}, Exception("database down"))
+        real_commit()
+
+    with patch.object(session, "commit", side_effect=commit_or_fail):
+        yield
 
 
 @pytest.fixture()
@@ -265,18 +286,9 @@ def test_a_failed_notification_keeps_the_saved_change_and_is_logged(
     venue = venue_with_buffers(0, 0)
     booking = confirmed_booking(venue, at(9), at(10), event_id=event.id)
     confirmed_booking(venue, at(10, 30), at(11))
-    real_commit = db_session.commit
-    commits: list[str] = []
-
-    def commit_unless_notifying() -> None:
-        # The first commit saves the change and the marks; the second is the notice.
-        commits.append("commit")
-        if len(commits) == 2:
-            raise OperationalError("INSERT", {}, Exception("database down"))
-        real_commit()
 
     with (
-        patch.object(db_session, "commit", side_effect=commit_unless_notifying),
+        _commit_fails(db_session, failing_commit=2),
         caplog.at_level(logging.WARNING, logger="connectsphere.venue"),
     ):
         services.update_venue(venue.id, LONGER_TURNAROUND, session=db_session)
@@ -287,4 +299,33 @@ def test_a_failed_notification_keeps_the_saved_change_and_is_logged(
     assert db_session.get(Venue, venue.id).turnaround_minutes == 45
     assert [record.getMessage() for record in caplog.records] == [
         f"venue_booking_notification_failed reference={event.reference}"
+    ]
+
+
+def test_a_failed_notice_for_one_booking_still_lets_the_next_booking_be_reported(
+    db_session: Session,
+    saved_users: list[User],
+    two_events: tuple[EventRequest, EventRequest],
+    venue_with_buffers: VenueWithBuffers,
+    confirmed_booking: SaveBooking,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Only the first booking's notice is lost; it isn't saved with the second's."""
+    first_event, second_event = two_events
+    venue = venue_with_buffers(0, 0)
+    confirmed_booking(venue, at(9), at(10), event_id=first_event.id)
+    confirmed_booking(venue, at(10, 30), at(11), event_id=second_event.id)
+
+    with (
+        _commit_fails(db_session, failing_commit=2),
+        caplog.at_level(logging.WARNING, logger="connectsphere.venue"),
+    ):
+        services.update_venue(venue.id, LONGER_TURNAROUND, session=db_session)
+
+    db_session.rollback()  # throws away anything that was not committed
+    assert _conflict_notices(db_session) == [
+        (VENUE_STAFF_ID, second_event.id, second_event.reference, _detail(venue))
+    ]
+    assert [record.getMessage() for record in caplog.records] == [
+        f"venue_booking_notification_failed reference={first_event.reference}"
     ]
