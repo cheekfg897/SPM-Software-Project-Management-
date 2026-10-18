@@ -2,7 +2,7 @@ import { Button, ErrorAlert } from '@/components/ui'
 import type { EventRequestStatus } from '@/config/eventStatus'
 
 import type { EventRecord } from '../api'
-import { useCompleteEvent, useSendToSafetyReview } from '../hooks'
+import { useCompleteEvent, useConfirmEvent, useSendToSafetyReview } from '../hooks'
 
 import { ActionCard } from './ActionCard'
 import { RecordSection } from './RecordSection'
@@ -19,6 +19,25 @@ function SendToSafetyReview({ record }: { record: EventRecord }) {
       <ErrorAlert error={send.error} listDetails />
       <Button isPending={send.isPending} onClick={() => send.mutate()}>
         Send to safety review
+      </Button>
+    </ActionCard>
+  )
+}
+
+/**
+ * Confirm an event in safety review; a refusal names every approval still missing (SCRUM-49).
+ * The organiser is told by the backend's own notification.
+ */
+function ConfirmEvent({ record }: { record: EventRecord }) {
+  const confirm = useConfirmEvent(record.reference)
+  return (
+    <ActionCard
+      title="Confirm the event"
+      description="Once the Safety Officer has approved it and every venue and equipment request is settled. The organiser is told."
+    >
+      <ErrorAlert error={confirm.error} listDetails />
+      <Button isPending={confirm.isPending} onClick={() => confirm.mutate()}>
+        Confirm event
       </Button>
     </ActionCard>
   )
@@ -43,6 +62,7 @@ function MarkCompleted({ record }: { record: EventRecord }) {
 /** Every planning action's card, each drawn for the event it acts on. */
 const ACTION_CARDS = {
   sendToSafetyReview: SendToSafetyReview,
+  confirm: ConfirmEvent,
   registration: RegistrationSettingsForm,
   complete: MarkCompleted,
 }
@@ -62,7 +82,7 @@ const PLANNING_ACTIONS_BY_STATUS: Record<EventRequestStatus, readonly PlanningAc
   under_review: NOTHING_TO_OFFER,
   awaiting_clarification: NOTHING_TO_OFFER,
   approved: ['sendToSafetyReview'],
-  safety_review: NOTHING_TO_OFFER,
+  safety_review: ['confirm'],
   confirmed: ['registration', 'complete'],
   completed: NOTHING_TO_OFFER,
   cancelled: NOTHING_TO_OFFER,
@@ -71,8 +91,8 @@ const PLANNING_ACTIONS_BY_STATUS: Record<EventRequestStatus, readonly PlanningAc
 
 /**
  * The assigned coordinator's planning actions on an event once it is approved: send it to
- * safety review (SCRUM-97), set its registration (SCRUM-69) and mark it completed (SCRUM-68)
- * (ADR-0075). Nothing is drawn when no action can apply.
+ * safety review (SCRUM-97), confirm it (SCRUM-49), set its registration (SCRUM-69) and mark
+ * it completed (SCRUM-68) (ADR-0075). Nothing is drawn when no action can apply.
  */
 export function RecordActions({ record }: { record: EventRecord }) {
   const actions = PLANNING_ACTIONS_BY_STATUS[record.status]

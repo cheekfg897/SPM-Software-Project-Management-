@@ -5,6 +5,7 @@ import { selectSessionUser, useAppSelector } from '@/store'
 import {
   answerClarification,
   completeEvent,
+  confirmEvent,
   decideEventRequest,
   eventRequestKeys,
   fetchAssignedEventRequests,
@@ -133,6 +134,12 @@ export function useAnswerClarification(reference: string) {
 export function useSendToSafetyReview(reference: string) {
   const refresh = useRefreshEventRequests()
   return useMutation({ mutationFn: () => sendToSafetyReview(reference), onSuccess: refresh })
+}
+
+/** Confirm an event assigned to the coordinator once every approval is in (SCRUM-49). */
+export function useConfirmEvent(reference: string) {
+  const refresh = useRefreshEventRequests()
+  return useMutation({ mutationFn: () => confirmEvent(reference), onSuccess: refresh })
 }
 
 /** Mark a confirmed event assigned to the coordinator completed once it has ended (SCRUM-68). */
