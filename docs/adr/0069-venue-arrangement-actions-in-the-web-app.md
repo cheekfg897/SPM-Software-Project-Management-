@@ -24,11 +24,14 @@ about AC10's event-status rule.
    list gets **Change** and **Withdraw**, and the list ends with **Cancel all venue requests**.
    No new route or page.
 2. **The backend decides which action an arrangement allows.** The page offers Change and
-   Withdraw on every arrangement that is not withdrawn, and shows the backend's refusal under the
+   Withdraw on every arrangement that is not retired, and shows the backend's refusal under the
    arrangement it was about (for example "Only a pending arrangement can be changed; this one is
    approved."). It does not copy the backend's status rules (`WITHDRAWABLE_REQUEST_STATUSES`, the
    pending-only change), so a rule the backend changes is not left behind in the browser. A
-   withdrawn arrangement is retired, so it is listed with its status and no actions.
+   retired arrangement (withdrawn, or released when an approved replacement took over it,
+   SCRUM-92) is listed with its status and no actions. One flagged "Needs Alternative Venue"
+   (SCRUM-92) says so under its details; its reason and a way to raise its replacement are left
+   to a SCRUM-92 screen.
 3. **A change sends what the form holds.** The form opens with the arrangement's purpose,
    occupancy, layout and justification, and sends the purpose and the layout every time (an empty
    layout as `null`, which clears it, ADR-0039 §9). An empty occupancy or justification is left
@@ -59,8 +62,11 @@ about AC10's event-status rule.
   the backend sends; a test pins that with a message only the backend could send. The mock
   backend mirrors `main`, so it has no event-status refusal either. Listed under Tickets to open.
 - The mock backend (`mocks/handlers/booking.ts`) now answers the three routes, lists an event's
-  requests earliest period first then by id, and lets only a pending request block the same slot
-  (the backend's partial unique index), so a withdrawn or rejected slot can be raised again.
+  requests earliest period first then by id, and lets only a pending, conflicting or held request
+  block the same slot (the backend's partial unique index), so a withdrawn or rejected slot can
+  be raised again. It follows main's statuses since SCRUM-75, SCRUM-94 and SCRUM-92: an expired
+  arrangement can be withdrawn, cancel all leaves out withdrawn and released ones and is refused
+  while one is approved or on hold.
 - The mock checks the change body the way `ChangeArrangementSchema` does for what the screen can
   send. One known difference: a numeric string as the occupancy, which marshmallow accepts, is
   refused by the mock; the web app only sends numbers.
@@ -68,5 +74,4 @@ about AC10's event-status rule.
 ## Revisit when
 - The backend adds the event-status refusal (AC10): mirror it in the mock and turn the contract
   test's `it.todo` into a real one.
-- SCRUM-75 adds `on_hold`: add its label to `STATUS_LABELS`.
 - The team decides any of the defaults in decision 7.
