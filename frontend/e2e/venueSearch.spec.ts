@@ -32,6 +32,7 @@ test('a coordinator finds the free venues for an event and learns why another do
   await expect(results.getByRole('heading', { level: 3 })).toHaveText([
     'Garden Pavilion',
     'Harbourfront Hall',
+    'Marina Hall',
   ])
   await expect(page.getByRole('article', { name: 'Garden Pavilion' })).toContainText(
     'step-free access',

@@ -78,9 +78,13 @@ describe('SCRUM-25 venue mock: reading', () => {
     const venues = await apiRequest<Venue[]>('/api/venues')
 
     expect(venues.map((venue) => venue.name)).toEqual([
+      'Boardroom Five',
       'Boardroom Two',
       'Garden Pavilion',
+      'Harbourfront Hall',
+      'Lawn Marquee',
       'Marina Hall',
+      'Orchid Room',
     ])
   })
 
@@ -88,7 +92,7 @@ describe('SCRUM-25 venue mock: reading', () => {
     for (const role of Object.values(ROLE)) {
       signInAs(role)
 
-      await expect(apiRequest<Venue[]>('/api/venues')).resolves.toHaveLength(3)
+      await expect(apiRequest<Venue[]>('/api/venues')).resolves.toHaveLength(7)
       await expect(apiRequest<Venue>(venueUrl(BOARDROOM_TWO.id))).resolves.toMatchObject({
         name: 'Boardroom Two',
       })

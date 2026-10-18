@@ -7,8 +7,8 @@ import { recordRequests } from '@/test/recordRequests'
 import { renderApp } from '@/test/render'
 
 const VENUE_STAFF = mockSessionFor(MOCK_ACCOUNTS.venueStaff)
-/** Garden Pavilion (active) and Annexe Studio (deactivated), written out. */
-const GARDEN_PAGE = '/venues/27'
+/** Lawn Marquee (active) and Annexe Studio (deactivated), written out. */
+const MARQUEE_PAGE = '/venues/27'
 const ANNEXE_PAGE = '/venues/38'
 const DEACTIVATED_NOTICE = /This venue is deactivated/
 
@@ -22,7 +22,7 @@ async function openTheList(user: ReturnType<typeof renderApp>['user']) {
 describe('SCRUM-25 deactivating a venue (AC5)', () => {
   it('deactivates the venue, which then says so and leaves the list', async () => {
     const requests = recordRequests()
-    const { user } = renderApp(GARDEN_PAGE, { session: VENUE_STAFF })
+    const { user } = renderApp(MARQUEE_PAGE, { session: VENUE_STAFF })
 
     await user.click(await screen.findByRole('button', { name: 'Deactivate venue' }))
 
@@ -32,11 +32,11 @@ describe('SCRUM-25 deactivating a venue (AC5)', () => {
     expect(screen.getByRole('button', { name: 'Reactivate venue' })).toBeInTheDocument()
     const list = await openTheList(user)
     expect(list.getByRole('link', { name: /Marina Hall/ })).toBeInTheDocument()
-    expect(list.queryByRole('link', { name: /Garden Pavilion/ })).not.toBeInTheDocument()
+    expect(list.queryByRole('link', { name: /Lawn Marquee/ })).not.toBeInTheDocument()
   })
 
   it('says what deactivating does before it is done', async () => {
-    renderApp(GARDEN_PAGE, { session: VENUE_STAFF })
+    renderApp(MARQUEE_PAGE, { session: VENUE_STAFF })
 
     const section = await screen.findByRole('region', { name: 'Deactivate venue' })
 
@@ -54,7 +54,7 @@ describe('SCRUM-25 deactivating a venue (AC5)', () => {
         ),
       ),
     )
-    const { user } = renderApp(GARDEN_PAGE, { session: VENUE_STAFF })
+    const { user } = renderApp(MARQUEE_PAGE, { session: VENUE_STAFF })
 
     await user.click(await screen.findByRole('button', { name: 'Deactivate venue' }))
 

@@ -8,18 +8,18 @@ import { renderApp } from '@/test/render'
 import { bodyOf, period, periodCount, retype } from '../test/venueFormSteps'
 
 const VENUE_STAFF = mockSessionFor(MOCK_ACCOUNTS.venueStaff)
-const GARDEN = MOCK_VENUES.gardenPavilion
-/** Garden Pavilion's pages, written out so a wrong path builder can't agree with itself. */
-const GARDEN_PAGE = '/venues/27'
-const GARDEN_EDIT_PAGE = '/venues/27/edit'
+const MARQUEE = MOCK_VENUES.lawnMarquee
+/** Lawn Marquee's pages, written out so a wrong path builder can't agree with itself. */
+const MARQUEE_PAGE = '/venues/27'
+const MARQUEE_EDIT_PAGE = '/venues/27/edit'
 const OTHER_STAFF = [MOCK_ACCOUNTS.coordinator, MOCK_ACCOUNTS.lead, MOCK_ACCOUNTS.technicalSupport]
 
 function openEditForm() {
-  return renderApp(GARDEN_EDIT_PAGE, { session: VENUE_STAFF })
+  return renderApp(MARQUEE_EDIT_PAGE, { session: VENUE_STAFF })
 }
 
 async function waitForTheForm() {
-  return screen.findByRole('heading', { level: 1, name: 'Edit Garden Pavilion' })
+  return screen.findByRole('heading', { level: 1, name: 'Edit Lawn Marquee' })
 }
 
 describe('SCRUM-25 editing a venue', () => {
@@ -27,7 +27,7 @@ describe('SCRUM-25 editing a venue', () => {
     openEditForm()
     await waitForTheForm()
 
-    expect(screen.getByLabelText('Name')).toHaveValue('Garden Pavilion')
+    expect(screen.getByLabelText('Name')).toHaveValue('Lawn Marquee')
     expect(screen.getByLabelText('Location')).toHaveValue('East Lawn')
     expect(screen.getByLabelText('Capacity')).toHaveValue(120)
     expect(screen.getByRole('checkbox', { name: 'Banquet' })).toBeChecked()
@@ -55,14 +55,14 @@ describe('SCRUM-25 editing a venue', () => {
     const { user, router } = openEditForm()
     await waitForTheForm()
 
-    await retype(user, screen.getByLabelText('Name'), 'Garden Marquee')
+    await retype(user, screen.getByLabelText('Name'), 'Lawn Pavilion')
     await retype(user, screen.getByLabelText('Capacity'), '150')
     await user.click(screen.getByRole('checkbox', { name: 'Banquet' }))
     await user.click(screen.getByRole('button', { name: 'Save changes' }))
 
-    await waitFor(() => expect(router.state.location.pathname).toBe(GARDEN_PAGE))
+    await waitFor(() => expect(router.state.location.pathname).toBe(MARQUEE_PAGE))
     expect(await bodyOf(requests, 'PATCH')).toEqual({
-      name: 'Garden Marquee',
+      name: 'Lawn Pavilion',
       location: 'East Lawn',
       capacity: 150,
       facilities: ['sound system'],
@@ -70,10 +70,10 @@ describe('SCRUM-25 editing a venue', () => {
       supported_layouts: ['exhibition'],
       setup_minutes: 45,
       turnaround_minutes: 15,
-      opening_hours: GARDEN.opening_hours,
+      opening_hours: MARQUEE.opening_hours,
     })
     expect(
-      await screen.findByRole('heading', { level: 1, name: 'Garden Marquee' }),
+      await screen.findByRole('heading', { level: 1, name: 'Lawn Pavilion' }),
     ).toBeInTheDocument()
   })
 
@@ -87,7 +87,7 @@ describe('SCRUM-25 editing a venue', () => {
 
     expect(await screen.findByText('Field may not be null.')).toBeInTheDocument()
     expect(screen.getByLabelText('Name')).toHaveAccessibleDescription('Must not be blank.')
-    expect(router.state.location.pathname).toBe(GARDEN_EDIT_PAGE)
+    expect(router.state.location.pathname).toBe(MARQUEE_EDIT_PAGE)
   })
 
   it('refuses a capacity of 0 with the backend message (AC2)', async () => {
@@ -109,24 +109,24 @@ describe('SCRUM-25 editing a venue', () => {
 
 describe('SCRUM-25 who may edit a venue (AC4)', () => {
   it('shows Venue Staff an Edit link on the venue page', async () => {
-    const { user, router } = renderApp(GARDEN_PAGE, { session: VENUE_STAFF })
+    const { user, router } = renderApp(MARQUEE_PAGE, { session: VENUE_STAFF })
 
     await user.click(await screen.findByRole('link', { name: 'Edit venue' }))
 
-    expect(router.state.location.pathname).toBe(GARDEN_EDIT_PAGE)
+    expect(router.state.location.pathname).toBe(MARQUEE_EDIT_PAGE)
   })
 
   it.each(OTHER_STAFF)('shows $full_name the venue read-only', async (account) => {
-    renderApp(GARDEN_PAGE, { session: mockSessionFor(account) })
-    await screen.findByRole('heading', { level: 1, name: 'Garden Pavilion' })
+    renderApp(MARQUEE_PAGE, { session: mockSessionFor(account) })
+    await screen.findByRole('heading', { level: 1, name: 'Lawn Marquee' })
 
     expect(screen.queryByRole('link', { name: 'Edit venue' })).not.toBeInTheDocument()
   })
 
   it.each(OTHER_STAFF)('sends $full_name away from the form', (account) => {
-    const { router } = renderApp(GARDEN_EDIT_PAGE, { session: mockSessionFor(account) })
+    const { router } = renderApp(MARQUEE_EDIT_PAGE, { session: mockSessionFor(account) })
 
-    expect(router.state.location.pathname).not.toBe(GARDEN_EDIT_PAGE)
+    expect(router.state.location.pathname).not.toBe(MARQUEE_EDIT_PAGE)
     expect(screen.queryByRole('button', { name: 'Save changes' })).not.toBeInTheDocument()
   })
 })

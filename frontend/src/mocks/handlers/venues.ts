@@ -49,6 +49,11 @@ export function resetMockVenues(): void {
 
 resetMockVenues()
 
+/** The venues as they stand now, for the venue search and suitability mocks (venueSearch.ts). */
+export function currentMockVenues(): readonly Venue[] {
+  return venues
+}
+
 /** Anyone signed in may read a venue; otherwise the response to send. */
 function checkSignedIn(request: Request) {
   return accountForRequest(request) === undefined ? notAuthenticated() : null

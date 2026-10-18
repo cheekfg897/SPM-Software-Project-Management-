@@ -26,8 +26,8 @@ function venueLinks(): (string | null)[] {
 describe('SCRUM-25 the venue list', () => {
   it('lists the venues in the order the backend sent, each with its location and capacity', async () => {
     const marina = MOCK_VENUES.marinaHall
-    const garden = MOCK_VENUES.gardenPavilion
-    server.use(http.get('/api/venues', () => HttpResponse.json([marina, garden])))
+    const marquee = MOCK_VENUES.lawnMarquee
+    server.use(http.get('/api/venues', () => HttpResponse.json([marina, marquee])))
     renderApp(ROUTES.VENUES, { session: COORDINATOR })
 
     const marinaLink = await screen.findByRole('link', { name: /Marina Hall/ })
@@ -42,14 +42,22 @@ describe('SCRUM-25 the venue list', () => {
 
     await screen.findByRole('link', { name: /Boardroom Two/ })
 
-    expect(venueLinks()).toEqual(['/venues/2', '/venues/27', '/venues/1'])
+    expect(venueLinks()).toEqual([
+      '/venues/35',
+      '/venues/2',
+      '/venues/33',
+      '/venues/31',
+      '/venues/27',
+      '/venues/1',
+      '/venues/32',
+    ])
     expect(screen.queryByText('Annexe Studio')).not.toBeInTheDocument()
   })
 
   it('opens a venue from its row', async () => {
     const { user, router } = renderApp(ROUTES.VENUES, { session: COORDINATOR })
 
-    await user.click(await screen.findByRole('link', { name: /Garden Pavilion/ }))
+    await user.click(await screen.findByRole('link', { name: /Lawn Marquee/ }))
 
     expect(router.state.location.pathname).toBe('/venues/27')
   })
