@@ -16,6 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.common.errors import ConflictError, NotFoundError, ValidationError
+from app.modules.auth.models import User
 from app.modules.auth.permissions import Role
 from app.modules.events import services as event_services
 from app.modules.events.models import EventHistoryEntry, EventHistoryKind, EventRequest
@@ -41,6 +42,9 @@ pytestmark = pytest.mark.scrum_84
 IN_PROGRESS = {"status": "in_progress", "notes": "Chairs set out, stage to do."}
 #: A Venue Staff id no fixture uses, so a hard-coded actor can't pass by chance.
 OTHER_VENUE_STAFF_ID = 42
+#: The Event Organiser ``saved_users`` saves, and their client organisation.
+ORGANISER_ID = 7
+ORGANISER_ORGANISATION_ID = 3
 #: Every status but approved, built from the enum so a status added later is tested.
 NOT_APPROVED_STATUSES = [
     status for status in BookingRequestStatus if status is not BookingRequestStatus.APPROVED
@@ -137,6 +141,25 @@ def test_other_internal_users_read_the_details_in_the_events_history(
     ]
     assert entry.details["status"] == "in_progress"
     assert entry.details["notes"] == "Chairs set out, stage to do."
+
+
+def test_the_organiser_never_sees_the_preparation_in_the_history(
+    db_session: Session, saved_users: list[User], venue: Venue, saved_event: SavedEvent
+) -> None:
+    """ADR-0049 decision 6: the entry is internal-only, but the booking's are not."""
+    event = saved_event()
+    event.organisation_id = ORGANISER_ORGANISATION_ID
+    booking = _approved_booking(venue, event, db_session)
+    _record(booking, IN_PROGRESS, db_session)
+
+    history = event_services.list_event_history(
+        ORGANISER_ID, event.reference, viewer_role=Role.EVENT_ORGANISER, session=db_session
+    )
+
+    assert [shown.kind for shown in history] == [
+        EventHistoryKind.VENUE_BOOKING_REQUESTED,
+        EventHistoryKind.VENUE_BOOKING_APPROVED,
+    ]
 
 
 @pytest.mark.parametrize("field", ["purpose", "venue_id", "event_id", "decision_reason"])
