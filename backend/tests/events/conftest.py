@@ -48,7 +48,7 @@ from app.modules.notifications.services import (
     list_notifications_for_recipient,
 )
 from app.modules.venue.models import BookingRequestStatus, Venue, VenueBookingRequest
-from tests.events.cases import DRAFT_REFERENCE, LEAD_ID, AddLine, Arrange
+from tests.events.cases import DRAFT_REFERENCE, LEAD_ID, AddLine, Arrange, SaveArrangement
 
 #: Every role but the Lead, so a role added later is refused unless a test says not.
 NON_LEAD_ROLES = sorted(ALL_ROLES - {Role.EVENT_COORDINATOR_LEAD}, key=lambda role: role.value)
@@ -733,28 +733,42 @@ def record_entry(saved_event_request: EventRequest, db_session: Session) -> Call
 
 
 @pytest.fixture()
-def arrange(saved_event_request: EventRequest, venue: Venue, save: Callable[..., None]) -> Arrange:
-    """Save a venue arrangement for ``saved_event_request`` with the given status.
+def save_arrangement(save: Callable[..., None]) -> SaveArrangement:
+    """Save a venue arrangement for an event at a venue, with the given status.
 
     Each one starts an hour after the last, so two Pending ones never share a period.
     """
     arranged: list[VenueBookingRequest] = []
 
-    def _arrange(status: BookingRequestStatus) -> VenueBookingRequest:
+    def _save(
+        event_request: EventRequest, venue: Venue, status: BookingRequestStatus
+    ) -> VenueBookingRequest:
         hour = 9 + len(arranged)
         arrangement = VenueBookingRequest(
-            event_id=saved_event_request.id,
+            event_id=event_request.id,
             venue_id=venue.id,
             starts_at=datetime(2026, 11, 1, hour, tzinfo=timezone.utc),
             ends_at=datetime(2026, 11, 1, hour, 30, tzinfo=timezone.utc),
             purpose="Main session",
             expected_occupancy=80,
             status=status,
-            requested_by=saved_event_request.coordinator_id,
+            requested_by=event_request.coordinator_id,
         )
         save(arrangement)
         arranged.append(arrangement)
         return arrangement
+
+    return _save
+
+
+@pytest.fixture()
+def arrange(
+    saved_event_request: EventRequest, venue: Venue, save_arrangement: SaveArrangement
+) -> Arrange:
+    """Save a venue arrangement for ``saved_event_request`` at ``venue``."""
+
+    def _arrange(status: BookingRequestStatus) -> VenueBookingRequest:
+        return save_arrangement(saved_event_request, venue, status)
 
     return _arrange
 

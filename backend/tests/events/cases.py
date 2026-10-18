@@ -8,11 +8,13 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy.exc import OperationalError
 
-from app.modules.events.models import EventEquipmentLine, EventRequestStatus
-from app.modules.venue.models import BookingRequestStatus, VenueBookingRequest
+from app.modules.events.models import EventEquipmentLine, EventRequest, EventRequestStatus
+from app.modules.venue.models import BookingRequestStatus, Venue, VenueBookingRequest
 
-#: The ``arrange`` and ``add_line`` fixtures' callables (SCRUM-97, SCRUM-49).
+#: The ``arrange``, ``save_arrangement`` and ``add_line`` fixtures' callables (SCRUM-97,
+#: SCRUM-49).
 Arrange = Callable[[BookingRequestStatus], VenueBookingRequest]
+SaveArrangement = Callable[[EventRequest, Venue, BookingRequestStatus], VenueBookingRequest]
 AddLine = Callable[[int | None], EventEquipmentLine]
 
 
