@@ -91,6 +91,10 @@ class NotificationKind(str, enum.Enum):
     #: became unavailable; the venue, the reason and the period are the notification's
     #: ``detail`` (SCRUM-92 AC5, ADR-0053).
     ALTERNATIVE_VENUE_NEEDED = "alternative_venue_needed"
+    #: Tells every Venue Staff user that a change to a venue's setup or turnaround time
+    #: marked a confirmed booking Conflicting, once per booking it newly marks; the
+    #: ``detail`` names the venue (SCRUM-50 AC6, ADR-0055).
+    VENUE_BOOKING_CONFLICTING = "venue_booking_conflicting"
 
 
 class Notification(db.Model):  # type: ignore[name-defined]
