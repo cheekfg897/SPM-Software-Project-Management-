@@ -96,12 +96,13 @@ describe('SCRUM-25 only Venue Staff change the catalogue (AC4)', () => {
   it('refuses an attendee changing, deactivating or reactivating a venue (403)', async () => {
     await signInAsNewAttendee()
 
+    // Each call starts only when the one before has been refused, so none rejects unawaited.
     for (const write of [
-      updateVenue(UNKNOWN_VENUE_ID, uniqueVenue()),
-      deactivateVenue(UNKNOWN_VENUE_ID),
-      reactivateVenue(UNKNOWN_VENUE_ID),
+      () => updateVenue(UNKNOWN_VENUE_ID, uniqueVenue()),
+      () => deactivateVenue(UNKNOWN_VENUE_ID),
+      () => reactivateVenue(UNKNOWN_VENUE_ID),
     ]) {
-      const error = await refusal(write)
+      const error = await refusal(write())
       expect(error).toMatchObject({ status: 403, code: 'authorization_error' })
     }
   })
