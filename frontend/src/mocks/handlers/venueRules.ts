@@ -1,3 +1,4 @@
+import { UNAVAILABILITY_CATEGORIES } from '@/config/unavailabilityCategories'
 import { VENUE_LAYOUTS } from '@/config/venueLayouts'
 import { WEEKDAYS } from '@/features/venues/constants'
 import type { FieldErrors } from '@/lib/api'
@@ -321,6 +322,66 @@ export function newVenueErrors(body: Record<string, unknown>): FieldErrors {
     if (!(field in body)) {
       errors[field] = [MISSING_MESSAGE]
     }
+  }
+  return errors
+}
+
+/*
+ * Deactivating (UnavailabilitySchema in venue/schemas.py, SCRUM-92 AC9, ADR-0053): a category
+ * and a note, both required. Marshmallow's Enum field calls anything that isn't one of the
+ * values unknown, whatever its type, and the note is measured once trimmed.
+ */
+
+const CATEGORY_VALUES: readonly string[] = UNAVAILABILITY_CATEGORIES.map(
+  (category) => category.value,
+)
+const CATEGORY_UNKNOWN_MESSAGE =
+  'Category must be one of maintenance, equipment_failure, renovation, safety_concern or other.'
+const REASON_MAX_LENGTH = 500
+const DEACTIVATION_FIELDS: readonly string[] = ['category', 'reason']
+
+function categoryErrors(value: unknown): string[] {
+  if (value === null) {
+    return [NULL_MESSAGE]
+  }
+  return typeof value === 'string' && CATEGORY_VALUES.includes(value)
+    ? []
+    : [CATEGORY_UNKNOWN_MESSAGE]
+}
+
+function reasonErrors(value: unknown): string[] {
+  if (value === null) {
+    return [NULL_MESSAGE]
+  }
+  if (typeof value !== 'string') {
+    return ['Not a valid string.']
+  }
+  if (value.trim() === '') {
+    return ['Must not be blank.']
+  }
+  if (value.trim().length > REASON_MAX_LENGTH) {
+    return [`Reason must be at most ${REASON_MAX_LENGTH} characters.`]
+  }
+  return []
+}
+
+/** What deactivating a venue is refused for: a field left out, a bad one, or an unknown one. */
+export function deactivationErrors(body: Record<string, unknown>): FieldErrors {
+  const errors: FieldErrors = {}
+  for (const field of Object.keys(body)) {
+    if (!DEACTIVATION_FIELDS.includes(field)) {
+      errors[field] = ['Unknown field.']
+    }
+  }
+  if ('category' in body) {
+    addMessages(errors, 'category', categoryErrors(body.category))
+  } else {
+    errors.category = [MISSING_MESSAGE]
+  }
+  if ('reason' in body) {
+    addMessages(errors, 'reason', reasonErrors(body.reason))
+  } else {
+    errors.reason = [MISSING_MESSAGE]
   }
   return errors
 }
