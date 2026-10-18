@@ -29,7 +29,8 @@ NON_TECHNICAL_SUPPORT_ROLES = sorted(
     ALL_ROLES - {Role.TECHNICAL_SUPPORT_STAFF}, key=lambda role: role.value
 )
 
-TECHNICAL_SUPPORT_ID = 5
+#: An id no fixture uses, so a route that hard-codes its user can't pass by chance.
+TECHNICAL_SUPPORT_ID = 42
 RESERVATION_ID = 12
 PATH = f"/api/equipment/reservations/{RESERVATION_ID}/preparation"
 ENDPOINT = "equipment.update_preparation_details"
