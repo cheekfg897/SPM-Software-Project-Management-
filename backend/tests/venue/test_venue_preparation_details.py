@@ -53,14 +53,11 @@ NOT_APPROVED_STATUSES = [
 ]
 
 
-def _approved_booking(
-    venue: Venue, event: EventRequest, session: Session, *, safety_approved: bool = True
-) -> VenueBookingRequest:
-    """An approved booking for an event the Safety Officer has (by default) approved."""
+def _approved_booking(venue: Venue, event: EventRequest, session: Session) -> VenueBookingRequest:
+    """An approved booking for an event the Safety Officer has approved."""
     booking = raise_booking(venue, event, session)
     decide(booking.id, "approved", session)
-    if safety_approved:
-        approve_safety(event, session)
+    approve_safety(event, session)
     return booking
 
 
@@ -237,7 +234,8 @@ def test_nothing_is_recorded_before_the_safety_officer_approves(
     db_session: Session, venue: Venue, saved_event: SavedEvent
 ) -> None:
     """AC5."""
-    booking = _approved_booking(venue, saved_event(), db_session, safety_approved=False)
+    booking = raise_booking(venue, saved_event(), db_session)
+    decide(booking.id, "approved", db_session)
 
     with pytest.raises(ConflictError) as caught:
         _record(booking, IN_PROGRESS, db_session)
