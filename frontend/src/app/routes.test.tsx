@@ -63,6 +63,29 @@ describe('app routes', () => {
     ).not.toBeInTheDocument()
   })
 
+  it('links an Event Coordinator to venue search (SCRUM-35)', () => {
+    renderApp(ROUTES.EVENTS, { session: mockSessionFor(MOCK_ACCOUNTS.coordinator) })
+
+    const header = within(screen.getByRole('banner'))
+    expect(header.getByRole('link', { name: 'Find a venue' })).toHaveAttribute(
+      'href',
+      ROUTES.VENUE_SEARCH,
+    )
+  })
+
+  it.each([
+    ['a visitor', undefined],
+    ['an attendee', ATTENDEE],
+    ['Venue Staff', mockSessionFor(MOCK_ACCOUNTS.venueStaff)],
+    ['a Lead', mockSessionFor(MOCK_ACCOUNTS.lead)],
+  ])('shows %s no link to venue search, which only coordinators may use', (_who, session) => {
+    renderApp(ROUTES.EVENTS, session === undefined ? {} : { session })
+
+    expect(
+      within(screen.getByRole('banner')).queryByRole('link', { name: 'Find a venue' }),
+    ).not.toBeInTheDocument()
+  })
+
   it.each([
     ['an attendee', ROUTES.MY_EVENTS, ATTENDEE],
     ['an organiser', ROUTES.ORGANISER_HOME, mockSessionFor(MOCK_ACCOUNTS.organiser)],

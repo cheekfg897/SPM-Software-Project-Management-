@@ -70,6 +70,12 @@ function MainNav() {
           Safety review
         </NavLink>
       )}
+      {/* An Event Coordinator's venue search (SCRUM-35, ADR-0073). */}
+      {user?.role === ROLE.EVENT_COORDINATOR && (
+        <NavLink to={ROUTES.VENUE_SEARCH} className={NAV_LINK_CLASSES}>
+          Find a venue
+        </NavLink>
+      )}
     </nav>
   )
 }
