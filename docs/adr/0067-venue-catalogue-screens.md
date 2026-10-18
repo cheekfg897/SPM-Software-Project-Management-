@@ -68,7 +68,8 @@ the API leaves these open for a client:
 - The list and each venue's page are cached per venue and read again after any change to a venue,
   so the list and the page agree with the backend (AC3).
 - The room layouts the backend accepts are in `src/config/venueLayouts.ts`, so a second feature
-  can share them; the booking form still has its own copy.
+  can share them; the booking form still has its own copy. The unavailability categories sit
+  beside them in `src/config/unavailabilityCategories.ts`, shared with the booking feature.
 - The overlap message for opening hours counts periods from 0 ("Overlaps opening period 0."),
   while the form numbers them from 1, so a message can name the period before the one it sits
   under.
@@ -78,5 +79,6 @@ the API leaves these open for a client:
   venues for them (a ticket to open), and the list gains a filter.
 - The backend's opening-hours messages number periods from 1.
 - The Product Owner wants venue pages for Organisers.
-- The booking feature's `UnavailabilityCategory` type (from SCRUM-92 on main) and
-  `src/config/unavailabilityCategories.ts` meet: one should be built from the other.
+- The backend adds or renames an unavailability category: `src/config/unavailabilityCategories.ts`
+  holds the one list, and the `UnavailabilityCategory` type built from it, that the booking
+  feature's types, the deactivation question and the venue mock all use.
