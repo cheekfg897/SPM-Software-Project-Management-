@@ -1,6 +1,7 @@
 import {
   completeEvent,
   confirmEvent,
+  decideEventRequest,
   fetchAssignedEventRequests,
   sendToSafetyReview,
   updateRegistrationSettings,
@@ -115,6 +116,17 @@ describe('SCRUM-97 mock: sending an event to safety review', () => {
     expect(await refusal(sendToSafetyReview(APPROVED_AND_SETTLED))).toMatchObject(NOT_FOUND)
     signInAs(HANA)
     expect(await statusOf(APPROVED_AND_SETTLED)).toBe('approved')
+  })
+
+  it('keeps the decision of an approved event with an equipment request (SCRUM-31 AC7)', async () => {
+    signInAs(HANA)
+
+    const error = await refusal(
+      decideEventRequest(APPROVED_WITH_GAPS, { outcome: 'rejected', reason: 'No venue.' }),
+    )
+
+    expect(error).toMatchObject({ status: 409, code: 'decision_locked' })
+    expect(await statusOf(APPROVED_WITH_GAPS)).toBe('approved')
   })
 
   it('refuses an organiser by role, and a visitor without a token', async () => {
