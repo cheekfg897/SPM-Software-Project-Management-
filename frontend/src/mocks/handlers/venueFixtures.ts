@@ -9,9 +9,11 @@ export interface MockVenueBooking {
   id: number
   venue_id: number
   event_id: number | null
-  status: 'tentative' | 'confirmed' | 'cancelled'
+  status: 'tentative' | 'confirmed' | 'conflicting' | 'cancelled'
   start_time: string
   end_time: string
+  /** When a tentative hold lapses (SCRUM-75); a hold without one never does. */
+  hold_expires_at?: string
 }
 
 /** A period a venue is blocked for maintenance or internal use (SCRUM-34). */
@@ -172,6 +174,11 @@ export const MOCK_VENUES = {
  * minutes' setup and 30 minutes' turnaround, an event there must end by 08:30 or start from
  * 15:30. The Harbourfront Hall's booking on 20 November was cancelled, so it doesn't hold the
  * venue.
+ *
+ * For which bookings still hold a venue: on 14 November Marina Hall has a booking marked
+ * Conflicting (SCRUM-44), which still holds it even past the expiry it kept from being a hold, a
+ * hold that expires on 1 November and one that expires in 2099. They are saved latest first, so
+ * the calendar's sort shows.
  */
 export const MOCK_VENUE_BOOKINGS: readonly MockVenueBooking[] = [
   {
@@ -237,6 +244,34 @@ export const MOCK_VENUE_BOOKINGS: readonly MockVenueBooking[] = [
     status: 'cancelled',
     start_time: '2026-11-20T09:00:00+08:00',
     end_time: '2026-11-20T17:00:00+08:00',
+  },
+  {
+    id: 533,
+    venue_id: MOCK_VENUES.marinaHall.id,
+    event_id: null,
+    status: 'tentative',
+    start_time: '2026-11-14T15:00:00+08:00',
+    end_time: '2026-11-14T16:00:00+08:00',
+    hold_expires_at: '2099-01-01T09:00:00+08:00',
+  },
+  {
+    id: 532,
+    venue_id: MOCK_VENUES.marinaHall.id,
+    event_id: null,
+    status: 'tentative',
+    start_time: '2026-11-14T13:00:00+08:00',
+    end_time: '2026-11-14T14:00:00+08:00',
+    hold_expires_at: '2026-11-01T09:00:00+08:00',
+  },
+  {
+    id: 531,
+    venue_id: MOCK_VENUES.marinaHall.id,
+    event_id: null,
+    status: 'conflicting',
+    start_time: '2026-11-14T10:00:00+08:00',
+    end_time: '2026-11-14T11:00:00+08:00',
+    // Kept from when it was a hold: only a tentative booking lapses.
+    hold_expires_at: '2026-11-01T09:00:00+08:00',
   },
 ]
 
