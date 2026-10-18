@@ -8,7 +8,7 @@ interface RequestListSectionProps extends Pick<RequestListProps, 'requests' | 'p
   title: string
 }
 
-/** One role's list on Staff home, under its own heading (SCRUM-24, ADR-0046). */
+/** One role's list on Staff home, under its own heading (SCRUM-24, ADR-0056). */
 export function RequestListSection({ title, requests, pathFor }: RequestListSectionProps) {
   const headingId = useId()
   return (
