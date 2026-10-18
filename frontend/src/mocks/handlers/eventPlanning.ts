@@ -18,9 +18,10 @@ import { assignedOrRefusal, objectBodyOrRefusal } from './eventRequests'
  * The coordinator's planning actions on the stored event requests eventRequests.ts keeps, so
  * the record read afterwards shows the change: sending an event to safety review (SCRUM-97,
  * ADR-0047), marking it completed once it has ended, at the mock's "now", MOCK_NOW (SCRUM-68,
- * ADR-0027), and its registration settings (SCRUM-69, ADR-0043). Only the event's assigned
- * coordinator may; the checks, their order, the codes, messages and the gaps named are the
- * backend's (ADR-0075).
+ * ADR-0027), its registration settings (SCRUM-69, ADR-0043) and confirming it once every
+ * approval is in (SCRUM-49, ADR-0051). Only the event's assigned coordinator may; the checks,
+ * their order, the codes, messages and the gaps named are the backend's (ADR-0075). No
+ * notification is raised.
  */
 
 const REQUEST_PATH = '/api/events/requests/:reference'
@@ -35,6 +36,12 @@ const NOT_YET_ENDED_MESSAGE = 'The event has not ended yet.'
 const BUSINESS_TIME_OFFSET = '+08:00'
 const CAPACITY_REQUIRED_MESSAGE = 'A capacity is required to enable registration.'
 const REGISTRATION_NOT_CONFIRMED_MESSAGE = 'Registration can be enabled only for a confirmed event.'
+const NOT_IN_SAFETY_REVIEW_MESSAGE = 'Only an event in Safety Review can be confirmed.'
+const CONFIRMATION_NOT_READY_MESSAGE =
+  'The event can be confirmed once the Safety Officer has approved it, every venue ' +
+  'arrangement is approved and every equipment request has an outcome from Technical ' +
+  'Support.'
+const SAFETY_NOT_APPROVED_GAP = 'The Safety Officer has not approved the event.'
 
 /** A 409 with the reasons behind it, as the backend's gates send it (ADR-0047, ADR-0051). */
 function refusalWithGaps(code: string, message: string, details: FieldErrors) {
@@ -166,6 +173,29 @@ export const eventPlanningHandlers: RequestHandler[] = [
     }
 
     stored.request.status = EVENT_REQUEST_STATUS.COMPLETED
+    return HttpResponse.json(stored.request)
+  }),
+
+  http.post(`${REQUEST_PATH}/confirm`, ({ request, params }) => {
+    const found = assignedOrRefusal(request, params.reference)
+    if ('refusal' in found) {
+      return found.refusal
+    }
+    const { stored } = found
+    if (stored.request.status !== EVENT_REQUEST_STATUS.SAFETY_REVIEW) {
+      return errorResponse(409, 'confirmation_not_allowed', NOT_IN_SAFETY_REVIEW_MESSAGE)
+    }
+    const planning = planningOf(stored)
+    const heldBack: FieldErrors = {}
+    if (!planning.isSafetyApproved) {
+      heldBack.safety_check = [SAFETY_NOT_APPROVED_GAP]
+    }
+    Object.assign(heldBack, arrangementGaps(planning))
+    if (Object.keys(heldBack).length > 0) {
+      return refusalWithGaps('confirmation_not_allowed', CONFIRMATION_NOT_READY_MESSAGE, heldBack)
+    }
+
+    stored.request.status = EVENT_REQUEST_STATUS.CONFIRMED
     return HttpResponse.json(stored.request)
   }),
 

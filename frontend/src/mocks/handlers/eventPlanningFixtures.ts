@@ -16,24 +16,27 @@ export interface MockArrangement {
 /**
  * What the backend counts when the coordinator plans an event, which the other feature mocks
  * keep in their own copies of events (ADR-0075): its venue arrangements, in period order, the
- * ids of its equipment requests Technical Support hasn't answered, its registration settings
- * as the backend stores them (ADR-0043) and how many attendees have registered.
+ * ids of its equipment requests Technical Support hasn't answered, whether the Safety Officer
+ * has approved it (`has_safety_approval`), its registration settings as the backend stores them
+ * (ADR-0043) and how many attendees have registered.
  */
 export interface MockPlanning {
   arrangements: readonly MockArrangement[]
   equipmentWithoutOutcome: readonly number[]
+  isSafetyApproved: boolean
   registration_enabled: boolean
   registration_capacity: number | null
   registeredCount: number
 }
 
 /**
- * An event the mock holds nothing for: no venue arranged, no equipment requested, registration
- * closed with no capacity and nobody registered.
+ * An event the mock holds nothing for: no venue arranged, no equipment requested, no safety
+ * approval, registration closed with no capacity and nobody registered.
  */
 export const NOTHING_PLANNED: MockPlanning = {
   arrangements: [],
   equipmentWithoutOutcome: [],
+  isSafetyApproved: false,
   registration_enabled: false,
   registration_capacity: null,
   registeredCount: 0,
@@ -74,6 +77,9 @@ const DETAILS = {
  * Hana's events. Approved: EVR-PLAN0001 still has a pending venue arrangement (42) beside an
  * approved one and a withdrawn one, and an unanswered equipment request (43), so the Safety
  * Review gate names both; EVR-PLAN0002 is settled, its only other arrangement withdrawn.
+ * In Safety Review: EVR-PLAN0003 has the Safety Officer's approval and is settled;
+ * EVR-PLAN0004 has no approval, a rejected arrangement (48) beside an approved one and an
+ * unanswered equipment request (49), so confirming it names a gap in each area.
  * Confirmed, against the mock's "now" (MOCK_NOW, 5 Oct 12:00 pm): EVR-PLAN0005 ends exactly
  * then, so it has ended; EVR-PLAN0006 began the day before and ends a minute later, so it hasn't.
  * EVR-PLAN0005's registration is open for 50 with 30 registered, though its organiser didn't ask
@@ -119,6 +125,43 @@ export const PLANNING_EVENT_REQUESTS: readonly MockEventRequest[] = [
       proposed_date: '2026-11-14',
       end_date: '2026-11-14',
       created_at: '2026-09-20T03:00:00+00:00',
+    },
+  },
+  {
+    ...HANAS_EVENT,
+    planning: {
+      ...NOTHING_PLANNED,
+      arrangements: [{ id: 46, status: 'approved' }],
+      isSafetyApproved: true,
+    },
+    request: {
+      ...DETAILS,
+      reference: 'EVR-PLAN0003',
+      status: 'safety_review',
+      name: 'Harbour Lights Concert',
+      proposed_date: '2026-11-28',
+      end_date: '2026-11-28',
+      created_at: '2026-09-19T03:00:00+00:00',
+    },
+  },
+  {
+    ...HANAS_EVENT,
+    planning: {
+      ...NOTHING_PLANNED,
+      arrangements: [
+        { id: 47, status: 'approved' },
+        { id: 48, status: 'rejected' },
+      ],
+      equipmentWithoutOutcome: [49],
+    },
+    request: {
+      ...DETAILS,
+      reference: 'EVR-PLAN0004',
+      status: 'safety_review',
+      name: 'Winter Charity Run',
+      proposed_date: '2026-12-06',
+      end_date: '2026-12-06',
+      created_at: '2026-09-18T03:00:00+00:00',
     },
   },
   {

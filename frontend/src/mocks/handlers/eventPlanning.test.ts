@@ -1,5 +1,6 @@
 import {
   completeEvent,
+  confirmEvent,
   fetchAssignedEventRequests,
   sendToSafetyReview,
   updateRegistrationSettings,
@@ -26,7 +27,9 @@ import {
  * the backend.
  *
  * Hana coordinates EVR-PLAN0001 (approved; arrangement 42 pending, 40 withdrawn, equipment
- * request 43 unanswered) and EVR-PLAN0002 (approved and settled), and two confirmed events:
+ * request 43 unanswered) and EVR-PLAN0002 (approved and settled); EVR-PLAN0003 (in Safety
+ * Review, approved by the Safety Officer and settled) and EVR-PLAN0004 (in Safety Review, not
+ * approved, arrangement 48 rejected, equipment request 49 unanswered); and two confirmed events:
  * EVR-PLAN0005, ending exactly at the mock's "now" (MOCK_NOW), and EVR-PLAN0006, which began the
  * day before and ends a minute after it. EVR-PLAN0005's registration is open for 50 with 30
  * registered; EVR-PLAN0006's organiser asked for registration and nothing is set. Chloe
@@ -340,5 +343,82 @@ describe('SCRUM-69 mock: registration settings', () => {
 
     signInAs(null)
     expect(await refusal(patchWith(OPEN_FOR_50, {}))).toMatchObject(NOT_SIGNED_IN)
+  })
+})
+
+describe('SCRUM-49 mock: confirming an event', () => {
+  const READY_TO_CONFIRM = 'EVR-PLAN0003'
+  const HELD_BACK_EVERYWHERE = 'EVR-PLAN0004'
+  const CONFIRMATION_NOT_READY = {
+    status: 409,
+    code: 'confirmation_not_allowed',
+    message:
+      'The event can be confirmed once the Safety Officer has approved it, every venue ' +
+      'arrangement is approved and every equipment request has an outcome from Technical ' +
+      'Support.',
+  }
+
+  it('confirms an event in safety review with every approval in, in the reply and the record', async () => {
+    signInAs(HANA)
+
+    const confirmed = await confirmEvent(READY_TO_CONFIRM)
+
+    expect(confirmed).toMatchObject({ reference: READY_TO_CONFIRM, status: 'confirmed' })
+    expect(confirmed).not.toHaveProperty('coordinator')
+    expect(await statusOf(READY_TO_CONFIRM)).toBe('confirmed')
+  })
+
+  it('names the missing safety approval, then the venue and equipment gaps, in that order', async () => {
+    signInAs(HANA)
+
+    const error = await refusal(confirmEvent(HELD_BACK_EVERYWHERE))
+
+    expect(error).toMatchObject(CONFIRMATION_NOT_READY)
+    const gaps = fieldErrorsOf(error)
+    expect(Object.keys(gaps)).toEqual(['safety_check', 'venue_arrangements', 'equipment'])
+    expect(gaps).toEqual({
+      safety_check: ['The Safety Officer has not approved the event.'],
+      venue_arrangements: ['Venue arrangement 48 is rejected.'],
+      equipment: ['Equipment request 49 has no outcome from Technical Support.'],
+    })
+    expect(await statusOf(HELD_BACK_EVERYWHERE)).toBe('safety_review')
+  })
+
+  it('names only the safety approval for a settled event just sent to safety review', async () => {
+    signInAs(HANA)
+    await sendToSafetyReview(APPROVED_AND_SETTLED)
+
+    const error = await refusal(confirmEvent(APPROVED_AND_SETTLED))
+
+    expect(error).toMatchObject(CONFIRMATION_NOT_READY)
+    expect(fieldErrorsOf(error)).toEqual({
+      safety_check: ['The Safety Officer has not approved the event.'],
+    })
+  })
+
+  it('refuses an event not in safety review, before looking at its approvals', async () => {
+    signInAs(HANA)
+
+    const error = await refusal(confirmEvent(APPROVED_WITH_GAPS))
+
+    expect(error).toMatchObject({
+      status: 409,
+      code: 'confirmation_not_allowed',
+      message: 'Only an event in Safety Review can be confirmed.',
+    })
+    expect(fieldErrorsOf(error)).toEqual({})
+  })
+
+  it("answers another coordinator's event as not found, and refuses other roles", async () => {
+    signInAs(CHLOE)
+    expect(await refusal(confirmEvent(READY_TO_CONFIRM))).toMatchObject(NOT_FOUND)
+
+    signInAs(MOCK_ACCOUNTS.organiser)
+    expect(await refusal(confirmEvent(READY_TO_CONFIRM))).toMatchObject(NOT_PERMITTED)
+
+    signInAs(null)
+    expect(await refusal(confirmEvent(READY_TO_CONFIRM))).toMatchObject(NOT_SIGNED_IN)
+    signInAs(HANA)
+    expect(await statusOf(READY_TO_CONFIRM)).toBe('safety_review')
   })
 })

@@ -213,6 +213,15 @@ export function sendToSafetyReview(reference: string): Promise<EventRequest> {
   return apiRequest<EventRequest>(`${requestPath(reference)}/safety-review`, { method: 'POST' })
 }
 
+/**
+ * Confirm an event in safety review once every approval is in; there is no body. A refusal's
+ * `details` name the missing safety approval and each venue or equipment gap (SCRUM-49,
+ * ADR-0051).
+ */
+export function confirmEvent(reference: string): Promise<EventRequest> {
+  return apiRequest<EventRequest>(`${requestPath(reference)}/confirm`, { method: 'POST' })
+}
+
 /** Mark a confirmed event completed once it has ended; there is no body (SCRUM-68, ADR-0027). */
 export function completeEvent(reference: string): Promise<EventRequest> {
   return apiRequest<EventRequest>(`${requestPath(reference)}/complete`, { method: 'POST' })
