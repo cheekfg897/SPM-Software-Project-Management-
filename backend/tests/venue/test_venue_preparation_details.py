@@ -20,7 +20,12 @@ from app.modules.auth.permissions import Role
 from app.modules.events import services as event_services
 from app.modules.events.models import EventHistoryEntry, EventHistoryKind, EventRequest
 from app.modules.venue import services
-from app.modules.venue.models import PreparationStatus, Venue, VenueBookingRequest
+from app.modules.venue.models import (
+    BookingRequestStatus,
+    PreparationStatus,
+    Venue,
+    VenueBookingRequest,
+)
 from tests.venue.conftest import (
     COORDINATOR_ID,
     VENUE_STAFF_ID,
@@ -33,6 +38,10 @@ from tests.venue.conftest import (
 pytestmark = pytest.mark.scrum_84
 
 IN_PROGRESS = {"status": "in_progress", "notes": "Chairs set out, stage to do."}
+#: Every status but approved, built from the enum so a status added later is tested.
+NOT_APPROVED_STATUSES = [
+    status for status in BookingRequestStatus if status is not BookingRequestStatus.APPROVED
+]
 
 
 def _approved_booking(
@@ -177,20 +186,25 @@ def test_nothing_is_recorded_before_the_safety_officer_approves(
     assert _preparation_entries(db_session) == []
 
 
-@pytest.mark.parametrize("outcome", [None, "rejected"], ids=["pending", "rejected"])
+@pytest.mark.parametrize("status", NOT_APPROVED_STATUSES, ids=lambda status: status.value)
 def test_only_an_approved_booking_takes_preparation_details(
-    db_session: Session, venue: Venue, saved_event: SavedEvent, outcome: str | None
+    db_session: Session,
+    venue: Venue,
+    saved_event: SavedEvent,
+    status: BookingRequestStatus,
 ) -> None:
+    # The status is written straight into the row, so a withdrawn booking (one the
+    # coordinator retracted after its approval) is tested as well.
     event = saved_event()
     booking = raise_booking(venue, event, db_session)
-    if outcome is not None:
-        decide(booking.id, outcome, db_session, reason="Closed that day")
+    booking.status = status
+    db_session.commit()
     approve_safety(event, db_session)
 
     with pytest.raises(ConflictError) as caught:
         _record(booking, IN_PROGRESS, db_session)
 
-    expected = services.PREPARATION_NOT_APPROVED_MESSAGE.format(status=booking.status.value)
+    expected = services.PREPARATION_NOT_APPROVED_MESSAGE.format(status=status.value)
     assert caught.value.message == expected
     assert _preparation_entries(db_session) == []
 
