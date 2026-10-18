@@ -46,6 +46,9 @@ PREVIOUS_REQUEST_STATUS_VALUES = (
 #: Added here (SCRUM-94 AC1, AC2).
 ADDED_REQUEST_STATUS_VALUES = ("expired",)
 
+#: The statuses 0036 left the pending index covering; downgrade puts it back so.
+PENDING_CONFLICTING_OR_ON_HOLD = "status IN ('pending', 'conflicting', 'on_hold')"
+
 #: What migrations 0010-0036 left (0033 and 0034 added the preparation kinds). Downgrade
 #: rebuilds ``event_history_entry_kind`` with
 #: just this.
@@ -152,8 +155,10 @@ def downgrade() -> None:
     for value in ADDED_NOTIFICATION_KIND_VALUES:
         op.execute(sa.text("DELETE FROM notifications WHERE kind = :value").bindparams(value=value))
     op.drop_column("bookings", "hold_warning_sent_at")
-    # The pending index's predicate (status = 'pending') can't be re-created against
-    # the renamed enum type, so it is dropped around the rebuild, as 0036 does.
+    # The pending index's predicate can't be re-created against the renamed enum type,
+    # so it is dropped around the rebuild, as 0036 does, and comes back as 0036 left
+    # it: Pending, Conflicting and On Hold (SCRUM-42 AC7). Expired requests are back
+    # On Hold by now, so they count again, as they did before this migration.
     op.drop_index("uq_venue_booking_requests_pending", table_name="venue_booking_requests")
     _rebuild_enum_without_added_values(
         "booking_request_status",
@@ -166,7 +171,7 @@ def downgrade() -> None:
         "venue_booking_requests",
         ["event_id", "venue_id", "starts_at", "ends_at"],
         unique=True,
-        postgresql_where=sa.text("status = 'pending'"),
+        postgresql_where=sa.text(PENDING_CONFLICTING_OR_ON_HOLD),
     )
     _rebuild_enum_without_added_values(
         "event_history_entry_kind",

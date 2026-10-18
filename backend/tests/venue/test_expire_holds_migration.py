@@ -116,7 +116,10 @@ def test_downgrade_returns_expired_requests_to_on_hold_and_rebuilds_the_types(
         "CREATE TYPE booking_request_status AS ENUM ('pending', 'withdrawn', 'approved', "
         "'rejected', 'conflicting', 'on_hold')",
         "DROP TYPE booking_request_status_old",
-        "CREATE UNIQUE INDEX uq_venue_booking_requests_pending",
+        # Back to the index 0036 left, Conflicting and On Hold included.
+        "CREATE UNIQUE INDEX uq_venue_booking_requests_pending ON venue_booking_requests "
+        "(event_id, venue_id, starts_at, ends_at) "
+        "WHERE status IN ('pending', 'conflicting', 'on_hold')",
         "ALTER TYPE event_history_entry_kind RENAME TO event_history_entry_kind_old",
         "DROP TYPE event_history_entry_kind_old",
         "ALTER TYPE notification_kind RENAME TO notification_kind_old",
