@@ -1,6 +1,7 @@
 # ADR-0065: The assigned coordinator records an event's equipment lines on its Equipment page
 
-- **Status:** Accepted; decisions 2 to 6 are defaults to review with the team
+- **Status:** Accepted; decisions 2 to 6 are defaults to review with the team; decision 6's
+  "Partly fulfilled" is now "Partially fulfilled" (ADR-0077)
 - **Date:** 2026-10-17
 - **Story:** SCRUM-37 Record what equipment an event needs (AC1, AC2, AC3, AC5)
 - **Extends:** ADR-0019, ADR-0028, ADR-0037
