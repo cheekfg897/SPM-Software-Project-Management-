@@ -3,7 +3,7 @@ import { ButtonLink, StatusChip } from '@/components/ui'
 import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
 import { ROLE } from '@/config/roles'
 import { eventEquipmentPath, venueRequestsPath } from '@/config/routes'
-import { formatDateTime } from '@/lib/formatDate'
+import { attributed } from '@/lib/attributed'
 import { selectSessionUser, useAppSelector } from '@/store'
 
 import type { Clarification, CoordinatorContact, Decision, EventRecord } from '../api'
@@ -23,18 +23,6 @@ interface DecisionStyle {
 const DECISION_STYLE: Record<Decision['outcome'], DecisionStyle> = {
   approved: { label: 'Approved', tone: 'text-success' },
   rejected: { label: 'Rejected', tone: 'text-danger' },
-}
-
-/**
- * e.g. "Decided by Marcus Tan, 29 Sept, 3:20 pm". The backend sends no name for someone whose
- * account is gone (events/services.py `_actor_name`), and then it's only when.
- */
-function attributed(action: string, name: string | null, at: string): string {
-  const when = formatDateTime(at)
-  if (name === null) {
-    return `${action} ${when}`
-  }
-  return `${action} by ${name}, ${when}`
 }
 
 /** The organiser's answers, each against its label, leaving out the ones not given. */
