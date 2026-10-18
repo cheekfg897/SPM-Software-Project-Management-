@@ -1,15 +1,16 @@
 """Route tests for SCRUM-24 "see the events my role is involved in".
 
 AC2: Event Coordinators have no list of the requests no coordinator has; that queue
-is the Event Coordinator Lead's (Week 7, ADR-0034). AC5: Technical Support can open
-the list of events that have an equipment request. AC8: every role's event list
-shows each event's name, date, time and status. AC9: the event record widens to
-Event Coordinators, the same sections as the organiser's. AC10: a list with no
-matching events says so, instead of an empty list looking the same as "nothing
-loaded yet" (copying ``search_venues``'s precedent, SCRUM-35 AC4).
+is the Event Coordinator Lead's (Week 7, ADR-0034). AC4: Venue Staff can open the
+list of events that have a venue booking request or a booking (ADR-0085). AC5:
+Technical Support can open the list of events that have an equipment request. AC8:
+every role's event list shows each event's name, date, time and status. AC9: the
+event record widens to Event Coordinators, the same sections as the organiser's.
+AC10: a list with no matching events says so, instead of an empty list looking the
+same as "nothing loaded yet" (copying ``search_venues``'s precedent, SCRUM-35 AC4).
 
-Covers the organiser's own list, the coordinator's assigned list, Technical
-Support's equipment list, and the event record opened to coordinators.
+Covers the organiser's own list, the coordinator's assigned list, Venue Staff's and
+Technical Support's lists, and the event record opened to coordinators.
 """
 
 from __future__ import annotations
@@ -67,8 +68,17 @@ EQUIPMENT_LIST = EventList(
     Role.TECHNICAL_SUPPORT_STAFF,
     "No events have an equipment request yet.",
 )
-ROLE_LISTS = [ORGANISATION_LIST, ASSIGNED_LIST, EQUIPMENT_LIST]
-NEW_LISTS = [EQUIPMENT_LIST]
+VENUE_LIST = EventList(
+    "events.list_requests_with_venue_bookings",
+    "/api/events/requests/with-venue-bookings",
+    "list_event_requests_with_venue_bookings",
+    Role.VENUE_STAFF,
+    "No events have a venue booking request yet.",
+)
+ROLE_LISTS = [ORGANISATION_LIST, ASSIGNED_LIST, VENUE_LIST, EQUIPMENT_LIST]
+NEW_LISTS = [VENUE_LIST, EQUIPMENT_LIST]
+#: The staff lists, which show only each event's summary (ADR-0026 decision 6).
+STAFF_LISTS = [VENUE_LIST, EQUIPMENT_LIST]
 
 OpenList = Callable[[EventList, list[EventRequest]], tuple[dict[str, Any], int, MagicMock]]
 
@@ -210,14 +220,18 @@ def test_a_new_list_path_is_not_taken_for_a_reference(app: Flask, event_list: Ev
 
 
 # --------------------------------------------------------------------------
-# AC5 — Technical Support can open the list of events with an equipment request
+# AC4, AC5 — Venue Staff's and Technical Support's lists show each event's summary
 # --------------------------------------------------------------------------
 
 
-def test_the_equipment_list_shows_only_each_events_summary(
-    open_list: OpenList, shown_event: EventRequest, event_as_shown: dict[str, Any]
+@pytest.mark.parametrize("event_list", STAFF_LISTS, ids=lambda event_list: event_list.endpoint)
+def test_a_staff_list_shows_only_each_events_summary(
+    open_list: OpenList,
+    shown_event: EventRequest,
+    event_as_shown: dict[str, Any],
+    event_list: EventList,
 ) -> None:
-    body, status, mock = open_list(EQUIPMENT_LIST, [shown_event])
+    body, status, mock = open_list(event_list, [shown_event])
 
     assert status == 200
     assert body == {"event_requests": [{**event_as_shown, "status": "submitted"}]}

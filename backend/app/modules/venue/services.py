@@ -1350,6 +1350,17 @@ def list_active_arrangements(
     return list(resolve_session(session).scalars(query).all())
 
 
+def list_event_ids_with_active_arrangements(*, session: Session | None = None) -> set[int]:
+    """The ids of every event with at least one active arrangement (SCRUM-24 AC4).
+
+    A booking is only ever made by approving an arrangement (SCRUM-43), so this
+    covers every event with a booking too. Retired arrangements are left out, as
+    :func:`list_active_arrangements` does.
+    """
+    query = select(VenueBookingRequest.event_id).where(_is_active())
+    return set(resolve_session(session).scalars(query))
+
+
 def count_active_arrangements(event_id: int, *, session: Session | None = None) -> int:
     """How many venues the event still has arranged (SCRUM-75's multi-venue test)."""
     return len(list_active_arrangements(event_id, session=session))
