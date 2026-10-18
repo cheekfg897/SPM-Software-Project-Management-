@@ -1,7 +1,7 @@
 import { useId } from 'react'
 
 import type { BookingRequest } from '../api'
-import { STATUS_LABELS } from '../constants'
+import { RETIRED_STATUSES, STATUS_LABELS } from '../constants'
 
 import { ArrangementActions } from './ArrangementActions'
 import { BookingRequestDetails } from './BookingRequestDetails'
@@ -36,8 +36,7 @@ function BookingRequestItem({
       {request.decision_reason !== null && (
         <p className="text-ink-muted">Reason: {request.decision_reason}</p>
       )}
-      {/* A withdrawn arrangement is retired: it stays on record, with nothing left to do. */}
-      {request.status !== 'withdrawn' && (
+      {!RETIRED_STATUSES.includes(request.status) && (
         <ArrangementActions reference={reference} arrangement={request} />
       )}
     </li>

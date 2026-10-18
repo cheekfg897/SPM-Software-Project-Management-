@@ -373,9 +373,19 @@ async function raisePending(overrides: Record<string, unknown> = {}): Promise<nu
   return Number(created.id)
 }
 
-const { rejectedMain, withdrawnOverflow, rejectedBreakout, bookedHall, bookedSideRoom } =
-  MOCK_ARRANGEMENTS
+const {
+  rejectedMain,
+  withdrawnOverflow,
+  rejectedBreakout,
+  bookedHall,
+  bookedSideRoom,
+  releasedHall,
+  expiredGallery,
+  heldStudio,
+} = MOCK_ARRANGEMENTS
 const BOOKED_EVENT = MOCK_BOOKING_EVENTS.booked
+const REPLACED_EVENT = MOCK_BOOKING_EVENTS.replaced
+const HELD_EVENT = MOCK_BOOKING_EVENTS.held
 
 describe('SCRUM-93 booking mock: listing an event with several arrangements', () => {
   it('lists them earliest period first, then by id, whatever order they were saved in', async () => {
@@ -425,9 +435,17 @@ describe('SCRUM-93 booking mock: withdrawing an arrangement', () => {
     expect(withdrawn.status).toBe('withdrawn')
   })
 
+  it('withdraws an expired arrangement, as the backend does since SCRUM-94', async () => {
+    const withdrawn = await withdraw(REPLACED_EVENT.reference, expiredGallery.id)
+
+    expect(withdrawn.status).toBe('withdrawn')
+  })
+
   it.each([
     [BOOKED_EVENT.reference, bookedHall.id, 'approved'],
     [MULTI_VENUE_EVENT.reference, withdrawnOverflow.id, 'withdrawn'],
+    [REPLACED_EVENT.reference, releasedHall.id, 'released'],
+    [HELD_EVENT.reference, heldStudio.id, 'on_hold'],
   ])(
     'refuses to withdraw on %s arrangement %i, naming its status (%s)',
     async (reference, id, status) => {
@@ -435,7 +453,7 @@ describe('SCRUM-93 booking mock: withdrawing an arrangement', () => {
 
       expect(error.status).toBe(409)
       expect(error.message).toBe(
-        `Only a pending, conflicting or rejected arrangement can be withdrawn; this one is ${status}.`,
+        `Only a pending, conflicting, rejected or expired arrangement can be withdrawn; this one is ${status}.`,
       )
     },
   )
@@ -512,6 +530,9 @@ describe('SCRUM-93 booking mock: changing an arrangement', () => {
     [BOOKED_EVENT.reference, bookedHall.id, 'approved'],
     [MULTI_VENUE_EVENT.reference, rejectedBreakout.id, 'rejected'],
     [MULTI_VENUE_EVENT.reference, withdrawnOverflow.id, 'withdrawn'],
+    [REPLACED_EVENT.reference, releasedHall.id, 'released'],
+    [REPLACED_EVENT.reference, expiredGallery.id, 'expired'],
+    [HELD_EVENT.reference, heldStudio.id, 'on_hold'],
   ])(
     'refuses to change on %s arrangement %i, naming its status (%s)',
     async (reference, id, status) => {
@@ -650,12 +671,33 @@ describe('SCRUM-93 booking mock: cancelling all of an event’s arrangements', (
     ])
   })
 
+  it('withdraws an expired one and leaves out a released one, as the backend does', async () => {
+    const cancelled = await cancelAll(REPLACED_EVENT.reference)
+
+    expect(cancelled.map((arrangement) => [arrangement.id, arrangement.status])).toEqual([
+      [expiredGallery.id, 'withdrawn'],
+    ])
+    expect(await statusesOf(REPLACED_EVENT.reference)).toEqual([
+      `${releasedHall.id} released`,
+      `${expiredGallery.id} withdrawn`,
+    ])
+  })
+
+  it('refuses while an arrangement is on hold, naming its status', async () => {
+    const error = await errorOf(cancelAll(HELD_EVENT.reference))
+
+    expect(error.status).toBe(409)
+    expect(error.message).toBe(
+      'Only a pending, conflicting, rejected or expired arrangement can be withdrawn; this one is on_hold.',
+    )
+  })
+
   it('refuses while an arrangement is approved, and withdraws none of the others', async () => {
     const error = await errorOf(cancelAll(BOOKED_EVENT.reference))
 
     expect(error.status).toBe(409)
     expect(error.message).toBe(
-      'Only a pending, conflicting or rejected arrangement can be withdrawn; this one is approved.',
+      'Only a pending, conflicting, rejected or expired arrangement can be withdrawn; this one is approved.',
     )
     expect(await statusesOf(BOOKED_EVENT.reference)).toEqual([
       `${bookedSideRoom.id} rejected`,

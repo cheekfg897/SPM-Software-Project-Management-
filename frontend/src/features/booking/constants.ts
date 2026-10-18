@@ -11,3 +11,9 @@ export const STATUS_LABELS: Record<BookingRequestStatus, string> = {
   expired: 'Expired',
   released: 'Released',
 }
+
+/**
+ * Statuses of an arrangement that is retired: withdrawn by the coordinator, or released when an
+ * approved replacement took over (SCRUM-92). It stays on record with nothing left to do.
+ */
+export const RETIRED_STATUSES: readonly BookingRequestStatus[] = ['withdrawn', 'released']
