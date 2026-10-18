@@ -1,5 +1,6 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
 
+import { ROLE } from '@/config/roles'
 import { ROUTES } from '@/config/routes'
 import { logInThroughForm } from '@/features/auth/test/logInThroughForm'
 import { MOCK_ACCOUNTS, mockSessionFor } from '@/mocks/fixtures/accounts'
@@ -29,6 +30,7 @@ const HOMES: { account: MockAccount; home: string }[] = [
   { account: MOCK_ACCOUNTS.lead, home: '/staff/queue' },
   { account: MOCK_ACCOUNTS.venueStaff, home: '/staff' },
   { account: MOCK_ACCOUNTS.technicalSupport, home: '/staff' },
+  { account: MOCK_ACCOUNTS.safetyOfficer, home: '/staff/safety-review' },
 ]
 
 function logo() {
@@ -36,6 +38,12 @@ function logo() {
 }
 
 describe('SCRUM-6 a signed-in user’s home', () => {
+  it('has a row for every role, so a role added later needs its home written here', () => {
+    const rolesWithAHome = HOMES.map(({ account }) => account.role)
+
+    expect(rolesWithAHome).toEqual(expect.arrayContaining(Object.values(ROLE)))
+  })
+
   it.each(HOMES)('takes $account.role from the front page to $home', async ({ account, home }) => {
     const { router } = renderApp(ROUTES.HOME, { session: mockSessionFor(account) })
 
