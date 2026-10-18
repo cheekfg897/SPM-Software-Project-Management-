@@ -1,15 +1,19 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
+import type { PreparationUpdate } from '@/config/preparation'
+
 import {
   bookingKeys,
   cancelAllArrangements,
   changeArrangement,
   changeHoldExpiry,
   decideBookingRequest,
+  fetchApprovedBookingRequests,
   fetchBookingRequests,
   fetchPendingBookingRequests,
   placeBookingHold,
   raiseBookingRequest,
+  updateBookingPreparation,
   withdrawArrangement,
 } from './api'
 import type { ArrangementChange, BookingDecision, HoldExpiry, RaiseBookingRequest } from './api'
@@ -108,5 +112,22 @@ export function useChangeHoldExpiry(requestId: number) {
   return useMutation({
     mutationFn: (hold: HoldExpiry) => changeHoldExpiry(requestId, hold),
     onSuccess: reread,
+  })
+}
+
+/** Every approved booking, for Venue Staff to prepare, earliest event first (SCRUM-84). */
+export function useApprovedBookingRequests() {
+  return useQuery({ queryKey: bookingKeys.approved(), queryFn: fetchApprovedBookingRequests })
+}
+
+/**
+ * Record one booking's preparation. Afterwards the approved list is read again, so what it
+ * shows is what the backend saved.
+ */
+export function useUpdateBookingPreparation(requestId: number) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (update: PreparationUpdate) => updateBookingPreparation(requestId, update),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: bookingKeys.approved() }),
   })
 }

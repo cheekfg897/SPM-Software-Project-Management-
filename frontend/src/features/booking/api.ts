@@ -1,7 +1,8 @@
+import type { PreparationStatus, PreparationUpdate } from '@/config/preparation'
 import type { UnavailabilityCategory } from '@/config/unavailabilityCategories'
 import { apiRequest } from '@/lib/api'
 
-/** The venue module's booking request endpoints (SCRUM-42, SCRUM-43, SCRUM-93, SCRUM-75). */
+/** The venue module's booking request endpoints (SCRUM-42, SCRUM-43, SCRUM-93, SCRUM-75, SCRUM-84). */
 const BOOKING_PATHS = {
   EVENT_REQUESTS: (reference: string) => `/api/venues/events/${reference}/booking-requests`,
   /** One of the event's requests, which SCRUM-93 calls a venue arrangement. */
@@ -15,6 +16,9 @@ const BOOKING_PATHS = {
   decisionFor: (requestId: number) => `/api/venues/booking-requests/${requestId}/decision`,
   /** POST places a tentative hold; PATCH moves its expiry (SCRUM-75). */
   holdFor: (requestId: number) => `/api/venues/booking-requests/${requestId}/hold`,
+  /** Every approved booking, for Venue Staff to prepare (ADR-0080). */
+  APPROVED: '/api/venues/booking-requests/approved',
+  preparationFor: (requestId: number) => `/api/venues/booking-requests/${requestId}/preparation`,
 } as const
 
 /** What the backend accepts when a coordinator raises a request. */
@@ -64,9 +68,6 @@ export type BookingRequestStatus =
   | 'withdrawn'
   | 'expired'
   | 'released'
-
-/** How far Venue Staff have got in setting up an approved booking (SCRUM-84). */
-export type PreparationStatus = 'not_started' | 'in_progress' | 'ready'
 
 /** One reason a booking needs an alternative venue: a block, or the venue's deactivation. */
 export interface Unavailability {
@@ -125,6 +126,7 @@ export const bookingKeys = {
   all: ['booking'] as const,
   forEvent: (reference: string) => [...bookingKeys.all, 'event', reference] as const,
   pending: () => [...bookingKeys.all, 'pending'] as const,
+  approved: () => [...bookingKeys.all, 'approved'] as const,
 }
 
 export function fetchBookingRequests(reference: string): Promise<BookingRequest[]> {
@@ -202,5 +204,21 @@ export function changeHoldExpiry(requestId: number, hold: HoldExpiry): Promise<B
   return apiRequest<BookingRequest>(BOOKING_PATHS.holdFor(requestId), {
     method: 'PATCH',
     body: hold,
+  })
+}
+
+/** Every approved booking, ordered by the backend: earliest event first (ADR-0080). */
+export function fetchApprovedBookingRequests(): Promise<BookingRequest[]> {
+  return apiRequest<BookingRequest[]>(BOOKING_PATHS.APPROVED)
+}
+
+/** Record an approved booking's preparation status and notes (SCRUM-84). Venue Staff only. */
+export function updateBookingPreparation(
+  requestId: number,
+  update: PreparationUpdate,
+): Promise<BookingRequest> {
+  return apiRequest<BookingRequest>(BOOKING_PATHS.preparationFor(requestId), {
+    method: 'PUT',
+    body: update,
   })
 }

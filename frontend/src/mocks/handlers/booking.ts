@@ -20,15 +20,21 @@ import {
   MOCK_BOOKING_EVENTS,
   MOCK_BOOKING_VENUES,
   MOCK_PENDING_DECISIONS,
+  MOCK_SAFETY_APPROVED_EVENT_IDS,
 } from './bookingFixtures'
 import type { MockBookingEvent } from './bookingFixtures'
 import { MOCK_NOW } from './catalogueFixtures'
+import {
+  PREPARATION_NEEDS_SAFETY_APPROVAL_MESSAGE,
+  preparationErrors,
+  savedNotes,
+} from './preparationRules'
 
 /**
- * The venue module's booking request endpoints (SCRUM-42, SCRUM-43, SCRUM-93, SCRUM-75), answering
- * as backend/app/modules/venue/routes.py does, error bodies included, and Venue Staff's list of
- * events, which backend/app/modules/events/routes.py answers (SCRUM-24 AC4). A hold's expiry is
- * compared with the mocks' "now", MOCK_NOW.
+ * The venue module's booking request endpoints (SCRUM-42, SCRUM-43, SCRUM-93, SCRUM-75, SCRUM-84),
+ * answering as backend/app/modules/venue/routes.py does, error bodies included, and Venue Staff's
+ * list of events, which backend/app/modules/events/routes.py answers (SCRUM-24 AC4). A hold's
+ * expiry is compared with the mocks' "now", MOCK_NOW.
  */
 
 const BOOKING_PATH = '/api/venues/events/:reference/booking-requests'
@@ -39,6 +45,9 @@ const PENDING_PATH = '/api/venues/booking-requests'
 const DECISION_PATH = `${PENDING_PATH}/:requestId/decision`
 const VENUE_STAFF_EVENTS_PATH = '/api/events/requests/with-venue-bookings'
 const HOLD_PATH = `${PENDING_PATH}/:requestId/hold`
+/** Venue Staff's approved bookings, and recording one's preparation (SCRUM-84, ADR-0080). */
+const APPROVED_PATH = `${PENDING_PATH}/approved`
+const PREPARATION_PATH = `${PENDING_PATH}/:requestId/preparation`
 const REQUIRED_FIELDS = ['venue_id', 'starts_at', 'ends_at', 'purpose'] as const
 const MISSING_FIELD_MESSAGE = 'Missing data for required field.'
 /** The backend's EVENT_REQUEST_NOT_FOUND_MESSAGE (events/services.py), also sent for another coordinator's event. */
@@ -207,16 +216,26 @@ function expiryOutOfRange(expiresAt: string, held: BookingRequest): Response | n
   return null
 }
 
-/** The queue's order, as the backend sorts it: event date, then event start, then id. */
+/** The order Venue Staff's lists come in from the backend: event date, then event start, then id. */
+function byEventDate(left: BookingRequest, right: BookingRequest): number {
+  return (
+    left.event_proposed_date.localeCompare(right.event_proposed_date) ||
+    left.event_start_time.localeCompare(right.event_start_time) ||
+    left.id - right.id
+  )
+}
+
 function waitingForDecision(): BookingRequest[] {
-  return requests
-    .filter(isDecidable)
-    .sort(
-      (left, right) =>
-        left.event_proposed_date.localeCompare(right.event_proposed_date) ||
-        left.event_start_time.localeCompare(right.event_start_time) ||
-        left.id - right.id,
-    )
+  return requests.filter(isDecidable).sort(byEventDate)
+}
+
+function approvedBookings(): BookingRequest[] {
+  return requests.filter((existing) => existing.status === 'approved').sort(byEventDate)
+}
+
+/** Whether the Safety Officer has approved the event (SCRUM-84 AC5). */
+function hasSafetyApproval(eventId: number): boolean {
+  return MOCK_SAFETY_APPROVED_EVENT_IDS.includes(eventId)
 }
 
 /** Whether an arrangement still counts towards its event's venues: not retired (ADR-0039). */
@@ -668,5 +687,42 @@ export const bookingHandlers: RequestHandler[] = [
 
     held.hold_expires_at = expiresAt
     return HttpResponse.json(held)
+  }),
+
+  http.get(APPROVED_PATH, ({ request }) => {
+    const refusal = checkVenueStaff(request)
+    return refusal ?? HttpResponse.json(approvedBookings())
+  }),
+
+  // The backend's order: the body, then the booking, then its status, then the safety approval.
+  http.put(PREPARATION_PATH, async ({ request, params }) => {
+    const refusal = checkVenueStaff(request)
+    if (refusal !== null) {
+      return refusal
+    }
+    const body = await readBody(request)
+    const errors = preparationErrors(body)
+    if (Object.keys(errors).length > 0) {
+      return validationError(errors)
+    }
+    const booking = findRequest(params.requestId)
+    if (booking === undefined) {
+      return notFound(BOOKING_REQUEST_NOT_FOUND_MESSAGE)
+    }
+    if (booking.status !== 'approved') {
+      return errorResponse(
+        409,
+        'conflict',
+        `Preparation can only be recorded for an approved booking; this one is ${booking.status}.`,
+      )
+    }
+    if (!hasSafetyApproval(booking.event_id)) {
+      return errorResponse(409, 'conflict', PREPARATION_NEEDS_SAFETY_APPROVAL_MESSAGE)
+    }
+
+    // preparationErrors has just checked the status is one of the three.
+    booking.preparation_status = body.status as BookingRequest['preparation_status']
+    booking.preparation_notes = savedNotes(body)
+    return HttpResponse.json(booking)
   }),
 ]
