@@ -1,10 +1,10 @@
-# ADR-0058: A venue's page shows its availability by day, and Venue Staff block it there
+# ADR-0068: A venue's page shows its availability by day, and Venue Staff block it there
 
 - **Status:** Accepted; the points marked *default to review* wait for the Product Owner
 - **Date:** 2026-10-17
 - **Story:** SCRUM-26 View a venue's availability calendar (AC1 to AC4), SCRUM-34 Block a venue
   for maintenance or internal use (AC1, AC2, AC4)
-- **Builds on:** ADR-0053 (the venue screens), ADR-0009 (business time), ADR-0011 (setup and
+- **Builds on:** ADR-0067 (the venue screens), ADR-0009 (business time), ADR-0011 (setup and
   turnaround pad a booking), ADR-0016 (a block warns, it doesn't refuse)
 
 ## Context

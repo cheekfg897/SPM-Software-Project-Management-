@@ -29,7 +29,7 @@ export function addDays(date: string, days: number): string {
   return moment.toISOString().slice(0, 10)
 }
 
-/** The week from `today`: today and the six days after it (ADR-0058). */
+/** The week from `today`: today and the six days after it (ADR-0068). */
 export function weekFrom(today: string): DayRange {
   return { from: today, to: addDays(today, DAYS_SHOWN_BY_DEFAULT - 1) }
 }

@@ -92,7 +92,7 @@ export interface VenueBlock {
 
 /**
  * What the block form sends. The times are as a date-time input holds them, with no offset,
- * which the backend reads as business time (ADR-0009, ADR-0058).
+ * which the backend reads as business time (ADR-0009, ADR-0068).
  */
 export interface NewBlock {
   start_time: string

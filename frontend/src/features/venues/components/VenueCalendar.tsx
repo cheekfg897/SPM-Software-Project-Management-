@@ -29,7 +29,7 @@ function middayOf(day: string): string {
   return `${day}T12:00:00+08:00`
 }
 
-/** The days in the address, or the week from today when it names none (ADR-0058). */
+/** The days in the address, or the week from today when it names none (ADR-0068). */
 function useDayRange(): [DayRange, (range: DayRange) => void] {
   const [searchParams, setSearchParams] = useSearchParams()
   const week = weekFrom(businessDate(new Date().toISOString()))
@@ -94,7 +94,7 @@ function DayRow({ day, entries }: CalendarDay) {
 /**
  * The venue's availability over the days chosen (SCRUM-26): every day with its bookings,
  * tentative holds and blocks, each reason as much as the viewer's role is told (AC3). The days
- * live in the address, so a shared link shows the same ones (ADR-0058).
+ * live in the address, so a shared link shows the same ones (ADR-0068).
  */
 export function VenueCalendar({ venueId }: { venueId: number }) {
   const [range, setRange] = useDayRange()
