@@ -18,9 +18,10 @@ import {
   submitDraftEventRequest,
   submitEventRequest,
   updateDraftEventRequest,
+  updateRegistrationSettings,
   WITH_EQUIPMENT_KEY,
 } from './api'
-import type { DecisionChoice, EventRequestDetails } from './api'
+import type { DecisionChoice, EventRequestDetails, RegistrationChanges } from './api'
 
 /** The signed-in organiser's event requests, read for whoever is signed in. */
 export function useMyEventRequests() {
@@ -138,6 +139,15 @@ export function useSendToSafetyReview(reference: string) {
 export function useCompleteEvent(reference: string) {
   const refresh = useRefreshEventRequests()
   return useMutation({ mutationFn: () => completeEvent(reference), onSuccess: refresh })
+}
+
+/** Open or close registration for an event assigned to the coordinator, or set its capacity. */
+export function useUpdateRegistration(reference: string) {
+  const refresh = useRefreshEventRequests()
+  return useMutation({
+    mutationFn: (changes: RegistrationChanges) => updateRegistrationSettings(reference, changes),
+    onSuccess: refresh,
+  })
 }
 
 /** One request's record, read for whoever is signed in: who may open it depends on them. */
