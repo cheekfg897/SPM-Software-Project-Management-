@@ -15,6 +15,9 @@ const PUBLIC_PATHS = ['/', '/events', '/login', '/signup', '/staff/login']
 /** A small phone: narrower than the mobile project's Pixel 7. */
 const SMALL_PHONE = { width: 360, height: 740 }
 
+/** The narrowest phone we design for. */
+const SMALLEST_PHONE = { width: 320, height: 640 }
+
 /** A tablet held upright: still too narrow for staff's links in the bar (below lg). */
 const TABLET = { width: 768, height: 1024 }
 
@@ -113,6 +116,24 @@ for (const [screen, viewport] of NARROW_SCREENS) {
     // At the bar's right end, past its 16px padding and a little more.
     expect(logOut.x + logOut.width).toBeGreaterThan(viewport.width - 32)
     expect(clients.y).toBeGreaterThanOrEqual(logOut.y + logOut.height)
+  })
+}
+
+// The coordinator and the Safety Officer have the most staff links.
+for (const account of [MOCK_ACCOUNTS.coordinator, MOCK_ACCOUNTS.safetyOfficer]) {
+  test(`on the smallest phone ${account.full_name}'s links each stay on one line, above the page`, async ({
+    page,
+  }) => {
+    const header = await headerFor(page, account, SMALLEST_PHONE)
+
+    const links = await header.getByRole('navigation', { name: 'Main' }).getByRole('link').all()
+    const oneLine = (await boxOf(header.getByRole('link', { name: 'Events' }))).height
+    for (const link of links) {
+      expect((await boxOf(link)).height, await link.innerText()).toBe(oneLine)
+    }
+    const bar = await boxOf(header)
+    const heading = await boxOf(page.getByRole('heading', { level: 1 }))
+    expect(heading.y).toBeGreaterThanOrEqual(bar.y + bar.height)
   })
 }
 

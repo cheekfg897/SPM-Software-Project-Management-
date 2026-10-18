@@ -13,13 +13,14 @@ import { Logo } from './Logo'
 const NAV_LINK_CLASSES =
   'text-sm text-ink-muted transition hover:text-ink aria-[current=page]:text-ink'
 /** Where the main links sit for everyone but staff: beside the logo, as far from it as before. */
-const BESIDE_THE_LOGO = 'ml-1 sm:ml-2'
+const BESIDE_THE_LOGO = 'ml-1 gap-4 sm:ml-2 sm:gap-6'
 /**
  * Staff's links don't fit beside the logo and Log out on a phone or a tablet, so up to lg they
- * take a row of their own under the bar.
+ * take a row of their own under the bar. Each link stays on one line; on a small phone the row
+ * needs closer gaps to fit them all.
  */
 const STAFF_LINKS_ROW =
-  'col-span-3 row-start-2 pb-3 lg:col-span-1 lg:col-start-2 lg:row-start-1 lg:ml-2 lg:pb-0'
+  'col-span-3 row-start-2 gap-3 pb-3 whitespace-nowrap sm:gap-6 lg:col-span-1 lg:col-start-2 lg:row-start-1 lg:ml-2 lg:pb-0'
 
 function SessionActions() {
   const user = useAppSelector(selectSessionUser)
@@ -72,7 +73,7 @@ function MainNav() {
   const placement = isStaff ? STAFF_LINKS_ROW : BESIDE_THE_LOGO
 
   return (
-    <nav aria-label="Main" className={`flex items-center gap-4 sm:gap-6 ${placement}`}>
+    <nav aria-label="Main" className={`flex items-center ${placement}`}>
       <NavLink to={ROUTES.EVENTS} className={NAV_LINK_CLASSES}>
         Events
       </NavLink>
