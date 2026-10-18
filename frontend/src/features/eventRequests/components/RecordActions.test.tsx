@@ -15,18 +15,20 @@ import { findRegion, serveRecordInStatus, statusShownFor } from '../test/recordP
  * The assigned coordinator's planning actions on an event's page, each shown only in the status
  * the backend accepts it in, with the backend's refusals and every reason they give
  * (ADR-0075). The mock in src/mocks/handlers/eventPlanning.ts holds Hana's EVR-PLAN0001
- * (approved; arrangement 42 pending, equipment request 43 unanswered) and EVR-PLAN0002 (approved
- * and settled).
+ * (approved; arrangement 42 pending, equipment request 43 unanswered), EVR-PLAN0002 (approved
+ * and settled), EVR-PLAN0005 (confirmed, ended) and EVR-PLAN0006 (confirmed, not yet ended).
  */
 
 const HANA = mockSessionFor(MOCK_ACCOUNTS.planningCoordinator)
 const APPROVED_WITH_GAPS = 'EVR-PLAN0001'
 const APPROVED_AND_SETTLED = 'EVR-PLAN0002'
-const ACTION_BUTTONS = ['Send to safety review']
+const CONFIRMED_AND_ENDED = 'EVR-PLAN0005'
+const CONFIRMED_NOT_ENDED = 'EVR-PLAN0006'
 
 /** The actions each status offers; every status not named offers none. */
 const OFFERED_BY_STATUS: [EventRequestStatus, string[]][] = [
   [EVENT_REQUEST_STATUS.APPROVED, ['Send to safety review']],
+  [EVENT_REQUEST_STATUS.CONFIRMED, ['Mark completed']],
 ]
 const STATUSES_OFFERING_NOTHING = Object.values(EVENT_REQUEST_STATUS).filter(
   (status) => !OFFERED_BY_STATUS.some(([offering]) => offering === status),
@@ -36,10 +38,16 @@ function openAsHana(reference: string) {
   return renderApp(coordinatorEventPath(reference), { session: HANA })
 }
 
-/** The names of the planning buttons the page offers, in order. */
+/** The names of the buttons in the Planning section, in the order the page shows them. */
 async function offeredActions(): Promise<string[]> {
   await screen.findByRole('region', { name: 'About the event' })
-  return ACTION_BUTTONS.filter((name) => screen.queryByRole('button', { name }) !== null)
+  const planning = screen.queryByRole('region', { name: 'Planning' })
+  if (planning === null) {
+    return []
+  }
+  return within(planning)
+    .getAllByRole('button')
+    .map((button) => button.textContent)
 }
 
 /** Answer every POST to `action` on `reference` with a 409 carrying `failure`. */
@@ -146,5 +154,43 @@ describe('SCRUM-97 sending an event to safety review', () => {
 
     expect(send).toBeDisabled()
     expect(send).toHaveAttribute('aria-busy', 'true')
+  })
+})
+
+describe('SCRUM-68 marking an event completed', () => {
+  it('completes an ended event, and the page shows Completed with nothing left to do', async () => {
+    const requests = recordRequests()
+    const { user } = openAsHana(CONFIRMED_AND_ENDED)
+
+    await user.click(await screen.findByRole('button', { name: 'Mark completed' }))
+
+    expect(await screen.findByText('Completed')).toBeInTheDocument()
+    expect(statusShownFor(CONFIRMED_AND_ENDED)).toBe('Completed')
+    expect(screen.queryByRole('region', { name: 'Planning' })).not.toBeInTheDocument()
+    const sent = requests.find((request) => request.method === 'POST')
+    expect(sent?.url).toMatch(new RegExp(`/api/events/requests/${CONFIRMED_AND_ENDED}/complete$`))
+  })
+
+  it("shows the backend's refusal for an event that hasn't ended", async () => {
+    const { user } = openAsHana(CONFIRMED_NOT_ENDED)
+
+    await user.click(await screen.findByRole('button', { name: 'Mark completed' }))
+
+    const alert = await within(await findRegion('Mark completed')).findByRole('alert')
+    expect(alert).toHaveTextContent('The event has not ended yet.')
+    expect(statusShownFor(CONFIRMED_NOT_ENDED)).toBe('Confirmed')
+  })
+
+  it("shows the backend's own words for a refusal, as they come", async () => {
+    refuseAction(CONFIRMED_AND_ENDED, 'complete', {
+      error: 'request_not_completable',
+      message: 'Only the backend could say this about completing.',
+    })
+    const { user } = openAsHana(CONFIRMED_AND_ENDED)
+
+    await user.click(await screen.findByRole('button', { name: 'Mark completed' }))
+
+    const alert = await within(await findRegion('Mark completed')).findByRole('alert')
+    expect(alert).toHaveTextContent('Only the backend could say this about completing.')
   })
 })

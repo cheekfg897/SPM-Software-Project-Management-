@@ -2,7 +2,7 @@ import { Button, ErrorAlert } from '@/components/ui'
 import type { EventRequestStatus } from '@/config/eventStatus'
 
 import type { EventRecord } from '../api'
-import { useSendToSafetyReview } from '../hooks'
+import { useCompleteEvent, useSendToSafetyReview } from '../hooks'
 
 import { ActionCard } from './ActionCard'
 import { RecordSection } from './RecordSection'
@@ -23,9 +23,26 @@ function SendToSafetyReview({ record }: { record: EventRecord }) {
   )
 }
 
+/** Mark a confirmed event completed; the backend says when it hasn't ended yet (SCRUM-68). */
+function MarkCompleted({ record }: { record: EventRecord }) {
+  const complete = useCompleteEvent(record.reference)
+  return (
+    <ActionCard
+      title="Mark completed"
+      description="Once the event has ended. A completed event can no longer be changed."
+    >
+      <ErrorAlert error={complete.error} />
+      <Button isPending={complete.isPending} onClick={() => complete.mutate()}>
+        Mark completed
+      </Button>
+    </ActionCard>
+  )
+}
+
 /** Every planning action's card, each drawn for the event it acts on. */
 const ACTION_CARDS = {
   sendToSafetyReview: SendToSafetyReview,
+  complete: MarkCompleted,
 }
 
 type PlanningAction = keyof typeof ACTION_CARDS
@@ -44,7 +61,7 @@ const PLANNING_ACTIONS_BY_STATUS: Record<EventRequestStatus, readonly PlanningAc
   awaiting_clarification: NOTHING_TO_OFFER,
   approved: ['sendToSafetyReview'],
   safety_review: NOTHING_TO_OFFER,
-  confirmed: NOTHING_TO_OFFER,
+  confirmed: ['complete'],
   completed: NOTHING_TO_OFFER,
   cancelled: NOTHING_TO_OFFER,
   rejected: NOTHING_TO_OFFER,
@@ -52,7 +69,8 @@ const PLANNING_ACTIONS_BY_STATUS: Record<EventRequestStatus, readonly PlanningAc
 
 /**
  * The assigned coordinator's planning actions on an event once it is approved: send it to
- * safety review (SCRUM-97, ADR-0075). Nothing is drawn when no action can apply.
+ * safety review (SCRUM-97) and mark it completed (SCRUM-68) (ADR-0075). Nothing is drawn when
+ * no action can apply.
  */
 export function RecordActions({ record }: { record: EventRecord }) {
   const actions = PLANNING_ACTIONS_BY_STATUS[record.status]
