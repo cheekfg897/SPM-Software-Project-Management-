@@ -95,7 +95,8 @@ def test_downgrade_deletes_the_holds_drops_the_columns_and_rebuilds_both_types(
 ) -> None:
     """Requests On Hold go before the bookings they point at.
 
-    The pending index is dropped around the request rebuild, as in 0028.
+    The pending index is dropped around the request rebuild, as in 0028, and comes
+    back as 0028 left it.
     """
     migration = load_migration(MIGRATION)
     expected_in_order = [
@@ -110,7 +111,9 @@ def test_downgrade_deletes_the_holds_drops_the_columns_and_rebuilds_both_types(
         "ALTER TABLE venue_booking_requests ALTER COLUMN status "
         "TYPE booking_request_status USING status::text::booking_request_status",
         "DROP TYPE booking_request_status_old",
-        "CREATE UNIQUE INDEX uq_venue_booking_requests_pending",
+        # Back to main's index (0028), Conflicting included, not a narrower one.
+        "CREATE UNIQUE INDEX uq_venue_booking_requests_pending ON venue_booking_requests "
+        "(event_id, venue_id, starts_at, ends_at) WHERE status IN ('pending', 'conflicting')",
         "DELETE FROM notifications WHERE kind = 'venue_hold_placed'",
         "DELETE FROM notifications WHERE kind = 'venue_hold_expiry_changed'",
         "ALTER TYPE notification_kind RENAME TO notification_kind_old",
