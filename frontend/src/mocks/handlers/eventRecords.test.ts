@@ -1,3 +1,5 @@
+import { ROLE } from '@/config/roles'
+import type { Role } from '@/config/roles'
 import { fetchAssignedEventRequests, fetchEventRequest } from '@/features/eventRequests/api'
 import { refusal } from '@/test/refusal'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
@@ -18,9 +20,21 @@ const ANOTHER_COORDINATORS = 'EVR-W9CR5E7M'
 const ANOTHER_COORDINATORS_REJECTED = 'EVR-M1XJ7T3D'
 const UNASSIGNED = 'EVR-Q4ZT6N1B'
 const NOT_FOUND = { status: 404, code: 'not_found', message: 'Event request not found.' }
+const NOT_PERMITTED = { status: 403, code: 'authorization_error' }
 
 function signInAs(account: MockAccount | null) {
   sendRequestsAs(account === null ? null : mockTokenFor(account))
+}
+
+/** Every mock account whose role isn't in `allowed`, so a role added later is refused too. */
+function accountsOutside(allowed: readonly Role[]): [string, MockAccount][] {
+  const outside: [string, MockAccount][] = []
+  for (const [name, account] of Object.entries(MOCK_ACCOUNTS)) {
+    if (!allowed.includes(account.role)) {
+      outside.push([name, account])
+    }
+  }
+  return outside
 }
 
 describe('SCRUM-24 mock of a coordinator assigned events', () => {
@@ -50,14 +64,22 @@ describe('SCRUM-24 mock of a coordinator assigned events', () => {
     })
   })
 
-  it('refuses an organiser, and a visitor who is not signed in', async () => {
-    signInAs(MOCK_ACCOUNTS.organiser)
-    const organiser = await refusal(fetchAssignedEventRequests())
-    signInAs(null)
-    const visitor = await refusal(fetchAssignedEventRequests())
+  it.each(accountsOutside([ROLE.EVENT_COORDINATOR]))(
+    'refuses %s, who is not an Event Coordinator',
+    async (_name, account) => {
+      signInAs(account)
 
-    expect(organiser).toMatchObject({ status: 403, code: 'authorization_error' })
-    expect(visitor).toMatchObject({ status: 401, code: 'authentication_error' })
+      expect(await refusal(fetchAssignedEventRequests())).toMatchObject(NOT_PERMITTED)
+    },
+  )
+
+  it('refuses a visitor who is not signed in', async () => {
+    signInAs(null)
+
+    expect(await refusal(fetchAssignedEventRequests())).toMatchObject({
+      status: 401,
+      code: 'authentication_error',
+    })
   })
 })
 
@@ -146,16 +168,14 @@ describe('SCRUM-24 mock of an event record', () => {
     expect(await refusal(fetchEventRequest(reference))).toMatchObject(NOT_FOUND)
   })
 
-  it.each([
-    ['an Attendee', MOCK_ACCOUNTS.attendee],
-    ['Venue Staff', MOCK_ACCOUNTS.venueStaff],
-    ['the Lead', MOCK_ACCOUNTS.lead],
-  ])('refuses %s, who has no event record to open', async (_role, account) => {
-    signInAs(account)
+  it.each(accountsOutside([ROLE.EVENT_ORGANISER, ROLE.EVENT_COORDINATOR]))(
+    'refuses %s, who has no event record to open',
+    async (_name, account) => {
+      signInAs(account)
 
-    expect(await refusal(fetchEventRequest(COORDINATORS_UNDER_REVIEW))).toMatchObject({
-      status: 403,
-      code: 'authorization_error',
-    })
-  })
+      expect(await refusal(fetchEventRequest(COORDINATORS_UNDER_REVIEW))).toMatchObject(
+        NOT_PERMITTED,
+      )
+    },
+  )
 })
