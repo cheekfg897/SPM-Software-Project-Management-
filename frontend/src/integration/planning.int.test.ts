@@ -28,8 +28,7 @@ import type { Credentials } from './backend'
  * (an Event Coordinator) and new organisers. An event of the coordinator's needs a Lead to assign
  * it, an approved venue needs Venue Staff and a safety approval needs a Safety Officer, so those
  * checks read the accounts from INTEGRATION_LEAD_*, INTEGRATION_VENUE_STAFF_* and
- * INTEGRATION_SAFETY_OFFICER_* and skip without them. CI makes them on the SCRUM-98 branch
- * (frontend.yml).
+ * INTEGRATION_SAFETY_OFFICER_* and skip without them. CI makes all three (frontend.yml).
  */
 
 const NOT_PERMITTED = {
