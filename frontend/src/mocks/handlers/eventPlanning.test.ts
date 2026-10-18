@@ -252,6 +252,16 @@ describe('SCRUM-69 mock: registration settings', () => {
     })
   })
 
+  it('changes nothing for an empty body, but still asks for a capacity the organiser needs', async () => {
+    signInAs(HANA)
+
+    const unchanged = await updateRegistrationSettings(OPEN_FOR_50, {})
+    const error = await refusal(updateRegistrationSettings(ASKED_FOR_NOTHING_SET, {}))
+
+    expect(unchanged).toMatchObject({ registration_enabled: true, registration_capacity: 50 })
+    expectInvalid(error, { registration_capacity: [CAPACITY_REQUIRED] })
+  })
+
   it('asks for a capacity to open registration on an event that has none', async () => {
     signInAs(HANA)
 
