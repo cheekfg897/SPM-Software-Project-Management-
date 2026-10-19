@@ -552,6 +552,31 @@ class DecideEventRequestSchema(Schema):
         return data
 
 
+PLANNING_REJECTION_REASON_REQUIRED_MESSAGE = "A reason is required to reject the event."
+
+
+class RejectEventSchema(Schema):
+    """Payload for ``POST .../<reference>/reject`` (SCRUM-49 AC9, ADR-0093).
+
+    ``reason`` is why the event can't go ahead: required, not ``null``, not blank, and
+    trimmed.
+    """
+
+    reason = fields.String(
+        required=True,
+        validate=not_blank,
+        error_messages={
+            "required": PLANNING_REJECTION_REASON_REQUIRED_MESSAGE,
+            "null": PLANNING_REJECTION_REASON_REQUIRED_MESSAGE,
+        },
+    )
+
+    @post_load
+    def _trim_reason(self, data: dict[str, Any], **_: Any) -> dict[str, Any]:
+        data["reason"] = data["reason"].strip()
+        return data
+
+
 SAFETY_REASON_REQUIRED_MESSAGE = "A reason is required to reject the event or request changes."
 
 

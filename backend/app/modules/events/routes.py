@@ -56,6 +56,7 @@ from app.modules.events.services import (
     reassign_coordinator,
     record_equipment_outcome,
     record_safety_outcome,
+    reject_event_during_planning,
     remove_equipment_line,
     request_clarification,
     resubmit_event_request,
@@ -636,4 +637,25 @@ def confirm_request(reference: str) -> tuple[Response, int]:
     now confirmed.
     """
     event_request = confirm_event_request(g.current_user_id, reference)
+    return jsonify(_event_request_schema.dump(event_request)), 200
+
+
+# --------------------------------------------------------------------------
+# SCRUM-49 AC9, AC10 — reject an event during planning
+# --------------------------------------------------------------------------
+
+
+@bp.post("/requests/<reference>/reject")
+@requires_role(Role.EVENT_COORDINATOR)
+def reject_request(reference: str) -> tuple[Response, int]:
+    """Reject the caller's event during planning, with a reason (SCRUM-49, ADR-0093).
+
+    The body is ``{"reason": ...}``. Only the event's assigned coordinator may; the
+    service answers anyone else with the equipment routes' "not yours" 404, and refuses
+    an event that isn't Approved or in Safety Review with a ``409``. Its venues are
+    released and its equipment returned. Returns ``200`` with the request, now rejected.
+    """
+    event_request = reject_event_during_planning(
+        g.current_user_id, reference, request.get_json(silent=True)
+    )
     return jsonify(_event_request_schema.dump(event_request)), 200
