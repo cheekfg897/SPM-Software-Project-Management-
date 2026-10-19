@@ -412,3 +412,17 @@ export const WITH_EQUIPMENT_KEY = [...eventRequestKeys.all, 'withEquipment'] as 
 export function fetchEventRequestsWithEquipment(): Promise<EventListRows> {
   return apiRequest<EventListRows>(WITH_EQUIPMENT_PATH)
 }
+
+const WITH_VENUE_BOOKINGS_PATH = `${EVENT_REQUEST_PATHS.MINE}/with-venue-bookings`
+
+/**
+ * Venue Staff's list of the events with a venue booking request or a booking. One list for all
+ * of them (they aren't assigned to venues), and nobody else may read it, so the viewer isn't
+ * part of the key (ADR-0085, ADR-0090).
+ */
+export const WITH_VENUE_BOOKINGS_KEY = [...eventRequestKeys.all, 'withVenueBookings'] as const
+
+/** Every event with a venue booking request or a booking, newest first (SCRUM-24 AC4). */
+export function fetchEventRequestsWithVenueBookings(): Promise<EventListRows> {
+  return apiRequest<EventListRows>(WITH_VENUE_BOOKINGS_PATH)
+}
