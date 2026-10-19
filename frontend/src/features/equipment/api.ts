@@ -48,6 +48,8 @@ export interface EquipmentReservation {
   ends_at: string
   reserved_by: string | null
   created_at: string
+  /** Units out of service have left the type short of what is reserved (SCRUM-47 AC3). */
+  needs_attention: boolean
   /** Technical Support's progress in preparing the units, and their notes (SCRUM-85). */
   preparation_status: PreparationStatus
   preparation_notes: string | null

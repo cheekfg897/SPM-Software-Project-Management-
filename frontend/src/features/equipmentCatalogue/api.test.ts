@@ -1,6 +1,6 @@
 import { recordRequests } from '@/test/recordRequests'
 
-import { fetchEquipmentType, updateEquipmentType } from './api'
+import { fetchEquipmentType, fetchOutOfService, takeOutOfService, updateEquipmentType } from './api'
 
 /** An id from the address with characters that would change the path if sent as they are. */
 const EQUIPMENT_TYPE_ID = '7/edit?x'
@@ -27,5 +27,28 @@ describe('SCRUM-27 equipment catalogue API paths', () => {
     await expect(send()).rejects.toMatchObject({ status: 404 })
 
     expect(new URL(requests[0]?.url ?? '').pathname).toBe(`/api/equipment/types/${ESCAPED}`)
+  })
+})
+
+describe('SCRUM-47 out-of-service API paths', () => {
+  it.each([
+    ['listing', () => fetchOutOfService(EQUIPMENT_TYPE_ID)],
+    [
+      'taking units out',
+      () =>
+        takeOutOfService({
+          equipmentTypeId: EQUIPMENT_TYPE_ID,
+          body: { quantity: 1, reason: 'damaged' },
+        }),
+    ],
+  ])("keeps the type's id one path segment when %s", async (_name, send) => {
+    const requests = recordRequests()
+
+    // The id is not a number, so the mock answers the route's 404: only the path matters here.
+    await expect(send()).rejects.toMatchObject({ status: 404 })
+
+    expect(new URL(requests[0]?.url ?? '').pathname).toBe(
+      `/api/equipment/types/${ESCAPED}/out-of-service`,
+    )
   })
 })

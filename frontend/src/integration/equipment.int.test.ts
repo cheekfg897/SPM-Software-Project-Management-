@@ -9,7 +9,15 @@ import { fetchEquipmentTypes } from '@/features/equipmentCatalogue/api'
 import { apiRequest } from '@/lib/api'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
 
-import { refusal, signInAs, signInAsNewAttendee, staffAccount, uniqueEmail } from './backend'
+import {
+  hasTechSupport,
+  refusal,
+  signInAs,
+  signInAsNewAttendee,
+  signInAsTechSupport,
+  staffAccount,
+  uniqueEmail,
+} from './backend'
 import {
   approvedEvent,
   coordinatorPosts,
@@ -43,19 +51,6 @@ const EQUIPMENT_TYPE_FIELDS = [
   'total_quantity',
   'venue_id',
 ]
-
-/**
- * A Technical Support account for the SCRUM-48 checks only they can reach. CI makes one
- * (frontend.yml); a local run reads it from these variables and skips those checks without them:
- * INTEGRATION_TECH_SUPPORT_EMAIL=... INTEGRATION_TECH_SUPPORT_PASSWORD=... npm run test:integration
- */
-const TECH_SUPPORT_EMAIL = import.meta.env.INTEGRATION_TECH_SUPPORT_EMAIL ?? ''
-const TECH_SUPPORT_PASSWORD = import.meta.env.INTEGRATION_TECH_SUPPORT_PASSWORD ?? ''
-const hasTechSupport = TECH_SUPPORT_EMAIL !== '' && TECH_SUPPORT_PASSWORD !== ''
-
-function signInAsTechSupport() {
-  return signInAs({ email: TECH_SUPPORT_EMAIL, password: TECH_SUPPORT_PASSWORD })
-}
 
 /** Whether a check can take an event to Approved (a Lead assigns it) and record an outcome. */
 const canReviewALine = hasTechSupport && LEAD !== null
