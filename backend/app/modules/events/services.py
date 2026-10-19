@@ -60,6 +60,7 @@ from app.modules.events.schemas import (
     ReassignCoordinatorSchema,
     RecordEquipmentOutcomeSchema,
     RecordSafetyOutcomeSchema,
+    RejectEventSchema,
     RequestClarificationSchema,
     ResubmitEventRequestSchema,
     SaveDraftSchema,
@@ -4411,4 +4412,93 @@ def confirm_event_request(
     _raise_notifications(
         [event_request.organiser_id], event_request, NotificationKind.EVENT_CONFIRMED, sess
     )
+    return event_request
+
+
+# --------------------------------------------------------------------------
+# SCRUM-49 AC9, AC10 — reject an event during planning
+# --------------------------------------------------------------------------
+
+#: Planning runs from the coordinator's approval to confirmation: the event is Approved
+#: while its venues and equipment are arranged, then in Safety Review (ADR-0047). A
+#: request still awaiting its first decision is rejected through SCRUM-31's decision,
+#: and a confirmed event is past planning: it would be cancelled (SCRUM-61).
+PLANNING_STATUSES: frozenset[EventRequestStatus] = frozenset(
+    {EventRequestStatus.APPROVED, EventRequestStatus.SAFETY_REVIEW}
+)
+NOT_IN_PLANNING_FOR_REJECTION_MESSAGE = (
+    "Only an approved event or one in Safety Review can be rejected during planning."
+)
+
+
+class EventRejectionNotAllowedError(AppError):
+    """The event isn't in planning, so it can't be rejected this way (409)."""
+
+    status_code = 409
+    error_code = "rejection_not_allowed"
+
+
+def _release_arrangements(event_id: int, coordinator_id: int, session: Session) -> None:
+    """Free the venues and equipment of an event that won't run, without committing.
+
+    Its venue arrangements are withdrawn or released, bookings and holds included, and
+    its reserved equipment goes back to stock (SCRUM-49 AC10). Written for a rejection
+    during planning; SCRUM-61's cancellation releases the same things, "as for a
+    cancelled event", so it is meant to share this. Open equipment requests close with
+    the event's status (``EQUIPMENT_NOT_NEEDED_STATUSES``), not here.
+    """
+    from app.modules.venue import services as venue_services  # circular at import time
+
+    venue_services.release_event_arrangements(
+        event_id, coordinator_id=coordinator_id, session=session
+    )
+    equipment_services.release_event_reservations(event_id, session=session)
+
+
+def reject_event_during_planning(
+    coordinator_id: int | str,
+    reference: str,
+    payload: Mapping[str, Any] | None,
+    *,
+    session: Session | None = None,
+) -> EventRequest:
+    """Reject an event whose essential arrangements can't be met (SCRUM-49 AC9, AC10).
+
+    Only the event's assigned coordinator may, and only by asking: nothing rejects an
+    event on its own. The event must be in planning, Approved or in Safety Review, and
+    a reason is required. The rejection is a decision, like SCRUM-31's: the
+    ``rejected`` status and a ``decision_recorded`` entry with the coordinator and the
+    reason, so it is the event's current decision. In the same commit its venue
+    arrangements are released or withdrawn and its reserved equipment returned, as for
+    a cancelled event (SCRUM-61, ADR-0093); its open equipment requests close with the
+    status (SCRUM-48 AC8). The organiser who submitted the request is told afterwards,
+    with the reason (ADR-0015). The checks run in this order: the reference, the
+    coordinator, the status, then the payload.
+
+    Args:
+        coordinator_id: The caller's user id, taken from their token.
+        reference: The ``EVR-…`` reference; case and surrounding spaces are ignored.
+        payload: Decoded JSON body: ``reason``.
+        session: Database session; defaults to ``db.session``.
+
+    Returns:
+        The request, now ``rejected``.
+
+    Raises:
+        NotFoundError: 404 — no such request among the coordinator's own.
+        EventRejectionNotAllowedError: 409 — the event isn't Approved or in Safety
+            Review.
+        ValidationError: 400 — no reason, or a field the body may not carry.
+    """
+    sess = resolve_session(session)
+    event_request = _event_request_assigned_to(coordinator_id, reference, sess)
+    if event_request.status not in PLANNING_STATUSES:
+        raise EventRejectionNotAllowedError(NOT_IN_PLANNING_FOR_REJECTION_MESSAGE)
+    rejection = load_or_raise(RejectEventSchema(), payload)
+
+    decision = {"outcome": DecisionOutcome.REJECTED, "reason": rejection["reason"]}
+    _apply_decision(coordinator_id, event_request, decision, sess)
+    _release_arrangements(event_request.id, int(coordinator_id), sess)
+    sess.commit()
+    _notify_organiser_of_decision(event_request, decision, sess)
     return event_request
