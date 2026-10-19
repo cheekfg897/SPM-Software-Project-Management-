@@ -1,11 +1,12 @@
 """Unit tests for SCRUM-53 "See and withdraw my registration".
 
 AC1: an attendee sees each registration with its status, withdrawn ones included. AC2:
-they can withdraw from an event that has not taken place; until the customer defines the
-Organiser's cut-off (AC3), withdrawals close when the event starts (ADR-0032). AC4: a
-withdrawn place returns to the event's capacity. AC5: nobody withdraws from an event
-already completed. A withdrawal sets the row's status, nothing is deleted, and
-registering again sets the same row back (ADR-0032).
+they can withdraw from an event that has not taken place, until its withdrawal cut-off.
+AC3: the cut-off is optional, recorded by the coordinator (SCRUM-69 AC6); with none,
+withdrawals close when the event starts (ADR-0032, ADR-0086). AC4: a refusal says when
+withdrawals closed. AC5: a withdrawn place returns to the event's capacity. AC6: nobody
+withdraws from an event already completed. A withdrawal sets the row's status, nothing
+is deleted, and registering again sets the same row back (ADR-0032).
 
 Runs against ``db_session``, so the counts are real SQL.
 """
@@ -54,6 +55,8 @@ OTHER_ATTENDEE = 22
 EVENT_STARTS = datetime(2026, 10, 20, 11, 30, tzinfo=timezone.utc)
 #: When it ends, 22:00 in Singapore.
 EVENT_ENDS = datetime(2026, 10, 20, 14, 0, tzinfo=timezone.utc)
+#: A withdrawal cut-off the day before, 19:30 in Singapore on Monday 19 October.
+CUT_OFF = EVENT_STARTS - timedelta(days=1)
 
 WITHDRAW_ENDPOINT = "registration.withdraw_from_catalogue_event"
 WITHDRAW_PATH = "/api/events/catalogue/41/registrations"
@@ -178,7 +181,7 @@ def test_withdrawing_touches_only_that_event_and_that_attendee(
 
 
 # --------------------------------------------------------------------------
-# AC2, AC3 placeholder and AC5 — withdrawals close when the event starts
+# AC2-AC4 and AC6 — withdrawals close at the cut-off, or when the event starts
 # --------------------------------------------------------------------------
 
 
@@ -218,8 +221,54 @@ def test_withdrawing_is_refused_once_the_event_has_started(
     assert rows_of(open_event.id) == [(ATTENDEE, RegistrationStatus.REGISTERED)]
 
 
+def test_an_attendee_can_withdraw_until_the_cut_off(
+    db_session: Session, register: Act, make_open_event: Callable[..., EventRequest]
+) -> None:
+    event = make_open_event(cut_off=CUT_OFF)
+    register(ATTENDEE, event.id)
+    just_before = CUT_OFF - timedelta(seconds=1)
+
+    registration = withdraw_registration(ATTENDEE, event.id, session=db_session, now=just_before)
+
+    assert registration.status is RegistrationStatus.WITHDRAWN
+
+
+@pytest.mark.parametrize(
+    "moment", [CUT_OFF, EVENT_STARTS - timedelta(hours=1)], ids=["at-the-cut-off", "after-it"]
+)
+def test_withdrawing_is_refused_once_the_cut_off_has_passed_and_says_when(
+    db_session: Session,
+    register: Act,
+    make_open_event: Callable[..., EventRequest],
+    rows_of: RowsOf,
+    moment: datetime,
+) -> None:
+    event = make_open_event(cut_off=CUT_OFF)
+    register(ATTENDEE, event.id)
+
+    with pytest.raises(WithdrawalClosedError) as exc_info:
+        withdraw_registration(ATTENDEE, event.id, session=db_session, now=moment)
+
+    assert exc_info.value.error_code == "withdrawal_closed"
+    assert exc_info.value.details == {"withdrawal_closed_at": "2026-10-19T19:30:00+08:00"}
+    assert rows_of(event.id) == [(ATTENDEE, RegistrationStatus.REGISTERED)]
+
+
+def test_a_cut_off_left_after_the_start_by_a_change_of_date_closes_at_the_start(
+    db_session: Session, register: Act, make_open_event: Callable[..., EventRequest]
+) -> None:
+    """The event moved earlier than its cut-off: withdrawals close as it starts."""
+    event = make_open_event(cut_off=EVENT_STARTS + timedelta(hours=1))
+    register(ATTENDEE, event.id)
+
+    with pytest.raises(WithdrawalClosedError) as exc_info:
+        withdraw_registration(ATTENDEE, event.id, session=db_session, now=EVENT_STARTS)
+
+    assert exc_info.value.details == {"withdrawal_closed_at": "2026-10-20T19:30:00+08:00"}
+
+
 # --------------------------------------------------------------------------
-# AC4 — a withdrawn place returns to the event's capacity
+# AC5 — a withdrawn place returns to the event's capacity
 # --------------------------------------------------------------------------
 
 
@@ -362,7 +411,7 @@ def test_the_catalogue_stops_showing_a_withdrawn_attendee_as_registered(
 
 
 # --------------------------------------------------------------------------
-# AC6 — the Event Organiser sees the withdrawal in the event's registration list
+# AC7 — the Event Organiser sees the withdrawal in the event's registration list
 # --------------------------------------------------------------------------
 
 

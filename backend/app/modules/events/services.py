@@ -3817,7 +3817,8 @@ class EventHeading:
     """The name, times and status of any event, for a list that mentions it.
 
     ``status`` is the status's plain value (``"confirmed"``), so a module reading it
-    never needs the events module's models.
+    never needs the events module's models. ``withdrawal_cut_off`` is the one the
+    coordinator recorded, or ``None`` (SCRUM-69 AC6, ADR-0086).
     """
 
     id: int
@@ -3825,6 +3826,7 @@ class EventHeading:
     starts_at: datetime
     ends_at: datetime
     status: str
+    withdrawal_cut_off: datetime | None
 
 
 def _is_open_for_registration() -> ColumnElement[bool]:
@@ -3956,6 +3958,7 @@ def list_event_headings(
                 starts_at=_starts_at(row),
                 ends_at=_ends_at(row),
                 status=row.status.value,
+                withdrawal_cut_off=row.withdrawal_cut_off,
             )
         )
     return headings
