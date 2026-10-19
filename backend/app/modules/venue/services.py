@@ -976,6 +976,17 @@ class SuitabilityResult:
         return not self.reasons
 
 
+def _capacity_shortfall(venue: Venue, expected_attendance: int) -> UnmetRequirement | None:
+    """The capacity requirement ``venue`` fails for ``expected_attendance``, if any."""
+    if venue.capacity >= expected_attendance:
+        return None
+    message = (
+        f"Expected attendance of {expected_attendance} exceeds the venue's capacity"
+        f" of {venue.capacity}."
+    )
+    return UnmetRequirement(RequirementKind.CAPACITY, message)
+
+
 def check_venue_suitability(
     venue_id: int, payload: Mapping[str, Any] | None, *, session: Session | None = None
 ) -> SuitabilityResult:
@@ -994,13 +1005,9 @@ def check_venue_suitability(
     venue = get_venue(venue_id, session=session)
 
     reasons: list[UnmetRequirement] = []
-    expected_attendance = data["expected_attendance"]
-    if venue.capacity < expected_attendance:
-        message = (
-            f"Expected attendance of {expected_attendance} exceeds the venue's capacity"
-            f" of {venue.capacity}."
-        )
-        reasons.append(UnmetRequirement(RequirementKind.CAPACITY, message))
+    capacity_shortfall = _capacity_shortfall(venue, data["expected_attendance"])
+    if capacity_shortfall is not None:
+        reasons.append(capacity_shortfall)
     reasons.extend(_unmet_requirements(venue, data))
     return SuitabilityResult(reasons)
 
