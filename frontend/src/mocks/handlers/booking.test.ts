@@ -827,8 +827,10 @@ describe("SCRUM-24 booking mock: Venue Staff's list of events", () => {
 
   it('lists each event with an active booking request, newest first', async () => {
     // 106 has a withdrawn arrangement beside its rejected ones, and 108 a released one beside an
-    // expired one, so both stay listed; 101 to 103 have none.
+    // expired one, so both stay listed, and 110 has the approved ballroom Venue Staff prepare
+    // (SCRUM-84); 101 to 103 have none.
     expect(await listedReferences()).toEqual([
+      'EVR-BOOK0110',
       'EVR-BOOK0109',
       'EVR-BOOK0108',
       'EVR-BOOK0107',
