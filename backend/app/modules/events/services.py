@@ -2101,20 +2101,17 @@ NOT_EDITABLE_MESSAGE = (
     "Only a submitted, under-review, approved or confirmed event request can be edited."
 )
 
+#: When the event happens. Every venue arrangement was booked against it, so changing
+#: any of these affects each one (ADR-0094).
+_TIMING_FIELDS = ("proposed_date", "end_date", "start_time", "end_time")
+
 #: Changing when or how big an event is could affect a venue already booked or being
 #: searched for, and equipment already requested for it (ADR-0025).
-_TIMING_AND_SIZE_FIELDS = (
-    "proposed_date",
-    "end_date",
-    "start_time",
-    "end_time",
-    "expected_attendance",
-)
+_TIMING_AND_SIZE_FIELDS = (*_TIMING_FIELDS, "expected_attendance")
 
 #: Fields whose change could mean a venue already booked, or being searched for, no
-#: longer fits (ADR-0025). Nothing reads this yet: SCRUM-58 will, once SCRUM-42 gives
-#: events venue bookings to reassess; declared now so that story doesn't have to
-#: rediscover the field list.
+#: longer fits (ADR-0025). :func:`_flag_venue_arrangements` reassesses each of the
+#: event's arrangements against whichever of them changed (ADR-0094).
 VENUE_AFFECTING_FIELDS: frozenset[str] = frozenset({*_TIMING_AND_SIZE_FIELDS, "venue_requirements"})
 
 #: Fields whose change could mean equipment already requested for the event no
@@ -2200,19 +2197,51 @@ def _affects_equipment(changes: list[FieldChange]) -> bool:
 def _reassess_arrangements(
     event_request: EventRequest, changes: list[FieldChange], session: Session
 ) -> None:
-    """Warn whoever has arrangements riding on the event that it changed (ADR-0025).
+    """Warn Technical Support that equipment riding on the event may not fit (ADR-0025).
 
     Technical Support Staff get one ``significant_change`` notification per edit
     when a changed field could affect equipment already requested and the event has
     at least one equipment line (AC2); with no lines there is nothing to reassess.
     Runs after the edit's own commit, so a failed notification never rolls back a
-    saved edit; the failure is logged, not raised (ADR-0015).
+    saved edit; the failure is logged, not raised (ADR-0015). Venue arrangements are
+    flagged in the edit's own commit instead (:func:`_flag_venue_arrangements`).
     """
-    # TODO: SCRUM-58 flags the event's venue booking here when a change touches
-    # VENUE_AFFECTING_FIELDS, once SCRUM-42 has given events one to reassess.
     if not _affects_equipment(changes) or not event_request.equipment_lines:
         return
     _notify_technical_support(event_request, NotificationKind.SIGNIFICANT_CHANGE, session)
+
+
+def _flag_venue_arrangements(
+    event_request: EventRequest,
+    changes: list[FieldChange],
+    attendance_before: int,
+    session: Session,
+) -> list[str]:
+    """Reassess each of the event's venue arrangements, without committing (AC6).
+
+    ``changes`` are already applied to ``event_request``, so the expected attendance
+    from before them is passed in. Each arrangement is reassessed on its own, and only
+    those the change affects are flagged (ADR-0094), in the edit's own transaction, so
+    a saved edit never leaves an arrangement unflagged.
+
+    Returns:
+        What Venue Staff are to be told about each arrangement flagged, once the edit
+        is saved.
+    """
+    from app.modules.venue import services as venue_services  # circular at import time
+
+    changed_fields = set()
+    for change in changes:
+        changed_fields.add(change.field)
+    venue_change = venue_services.SignificantChange(
+        timing_changed=not changed_fields.isdisjoint(_TIMING_FIELDS),
+        venue_requirements_changed="venue_requirements" in changed_fields,
+        previous_attendance=attendance_before,
+        new_attendance=event_request.expected_attendance,
+    )
+    return venue_services.flag_arrangements_after_change(
+        event_request.id, venue_change, session=session
+    )
 
 
 def _record_field_changes(
@@ -2246,6 +2275,15 @@ def _record_field_changes(
     return changes
 
 
+def _tell_venue_staff_of_flags(
+    event_request: EventRequest, notices: list[str], session: Session
+) -> None:
+    """Tell Venue Staff about each arrangement the saved edit flagged (SCRUM-58 AC1)."""
+    from app.modules.venue import services as venue_services  # circular at import time
+
+    venue_services.tell_venue_staff_of_flags(_for_booking(event_request), notices, session=session)
+
+
 def update_event_request(
     coordinator_id: int | str,
     reference: str,
@@ -2254,7 +2292,7 @@ def update_event_request(
     session: Session | None = None,
     today: date | None = None,
 ) -> EventEdit:
-    """Change the fields sent on a request assigned to the caller (SCRUM-33 AC1-4, AC7).
+    """Change the fields sent on a request assigned to the caller (SCRUM-33).
 
     Only what is sent in ``payload`` changes (AC1, AC3); a value equal to what is
     already saved is not a change. Each changed field is written to the event
@@ -2262,8 +2300,10 @@ def update_event_request(
     same commit as the change itself (AC2, AC4); a field in
     :data:`SIGNIFICANT_FIELDS` is marked ``significant``. A significant change
     withdraws a safety approval in the same commit, naming the significant fields
-    (AC7, :func:`withdraw_safety_approval`). An edit that changes nothing writes and
-    commits nothing.
+    (AC7, :func:`withdraw_safety_approval`), and flags only the venue arrangements
+    it affects, each reassessed on its own (AC6, ADR-0094); Venue Staff are told
+    about each one flagged once the edit is saved. An edit that changes nothing
+    writes and commits nothing.
 
     Args:
         coordinator_id: The caller's user id, taken from their token.
@@ -2287,6 +2327,7 @@ def update_event_request(
     sess = resolve_session(session)
     event_request = _event_request_editable_by(coordinator_id, reference, sess)
     data = load_or_raise(EditEventRequestSchema(event_request, today=today), payload)
+    attendance_before = event_request.expected_attendance
     changes = _record_field_changes(
         event_request,
         int(coordinator_id),
@@ -2305,8 +2346,10 @@ def update_event_request(
             details={"significant_fields": significant_fields},
             session=sess,
         )
+    venue_notices = _flag_venue_arrangements(event_request, changes, attendance_before, sess)
     sess.commit()
     _reassess_arrangements(event_request, changes, sess)
+    _tell_venue_staff_of_flags(event_request, venue_notices, sess)
     return EventEdit(event_request, changes)
 
 
