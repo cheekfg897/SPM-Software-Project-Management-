@@ -15,6 +15,18 @@ const NO_NOTES_TEXT = 'None'
 /** Only Technical Support Staff record preparation (SCRUM-85, ADR-0050); the coordinator reads it. */
 const PREPARER_ROLES: readonly Role[] = [ROLE.TECHNICAL_SUPPORT_STAFF]
 
+/** The flag in words, so it does not depend on colour to be seen (SCRUM-47 AC3). */
+function AttentionText({ reservation }: { reservation: EquipmentReservation }) {
+  if (!reservation.needs_attention) {
+    return 'Not needed'
+  }
+  return (
+    <span className="text-danger font-semibold">
+      Needs attention: units of this type have gone out of service.
+    </span>
+  )
+}
+
 const READ_COLUMNS: DataTableColumn<EquipmentReservation>[] = [
   { header: 'Equipment', cell: (row) => row.equipment_type_name },
   { header: 'Quantity', cell: (row) => row.quantity },
@@ -24,6 +36,7 @@ const READ_COLUMNS: DataTableColumn<EquipmentReservation>[] = [
     cell: (row) =>
       `${formatShortDate(row.starts_at)}, ${formatTimeRange(row.starts_at, row.ends_at)}`,
   },
+  { header: 'Attention', cell: (row) => <AttentionText reservation={row} /> },
   { header: 'Preparation', cell: (row) => PREPARATION_STATUS_LABELS[row.preparation_status] },
   { header: 'Preparation notes', cell: (row) => row.preparation_notes ?? NO_NOTES_TEXT },
 ]
@@ -35,7 +48,9 @@ interface ReservationListProps {
 
 /**
  * The equipment already reserved for the event, with each reservation's preparation (SCRUM-85
- * AC2), and for Technical Support a form in each row to record it (AC1, ADR-0081).
+ * AC2), and for Technical Support a form in each row to record it (AC1, ADR-0081). A reservation
+ * that units out of service have left short is marked, and the list says so first, so the
+ * shortfall is seen even before the table is scrolled on a phone (SCRUM-47 AC3).
  */
 export function ReservationList({ reference, reservations }: ReservationListProps) {
   const user = useAppSelector(selectSessionUser)
@@ -55,12 +70,20 @@ export function ReservationList({ reference, reservations }: ReservationListProp
         },
       ]
     : READ_COLUMNS
+  const anyShort = reservations.some((reservation) => reservation.needs_attention)
   return (
-    <DataTable
-      caption="Reserved equipment"
-      columns={columns}
-      rows={reservations}
-      getRowKey={(row) => row.id}
-    />
+    <div className="space-y-3">
+      {anyShort && (
+        <p className="text-danger font-semibold">
+          Some reserved equipment is short: units have gone out of service since it was reserved.
+        </p>
+      )}
+      <DataTable
+        caption="Reserved equipment"
+        columns={columns}
+        rows={reservations}
+        getRowKey={(row) => row.id}
+      />
+    </div>
   )
 }
