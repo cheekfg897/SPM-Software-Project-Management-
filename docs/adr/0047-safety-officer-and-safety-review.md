@@ -45,7 +45,7 @@ SCRUM-98 records the Safety Officer's outcome. Decisions 15-21 cover it.
 - **SCRUM-49:** done by [ADR-0051](0051-confirm-an-event.md): the coordinator confirms from `safety_review` once `has_safety_approval` is true, and venue and equipment are re-checked then, which settles the open item below for confirmation.
 - **SCRUM-84/85:** refusing preparation details until `has_safety_approval` is true.
 - **Frontend:** the Safety Officer's outcome form is done by [ADR-0071](0071-safety-officer-screens.md); the three new notification kinds' messages are still owed.
-- **Open:** an event in Safety Review can't be edited, nor its equipment changed, because `safety_review` is in neither `EDITABLE_STATUSES` nor `EQUIPMENT_EDITABLE_STATUSES`. SCRUM-98's Request Changes is the way back to editing. Venue arrangements are not blocked yet: the coordinator could still withdraw or change one during review, or raise a new one, which the list would then show beside the approved ones without its status. SCRUM-98 or SCRUM-49 should decide.
+- **Open:** an event in Safety Review can't be edited, because `safety_review` is not in `EDITABLE_STATUSES`. (Its equipment can change since [ADR-0092](0092-equipment-line-changes-reopen-the-review.md): a changed line has no outcome, so confirmation waits for Technical Support.) SCRUM-98's Request Changes is the way back to editing. Venue arrangements are not blocked yet: the coordinator could still withdraw or change one during review, or raise a new one, which the list would then show beside the approved ones without its status. SCRUM-98 or SCRUM-49 should decide.
 
 ## Consequences
 - SCRUM-98 and SCRUM-49 have the status, the role and the gate to build on.
