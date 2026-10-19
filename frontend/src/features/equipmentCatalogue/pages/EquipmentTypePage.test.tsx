@@ -5,6 +5,7 @@ import { MOCK_ACCOUNTS, mockSessionFor } from '@/mocks/fixtures/accounts'
 import type { MockAccount } from '@/mocks/fixtures/accounts'
 import { renderApp } from '@/test/render'
 
+import { definitionsIn } from '../test/definitions'
 import { OTHER_STAFF } from '../test/staff'
 
 function openTypeAs(account: MockAccount, equipmentTypeId: number) {
@@ -14,9 +15,7 @@ function openTypeAs(account: MockAccount, equipmentTypeId: number) {
 /** The type's details, each label with its value. */
 async function details() {
   await screen.findByText('Total quantity held')
-  const terms = screen.getAllByRole('term').map((term) => term.textContent)
-  const values = screen.getAllByRole('definition').map((value) => value.textContent)
-  return Object.fromEntries(terms.map((term, index) => [term, values[index]]))
+  return definitionsIn(document.body)
 }
 
 describe('SCRUM-27 one equipment type', () => {

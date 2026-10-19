@@ -62,6 +62,11 @@ export interface OutOfServiceEntry {
   resolved_at: string | null
 }
 
+/** An entry once its units are back in service: when is always set, who is null once they're gone. */
+export interface ReturnedOutOfServiceEntry extends OutOfServiceEntry {
+  resolved_at: string
+}
+
 /** What taking units out sends. A blank field is left out, so the backend says what is missing. */
 export interface OutOfServiceBody {
   quantity?: number
@@ -125,8 +130,8 @@ export function takeOutOfService({
 }
 
 /** Put an entry's units back in service, all of them at once. Technical Support Staff only. */
-export function returnToService(entryId: number): Promise<OutOfServiceEntry> {
-  return apiRequest<OutOfServiceEntry>(EQUIPMENT_CATALOGUE_PATHS.returnToService(entryId), {
+export function returnToService(entryId: number): Promise<ReturnedOutOfServiceEntry> {
+  return apiRequest<ReturnedOutOfServiceEntry>(EQUIPMENT_CATALOGUE_PATHS.returnToService(entryId), {
     method: 'POST',
   })
 }
