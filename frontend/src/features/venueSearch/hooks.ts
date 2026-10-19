@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router'
 import { checkSuitability, fetchVenues, searchVenues, venueSearchKeys } from './api'
 import {
   readFilters,
+  readReplacementSearch,
   readVenueToCheck,
   toSearchRequest,
   toSuitabilityRequest,
@@ -60,4 +61,10 @@ export function useSuitability(venueId: number, filters: SearchFilters) {
     queryKey: venueSearchKeys.suitability(venueId, check),
     queryFn: () => checkSuitability(venueId, check),
   })
+}
+
+/** The flagged arrangement the search is finding a replacement for, or null (SCRUM-92). */
+export function useReplacementSearch() {
+  const [searchParams] = useSearchParams()
+  return readReplacementSearch(searchParams)
 }

@@ -1,7 +1,9 @@
 import {
   filtersFrom,
   readFilters,
+  readReplacementSearch,
   readVenueToCheck,
+  replacementSearchPath,
   toSearchRequest,
   toSuitabilityRequest,
   withFilters,
@@ -169,4 +171,31 @@ describe('SCRUM-36 the venue being checked', () => {
   it('checks against any layout when none was chosen', () => {
     expect(toSuitabilityRequest(FILTERS).required_layout).toBeNull()
   })
+})
+
+describe('SCRUM-92 a search for a replacement venue', () => {
+  const REPLACEMENT = { reference: 'EVR-BOOK0107', arrangementId: 9104 }
+
+  it('opens the search set to the filters, naming the event and the arrangement to replace', () => {
+    const path = replacementSearchPath(REPLACEMENT, FILTERS)
+
+    expect(path).toBe(
+      '/staff/venue-search?event=EVR-BOOK0107&replaces=9104&date=2026-11-20&start=09%3A00' +
+        '&end=17%3A00&min_capacity=120',
+    )
+  })
+
+  it('reads the replacement back from the URL, beside the filters', () => {
+    const params = new URLSearchParams(replacementSearchPath(REPLACEMENT, FILTERS).split('?')[1])
+
+    expect(readReplacementSearch(params)).toEqual(REPLACEMENT)
+    expect(readFilters(params)).toEqual(FILTERS)
+  })
+
+  it.each(['replaces=9104', 'event=EVR-BOOK0107', 'event=EVR-BOOK0107&replaces=abc'])(
+    'reads no replacement from %s',
+    (query) => {
+      expect(readReplacementSearch(new URLSearchParams(query))).toBeNull()
+    },
+  )
 })

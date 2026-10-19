@@ -1,4 +1,10 @@
-import { editDraftPath, eventEquipmentPath, loginPathReturningTo, ROUTES } from './routes'
+import {
+  editDraftPath,
+  eventEquipmentPath,
+  loginPathReturningTo,
+  replacementRequestPath,
+  ROUTES,
+} from './routes'
 
 describe('loginPathReturningTo', () => {
   it('sends the visitor to log in, remembering the page to come back to', () => {
@@ -29,5 +35,13 @@ describe('editDraftPath', () => {
 
   it('escapes characters that would change the path', () => {
     expect(editDraftPath('a/b')).toBe('/organiser/requests/a%2Fb/edit')
+  })
+})
+
+describe('SCRUM-92 replacementRequestPath', () => {
+  it('opens the event’s venue requests to replace the flagged arrangement with the venue chosen', () => {
+    expect(replacementRequestPath('EVR-BOOK0107', 9104, 2)).toBe(
+      '/events/EVR-BOOK0107/venue-requests?replaces=9104&venue=2',
+    )
   })
 })
