@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import { delay, http, HttpResponse } from 'msw'
 
 import { coordinatorEventPath, organiserRequestPath } from '@/config/routes'
@@ -33,8 +33,8 @@ const CONFIRMED_NOT_ENDED = 'EVR-PLAN0006'
 
 /** The actions each status offers; every status not named offers none. */
 const OFFERED_BY_STATUS: [EventRequestStatus, string[]][] = [
-  [EVENT_REQUEST_STATUS.APPROVED, ['Send to safety review']],
-  [EVENT_REQUEST_STATUS.SAFETY_REVIEW, ['Confirm event']],
+  [EVENT_REQUEST_STATUS.APPROVED, ['Send to safety review', 'Reject event']],
+  [EVENT_REQUEST_STATUS.SAFETY_REVIEW, ['Confirm event', 'Reject event']],
   [EVENT_REQUEST_STATUS.CONFIRMED, ['Save registration', 'Mark completed']],
 ]
 const STATUSES_OFFERING_NOTHING = Object.values(EVENT_REQUEST_STATUS).filter(
@@ -442,5 +442,93 @@ describe('SCRUM-49 confirming an event', () => {
     const alert = await within(await findRegion('Confirm the event')).findByRole('alert')
     expect(alert).toHaveTextContent('Not yet, says the backend.')
     expect(alert).toHaveTextContent('Only the backend could say this about the safety check.')
+  })
+})
+
+describe('SCRUM-49 rejecting an event during planning (AC9, AC10)', () => {
+  const REASON = 'No venue large enough is free that week.'
+
+  /** Open the event and press Reject event, so the page asks whether to go ahead. */
+  async function startRejecting(reference: string) {
+    const opened = openAsHana(reference)
+    await opened.user.click(await screen.findByRole('button', { name: 'Reject event' }))
+    return opened
+  }
+
+  it('asks first, saying what is released, and sends nothing when the coordinator keeps planning', async () => {
+    const requests = recordRequests()
+    const { user } = await startRejecting(APPROVED_WITH_GAPS)
+
+    const card = await findRegion('Reject the event')
+    expect(card).toHaveTextContent(
+      'Its venue bookings and holds are released and its equipment returned.',
+    )
+    await user.click(within(card).getByRole('button', { name: 'Keep planning' }))
+
+    expect(within(card).getByRole('button', { name: 'Reject event' })).toBeInTheDocument()
+    expect(within(card).queryByRole('button', { name: 'Yes, reject the event' })).toBeNull()
+    expect(requests.filter((request) => request.method === 'POST')).toEqual([])
+    expect(statusShownFor(APPROVED_WITH_GAPS)).toBe('Approved')
+  })
+
+  it.each([APPROVED_WITH_GAPS, HELD_BACK_EVERYWHERE])(
+    'rejects %s with the reason typed, and the page shows Rejected with nothing left to plan',
+    async (reference) => {
+      const requests = recordRequests()
+      const { user } = openAsHana(reference)
+      await user.type(await screen.findByLabelText('Reason for rejecting'), REASON)
+
+      await user.click(screen.getByRole('button', { name: 'Reject event' }))
+      await user.click(screen.getByRole('button', { name: 'Yes, reject the event' }))
+
+      await waitFor(() => expect(statusShownFor(reference)).toBe('Rejected'))
+      expect(screen.queryByRole('region', { name: 'Planning' })).not.toBeInTheDocument()
+      const sent = requests.find((request) => request.method === 'POST')
+      expect(sent?.url).toMatch(new RegExp(`/api/events/requests/${reference}/reject$`))
+      expect(await sent?.json()).toEqual({ reason: REASON })
+    },
+  )
+
+  it("sends no reason when none is typed, and shows the backend's message under the box", async () => {
+    const requests = recordRequests()
+    const { user } = await startRejecting(APPROVED_AND_SETTLED)
+
+    await user.click(screen.getByRole('button', { name: 'Yes, reject the event' }))
+
+    const reason = await screen.findByLabelText('Reason for rejecting')
+    expect(await screen.findByText('A reason is required to reject the event.')).toBeInTheDocument()
+    expect(reason).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getByRole('button', { name: 'Reject event' })).toBeInTheDocument()
+    expect(statusShownFor(APPROVED_AND_SETTLED)).toBe('Approved')
+    const sent = requests.find((request) => request.method === 'POST')
+    expect(await sent?.json()).toEqual({})
+  })
+
+  it("shows the backend's own words for a refusal, as they come", async () => {
+    refuseAction(READY_TO_CONFIRM, 'reject', {
+      error: 'rejection_not_allowed',
+      message: 'Not now, says the backend.',
+    })
+    const { user } = openAsHana(READY_TO_CONFIRM)
+    await user.type(await screen.findByLabelText('Reason for rejecting'), REASON)
+
+    await user.click(screen.getByRole('button', { name: 'Reject event' }))
+    await user.click(screen.getByRole('button', { name: 'Yes, reject the event' }))
+
+    const alert = await within(await findRegion('Reject the event')).findByRole('alert')
+    expect(alert).toHaveTextContent('Not now, says the backend.')
+  })
+
+  it('says it is busy while the event is being rejected', async () => {
+    server.use(
+      http.post(`/api/events/requests/${APPROVED_AND_SETTLED}/reject`, () => delay('infinite')),
+    )
+    const { user } = await startRejecting(APPROVED_AND_SETTLED)
+    const reject = screen.getByRole('button', { name: 'Yes, reject the event' })
+
+    await user.click(reject)
+
+    expect(reject).toBeDisabled()
+    expect(reject).toHaveAttribute('aria-busy', 'true')
   })
 })
