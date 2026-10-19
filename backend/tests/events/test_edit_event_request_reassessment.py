@@ -3,9 +3,8 @@
 AC2: after a significant edit that could affect equipment already requested,
 Technical Support Staff are warned once per edit, so they can check the equipment
 still fits the event (ADR-0025). Nobody is told when the event has no equipment
-lines yet, or when none of the changed fields could affect equipment.
-:data:`VENUE_AFFECTING_FIELDS` is declared for SCRUM-58, which will reassess a venue
-booking the same way once SCRUM-42 gives events one; nothing reads it yet.
+lines yet, or when none of the changed fields could affect equipment. Venue
+arrangements are reassessed in ``tests/venue/test_reassess_arrangements.py`` (AC6).
 
 Runs against ``db_session`` with ``saved_users``, so the recipients are found by a
 real query; the failed-notification test uses ``mock_session``, as
@@ -167,7 +166,11 @@ def test_a_failed_reassessment_notification_still_returns_the_edit(
     event_request.equipment_lines = [make_equipment_line(event_request, make_equipment_type())]
     # The request, then no safety check in its history (SCRUM-33 AC7).
     mock_session.scalar.side_effect = [event_request, None]
-    mock_session.scalars.return_value = [5]  # one Technical Support Staff member
+    mock_session.scalars.side_effect = [
+        [],  # no venue arrangements to flag (AC6)
+        [5],  # one Technical Support Staff member
+        [],  # no Venue Staff, who have nothing to hear about anyway
+    ]
     lost_connection = OperationalError("INSERT INTO notifications ...", {}, Exception("gone"))
     mock_session.commit.side_effect = [None, lost_connection]
 

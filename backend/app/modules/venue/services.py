@@ -38,6 +38,8 @@ from app.modules.venue.models import (
     BookingRequestStatus,
     BookingStatus,
     CalendarEntryKind,
+    ReassessmentFlag,
+    ReassessmentFlagKind,
     RequirementKind,
     Venue,
     VenueBlock,
@@ -2431,3 +2433,153 @@ def release_event_arrangements(
             _withdraw_and_record(arrangement, coordinator_id, session)
         else:
             _release_and_free_venue(arrangement, session)
+
+
+# --------------------------------------------------------------------------
+# SCRUM-33 AC6 — reassess each arrangement after a significant change
+# --------------------------------------------------------------------------
+
+#: Why a change to when the event happens unsettles a booking (SCRUM-58 AC1).
+TIMING_CHANGED_REASON = "The event's date or time changed."
+#: Why a change to the event's venue requirements does: the system can't read the free
+#: text, so Venue Staff check it against each venue (ADR-0094).
+VENUE_REQUIREMENTS_CHANGED_REASON = "The event's venue requirements changed."
+ATTENDANCE_ROSE_REASON = (
+    "The event's expected attendance rose from {previous} to {new},"
+    " above this arrangement's expected occupancy of {occupancy}."
+)
+
+
+@dataclass(frozen=True)
+class SignificantChange:
+    """What a significant change did to an event, as its arrangements see it (AC6).
+
+    The events module builds it from the fields an edit changed (ADR-0094).
+    """
+
+    #: The event's dates or start or end time changed.
+    timing_changed: bool
+    #: The event's free-text venue requirements changed.
+    venue_requirements_changed: bool
+    #: The expected attendance before and after the change; equal when it didn't.
+    previous_attendance: int
+    new_attendance: int
+
+
+def _attendance_flag(
+    arrangement: VenueBookingRequest, venue: Venue, change: SignificantChange
+) -> ReassessmentFlag | None:
+    """The flag an attendance change leaves on ``arrangement``, if any (ADR-0094).
+
+    Each arrangement is judged by its own occupancy (SCRUM-58 AC5). One whose occupancy
+    covered the whole audience before the change holds everyone, so it must hold the new
+    attendance too. A smaller one, such as a breakout room, is not judged against the
+    event's attendance at all (SCRUM-93 AC3). An arrangement whose occupancy still
+    covers the new attendance is untouched. One that doesn't is no longer suitable when
+    the venue can't hold the new attendance, naming capacity (SCRUM-58 AC2); otherwise
+    Venue Staff reconfirm it for the larger audience.
+    """
+    occupancy = arrangement.expected_occupancy
+    holds_everyone = occupancy >= change.previous_attendance
+    outgrown = change.new_attendance > occupancy
+    if not holds_everyone or not outgrown:
+        return None
+
+    shortfall = _capacity_shortfall(venue, change.new_attendance)
+    if shortfall is not None:
+        return ReassessmentFlag(
+            kind=ReassessmentFlagKind.NO_LONGER_SUITABLE, reason=shortfall.message
+        )
+    reason = ATTENDANCE_ROSE_REASON.format(
+        previous=change.previous_attendance, new=change.new_attendance, occupancy=occupancy
+    )
+    return ReassessmentFlag(kind=ReassessmentFlagKind.REQUIRES_RECONFIRMATION, reason=reason)
+
+
+def _reassessment_flags_for(
+    arrangement: VenueBookingRequest, venue: Venue, change: SignificantChange
+) -> list[ReassessmentFlag]:
+    """Each reason ``change`` gives to flag ``arrangement``; empty when it has none.
+
+    The event's period and venue requirements are shared by every arrangement, so a
+    change to either affects each one (SCRUM-58 AC1, ADR-0094). Attendance depends on
+    the arrangement's own occupancy.
+    """
+    flags = []
+    if change.timing_changed:
+        flags.append(
+            ReassessmentFlag(
+                kind=ReassessmentFlagKind.REQUIRES_RECONFIRMATION, reason=TIMING_CHANGED_REASON
+            )
+        )
+    if change.venue_requirements_changed:
+        flags.append(
+            ReassessmentFlag(
+                kind=ReassessmentFlagKind.REQUIRES_RECONFIRMATION,
+                reason=VENUE_REQUIREMENTS_CHANGED_REASON,
+            )
+        )
+    attendance_flag = _attendance_flag(arrangement, venue, change)
+    if attendance_flag is not None:
+        flags.append(attendance_flag)
+    return flags
+
+
+def _live_arrangements_of(event_id: int, session: Session | None) -> list[VenueBookingRequest]:
+    """The event's arrangements that still hold or ask for their venue, earliest first.
+
+    The statuses a venue becoming unavailable flags (SCRUM-92 AC1), for the same
+    reason: a decided-against, withdrawn or released arrangement has nothing to lose.
+    """
+    stmt = (
+        select(VenueBookingRequest)
+        .where(
+            VenueBookingRequest.event_id == event_id,
+            VenueBookingRequest.status.in_(FLAGGABLE_REQUEST_STATUSES),
+        )
+        .order_by(VenueBookingRequest.starts_at, VenueBookingRequest.id)
+    )
+    return list(resolve_session(session).scalars(stmt))
+
+
+def flag_arrangements_after_change(
+    event_id: int, change: SignificantChange, *, session: Session | None = None
+) -> list[str]:
+    """Reassess each of the event's live arrangements on its own, without committing.
+
+    SCRUM-33 AC6, ADR-0094. Each arrangement gets a flag for every reason ``change``
+    gives it, and only the arrangements the change affects get any. The flags ride in
+    the caller's transaction, with the change they come from. What Venue Staff are to
+    be told is returned rather than sent, so it goes out after the caller's commit
+    (ADR-0015), with :func:`tell_venue_staff_of_flags`.
+
+    Returns:
+        One notice detail per arrangement flagged, naming it, its venue and each reason,
+        earliest arrangement first; empty when the change affects none.
+    """
+    details = []
+    for arrangement in _live_arrangements_of(event_id, session):
+        venue = get_venue(arrangement.venue_id, session=session)
+        flags = _reassessment_flags_for(arrangement, venue, change)
+        if not flags:
+            continue
+        arrangement.reassessment_flags.extend(flags)
+        reasons = " ".join(flag.reason for flag in flags)
+        details.append(f"Venue arrangement {arrangement.id} at {venue.name}: {reasons}")
+    return details
+
+
+def tell_venue_staff_of_flags(
+    event: EventForBooking, details: list[str], *, session: Session | None = None
+) -> None:
+    """Tell every Venue Staff user about each arrangement a change flagged (AC1).
+
+    One ``significant_change`` notice per arrangement, with ``details`` from
+    :func:`flag_arrangements_after_change`, sent once the flags are saved. A notice that
+    can't be saved loses only itself, and is logged (ADR-0015).
+    """
+    staff_ids = list_user_ids_with_role(Role.VENUE_STAFF, session=session)
+    for detail in details:
+        _notify_about_booking(
+            staff_ids, event, NotificationKind.SIGNIFICANT_CHANGE, detail=detail, session=session
+        )

@@ -181,6 +181,24 @@ class UnavailabilityCategory(str, enum.Enum):
         return self.value.replace("_", " ")
 
 
+class ReassessmentFlagKind(str, enum.Enum):
+    """What a significant change to its event left an arrangement needing (ADR-0094).
+
+    SCRUM-33 AC6, in the words of SCRUM-58 AC1 and AC2. Venue Staff settle either one
+    (SCRUM-59); until then the event can't go to Safety Review or be confirmed.
+    """
+
+    #: The event's details changed under the booking, so Venue Staff must reconfirm it.
+    REQUIRES_RECONFIRMATION = "requires_reconfirmation"
+    #: The venue no longer meets what the arrangement needs; the reason names it.
+    NO_LONGER_SUITABLE = "no_longer_suitable"
+
+    @property
+    def label(self) -> str:
+        """How a refusal words it, e.g. ``"no longer suitable"``."""
+        return self.value.replace("_", " ")
+
+
 class BookingDecision(str, enum.Enum):
     """What Venue Staff decided about a request (SCRUM-43 AC3).
 
@@ -526,6 +544,14 @@ class VenueBookingRequest(db.Model):  # type: ignore[name-defined]
         order_by="(AlternativeVenueFlag.starts_at, AlternativeVenueFlag.id)",
     )
 
+    #: What significant changes to the event left the arrangement needing, one flag
+    #: for each reason each change gave, oldest first (SCRUM-33 AC6, ADR-0094).
+    reassessment_flags: Mapped[list[ReassessmentFlag]] = relationship(
+        lazy="selectin",
+        cascade="all, delete-orphan",
+        order_by="ReassessmentFlag.id",
+    )
+
     @property
     def needs_alternative_venue(self) -> bool:
         """Whether the arrangement is flagged "Needs Alternative Venue" (SCRUM-92 AC1).
@@ -536,6 +562,18 @@ class VenueBookingRequest(db.Model):  # type: ignore[name-defined]
         if self.status not in FLAGGABLE_REQUEST_STATUSES:
             return False
         return len(self.flags) > 0
+
+    @property
+    def is_flagged_after_change(self) -> bool:
+        """Whether a significant change to the event flagged the arrangement (ADR-0094).
+
+        SCRUM-33 AC6. Only while it still holds or asks for its venue, as for
+        :attr:`needs_alternative_venue`: once it is released, withdrawn or decided
+        against, its flags stay as the record of why, but nothing is needed.
+        """
+        if self.status not in FLAGGABLE_REQUEST_STATUSES:
+            return False
+        return len(self.reassessment_flags) > 0
 
 
 class AlternativeVenueFlag(db.Model):  # type: ignore[name-defined]
@@ -566,6 +604,40 @@ class AlternativeVenueFlag(db.Model):  # type: ignore[name-defined]
     #: which lasts until the venue is reactivated.
     starts_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)
     ends_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class ReassessmentFlag(db.Model):  # type: ignore[name-defined]
+    """One reason a significant change to the event flagged an arrangement (ADR-0094).
+
+    SCRUM-33 AC6. Each arrangement is reassessed on its own, so only the arrangements
+    the change affects get one. Kept beside the arrangement's status, as an
+    :class:`AlternativeVenueFlag` is, so the booking itself stands untouched until Venue
+    Staff reconfirm or withdraw it (SCRUM-59).
+    """
+
+    __tablename__ = "reassessment_flags"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    booking_request_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("venue_booking_requests.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    kind: Mapped[ReassessmentFlagKind] = mapped_column(
+        Enum(
+            ReassessmentFlagKind,
+            name="reassessment_flag_kind",
+            # Store the enum *values* (snake_case), not the member names.
+            values_callable=lambda enum_cls: [m.value for m in enum_cls],
+        ),
+        nullable=False,
+    )
+    #: What changed, or the requirement the venue now fails, as Venue Staff are told.
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
