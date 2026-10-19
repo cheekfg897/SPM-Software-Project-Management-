@@ -1,6 +1,7 @@
 # ADR-0088: The coordinator sees why an arrangement needs an alternative venue, finds another venue for its period and raises the replacement from the Venue requests page
 
-- **Status:** Accepted; the wording, showing the reasons only while flagged, and the two-step
+- **Status:** Accepted; never offering the venue being replaced follows the Product Owner's
+  decision of 19 Oct; the wording, showing the reasons only while flagged, and the two-step
   replacement (choose in the search, send from the form) are defaults to review with the team
 - **Date:** 2026-10-19
 - **Story:** SCRUM-92 Flag bookings affected when a venue becomes unavailable (AC1, AC4, AC6,
@@ -28,17 +29,19 @@ be true, not how it reads.
    "Maintenance: Roof repairs. Unavailable from 26 Nov, 8:00 am to 26 Nov, 6:00 pm." A
    deactivation, which has no end, is unavailable "until the venue is reactivated" (AC9). The
    arrangement's own details stay above it unchanged (AC4).
-2. **The flag shows only while the backend sets it.** A cleared flag (AC8) and a released
-   arrangement (AC7) show no causes, though the backend keeps a released one's. The status
-   label "Released" and the rule that a retired arrangement offers no actions were already on
-   the page (ADR-0069).
+2. **The flag shows only while the backend sets it, whatever the arrangement's status.** A
+   cleared flag (AC8) and a released arrangement (AC7) show no causes, though the backend keeps
+   a released one's. The page reads only `needs_alternative_venue`, so an On Hold arrangement,
+   which the Product Owner decided on 19 Oct is flagged too (AC1), shows its causes and "Find
+   another venue" once the backend flags it. The status label "Released" and the rule that a
+   retired arrangement offers no actions were already on the page (ADR-0069).
 3. **"Find another venue" opens the existing Find a venue page** (ADR-0073), set from the
    flagged arrangement: its date, start and end times in business time, an end date when it
    ends on a later day, its expected occupancy as the minimum capacity and its layout. Facilities
    and accessibility are left empty: the arrangement doesn't carry them, and the event records
    its needs as free text (ADR-0010). The search runs straight away. The URL also names the
-   event and the arrangement (`event`, `replaces`), so the page knows it is finding a
-   replacement.
+   event, the arrangement and its venue (`event`, `replaces`, `instead_of`), so the page knows
+   it is finding a replacement, and for which venue.
 4. **In a replacement search, each venue found offers "Request this venue".** It leads back to
    the event's Venue requests page with the request form filled in from the flagged arrangement
    (the venue chosen, its period, purpose, occupancy and layout) and marked "Replacing <purpose>",
@@ -47,6 +50,11 @@ be true, not how it reads.
    page, because the backend's per-field refusals (opening hours, a justification for an
    unsuitable venue) then show under their own fields, and the coordinator can add a
    justification. "Stop replacing" drops the replacement and leaves an ordinary form.
+   **The venue being replaced is never offered:** its card, if the search lists it, says "This is
+   the venue being replaced." instead. The Product Owner decided on 19 Oct that a replacement is
+   always another venue for the original period; the same venue at another time is a change
+   request (SCRUM-56, SCRUM-57). The form doesn't check a venue ID typed by hand: the backend
+   will refuse the same venue in a later PR, and its message will show under the field.
 5. **The backend decides whether a replacement is allowed.** "Find another venue" is offered on
    every flagged arrangement, whatever the event's status. A refusal shows in the form: the
    message (e.g. "Only an approved event or one in Safety Review can replace a venue; this one is
@@ -74,6 +82,8 @@ be true, not how it reads.
   approved (ADR-0053 decision 13); its events are fixed data.
 
 ## Revisit when
+- The backend refuses a same-venue replacement and flags On Hold arrangements (SCRUM-92's
+  "Changed after review" note): mirror the refusal and the flag in the booking mock.
 - The team decides the defaults in the status line.
 - SCRUM-90 gives events structured requirements: set the search's facilities and accessibility
   from them too.
