@@ -9,7 +9,7 @@ import {
   withdrawArrangement,
 } from '@/features/booking/api'
 import { logIn, register } from '@/features/auth/api'
-import { ApiError } from '@/lib/api'
+import { ApiError, apiRequest } from '@/lib/api'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
 
 import { staffAccount, uniqueEmail, VALID_PASSWORD } from './backend'
@@ -241,9 +241,30 @@ describe('SCRUM-93 changing, withdrawing and cancelling venue arrangements again
 })
 
 describe("SCRUM-24 Venue Staff's list of events against the backend", () => {
-  // GET /api/events/requests/with-venue-bookings exists (ADR-0085), but no screen calls it yet,
-  // so there is no API function to check. These land with the Venue Staff events screen.
-  it.todo('refuses the list without a token (401) and to a role other than Venue Staff (403)')
+  // No screen calls GET /api/events/requests/with-venue-bookings yet (ADR-0085), so there is no
+  // API function: the refusals are checked on the route itself, as the mock answers them.
+  function eventsWithVenueBookings() {
+    return apiRequest('/api/events/requests/with-venue-bookings')
+  }
+
+  it('refuses the list without a token (401)', async () => {
+    const error = await refusal(eventsWithVenueBookings())
+
+    expect(error).toMatchObject({ status: 401, code: 'authentication_error' })
+  })
+
+  it.each([
+    ['an Attendee', signInAsAttendee],
+    ['an Event Coordinator', signInAsCoordinator],
+  ])('refuses the list to %s (403)', async (_role, signIn) => {
+    await signIn()
+
+    const error = await refusal(eventsWithVenueBookings())
+
+    expect(error).toMatchObject({ status: 403, code: 'authorization_error' })
+  })
+
+  // The list itself lands with the Venue Staff events screen and its API function.
   it.todo(
     'lists an event with a booking request as name, date, times and status, or says there are none',
   )
