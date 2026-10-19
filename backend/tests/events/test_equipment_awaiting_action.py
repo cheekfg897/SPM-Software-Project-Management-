@@ -3,10 +3,12 @@
 AC1: every equipment request not yet resolved is listed, for events that have not yet
 taken place. AC2: each row has the event, the equipment types and quantities still
 requested, and the days remaining. AC3: the soonest event comes first. AC4: once
-none of an event's lines is still requested, the event drops off. One row per event,
-listing only its lines still ``requested``; an event "has not yet taken place" while
-its proposed date is today or later, and events that won't run are left out
-(ADR-0022). AC5 is in ``test_equipment_awaiting_action_routes.py``.
+none of an event's lines is still requested, the event drops off, and so does a line
+the coordinator removes. AC5: a line the coordinator changes after its outcome is
+listed again (SCRUM-37 AC4, ADR-0092). One row per event, listing only its lines still
+``requested``; an event "has not yet taken place" while its proposed date is today or
+later, and events that won't run are left out (ADR-0022). AC6 is in
+``test_equipment_awaiting_action_routes.py``.
 
 The service runs against ``db_session``, so the filters and the ordering are real SQL.
 """
@@ -26,6 +28,9 @@ from app.modules.events.models import EventEquipmentLine, EventRequest, EventReq
 from app.modules.events.services import (
     EquipmentAwaitingAction,
     list_equipment_requests_awaiting_action,
+    record_equipment_outcome,
+    remove_equipment_line,
+    update_equipment_line,
 )
 
 pytestmark = pytest.mark.scrum_38
@@ -37,6 +42,9 @@ EventNeeding = Callable[..., EventRequest]
 SummaryRow = tuple[str, list[tuple[int, int]], int]
 
 REFERENCE = "EVR-AAAAAAAA"
+#: The Event Coordinator ``saved_event_request`` is assigned to.
+COORDINATOR_ID = 3
+TECHNICAL_SUPPORT_ID = 5
 
 
 def _summary(awaiting: list[EquipmentAwaitingAction]) -> list[SummaryRow]:
@@ -238,3 +246,35 @@ def test_a_partly_arranged_event_shows_only_the_lines_still_requested(
     awaiting = list_equipment_requests_awaiting_action(today=today)
 
     assert _summary(awaiting) == [(REFERENCE, [(equipment_type.id, 2)], 30)]
+
+
+def test_a_removed_line_drops_off_the_list(
+    two_lines: list[EventEquipmentLine], microphone: EquipmentType, today: date
+) -> None:
+    projector_line = two_lines[1]
+
+    remove_equipment_line(COORDINATOR_ID, REFERENCE, projector_line.id)
+
+    awaiting = list_equipment_requests_awaiting_action(today=today)
+    assert _summary(awaiting) == [(REFERENCE, [(microphone.id, 4)], 30)]
+
+
+# --------------------------------------------------------------------------
+# AC5 — a request returns once its line is changed and has no outcome again
+# --------------------------------------------------------------------------
+
+
+def test_a_line_changed_after_its_outcome_is_listed_again(
+    two_lines: list[EventEquipmentLine], equipment_type: EquipmentType, today: date
+) -> None:
+    """Both lines are fully arranged, then the coordinator asks for more projectors."""
+    for line in two_lines:
+        payload = {"provided_quantity": line.quantity}
+        record_equipment_outcome(TECHNICAL_SUPPORT_ID, REFERENCE, line.id, payload)
+    assert list_equipment_requests_awaiting_action(today=today) == []
+    projector_line = two_lines[1]
+
+    update_equipment_line(COORDINATOR_ID, REFERENCE, projector_line.id, {"quantity": 5})
+
+    awaiting = list_equipment_requests_awaiting_action(today=today)
+    assert _summary(awaiting) == [(REFERENCE, [(equipment_type.id, 5)], 30)]
