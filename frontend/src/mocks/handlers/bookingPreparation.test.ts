@@ -1,3 +1,4 @@
+import { ROLE } from '@/config/roles'
 import { apiRequest } from '@/lib/api'
 import { refusalOf } from '@/test/refusalOf'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
@@ -36,6 +37,29 @@ function prepare(requestId: number, body: Record<string, unknown>) {
   return apiRequest<Record<string, unknown>>(preparationUrl(requestId), { method: 'PUT', body })
 }
 
+/**
+ * Every account but Venue Staff's. The backend's requires_role(Role.VENUE_STAFF) refuses each of
+ * them, so the list is built from the accounts and a role added later is checked too.
+ */
+const NOT_VENUE_STAFF = Object.values(MOCK_ACCOUNTS).filter(
+  (account) => account.role !== ROLE.VENUE_STAFF,
+)
+
+/** The status each account but Venue Staff's gets back from `send`, by role. */
+async function statusesForOtherRoles(send: () => Promise<unknown>) {
+  const statuses = []
+  for (const account of NOT_VENUE_STAFF) {
+    sendRequestsAs(mockTokenFor(account))
+    const error = await refusalOf(send())
+    statuses.push({ role: account.role, status: error.status })
+  }
+  return statuses
+}
+
+function refusedToEveryone() {
+  return NOT_VENUE_STAFF.map((account) => ({ role: account.role, status: 403 }))
+}
+
 beforeEach(() => {
   sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.venueStaff))
 })
@@ -51,12 +75,11 @@ describe('SCRUM-84 booking mock: the approved bookings', () => {
     ])
   })
 
-  it('answers 401 without a token and 403 to anyone but Venue Staff', async () => {
+  it('answers 401 without a token and 403 to every role but Venue Staff', async () => {
     sendRequestsAs(null)
     expect(await refusalOf(listApproved())).toMatchObject({ status: 401 })
 
-    sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.coordinator))
-    expect(await refusalOf(listApproved())).toMatchObject({ status: 403 })
+    expect(await statusesForOtherRoles(listApproved)).toEqual(refusedToEveryone())
   })
 })
 
@@ -95,6 +118,41 @@ describe('SCRUM-84 booking mock: recording preparation', () => {
     })
   })
 
+  it('refuses any other field, as the booking is all it may change (AC3, 400)', async () => {
+    const error = await refusalOf(
+      prepare(SAFETY_APPROVED_BOOKING.id, { status: 'ready', venue_id: 2, purpose: 'Changed' }),
+    )
+
+    expect(error.fieldErrors).toEqual({ venue_id: ['Unknown field.'], purpose: ['Unknown field.'] })
+    expect(await listedCopyOf(SAFETY_APPROVED_BOOKING.id)).toMatchObject({
+      purpose: 'Grand ballroom',
+      preparation_status: 'in_progress',
+    })
+  })
+
+  it("refuses a null status and notes that aren't text, as the backend's schema does (400)", async () => {
+    const nullStatus = await refusalOf(prepare(SAFETY_APPROVED_BOOKING.id, { status: null }))
+    const numberNotes = await refusalOf(
+      prepare(SAFETY_APPROVED_BOOKING.id, { status: 'ready', notes: 5 }),
+    )
+    const booleanStatus = await refusalOf(
+      prepare(SAFETY_APPROVED_BOOKING.id, { status: true, notes: false }),
+    )
+
+    expect(nullStatus.fieldErrors).toEqual({ status: ['Field may not be null.'] })
+    expect(numberNotes.fieldErrors).toEqual({ notes: ['Not a valid string.'] })
+    expect(booleanStatus.fieldErrors).toEqual({
+      status: ['Status must be not_started, in_progress or ready.'],
+      notes: ['Not a valid string.'],
+    })
+  })
+
+  it('takes null notes as left out, clearing them', async () => {
+    const saved = await prepare(SAFETY_APPROVED_BOOKING.id, { status: 'ready', notes: null })
+
+    expect(saved).toMatchObject({ preparation_status: 'ready', preparation_notes: null })
+  })
+
   it('answers 404 for a booking that does not exist', async () => {
     const error = await refusalOf(prepare(1, { status: 'ready' }))
 
@@ -121,16 +179,17 @@ describe('SCRUM-84 booking mock: recording preparation', () => {
     })
   })
 
-  it('answers 401 without a token and 403 to anyone but Venue Staff', async () => {
+  it('answers 401 without a token and 403 to every role but Venue Staff', async () => {
     sendRequestsAs(null)
     expect(await refusalOf(prepare(SAFETY_APPROVED_BOOKING.id, {}))).toMatchObject({
       status: 401,
     })
 
-    sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.coordinator))
-    expect(await refusalOf(prepare(SAFETY_APPROVED_BOOKING.id, {}))).toMatchObject({
-      status: 403,
-    })
+    const statuses = await statusesForOtherRoles(() =>
+      prepare(SAFETY_APPROVED_BOOKING.id, { status: 'ready' }),
+    )
+
+    expect(statuses).toEqual(refusedToEveryone())
   })
 })
 
