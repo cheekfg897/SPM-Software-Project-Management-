@@ -1603,7 +1603,8 @@ def _reopen_changed_line(
     """Treat a new equipment type or quantity as a significant change (SCRUM-37 AC4).
 
     Called before ``data`` is applied to the line, and without committing: withdraws
-    any safety approval, records the line before and after the change, and clears
+    any safety approval, records the line before and after the change, releases the
+    old type's reservations if the line moves to another type (ADR-0092), and clears
     its outcome.
     """
     _withdraw_safety_approval_for_line(coordinator_id, line, "changed", session)
@@ -1616,6 +1617,10 @@ def _reopen_changed_line(
         new_value=_line_as_history_value(new_equipment_type_id, new_quantity, session),
         session=session,
     )
+    if new_equipment_type_id != line.equipment_type_id:
+        equipment_services.release_reservations(
+            line.event_request_id, line.equipment_type_id, session=session
+        )
     _clear_outcome(line)
 
 
@@ -1806,9 +1811,9 @@ def remove_equipment_line(
     """Delete one of an event's equipment lines (SCRUM-37 AC2).
 
     Only the event's assigned coordinator may, while its equipment may still change.
-    It is a significant change (AC4): it is written to the event's history and any
-    safety approval is withdrawn, and once it is saved every Technical Support Staff
-    member is told.
+    It is a significant change (AC4): it is written to the event's history, any
+    safety approval is withdrawn and the event's reservations of the line's type are
+    released, and once it is saved every Technical Support Staff member is told.
 
     Raises:
         NotFoundError: 404 — no such event request among the coordinator's own, or no
@@ -1826,6 +1831,7 @@ def remove_equipment_line(
         new_value=None,
         session=sess,
     )
+    equipment_services.release_reservations(event_request.id, line.equipment_type_id, session=sess)
     sess.delete(line)
     sess.commit()
     _notify_technical_support(event_request, NotificationKind.SIGNIFICANT_CHANGE, sess)
