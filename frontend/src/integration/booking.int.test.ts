@@ -103,11 +103,29 @@ describe('SCRUM-42 venue booking requests against the backend', () => {
     expect(Object.keys(error.fieldErrors)).toEqual(['justification'])
   })
 
+  it('names a replacement id that is not a whole number from 1 (400, SCRUM-92)', async () => {
+    await signInAsCoordinator()
+
+    const error = await refusal(
+      raiseBookingRequest(UNKNOWN_EVENT_REFERENCE, {
+        venue_id: 1,
+        starts_at: '2026-11-10T09:00:00+08:00',
+        ends_at: '2026-11-10T12:00:00+08:00',
+        purpose: 'Keynote',
+        replaces_request_id: 0,
+      }),
+    )
+
+    expect(error).toMatchObject({ status: 400, code: 'validation_error' })
+    expect(error.fieldErrors).toEqual({
+      replaces_request_id: ['replaces_request_id must be a positive number.'],
+    })
+  })
+
   it.todo('raises a request for an approved event and lists it (needs a seeded approved event)')
   it.todo('refuses a second Pending request for the same venue and period (409)')
-  it.todo(
-    'raises a replacement linked to a flagged arrangement (SCRUM-92; needs a seeded blocked booking)',
-  )
+  // A replacement for a flagged arrangement (SCRUM-92) is raised in planning.int.test.ts, whose
+  // events reach an approved venue.
 })
 
 describe('SCRUM-43 venue booking decisions against the backend', () => {
