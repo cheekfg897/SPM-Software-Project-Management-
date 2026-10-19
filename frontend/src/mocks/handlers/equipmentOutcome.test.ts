@@ -40,13 +40,25 @@ const ABOVE_REQUESTED = 'Cannot provide more than was requested.'
 const LINE_NOT_FOUND = { status: 404, code: 'not_found', message: 'Equipment line not found.' }
 /** Statuses in which the coordinator may still change an event's equipment. */
 const EDITABLE_STATUSES: readonly EventRequestStatus[] = ['submitted', 'under_review', 'approved']
+/** The refusal, up to the closed status it names (OUTCOMES_CLOSED_MESSAGE). */
+const CLOSED_REFUSAL =
+  "An equipment outcome can't be recorded for an event that is completed, cancelled or rejected; this one is "
+/** Events that won't run, each with the refusal of an outcome on it (SCRUM-48 AC8). */
+const CLOSED_STATUS_REFUSALS = [
+  ['completed', `${CLOSED_REFUSAL}completed.`],
+  ['cancelled', `${CLOSED_REFUSAL}cancelled.`],
+  ['rejected', `${CLOSED_REFUSAL}rejected.`],
+] as const
+const CLOSED_STATUSES: readonly EventRequestStatus[] = CLOSED_STATUS_REFUSALS.map(
+  ([status]) => status,
+)
 /**
- * The rest, but a draft. The backend records an outcome on any event but a draft, closed ones
- * included, until SCRUM-48 AC8 lands (ADR-0040 decision 12). Built from every status, so a new
- * one is tested.
+ * The rest, but a draft or a closed one: the coordinator can't change their equipment, but
+ * Technical Support still record an outcome on it. Built from every status, so a new one is tested.
  */
-const LOCKED_STATUSES = Object.values(EVENT_REQUEST_STATUS).filter(
-  (status) => status !== 'draft' && !EDITABLE_STATUSES.includes(status),
+const LOCKED_OPEN_STATUSES = Object.values(EVENT_REQUEST_STATUS).filter(
+  (status) =>
+    status !== 'draft' && !EDITABLE_STATUSES.includes(status) && !CLOSED_STATUSES.includes(status),
 )
 
 /** The one line of the mock coordinator's event in `status`. */
@@ -154,8 +166,8 @@ describe('SCRUM-48 equipment outcome mock: recording', () => {
     })
   })
 
-  it.each(LOCKED_STATUSES)(
-    'records an outcome on an event that is %s, as the backend still does',
+  it.each(LOCKED_OPEN_STATUSES)(
+    'records an outcome on an event that is %s, whose equipment is otherwise locked',
     async (status) => {
       signInAs(MOCK_ACCOUNTS.technicalSupport)
       const { reference, line } = await onlyLineOf(status)
@@ -326,6 +338,35 @@ describe('SCRUM-48 equipment outcome mock: refusals', () => {
     expect(error).toMatchObject(NOT_PERMITTED)
     signInAs(MOCK_ACCOUNTS.technicalSupport)
     expect(await listedProjector()).toMatchObject({ status: 'requested' })
+  })
+
+  it.each(CLOSED_STATUS_REFUSALS)(
+    'refuses an outcome on an event that is %s, naming its status, and saves nothing (AC8)',
+    async (status, message) => {
+      signInAs(MOCK_ACCOUNTS.technicalSupport)
+      const { reference, line } = await onlyLineOf(status)
+
+      const error = await refusal(
+        recordEquipmentOutcome(reference, { lineId: line.id, body: { provided_quantity: 2 } }),
+      )
+
+      expect(error).toMatchObject({ status: 409, code: 'conflict', message })
+      const { line: unchanged } = await onlyLineOf(status)
+      expect(unchanged).toEqual(line)
+    },
+  )
+
+  it('checks the event is open before the line', async () => {
+    signInAs(MOCK_ACCOUNTS.technicalSupport)
+
+    const error = await refusal(
+      recordEquipmentOutcome(mockStatusEventReference('cancelled'), {
+        lineId: 999,
+        body: { provided_quantity: 1 },
+      }),
+    )
+
+    expect(error).toMatchObject({ status: 409, code: 'conflict' })
   })
 
   it('refuses a visitor with a 401', async () => {

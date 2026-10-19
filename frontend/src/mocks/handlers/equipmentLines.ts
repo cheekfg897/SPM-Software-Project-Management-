@@ -11,7 +11,13 @@ import { isRecord } from '@/lib/isRecord'
 import type { MockAccount } from '../fixtures/accounts'
 import { errorResponse, validationError } from '../responses'
 
-import { callerOrRefusal, eventForReader, eventForStaff, eventNotFound } from './equipmentAccess'
+import {
+  callerOrRefusal,
+  EQUIPMENT_NOT_NEEDED_STATUSES,
+  eventForReader,
+  eventForStaff,
+  eventNotFound,
+} from './equipmentAccess'
 import {
   MOCK_EQUIPMENT_LINES,
   MOCK_EQUIPMENT_TYPES,
@@ -40,7 +46,7 @@ const OUTCOME_PATH = `${LINE_PATH}/outcome`
 
 /** Only the event's assigned coordinator changes its lines; which event is the lookup's job. */
 const LINE_WRITER_ROLES: readonly Role[] = [ROLE.EVENT_COORDINATOR]
-/** Only Technical Support record an outcome, on any event's line (SCRUM-48). */
+/** Only Technical Support record an outcome, on any event's line that will still run (SCRUM-48). */
 const OUTCOME_RECORDER_ROLES: readonly Role[] = [ROLE.TECHNICAL_SUPPORT_STAFF]
 /** While an event's equipment may change (EQUIPMENT_EDITABLE_STATUSES). */
 const EDITABLE_STATUSES: readonly EventRequestStatus[] = [
@@ -277,6 +283,15 @@ function withdrawSafetyApproval(event: MockEvent): void {
   }
 }
 
+/** An outcome on an event that won't run, refused naming its status (SCRUM-48 AC8). */
+function outcomesClosed(event: MockEvent) {
+  return errorResponse(
+    409,
+    'conflict',
+    `An equipment outcome can't be recorded for an event that is completed, cancelled or rejected; this one is ${event.status}.`,
+  )
+}
+
 function duplicateLine() {
   return errorResponse(
     409,
@@ -409,9 +424,9 @@ export const equipmentLineHandlers: RequestHandler[] = [
     return new HttpResponse(null, { status: 204 })
   }),
 
-  // Technical Support only. The body, the event, the line, then what the line asked for. Every
-  // call overwrites the outcome, so a revision is recording again (SCRUM-48 AC6), and it
-  // withdraws a safety approval (AC7).
+  // Technical Support only. The body, the event, whether it will still run, the line, then what
+  // the line asked for. Every call overwrites the outcome, so a revision is recording again
+  // (SCRUM-48 AC6), and it withdraws a safety approval (AC7).
   http.post(OUTCOME_PATH, async ({ request, params }) => {
     const caller = callerOrRefusal(request, OUTCOME_RECORDER_ROLES)
     if (caller instanceof Response) {
@@ -428,6 +443,9 @@ export const equipmentLineHandlers: RequestHandler[] = [
     const event = eventForStaff(String(params.reference))
     if (event === undefined) {
       return eventNotFound()
+    }
+    if (EQUIPMENT_NOT_NEEDED_STATUSES.includes(event.status)) {
+      return outcomesClosed(event)
     }
     const line = lineOfEvent(event, String(params.lineId))
     if (line === undefined) {

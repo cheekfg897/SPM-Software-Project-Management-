@@ -164,7 +164,8 @@ const FIRST_LOCKED_EVENT_LINE_ID = 51
 
 /**
  * Two microphones asked for on each of the mock coordinator's events in those statuses, so
- * Technical Support have a line to record an outcome on there (SCRUM-48, ADR-0040 decision 12).
+ * Technical Support have a line to record an outcome on there, or be refused one on an event that
+ * won't run (SCRUM-48 AC8, ADR-0040 decision 15).
  */
 function linesOnLockedEvents(): MockEquipmentLine[] {
   const locked: MockEquipmentLine[] = []

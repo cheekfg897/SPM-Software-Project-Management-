@@ -1865,7 +1865,8 @@ def reassign_coordinator(
 # --------------------------------------------------------------------------
 
 #: Statuses of events that won't run, so their equipment no longer needs arranging
-#: (SCRUM-38 AC1, ADR-0022) and none can be reserved for them (SCRUM-46, ADR-0037).
+#: (SCRUM-38 AC1, ADR-0022), none can be reserved for them (SCRUM-46, ADR-0037) and no
+#: outcome can be recorded on their lines (SCRUM-48 AC8, ADR-0040).
 EQUIPMENT_NOT_NEEDED_STATUSES: frozenset[EventRequestStatus] = frozenset(
     {EventRequestStatus.COMPLETED, EventRequestStatus.CANCELLED, EventRequestStatus.REJECTED}
 )
@@ -3498,6 +3499,11 @@ def all_outcomes_recorded(event_id: int, *, session: Session | None = None) -> b
 
 OUTCOME_NOTE_REQUIRED_MESSAGE = "A note is required unless the whole request can be provided."
 PROVIDED_ABOVE_REQUESTED_MESSAGE = "Cannot provide more than was requested."
+#: Why an outcome is refused on an event that won't run; names the event's own status.
+OUTCOMES_CLOSED_MESSAGE = (
+    "An equipment outcome can't be recorded for an event that is completed, cancelled"
+    " or rejected; this one is {status}."
+)
 
 
 def _check_outcome_is_possible(line: EventEquipmentLine, outcome: Mapping[str, Any]) -> None:
@@ -3549,12 +3555,13 @@ def record_equipment_outcome(
 ) -> EventEquipmentLine:
     """Record, or revise, how much of an equipment line Technical Support will provide.
 
-    SCRUM-48 AC1-AC5, AC7. The status follows from the quantity provided; a shortfall
-    needs a note, and a line met in full keeps none. Every call adds a history entry,
-    so a revision leaves the earlier outcome on record. A revision, a line that already
-    had an outcome, also withdraws a safety approval (AC7, ADR-0087). Both are saved
-    with the outcome; the event's coordinator is told afterwards (ADR-0015), with the
-    equipment, the outcome and the note (SCRUM-50 AC4, ADR-0055).
+    SCRUM-48 AC1-AC5, AC7-AC8. The status follows from the quantity provided; a
+    shortfall needs a note, and a line met in full keeps none. Every call adds a history
+    entry, so a revision leaves the earlier outcome on record. A revision, a line that
+    already had an outcome, also withdraws a safety approval (AC7, ADR-0087). Both are
+    saved with the outcome; the event's coordinator is told afterwards (ADR-0015), with
+    the equipment, the outcome and the note (SCRUM-50 AC4, ADR-0055). An event that
+    won't run takes no outcome at all, first or revised (AC8).
 
     Args:
         reviewer_id: The Technical Support user's id, taken from their token.
@@ -3571,6 +3578,8 @@ def record_equipment_outcome(
         ValidationError: 400 — invalid payload, more provided than requested, or a
             shortfall with no note.
         NotFoundError: 404 — no such request, or no such line on it.
+        ConflictError: 409 — the event is completed, cancelled or rejected; the
+            message names its status (AC8).
     """
     outcome = load_or_raise(RecordEquipmentOutcomeSchema(), payload)
     sess = resolve_session(session)
@@ -3578,6 +3587,8 @@ def record_equipment_outcome(
         now = datetime.now(timezone.utc)
     reviewer = int(reviewer_id)
     event_request = _event_request_for_staff(reference, sess)
+    if event_request.status in EQUIPMENT_NOT_NEEDED_STATUSES:
+        raise ConflictError(OUTCOMES_CLOSED_MESSAGE.format(status=event_request.status.value))
     line = _line_of_event(event_request, line_id, sess)
     _check_outcome_is_possible(line, outcome)
     equipment_type = equipment_services.get_equipment_type(line.equipment_type_id, session=sess)
