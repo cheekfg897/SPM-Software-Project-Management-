@@ -1,6 +1,6 @@
 # ADR-0043: The assigned coordinator enables registration and sets its capacity; the settings live on the event
 
-- **Status:** Accepted; the role decision is a default to review with the Product Owner; AC3's limit with several venues booked (the largest one) is a default pending the team's rule on SCRUM-54
+- **Status:** Accepted; the role decision is a default to review with the Product Owner
 - **Date:** 2026-10-14
 - **Story:** SCRUM-69 Enable registration for an event and set its capacity
 
@@ -27,26 +27,17 @@ Several things are left open:
 ## Done by SCRUM-52
 - **AC5, capacity not below the number registered:** there was no registrations table until SCRUM-52, which adds the rule to `update_registration_settings` with the table it counts (ADR-0032). A capacity under the number registered is `400` on `registration_capacity`; equal is allowed; it applies whether or not registration is enabled.
 
-## Done on 2026-10-19: AC3, capacity not above the booked venue's
-SCRUM-42 and SCRUM-43 have merged, so the events module can now ask the venue module for an event's venues. The team has not yet recorded the multi-venue rule on SCRUM-54 (Seth's comment of 17 Oct on SCRUM-69 asks for it), so the single-venue case is built as the AC says and the multi-venue case takes a default.
-
-8. **A booked venue is one whose arrangement Venue Staff approved.** The venue module's new `list_booked_venues(event_id)` returns them as `ArrangedVenue` values, the shape `list_arranged_venues` already uses for the Safety Officer. A Pending, On Hold, Conflicting, Rejected or Expired arrangement has not booked its venue, and a Withdrawn or Released one no longer belongs to the event, so none of them sets a limit. Registration can only be enabled on a Confirmed event, and confirming needs every active arrangement approved ([ADR-0051](0051-confirm-an-event.md)), so by the time registration opens every venue still arranged is a booked one.
-9. **One venue booked: the capacity can't be more than the venue holds.** More is `400` on `registration_capacity`, with "Capacity cannot be more than the 100 places the venue holds."; exactly the venue's capacity is allowed.
-10. **Several venues booked: the largest one's capacity is the limit.** *Default pending the team's rule on SCRUM-54*, which asks "the main venue's capacity, or the combined capacity of all venues". The events have no "main venue" field, and the largest venue is the nearest stand-in for one. It is also never looser than the combined capacity, so if the team chooses combined, the rule only relaxes and no capacity already saved becomes invalid. The rule lives in one helper, `_booked_venue_capacity` in `events/services.py`, so changing it is a one-line change there plus its two tests.
-11. **No venue booked: nothing to check against.** A capacity can be stored on an event that has no booked venue yet (while registration is off, as decision 3 allows), and it is checked when the coordinator next changes the capacity or turns registration on.
-12. **The rule applies whether or not registration is enabled,** as AC5's does, with one exception: a call that leaves registration off and doesn't change the capacity is never refused. Otherwise a coordinator could not stop registration on an event whose capacity was set before a smaller venue was booked (for example a replacement venue, SCRUM-92). Turning registration back on with that capacity is refused until it is lowered.
-13. **Checked before AC5's registered count,** so a capacity that breaks both rules is refused for the venue first. Both are `400` on the same field.
+## Deferred
+- **AC3, capacity not above the booked venue's:** `main` has no way to find an event's booked venue through the venue module's public services, and the events module must not read the venue module's models (module boundary). Booking requests and decisions (SCRUM-42, SCRUM-43) are in the open stack of pull requests. When they merge, `update_registration_settings` gains one call to a venue service and one rule, following whatever the team decides on SCRUM-54 for several venues. A `# TODO` in the service marks the place.
 
 ## Consequences
-- AC5 landed with SCRUM-52 and AC3 on 2026-10-19 (see *Done by SCRUM-52* and *Done on 2026-10-19*). AC3's multi-venue case is a default until the team records its rule on SCRUM-54.
-- A capacity is checked against the booked venues only when it is set or registration is turned on. If a booked venue is later replaced by a smaller one (SCRUM-92), nothing lowers the capacity or tells the coordinator, so registration that is already open can still exceed the new venue until the coordinator changes it.
+- AC3 and AC5 of SCRUM-69 are not met by this change (see *Deferred* and *Done by SCRUM-52*): AC5 lands with SCRUM-52, and AC3 is still deferred, so the story is not Done until the venue stack merges. AC3 is listed under *Tickets to open* on the pull request.
+- Until AC3 lands, a coordinator can set a capacity larger than the venue holds. SCRUM-54's "never admit more attendees than the booked venue can hold" is not guaranteed yet.
 - The migration adds columns to `event_requests`. Existing rows become disabled with no capacity, whatever their `registration_required`, because nothing can have been Confirmed with registration before this story.
 - If the Product Owner rules for the Organiser, the change is the route's role and the service's one lookup, which becomes the organisation-scoped lookup an organiser needs (ADR-0020).
-- Tests: `tests/events/test_registration_settings*.py` and `test_registration_settings_migration.py` (marker `scrum_69`). AC3's tests book venues with the `save_arrangement` fixture.
+- Tests: `tests/events/test_registration_settings*.py` and `test_registration_settings_migration.py` (marker `scrum_69`).
 
 ## Revisit when
 - The Product Owner answers SCRUM-69's open question and SCRUM-54 AC5's wording: who sets registration capacity, whether it may be lower than the venue's, and whether it may change after registration opens.
-- ~~SCRUM-42 and SCRUM-43 merge: add the venue-capacity rule (AC3).~~ Done on 2026-10-19.
-- The team records the multi-venue rule on SCRUM-54: if it is the combined capacity, `_booked_venue_capacity` sums the capacities instead of taking the largest.
-- A replacement venue (SCRUM-92) should re-check, or flag, a capacity that no longer fits.
+- SCRUM-42 and SCRUM-43 merge: add the venue-capacity rule (AC3), after the team settles several venues on SCRUM-54.
 - SCRUM-52 merges: the registered-count rule (AC5) is added there; nothing further.
