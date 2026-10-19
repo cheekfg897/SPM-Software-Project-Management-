@@ -4146,7 +4146,8 @@ def _venue_gaps(event_id: int, session: Session) -> list[str]:
     """Why the event's venues keep it out of Safety Review; empty when they don't.
 
     It needs at least one venue arranged, and every active arrangement approved
-    (SCRUM-97 AC1, ADR-0047) and not needing an alternative venue (SCRUM-92).
+    (SCRUM-97 AC1, ADR-0047), not needing an alternative venue (SCRUM-92) and not
+    flagged by a significant change (SCRUM-33 AC6, SCRUM-58 AC3, ADR-0094).
     """
     from app.modules.venue import services as venue_services  # circular at import time
 
@@ -4159,6 +4160,15 @@ def _venue_gaps(event_id: int, session: Session) -> list[str]:
     # SCRUM-49 AC6: an Approved booking whose venue became unavailable doesn't count.
     for arrangement in venue_services.list_flagged_arrangements(event_id, session=session):
         gaps.append(f"Venue arrangement {arrangement.id} needs an alternative venue.")
+    # SCRUM-58 AC3: nor does one a significant change flagged, once for each reason.
+    flagged_after_change = venue_services.list_arrangements_flagged_after_change(
+        event_id, session=session
+    )
+    for arrangement in flagged_after_change:
+        for flag in arrangement.reassessment_flags:
+            gaps.append(
+                f"Venue arrangement {arrangement.id} is flagged ({flag.kind.label}): {flag.reason}"
+            )
     return gaps
 
 
