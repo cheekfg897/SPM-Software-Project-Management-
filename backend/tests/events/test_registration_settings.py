@@ -2,13 +2,12 @@
 
 AC1: the assigned coordinator enables or disables registration, and when they don't
 say, it follows the organiser's ``registration_required`` (ADR-0043). AC2: enabling
-needs a capacity. AC4: enabling needs a confirmed event. AC6: a change records who made
+needs a capacity. AC3: the capacity is the organiser's number, not limited by the venue
+booked for the event (customer answer A74). AC4: enabling needs a confirmed event. AC5:
+the capacity can change after registration opens, but not below the number already
+registered (SCRUM-52 adds the registrations it counts). AC7: a change records who made
 it and when, in the event history. A capacity outside 1 to the largest Postgres integer
 is refused, and only the event's own coordinator may change the settings.
-
-AC5: the capacity cannot drop below the number already registered (SCRUM-52 adds the
-registrations it counts, ADR-0043). AC3 (capacity within the booked venue's) is
-deferred, so nothing here tests it (ADR-0043).
 
 Runs against ``db_session`` with ``saved_users`` and ``saved_event_request``
 (``EVR-AAAAAAAA``, ``submitted``, assigned to Event Coordinator 3), so lookups are real
@@ -46,7 +45,8 @@ from app.modules.events.services import (
     update_registration_settings,
 )
 from app.modules.registration.models import Registration, RegistrationStatus
-from tests.events.cases import NOT_CONFIRMED_STATUSES
+from app.modules.venue.models import BookingRequestStatus, Venue
+from tests.events.cases import NOT_CONFIRMED_STATUSES, Arrange
 
 pytestmark = pytest.mark.scrum_69
 
@@ -313,6 +313,27 @@ def test_a_value_of_the_wrong_kind_is_refused_on_its_field(
 
 
 # --------------------------------------------------------------------------
+# AC3 — the capacity is the organiser's number, whatever the venue holds
+# --------------------------------------------------------------------------
+
+
+def test_a_capacity_above_the_booked_venues_is_accepted(
+    update: Update,
+    confirmed_event_request: EventRequest,
+    venue: Venue,
+    arrange: Arrange,
+    settings_of: SettingsOf,
+) -> None:
+    """The organiser may plan for more than the venue seats (customer answer A74)."""
+    arrange(BookingRequestStatus.APPROVED)
+    above_the_venue = venue.capacity + 1
+
+    update(COORDINATOR_ID, {"registration_enabled": True, "registration_capacity": above_the_venue})
+
+    assert settings_of() == (True, above_the_venue)
+
+
+# --------------------------------------------------------------------------
 # AC4 — registration is enabled only for a confirmed event
 # --------------------------------------------------------------------------
 
@@ -380,7 +401,7 @@ def test_registration_can_be_disabled_whatever_the_status(
 
 
 # --------------------------------------------------------------------------
-# AC5 — the capacity cannot drop below the number already registered
+# AC5 — the capacity can change, but not below the number already registered
 # --------------------------------------------------------------------------
 
 
@@ -526,7 +547,7 @@ def test_the_payload_is_checked_before_the_status(update: Update) -> None:
 
 
 # --------------------------------------------------------------------------
-# AC6 — who changed the settings and when, saved with the change
+# AC7 — who changed the settings and when, saved with the change
 # --------------------------------------------------------------------------
 
 
