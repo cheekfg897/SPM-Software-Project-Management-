@@ -9,6 +9,7 @@ import {
   withdrawArrangement,
 } from '@/features/booking/api'
 import { logIn, register } from '@/features/auth/api'
+import type { EventListRows } from '@/features/eventRequests/api'
 import { ApiError, apiRequest } from '@/lib/api'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
 
@@ -242,9 +243,20 @@ describe('SCRUM-93 changing, withdrawing and cancelling venue arrangements again
 
 describe("SCRUM-24 Venue Staff's list of events against the backend", () => {
   // No screen calls GET /api/events/requests/with-venue-bookings yet (ADR-0085), so there is no
-  // API function: the refusals are checked on the route itself, as the mock answers them.
+  // API function: the route is checked through apiRequest, as the mock answers it.
+  /** The backend's EVENT_LIST_FIELDS, in alphabetical order. */
+  const EVENT_LIST_ROW_FIELDS = [
+    'end_date',
+    'end_time',
+    'name',
+    'proposed_date',
+    'reference',
+    'start_time',
+    'status',
+  ]
+
   function eventsWithVenueBookings() {
-    return apiRequest('/api/events/requests/with-venue-bookings')
+    return apiRequest<EventListRows>('/api/events/requests/with-venue-bookings')
   }
 
   it('refuses the list without a token (401)', async () => {
@@ -264,8 +276,25 @@ describe("SCRUM-24 Venue Staff's list of events against the backend", () => {
     expect(error).toMatchObject({ status: 403, code: 'authorization_error' })
   })
 
-  // The list itself lands with the Venue Staff events screen and its API function.
-  it.todo(
-    'lists an event with a booking request as name, date, times and status, or says there are none',
+  it.skipIf(!hasVenueStaff)(
+    'answers Venue Staff with summary rows, or says there are none',
+    async () => {
+      await signInAsVenueStaff()
+
+      const body = await eventsWithVenueBookings()
+
+      // Other files may have raised requests on this backend, so the list may or may not be empty.
+      if (body.event_requests.length === 0) {
+        expect(body.message).toBe('No events have a venue booking request yet.')
+      } else {
+        expect(body.message).toBeUndefined()
+      }
+      for (const row of body.event_requests) {
+        expect(Object.keys(row).sort()).toEqual(EVENT_LIST_ROW_FIELDS)
+      }
+    },
   )
+
+  // Which events are listed is checked with the Venue Staff events screen and its API function.
+  it.todo('lists an event with an active booking request and leaves a withdrawn one out')
 })
