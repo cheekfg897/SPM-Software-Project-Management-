@@ -89,6 +89,28 @@ describe('SCRUM-92 why an arrangement needs an alternative venue', () => {
     ])
   })
 
+  it('shows why a flagged On Hold arrangement needs another venue, and offers to find one (AC1)', async () => {
+    const { heldStudio } = MOCK_ARRANGEMENTS
+    listBookedEventAs([
+      {
+        ...heldStudio,
+        needs_alternative_venue: true,
+        unavailability: bookedHall.unavailability,
+      },
+    ])
+
+    openEvent(BOOKED_EVENT.reference)
+
+    const studio = await item(heldStudio.purpose)
+    expect(studio).toHaveTextContent('On hold')
+    expect(await causesUnder(heldStudio.purpose)).toEqual([
+      'Maintenance: Roof repairs. Unavailable from 26 Nov, 8:00 am to 26 Nov, 6:00 pm.',
+    ])
+    expect(
+      within(studio).getByRole('link', { name: `Find another venue for ${heldStudio.purpose}` }),
+    ).toBeInTheDocument()
+  })
+
   it('keeps the original booking and its details on show (AC4)', async () => {
     openEvent(BOOKED_EVENT.reference)
 
