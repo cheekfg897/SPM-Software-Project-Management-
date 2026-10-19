@@ -530,6 +530,71 @@ def test_a_reservation_already_flagged_before_the_approval_keeps_it(
     assert _withdrawals(db_session) == []
 
 
+def test_every_event_left_short_loses_its_approval_and_no_other(
+    db_session: Session,
+    equipment_type: EquipmentType,
+    make_event_request: Callable[..., EventRequest],
+    make_reservation: MakeReservation,
+    save: Save,
+) -> None:
+    """Two approved events share the short period; the third has room on its day."""
+    in_review = make_event_request(
+        reference="EVR-AAAAAAAA",
+        status=EventRequestStatus.SAFETY_REVIEW,
+        coordinator_id=COORDINATOR_ID,
+    )
+    confirmed = make_event_request(
+        reference="EVR-BBBBBBBB", status=EventRequestStatus.CONFIRMED, coordinator_id=COORDINATOR_ID
+    )
+    other_day = make_event_request(
+        reference="EVR-CCCCCCCC", status=EventRequestStatus.CONFIRMED, coordinator_id=COORDINATOR_ID
+    )
+    reservations = [
+        (in_review, 4, EVENT_STARTS_AT, EVENT_ENDS_AT),
+        (confirmed, 4, EVENT_STARTS_AT, EVENT_ENDS_AT),
+        (other_day, 2, OTHER_DAY_STARTS_AT, OTHER_DAY_ENDS_AT),
+    ]
+    for event_request, quantity, starts_at, ends_at in reservations:
+        save(event_request)
+        approve_safety(event_request, save)
+        reservation = make_reservation(equipment_type, quantity, starts_at, ends_at)
+        reservation.event_id = event_request.id
+        save(reservation)
+
+    _mark(equipment_type, 3)
+
+    db_session.expire_all()
+    still_approved = []
+    for event_request in (in_review, confirmed, other_day):
+        approved = event_services.has_safety_approval(event_request.id)
+        still_approved.append((event_request.reference, event_request.status, approved))
+    assert still_approved == [
+        ("EVR-AAAAAAAA", EventRequestStatus.APPROVED, False),
+        ("EVR-BBBBBBBB", EventRequestStatus.APPROVED, False),
+        ("EVR-CCCCCCCC", EventRequestStatus.CONFIRMED, True),
+    ]
+
+
+def test_the_withdrawal_is_saved_with_the_change_even_if_the_notice_fails(
+    db_session: Session,
+    safety_approved: EventRequest,
+    equipment_type: EquipmentType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """It rides in the change's own commit; the notice comes after (ADR-0015)."""
+
+    def _notice_fails(event_ids: list[int], **_: Any) -> None:
+        raise RuntimeError("notification service down")
+
+    monkeypatch.setattr(event_services, "notify_coordinators_equipment_short", _notice_fails)
+
+    with pytest.raises(RuntimeError):
+        _mark(equipment_type, 3)
+
+    db_session.rollback()
+    assert event_services.has_safety_approval(safety_approved.id) is False
+
+
 # --- AC4: who changed the status, and when ------------------------------------------
 
 
