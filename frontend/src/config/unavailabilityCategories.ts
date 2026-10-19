@@ -12,3 +12,9 @@ export const UNAVAILABILITY_CATEGORIES = [
 ] as const
 
 export type UnavailabilityCategory = (typeof UNAVAILABILITY_CATEGORIES)[number]['value']
+
+/** A category's words, e.g. "Equipment failure"; one the list doesn't know reads as sent. */
+export function unavailabilityCategoryLabel(category: string): string {
+  const known = UNAVAILABILITY_CATEGORIES.find((each) => each.value === category)
+  return known?.label ?? category
+}
