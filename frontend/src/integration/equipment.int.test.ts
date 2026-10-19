@@ -306,7 +306,6 @@ describe('SCRUM-48 equipment outcomes against the backend', () => {
   )
   it.todo('records the whole line as fulfilled, keeping no note, and revises it')
   it.todo('answers 404 "Equipment line not found." for another event\'s line')
-  it.todo(
-    'refuses an outcome on a cancelled event (409 conflict), naming its status, and keeps the line as it was (SCRUM-48 AC8; needs a cancelled event with a line)',
-  )
+  // SCRUM-48 AC8 (an outcome on a closed event) is checked in planning.int.test.ts, on an
+  // event the coordinator rejected: nothing can cancel an event yet (SCRUM-61).
 })
