@@ -705,3 +705,63 @@ def test_a_revision_on_an_event_without_an_approval_withdraws_nothing(
     assert safety_withdrawals_of(saved_event_request.id) == []
     db_session.expire_all()
     assert saved_event_request.status is EventRequestStatus.SAFETY_REVIEW
+
+
+#: A revision to each outcome AC7 names, from a line first given eight of ten.
+REVISIONS = [
+    ({"provided_quantity": 10}, EquipmentLineStatus.FULFILLED),
+    ({"provided_quantity": 6, "note": "Two broke"}, EquipmentLineStatus.PARTIALLY_FULFILLED),
+    ({"provided_quantity": 0, "note": "All out on loan"}, EquipmentLineStatus.UNAVAILABLE),
+]
+
+
+def test_the_revisions_cover_every_outcome() -> None:
+    """Built from the enum, so an outcome added later needs a revision case too."""
+    outcomes = {outcome for _, outcome in REVISIONS}
+
+    assert outcomes == set(EquipmentLineStatus) - {EquipmentLineStatus.REQUESTED}
+
+
+@pytest.mark.parametrize(
+    ("payload", "outcome"), REVISIONS, ids=[outcome.value for _, outcome in REVISIONS]
+)
+def test_a_revision_to_any_outcome_withdraws_the_safety_approval(
+    record_outcome: Callable[..., EventEquipmentLine],
+    ten_requested: EventEquipmentLine,
+    approved_for_safety: Callable[[EventRequestStatus], EventRequest],
+    saved_event_request: EventRequest,
+    db_session: Session,
+    payload: dict[str, Any],
+    outcome: EquipmentLineStatus,
+) -> None:
+    record_outcome(ten_requested, provided_quantity=8, note="Two in repair")
+    approved_for_safety(EventRequestStatus.CONFIRMED)
+
+    line = record_outcome(ten_requested, **payload)
+
+    assert line.status is outcome
+    assert services.has_safety_approval(saved_event_request.id, session=db_session) is False
+
+
+def test_the_withdrawal_is_saved_with_the_outcome_even_if_the_notice_fails(
+    record_outcome: Callable[..., EventEquipmentLine],
+    ten_requested: EventEquipmentLine,
+    approved_for_safety: Callable[[EventRequestStatus], EventRequest],
+    saved_event_request: EventRequest,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """It rides in the outcome's own commit; the notice comes after (ADR-0015)."""
+
+    def _notice_fails(*_: Any, **__: Any) -> None:
+        raise RuntimeError("notification service down")
+
+    record_outcome(ten_requested, provided_quantity=8, note="Two in repair")
+    approved_for_safety(EventRequestStatus.CONFIRMED)
+    monkeypatch.setattr(services, "_notify_assigned_coordinator", _notice_fails)
+
+    with pytest.raises(RuntimeError):
+        record_outcome(ten_requested, provided_quantity=6, note="Two broke")
+
+    db_session.rollback()
+    assert services.has_safety_approval(saved_event_request.id, session=db_session) is False
