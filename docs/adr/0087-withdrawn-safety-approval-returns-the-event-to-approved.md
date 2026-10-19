@@ -35,4 +35,4 @@ The customer has said what happens to a Confirmed event that changes, though for
 ## Revisit when
 - The customer answers the question above.
 - Change requests for Confirmed events (SCRUM-56, SCRUM-57, SCRUM-58) are built: they may decide this for a Confirmed event instead.
-- The coordinator's direct edit of a Confirmed event (ADR-0025 decision 7) is closed, as the customer's Week 9 answer implies: then only Technical Support's changes reach a Confirmed event here.
+- The coordinator's direct edit of a Confirmed event (ADR-0025 decision 7) is closed. Jira asks for this now: SCRUM-33 AC8 (added 19 Oct) refuses a direct edit of a Confirmed event and makes Awaiting Clarification and Safety Review editable, and SCRUM-37 AC2 locks equipment lines once the event is Confirmed. Once both are built, a significant edit or a line change withdraws an approval in Safety Review (back to Approved) or in Approved, and only Technical Support's changes (SCRUM-47 AC5, SCRUM-48 AC7) reach a Confirmed event here, so decision 2 stays for them.
