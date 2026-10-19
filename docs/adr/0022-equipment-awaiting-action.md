@@ -1,6 +1,6 @@
 # ADR-0022: Technical Support see one shared list of upcoming events whose equipment lines are still `requested`
 
-- **Status:** Accepted
+- **Status:** Accepted; a line the coordinator changes after its outcome returns to the list, and a removed one leaves it (SCRUM-38 AC4, AC5), by [ADR-0092](0092-equipment-line-changes-reopen-the-review.md)
 - **Date:** 2026-09-26
 - **Story:** SCRUM-38 See the equipment requests awaiting my action
 

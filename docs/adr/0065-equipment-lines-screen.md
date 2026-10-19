@@ -31,8 +31,8 @@ from `GET /api/equipment/types`.
    Technical Support see the lines only. The backend lists an event's lines to a coordinator
    only when the event is assigned to them, so a coordinator who sees the lines is the assigned
    one. The list does not carry the event's status, so the controls are not hidden outside the
-   editable statuses: the backend's refusal ("Equipment can only be changed while the request is
-   submitted, under review or approved.") is shown instead.
+   editable statuses: the backend's refusal ("Equipment can only be changed before the event is
+   confirmed, and not once it is rejected or cancelled.", ADR-0092) is shown instead.
 3. **A change sends only the fields that changed** (`PATCH` is partial, ADR-0019 decision 8),
    so a line whose quantity was not touched is not reported as a changed quantity once AC4's
    reopening lands. Saving with nothing changed sends `{}`, which the backend accepts.
