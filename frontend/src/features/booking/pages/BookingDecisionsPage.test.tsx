@@ -8,6 +8,7 @@ import {
   REJECTION_REASON_REQUIRED_MESSAGE,
   SINGLE_VENUE_HOLD_MESSAGE,
 } from '@/mocks/handlers/booking'
+import { MOCK_PENDING_DECISIONS } from '@/mocks/handlers/bookingFixtures'
 import { server } from '@/mocks/server'
 import { recordRequests } from '@/test/recordRequests'
 import { renderApp } from '@/test/render'
@@ -237,4 +238,26 @@ describe('SCRUM-75 holding a venue from the venue booking decisions screen', () 
       )
     },
   )
+})
+
+describe('SCRUM-92 a replacement in the decisions queue', () => {
+  it('says a request replaces a booking, which approving it releases (AC7)', async () => {
+    const [mainHall, breakoutRoom] = MOCK_PENDING_DECISIONS
+    server.use(
+      http.get(QUEUE_URL, () =>
+        HttpResponse.json([{ ...breakoutRoom, replaces_request_id: 9104 }, mainHall]),
+      ),
+    )
+
+    renderQueue()
+
+    const replacement = await findRequest(breakoutRoom.purpose)
+    expect(
+      replacement.getByText(
+        'Replaces a booking whose venue became unavailable. Approving it releases that booking.',
+      ),
+    ).toBeInTheDocument()
+    const ordinary = await findRequest(mainHall.purpose)
+    expect(ordinary.queryByText(/Replaces a booking/)).not.toBeInTheDocument()
+  })
 })
