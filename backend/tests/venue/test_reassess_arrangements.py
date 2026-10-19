@@ -410,3 +410,32 @@ def test_a_request_no_change_flagged_shows_no_flags(shown: BookingRequestAsShown
 
     assert body["flagged_after_change"] is False
     assert body["reassessment_flags"] == []
+
+
+# --------------------------------------------------------------------------
+# A replacement releases a flagged arrangement (SCRUM-92 AC6, AC7, ADR-0094)
+# --------------------------------------------------------------------------
+
+
+def test_a_replacement_releases_an_arrangement_flagged_after_a_change(
+    db_session: Session,
+    make_venue: Callable[..., Venue],
+    save: Callable[..., None],
+    event: EventRequest,
+    main_id: int,
+    breakout_id: int,
+) -> None:
+    _edit(db_session, event, {"expected_attendance": 150})
+    great_hall = make_venue(name="Great Hall", capacity=200)
+    save(great_hall)
+
+    replacement = raise_booking(great_hall, event, db_session, replaces_request_id=main_id)
+    decide(replacement.id, "approved", db_session)
+
+    released = reload_request(db_session, main_id)
+    assert released.status is BookingRequestStatus.RELEASED
+    assert released.is_flagged_after_change is False
+    reviewed = event_services.submit_for_safety_review(
+        COORDINATOR_ID, event.reference, session=db_session
+    )
+    assert reviewed.status is EventRequestStatus.SAFETY_REVIEW
