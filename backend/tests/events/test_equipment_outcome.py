@@ -591,51 +591,6 @@ def test_the_organiser_sees_the_line_status_but_none_of_the_outcome_detail(
     assert event_record["equipment_lines"][0]["status"] == "partially_fulfilled"
 
 
-def test_lowering_a_quantity_below_what_was_promised_is_refused(
-    record_outcome: Callable[..., EventEquipmentLine],
-    ten_requested: EventEquipmentLine,
-    saved_event_request: EventRequest,
-    db_session: Session,
-) -> None:
-    record_outcome(ten_requested, provided_quantity=6, note="Only six in stock")
-
-    with pytest.raises(ValidationError) as exc_info:
-        services.update_equipment_line(
-            COORDINATOR_ID,
-            saved_event_request.reference,
-            ten_requested.id,
-            {"quantity": 5},
-            session=db_session,
-        )
-
-    assert exc_info.value.details == {
-        "quantity": [
-            "Quantity cannot be below the 6 units Technical Support has said they will provide."
-        ]
-    }
-    db_session.expire_all()
-    assert ten_requested.quantity == 10
-
-
-def test_raising_a_quantity_after_an_outcome_is_still_allowed(
-    record_outcome: Callable[..., EventEquipmentLine],
-    ten_requested: EventEquipmentLine,
-    saved_event_request: EventRequest,
-    db_session: Session,
-) -> None:
-    record_outcome(ten_requested, provided_quantity=6, note="Only six in stock")
-
-    line = services.update_equipment_line(
-        COORDINATOR_ID,
-        saved_event_request.reference,
-        ten_requested.id,
-        {"quantity": 12},
-        session=db_session,
-    )
-
-    assert line.quantity == 12
-
-
 # --------------------------------------------------------------------------
 # AC7 — revising an outcome after the safety check withdraws the approval
 # --------------------------------------------------------------------------

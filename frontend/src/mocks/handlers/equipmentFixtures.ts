@@ -189,8 +189,7 @@ function linesOnStatusEvents(): MockEquipmentLine[] {
 /**
  * The open event's lines. Projectors first, though "Microphone" sorts before it: the backend
  * keeps the order the lines were added. The microphones have been reviewed and will all be
- * provided, so their quantity can't go below four. Then one line on each event in another
- * status.
+ * provided. Then one line on each event in another status.
  */
 export const MOCK_EQUIPMENT_LINES: readonly MockEquipmentLine[] = [
   {
