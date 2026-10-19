@@ -174,14 +174,14 @@ describe('SCRUM-36 the venue being checked', () => {
 })
 
 describe('SCRUM-92 a search for a replacement venue', () => {
-  const REPLACEMENT = { reference: 'EVR-BOOK0107', arrangementId: 9104 }
+  const REPLACEMENT = { reference: 'EVR-BOOK0107', arrangementId: 9104, venueId: 31 }
 
-  it('opens the search set to the filters, naming the event and the arrangement to replace', () => {
+  it('opens the search set to the filters, naming the event, the arrangement and its venue', () => {
     const path = replacementSearchPath(REPLACEMENT, FILTERS)
 
     expect(path).toBe(
-      '/staff/venue-search?event=EVR-BOOK0107&replaces=9104&date=2026-11-20&start=09%3A00' +
-        '&end=17%3A00&min_capacity=120',
+      '/staff/venue-search?event=EVR-BOOK0107&replaces=9104&instead_of=31&date=2026-11-20' +
+        '&start=09%3A00&end=17%3A00&min_capacity=120',
     )
   })
 
@@ -192,10 +192,13 @@ describe('SCRUM-92 a search for a replacement venue', () => {
     expect(readFilters(params)).toEqual(FILTERS)
   })
 
-  it.each(['replaces=9104', 'event=EVR-BOOK0107', 'event=EVR-BOOK0107&replaces=abc'])(
-    'reads no replacement from %s',
-    (query) => {
-      expect(readReplacementSearch(new URLSearchParams(query))).toBeNull()
-    },
-  )
+  it.each([
+    'replaces=9104&instead_of=31',
+    'event=EVR-BOOK0107&instead_of=31',
+    'event=EVR-BOOK0107&replaces=9104',
+    'event=EVR-BOOK0107&replaces=abc&instead_of=31',
+    'event=EVR-BOOK0107&replaces=9104&instead_of=abc',
+  ])('reads no replacement from %s', (query) => {
+    expect(readReplacementSearch(new URLSearchParams(query))).toBeNull()
+  })
 })
