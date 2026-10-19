@@ -2,7 +2,7 @@
 
 ``GET /api/events/requests/awaiting-equipment`` shows each event still awaiting
 equipment with its date and times, the lines still requested and the days remaining
-(AC2). Only Technical Support Staff can open it (AC5), and it is one list for all of
+(AC2). Only Technical Support Staff can open it (AC6), and it is one list for all of
 them (ADR-0022). The service is in ``test_equipment_awaiting_action.py``.
 
 The *registered* view function is called inside a request context, so the real
@@ -54,7 +54,7 @@ def list_service(
 
 
 # --------------------------------------------------------------------------
-# AC5 — only Technical Support Staff can open it
+# AC6 — only Technical Support Staff can open it
 # --------------------------------------------------------------------------
 
 
