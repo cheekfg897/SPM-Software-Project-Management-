@@ -6,6 +6,11 @@ import {
   withdrawArrangement,
 } from '@/features/booking/api'
 import {
+  addEquipmentLine,
+  fetchEventEquipmentLines,
+  recordEquipmentOutcome,
+} from '@/features/equipment/api'
+import {
   completeEvent,
   confirmEvent,
   decideEventRequest,
@@ -27,14 +32,16 @@ import type { Credentials } from './backend'
 /**
  * The coordinator's planning actions against the running backend: sending an event to safety
  * review (SCRUM-97, ADR-0047), confirming it (SCRUM-49, ADR-0051), its registration settings
- * (SCRUM-69, ADR-0043) and marking it completed (SCRUM-68, ADR-0027) (ADR-0075). Also the
- * decision a venue booking request locks (SCRUM-31 AC7, ADR-0084).
+ * (SCRUM-69, ADR-0043) and marking it completed (SCRUM-68, ADR-0027) (ADR-0075), and what a
+ * closed event's equipment requests then refuse (SCRUM-48 AC8). Also the decision a venue
+ * booking request locks (SCRUM-31 AC7, ADR-0084).
  *
  * The refusals that need no event of the coordinator's run with the staff account every run has
  * (an Event Coordinator) and new organisers. An event of the coordinator's needs a Lead to assign
- * it, an approved venue needs Venue Staff and a safety approval needs a Safety Officer, so those
- * checks read the accounts from INTEGRATION_LEAD_*, INTEGRATION_VENUE_STAFF_* and
- * INTEGRATION_SAFETY_OFFICER_* and skip without them. CI makes all three (frontend.yml).
+ * it, an approved venue needs Venue Staff, a safety approval needs a Safety Officer and an
+ * equipment outcome needs Technical Support, so those checks read the accounts from
+ * INTEGRATION_LEAD_*, INTEGRATION_VENUE_STAFF_*, INTEGRATION_SAFETY_OFFICER_* and
+ * INTEGRATION_TECH_SUPPORT_* and skip without them. CI makes all four (frontend.yml).
  */
 
 const NOT_PERMITTED = {
@@ -90,9 +97,14 @@ const SAFETY_OFFICER = optionalAccount(
   import.meta.env.INTEGRATION_SAFETY_OFFICER_EMAIL,
   import.meta.env.INTEGRATION_SAFETY_OFFICER_PASSWORD,
 )
+const TECH_SUPPORT = optionalAccount(
+  import.meta.env.INTEGRATION_TECH_SUPPORT_EMAIL,
+  import.meta.env.INTEGRATION_TECH_SUPPORT_PASSWORD,
+)
 const canAssign = LEAD !== null
 const canApproveVenue = canAssign && VENUE_STAFF !== null
 const canApproveSafety = canApproveVenue && SAFETY_OFFICER !== null
+const canRecordOutcome = canAssign && TECH_SUPPORT !== null
 
 /** The account, which the test's skip condition has already checked is set. */
 function required(account: Credentials | null): Credentials {
@@ -206,6 +218,31 @@ async function settledEvent(): Promise<PlannedEvent> {
   await decideBookingRequest(bookingId, { outcome: 'approved' })
   await signInAs(staffAccount())
   return event
+}
+
+/** As Technical Support: a new equipment type with ten units. Returns its id. */
+async function newEquipmentType(): Promise<number> {
+  await signInAs(required(TECH_SUPPORT))
+  const equipmentType = await apiRequest<{ id: number }>('/api/equipment/types', {
+    method: 'POST',
+    body: {
+      name: `Integration Projector ${uniqueEmail('equipment')}`,
+      total_quantity: 10,
+      store_name: 'Main store',
+    },
+  })
+  return equipmentType.id
+}
+
+/** As the staff account: ask for two units of a new equipment type. Returns the line's id. */
+async function addEquipmentRequest(reference: string): Promise<number> {
+  const equipmentTypeId = await newEquipmentType()
+  await signInAs(staffAccount())
+  const line = await addEquipmentLine(reference, {
+    equipment_type_id: equipmentTypeId,
+    quantity: 2,
+  })
+  return line.id
 }
 
 /** A note on each of the Safety Officer's seven checklist items (SCRUM-98 AC2). */
@@ -574,6 +611,35 @@ describe('SCRUM-33 a significant edit after the safety check, against the backen
       const error = await refusal(confirmEvent(reference))
       expect(error.fieldErrors).toEqual({
         safety_check: ['The Safety Officer has not approved the event.'],
+      })
+    },
+  )
+})
+
+describe('SCRUM-48 no equipment outcome on a closed event against the backend', () => {
+  it.skipIf(!canRecordOutcome)(
+    'refuses an outcome once the coordinator has rejected the event, naming its status, and keeps the line as it was (AC8)',
+    async () => {
+      const { reference } = await assignedEvent()
+      const lineId = await addEquipmentRequest(reference)
+      await decideEventRequest(reference, { outcome: 'rejected', reason: 'It clashes with exams.' })
+      await signInAs(required(TECH_SUPPORT))
+
+      const error = await refusal(
+        recordEquipmentOutcome(reference, { lineId, body: { provided_quantity: 2 } }),
+      )
+
+      expect(error).toMatchObject({
+        status: 409,
+        code: 'conflict',
+        message:
+          "An equipment outcome can't be recorded for an event that is completed, cancelled " +
+          'or rejected; this one is rejected.',
+      })
+      const { equipment_lines: lines } = await fetchEventEquipmentLines(reference)
+      expect(lines.find((line) => line.id === lineId)).toMatchObject({
+        status: 'requested',
+        provided_quantity: null,
       })
     },
   )
