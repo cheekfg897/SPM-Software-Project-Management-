@@ -5,9 +5,10 @@ say, it follows the organiser's ``registration_required`` (ADR-0043). AC2: enabl
 needs a capacity. AC3: the capacity is the organiser's number, not limited by the venue
 booked for the event (customer answer A74). AC4: enabling needs a confirmed event. AC5:
 the capacity can change after registration opens, but not below the number already
-registered (SCRUM-52 adds the registrations it counts). AC7: a change records who made
-it and when, in the event history. A capacity outside 1 to the largest Postgres integer
-is refused, and only the event's own coordinator may change the settings.
+registered (SCRUM-52 adds the registrations it counts). AC6: the coordinator records an
+optional withdrawal cut-off, before the event starts (ADR-0086). AC7: a change records
+who made it and when, in the event history. A capacity outside 1 to the largest Postgres
+integer is refused, and only the event's own coordinator may change the settings.
 
 Runs against ``db_session`` with ``saved_users`` and ``saved_event_request``
 (``EVR-AAAAAAAA``, ``submitted``, assigned to Event Coordinator 3), so lookups are real
@@ -18,7 +19,7 @@ of the default.
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -37,6 +38,7 @@ from app.modules.events.models import (
 )
 from app.modules.events.services import (
     CAPACITY_REQUIRED_MESSAGE,
+    CUT_OFF_NOT_BEFORE_START_MESSAGE,
     EVENT_REQUEST_NOT_FOUND_MESSAGE,
     REGISTRATION_NOT_CONFIRMED_MESSAGE,
     HistoryEntryAsShown,
@@ -54,6 +56,7 @@ Update = Callable[[int, dict[str, Any]], EventRequest]
 SettingsOf = Callable[[], tuple[bool, int | None]]
 HistoryOf = Callable[[int], list[tuple[EventHistoryKind, int | None, dict[str, Any] | None]]]
 SetStatus = Callable[[EventRequestStatus], None]
+CutOffOf = Callable[[], datetime | None]
 
 REFERENCE = "EVR-AAAAAAAA"
 #: The Event Coordinator ``saved_event_request`` is assigned to.
@@ -63,6 +66,12 @@ OTHER_COORDINATOR_ID = 9
 NOW = datetime(2026, 10, 14, 10, 0, tzinfo=timezone.utc)
 
 ENABLE_WITH_100 = {"registration_enabled": True, "registration_capacity": 100}
+
+#: ``saved_event_request`` starts on 15 October 2026 at 09:00 in Singapore.
+EVENT_STARTS = datetime(2026, 10, 15, 1, 0, tzinfo=timezone.utc)
+#: 18:00 in Singapore the evening before: as the coordinator sends it, and as stored.
+CUT_OFF_SENT = "2026-10-14T18:00:00+08:00"
+CUT_OFF = datetime(2026, 10, 14, 10, 0, tzinfo=timezone.utc)
 
 #: The largest capacity a Postgres ``INTEGER`` column holds.
 LARGEST_CAPACITY = 2_147_483_647
@@ -142,6 +151,18 @@ def register_attendees(
             )
 
     return _register
+
+
+@pytest.fixture()
+def cut_off_of(
+    saved_event_request: EventRequest, reload_event_request: Callable[[int], EventRequest]
+) -> CutOffOf:
+    """The saved request's withdrawal cut-off, read back."""
+
+    def _cut_off() -> datetime | None:
+        return reload_event_request(saved_event_request.id).withdrawal_cut_off
+
+    return _cut_off
 
 
 def _assert_capacity_required(refused: ValidationError) -> None:
@@ -284,6 +305,10 @@ def test_a_body_that_is_not_an_object_is_refused(
         ({"registration_capacity": None}, "registration_capacity"),
         ({"registration_enabled": "yes"}, "registration_enabled"),
         ({"registration_enabled": None}, "registration_enabled"),
+        ({"withdrawal_cut_off": "tomorrow"}, "withdrawal_cut_off"),
+        ({"withdrawal_cut_off": "2026-10-14T25:00:00"}, "withdrawal_cut_off"),
+        ({"withdrawal_cut_off": 1760436000}, "withdrawal_cut_off"),
+        ({"withdrawal_cut_off": True}, "withdrawal_cut_off"),
         ({"status": "confirmed"}, "status"),
     ],
     ids=[
@@ -293,6 +318,10 @@ def test_a_body_that_is_not_an_object_is_refused(
         "capacity-null",
         "enabled-as-text",
         "enabled-null",
+        "cut-off-as-words",
+        "cut-off-impossible-hour",
+        "cut-off-as-a-number",
+        "cut-off-boolean",
         "unknown-field",
     ],
 )
@@ -300,6 +329,7 @@ def test_a_value_of_the_wrong_kind_is_refused_on_its_field(
     update: Update,
     confirmed_event_request: EventRequest,
     settings_of: SettingsOf,
+    cut_off_of: CutOffOf,
     payload: dict[str, Any],
     field: str,
 ) -> None:
@@ -310,6 +340,7 @@ def test_a_value_of_the_wrong_kind_is_refused_on_its_field(
     assert exc_info.value.details is not None
     assert set(exc_info.value.details) == {field}
     assert settings_of() == (False, None)
+    assert cut_off_of() is None
 
 
 # --------------------------------------------------------------------------
@@ -496,6 +527,114 @@ def test_registrations_for_another_event_are_not_counted(
 
 
 # --------------------------------------------------------------------------
+# AC6 — an optional withdrawal cut-off, before the event starts
+# --------------------------------------------------------------------------
+
+
+def test_a_coordinator_records_a_cut_off_with_the_capacity(
+    update: Update,
+    confirmed_event_request: EventRequest,
+    settings_of: SettingsOf,
+    cut_off_of: CutOffOf,
+) -> None:
+    update(COORDINATOR_ID, {**ENABLE_WITH_100, "withdrawal_cut_off": CUT_OFF_SENT})
+
+    assert settings_of() == (True, 100)
+    assert cut_off_of() == CUT_OFF
+
+
+def test_a_cut_off_without_an_offset_is_read_as_business_time(
+    update: Update, confirmed_event_request: EventRequest, cut_off_of: CutOffOf
+) -> None:
+    payload = {"registration_enabled": False, "withdrawal_cut_off": "2026-10-14T18:00:00"}
+
+    update(COORDINATOR_ID, payload)
+
+    assert cut_off_of() == CUT_OFF
+
+
+def test_a_cut_off_a_moment_before_the_event_starts_is_accepted(
+    update: Update, confirmed_event_request: EventRequest, cut_off_of: CutOffOf
+) -> None:
+    payload = {"registration_enabled": False, "withdrawal_cut_off": "2026-10-15T08:59:59+08:00"}
+
+    update(COORDINATOR_ID, payload)
+
+    assert cut_off_of() == EVENT_STARTS - timedelta(seconds=1)
+
+
+@pytest.mark.parametrize(
+    "cut_off",
+    ["2026-10-15T09:00:00+08:00", "2026-10-15T01:00:00Z", "2026-10-15T12:00:00+08:00"],
+    ids=["as-it-starts", "as-it-starts-in-utc", "after-it-starts"],
+)
+def test_a_cut_off_that_is_not_before_the_event_starts_is_refused(
+    update: Update,
+    confirmed_event_request: EventRequest,
+    settings_of: SettingsOf,
+    cut_off_of: CutOffOf,
+    cut_off: str,
+) -> None:
+    with pytest.raises(ValidationError) as exc_info:
+        update(COORDINATOR_ID, {**ENABLE_WITH_100, "withdrawal_cut_off": cut_off})
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.details == {"withdrawal_cut_off": [CUT_OFF_NOT_BEFORE_START_MESSAGE]}
+    assert settings_of() == (False, None)
+    assert cut_off_of() is None
+
+
+def test_sending_null_clears_the_cut_off(
+    update: Update, confirmed_event_request: EventRequest, cut_off_of: CutOffOf
+) -> None:
+    update(COORDINATOR_ID, {**ENABLE_WITH_100, "withdrawal_cut_off": CUT_OFF_SENT})
+
+    update(COORDINATOR_ID, {"withdrawal_cut_off": None})
+
+    assert cut_off_of() is None
+
+
+def test_leaving_the_cut_off_out_keeps_it(
+    update: Update, confirmed_event_request: EventRequest, cut_off_of: CutOffOf
+) -> None:
+    update(COORDINATOR_ID, {**ENABLE_WITH_100, "withdrawal_cut_off": CUT_OFF_SENT})
+
+    update(COORDINATOR_ID, {"registration_capacity": 150})
+
+    assert cut_off_of() == CUT_OFF
+
+
+def test_a_cut_off_can_be_recorded_before_the_event_is_confirmed(
+    update: Update, saved_event_request: EventRequest, cut_off_of: CutOffOf
+) -> None:
+    """Like a capacity, it is stored while registration is off (ADR-0043, ADR-0086)."""
+    update(COORDINATOR_ID, {"registration_enabled": False, "withdrawal_cut_off": CUT_OFF_SENT})
+
+    assert saved_event_request.status is EventRequestStatus.SUBMITTED
+    assert cut_off_of() == CUT_OFF
+
+
+def test_only_a_cut_off_that_is_sent_is_checked_against_the_start(
+    update: Update,
+    confirmed_event_request: EventRequest,
+    save: Callable[..., None],
+    settings_of: SettingsOf,
+) -> None:
+    """The event moved earlier than its cut-off; changing the capacity is still allowed.
+
+    Withdrawals then close when the event starts, the earlier of the two (ADR-0086).
+    """
+    update(COORDINATOR_ID, {**ENABLE_WITH_100, "withdrawal_cut_off": CUT_OFF_SENT})
+    confirmed_event_request.proposed_date = date(2026, 10, 14)
+    confirmed_event_request.end_date = date(2026, 10, 14)
+    save(confirmed_event_request)
+
+    update(COORDINATOR_ID, {"registration_capacity": 150})
+
+    assert settings_of() == (True, 150)
+
+
+# --------------------------------------------------------------------------
 # ADR-0043 — only the event's own coordinator, and the order of the checks
 # --------------------------------------------------------------------------
 
@@ -586,6 +725,28 @@ def test_changing_only_the_capacity_records_only_the_capacity(
             COORDINATOR_ID,
             _field_change("registration_capacity", 100, 150),
         )
+    ]
+
+
+def test_recording_and_clearing_a_cut_off_records_who_did_so_in_business_time(
+    update: Update, confirmed_event_request: EventRequest, history_of: HistoryOf
+) -> None:
+    update(COORDINATOR_ID, ENABLE_WITH_100)
+
+    update(COORDINATOR_ID, {"withdrawal_cut_off": "2026-10-14T10:00:00Z"})
+    update(COORDINATOR_ID, {"withdrawal_cut_off": None})
+
+    assert history_of(confirmed_event_request.id)[2:] == [
+        (
+            EventHistoryKind.FIELD_CHANGED,
+            COORDINATOR_ID,
+            _field_change("withdrawal_cut_off", None, CUT_OFF_SENT),
+        ),
+        (
+            EventHistoryKind.FIELD_CHANGED,
+            COORDINATOR_ID,
+            _field_change("withdrawal_cut_off", CUT_OFF_SENT, None),
+        ),
     ]
 
 

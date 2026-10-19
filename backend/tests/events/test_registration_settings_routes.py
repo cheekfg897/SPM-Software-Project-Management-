@@ -2,8 +2,8 @@
 
 The route: ``PATCH /api/events/requests/<reference>/registration`` is for Event
 Coordinators only; the service checks the caller is the event's own coordinator and
-every rule on the settings (ADR-0043). It answers ``200`` with the settings, and never
-shows a user id.
+every rule on the settings (ADR-0043, ADR-0086). It answers ``200`` with the settings,
+the withdrawal cut-off in business time, and never shows a user id.
 
 The *registered* view function is called inside a request context, so the real
 decorators run. The service is replaced with a mock: a refused request must be
@@ -13,6 +13,7 @@ stopped before it is called.
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import datetime, timezone
 from types import ModuleType
 from typing import Any
 from unittest.mock import MagicMock
@@ -40,10 +41,14 @@ VIEW_KWARGS = {"reference": REFERENCE}
 def update_service(
     replace_services: ReplaceServices, make_event_request: Callable[..., EventRequest]
 ) -> MagicMock:
-    """Replace the service with a mock returning an event open for 100 places."""
+    """Replace the service with a mock returning an event open for 100 places.
+
+    Withdrawals close at 18:00 in Singapore the evening before it starts.
+    """
     event_request = make_event_request(status=EventRequestStatus.CONFIRMED, coordinator_id=3)
     event_request.registration_enabled = True
     event_request.registration_capacity = 100
+    event_request.withdrawal_cut_off = datetime(2026, 10, 14, 10, 0, tzinfo=timezone.utc)
     mocks = replace_services(routes, {"update_registration_settings": event_request})
     return mocks["update_registration_settings"]
 
@@ -78,7 +83,11 @@ def test_changing_the_settings_without_a_token_is_401(
 def test_registration_route_returns_the_settings(
     call_route: CallRoute, token_for: Callable[..., str], update_service: MagicMock
 ) -> None:
-    body = {"registration_enabled": True, "registration_capacity": 100}
+    body = {
+        "registration_enabled": True,
+        "registration_capacity": 100,
+        "withdrawal_cut_off": "2026-10-14T18:00:00+08:00",
+    }
 
     response, status = call_route(
         ENDPOINT, "PATCH", PATH, VIEW_KWARGS, token_for(role=Role.EVENT_COORDINATOR), body=body
@@ -92,4 +101,5 @@ def test_registration_route_returns_the_settings(
         "registration_required": False,
         "registration_enabled": True,
         "registration_capacity": 100,
+        "withdrawal_cut_off": "2026-10-14T18:00:00+08:00",
     }
