@@ -410,6 +410,27 @@ def list_reservations_for_event(
     return _as_shown(list(sess.scalars(statement)), sess)
 
 
+def release_reservations(
+    event_id: int, equipment_type_id: int, *, session: Session | None = None
+) -> None:
+    """Release every reservation of an equipment type for an event, without committing.
+
+    For an equipment line the event no longer asks for: removed, or moved to another
+    type (SCRUM-37 AC4, ADR-0092). The units are free for the period again as soon as
+    the caller commits, in the same commit as the line change, or not at all.
+
+    Args:
+        event_id: The event request's id.
+        equipment_type_id: The equipment type to release.
+        session: Database session; defaults to ``db.session``.
+    """
+    statement = delete(EquipmentReservation).where(
+        EquipmentReservation.event_id == event_id,
+        EquipmentReservation.equipment_type_id == equipment_type_id,
+    )
+    resolve_session(session).execute(statement)
+
+
 def create_equipment_type(
     payload: Mapping[str, Any] | None, *, session: Session | None = None
 ) -> EquipmentType:
