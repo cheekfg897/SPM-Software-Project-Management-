@@ -9,7 +9,13 @@ import { isRecord } from '@/lib/isRecord'
 
 import { errorResponse, validationError } from '../responses'
 
-import { callerOrRefusal, eventForReader, eventForStaff, eventNotFound } from './equipmentAccess'
+import {
+  callerOrRefusal,
+  eventForReader,
+  eventForStaff,
+  eventNotFound,
+  resetMockEquipmentEvents,
+} from './equipmentAccess'
 import { MOCK_EQUIPMENT_TYPES, MOCK_EVENT_PERIOD } from './equipmentFixtures'
 import type { MockEquipmentType } from './equipmentFixtures'
 import { equipmentLineHandlers, requestedQuantity, resetMockEquipmentLines } from './equipmentLines'
@@ -55,6 +61,7 @@ let reservations: MockReservation[] = []
 export function resetMockEquipment(): void {
   reservations = []
   resetMockEquipmentLines()
+  resetMockEquipmentEvents()
 }
 
 /** Every equipment type, by name, as the backend lists the catalogue. */

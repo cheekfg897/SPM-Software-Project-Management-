@@ -1,6 +1,10 @@
 import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
 import type { EventRequestStatus } from '@/config/eventStatus'
-import { fetchEventEquipmentLines, recordEquipmentOutcome } from '@/features/equipment/api'
+import {
+  addEquipmentLine,
+  fetchEventEquipmentLines,
+  recordEquipmentOutcome,
+} from '@/features/equipment/api'
 import type { EquipmentOutcomeBody } from '@/features/equipment/api'
 import { apiRequest } from '@/lib/api'
 import { refusal } from '@/test/refusal'
@@ -328,5 +332,48 @@ describe('SCRUM-48 equipment outcome mock: refusals', () => {
     signInAs(null)
 
     expect(await refusal(recordOnProjector({ provided_quantity: 8 }))).toMatchObject(NOT_SIGNED_IN)
+  })
+})
+
+describe('SCRUM-48 equipment outcome mock: a revision withdraws the safety approval (AC7)', () => {
+  /** One lectern, a type no event in a status here has a line for yet. */
+  const LECTERN = { equipment_type_id: 3, quantity: 1 }
+  const NOT_EDITABLE = {
+    status: 409,
+    code: 'equipment_not_editable',
+    message:
+      'Equipment can only be changed while the request is submitted, under review or approved.',
+  }
+
+  /** Technical Support record the one line's outcome on the event in `status`, `times` over. */
+  async function recordOutcomeOnEventIn(status: EventRequestStatus, times: number) {
+    signInAs(MOCK_ACCOUNTS.technicalSupport)
+    const { reference, line } = await onlyLineOf(status)
+    for (let time = 0; time < times; time += 1) {
+      await recordEquipmentOutcome(reference, {
+        lineId: line.id,
+        body: { provided_quantity: 1, note: 'One stopped working.' },
+      })
+    }
+    signInAs(MOCK_ACCOUNTS.coordinator)
+    return reference
+  }
+
+  it('sends a Confirmed event back to Approved, so its coordinator can change its equipment again', async () => {
+    const reference = await recordOutcomeOnEventIn('confirmed', 2)
+
+    await expect(addEquipmentLine(reference, LECTERN)).resolves.toMatchObject(LECTERN)
+  })
+
+  it('keeps a Confirmed event confirmed for a first outcome, which revises nothing', async () => {
+    const reference = await recordOutcomeOnEventIn('confirmed', 1)
+
+    expect(await refusal(addEquipmentLine(reference, LECTERN))).toMatchObject(NOT_EDITABLE)
+  })
+
+  it('leaves an event in Safety Review where it is: the Safety Officer has not approved it yet', async () => {
+    const reference = await recordOutcomeOnEventIn('safety_review', 2)
+
+    expect(await refusal(addEquipmentLine(reference, LECTERN))).toMatchObject(NOT_EDITABLE)
   })
 })

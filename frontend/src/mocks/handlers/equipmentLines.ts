@@ -265,6 +265,18 @@ function outcomeRefusal(line: MockEquipmentLine, provided: number, note: string 
   return undefined
 }
 
+/**
+ * A revised outcome withdraws the event's safety approval (AC7, `withdraw_safety_approval`):
+ * the event goes back to Approved, to be sent for a new check (ADR-0087). Only a Confirmed event
+ * has an approval here, as every one does on the backend, which confirms only an approved event;
+ * this mock's event in Safety Review is still waiting for the Safety Officer.
+ */
+function withdrawSafetyApproval(event: MockEvent): void {
+  if (event.status === EVENT_REQUEST_STATUS.CONFIRMED) {
+    event.status = EVENT_REQUEST_STATUS.APPROVED
+  }
+}
+
 function duplicateLine() {
   return errorResponse(
     409,
@@ -398,7 +410,8 @@ export const equipmentLineHandlers: RequestHandler[] = [
   }),
 
   // Technical Support only. The body, the event, the line, then what the line asked for. Every
-  // call overwrites the outcome, so a revision is recording again (SCRUM-48 AC6).
+  // call overwrites the outcome, so a revision is recording again (SCRUM-48 AC6), and it
+  // withdraws a safety approval (AC7).
   http.post(OUTCOME_PATH, async ({ request, params }) => {
     const caller = callerOrRefusal(request, OUTCOME_RECORDER_ROLES)
     if (caller instanceof Response) {
@@ -427,6 +440,7 @@ export const equipmentLineHandlers: RequestHandler[] = [
       return refused
     }
 
+    const isRevision = line.provided_quantity !== null
     const status = outcomeStatus(line.quantity, provided)
     line.status = status
     line.provided_quantity = provided
@@ -434,6 +448,9 @@ export const equipmentLineHandlers: RequestHandler[] = [
     line.outcome_note = status === 'fulfilled' ? null : note
     line.reviewed_by = caller.full_name
     line.reviewed_at = MOCK_OUTCOME_RECORDED_AT
+    if (isRevision) {
+      withdrawSafetyApproval(event)
+    }
     return HttpResponse.json(shownLine(line))
   }),
 ]
