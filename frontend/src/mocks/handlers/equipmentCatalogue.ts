@@ -59,6 +59,11 @@ export function resetMockEquipmentCatalogue(): void {
 }
 resetMockEquipmentCatalogue()
 
+/** The catalogue's type with this id as it stands now, for the out-of-service mock (SCRUM-47). */
+export function mockCatalogueType(id: number): MockCatalogueType | undefined {
+  return types.find((candidate) => candidate.id === id)
+}
+
 /** The 401 or 403 the backend's decorators send, or null when the caller's role may do this. */
 function refusalFor(request: Request, allowedRoles: readonly Role[]) {
   const caller = accountForRequest(request)
@@ -72,12 +77,13 @@ function refusalFor(request: Request, allowedRoles: readonly Role[]) {
 }
 
 /** The id in the path, or null when Flask's `<int:…>` would not match it. */
-function idFromPath(param: unknown): number | null {
+export function idFromPath(param: unknown): number | null {
   const text = String(param)
   return /^\d+$/.test(text) ? Number(text) : null
 }
 
-function routeNotFound() {
+/** Werkzeug's 404 for a path whose `<int:…>` does not match, sent before asking who is calling. */
+export function routeNotFound() {
   return errorResponse(404, 'not_found', ROUTE_NOT_FOUND_MESSAGE)
 }
 
@@ -274,7 +280,7 @@ export const equipmentCatalogueHandlers: RequestHandler[] = [
     if (refusal !== null) {
       return refusal
     }
-    const type = types.find((candidate) => candidate.id === id)
+    const type = mockCatalogueType(id)
     return type === undefined ? typeNotFound() : HttpResponse.json(type)
   }),
 
@@ -296,7 +302,7 @@ export const equipmentCatalogueHandlers: RequestHandler[] = [
     if (bodyProblem !== null) {
       return bodyProblem
     }
-    const type = types.find((candidate) => candidate.id === id)
+    const type = mockCatalogueType(id)
     if (type === undefined) {
       return typeNotFound()
     }

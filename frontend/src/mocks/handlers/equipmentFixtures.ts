@@ -31,6 +31,10 @@ export const MOCK_EVENT_PERIOD = {
 /** When the mock records any outcome (SCRUM-48): a fixed moment, so tests can name it. */
 export const MOCK_OUTCOME_RECORDED_AT = '2026-10-06T09:15:00+08:00'
 
+/** When the mock records units taken out of service, and put back (SCRUM-47): fixed moments. */
+export const MOCK_OUT_OF_SERVICE_RECORDED_AT = '2026-10-07T14:05:00+08:00'
+export const MOCK_BACK_IN_SERVICE_AT = '2026-10-08T09:30:00+08:00'
+
 /** The same period as the event's own date and times, written as the backend writes them. */
 export const MOCK_EVENT_SCHEDULE = {
   proposed_date: '2026-10-12',
