@@ -48,11 +48,13 @@ const OUTCOME_PATH = `${LINE_PATH}/outcome`
 const LINE_WRITER_ROLES: readonly Role[] = [ROLE.EVENT_COORDINATOR]
 /** Only Technical Support record an outcome, on any event's line that will still run (SCRUM-48). */
 const OUTCOME_RECORDER_ROLES: readonly Role[] = [ROLE.TECHNICAL_SUPPORT_STAFF]
-/** While an event's equipment may change (EQUIPMENT_EDITABLE_STATUSES). */
+/** While an event's equipment may change: until it is confirmed (EQUIPMENT_EDITABLE_STATUSES). */
 const EDITABLE_STATUSES: readonly EventRequestStatus[] = [
   EVENT_REQUEST_STATUS.SUBMITTED,
   EVENT_REQUEST_STATUS.UNDER_REVIEW,
+  EVENT_REQUEST_STATUS.AWAITING_CLARIFICATION,
   EVENT_REQUEST_STATUS.APPROVED,
+  EVENT_REQUEST_STATUS.SAFETY_REVIEW,
 ]
 /** The fields a line body may carry (EditEquipmentLineSchema); adding needs the first two. */
 const LINE_FIELDS: readonly string[] = ['equipment_type_id', 'quantity', 'notes']
@@ -201,7 +203,7 @@ function editableEventOrRefusal(caller: MockAccount, reference: string): MockEve
     return errorResponse(
       409,
       'equipment_not_editable',
-      'Equipment can only be changed while the request is submitted, under review or approved.',
+      'Equipment can only be changed before the event is confirmed, and not once it is rejected or cancelled.',
     )
   }
   return event

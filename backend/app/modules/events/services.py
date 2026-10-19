@@ -1093,15 +1093,23 @@ def withdraw_safety_approval(
 # SCRUM-37 — record what equipment an event needs
 # --------------------------------------------------------------------------
 
-#: Statuses in which an event's equipment may change: while its request awaits review
-#: (SCRUM-37 AC2, ADR-0019), and once it is approved, while the event is planned
-#: (SCRUM-31, ADR-0028). Not while it awaits clarification: the request is then the
-#: organiser's to change, not the coordinator's (SCRUM-32, ADR-0029).
+#: Statuses in which an event's equipment may change: any time before the event is
+#: Confirmed (SCRUM-37 AC2, ADR-0092). That includes awaiting clarification: the
+#: organiser amends the request then, but never its equipment lines, which stay the
+#: coordinator's. A Confirmed event's lines change through a change request
+#: (SCRUM-56, SCRUM-57), and a completed, cancelled or rejected event is over.
 EQUIPMENT_EDITABLE_STATUSES: frozenset[EventRequestStatus] = frozenset(
-    {EventRequestStatus.SUBMITTED, EventRequestStatus.UNDER_REVIEW, EventRequestStatus.APPROVED}
+    {
+        EventRequestStatus.SUBMITTED,
+        EventRequestStatus.UNDER_REVIEW,
+        EventRequestStatus.AWAITING_CLARIFICATION,
+        EventRequestStatus.APPROVED,
+        EventRequestStatus.SAFETY_REVIEW,
+    }
 )
 EQUIPMENT_NOT_EDITABLE_MESSAGE = (
-    "Equipment can only be changed while the request is submitted, under review or approved."
+    "Equipment can only be changed before the event is confirmed, and not once it is "
+    "rejected or cancelled."
 )
 DUPLICATE_LINE_MESSAGE = (
     "This event already has a line for that equipment type. Edit that line instead."

@@ -38,14 +38,20 @@ const UNKNOWN_ID = 999
 const NOT_FOUND_MESSAGE = 'Event request not found.'
 const LINE_NOT_FOUND_MESSAGE = 'Equipment line not found.'
 const NOT_EDITABLE_MESSAGE =
-  'Equipment can only be changed while the request is submitted, under review or approved.'
+  'Equipment can only be changed before the event is confirmed, and not once it is rejected or cancelled.'
 const DUPLICATE_MESSAGE =
   'This event already has a line for that equipment type. Edit that line instead.'
 const MISSING_MESSAGE = 'Missing data for required field.'
 const NOT_AN_INTEGER_MESSAGE = 'Not a valid integer.'
 
 /** Statuses in which an event's equipment may change (EQUIPMENT_EDITABLE_STATUSES). */
-const EDITABLE_STATUSES: readonly EventRequestStatus[] = ['submitted', 'under_review', 'approved']
+const EDITABLE_STATUSES: readonly EventRequestStatus[] = [
+  'submitted',
+  'under_review',
+  'awaiting_clarification',
+  'approved',
+  'safety_review',
+]
 /** The rest, but a draft, which staff never find. Built from every status, so a new one is tested. */
 const LOCKED_STATUSES = Object.values(EVENT_REQUEST_STATUS).filter(
   (status) => status !== 'draft' && !EDITABLE_STATUSES.includes(status),
