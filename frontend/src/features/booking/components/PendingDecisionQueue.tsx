@@ -23,6 +23,11 @@ function WaitingRequest({ request }: { request: BookingRequest }) {
       <div className="mt-1 space-y-1">
         <p className="text-flare font-medium">{STATUS_LABELS[request.status]}</p>
         <BookingRequestDetails request={request} />
+        {request.replaces_request_id !== null && (
+          <p className="text-ink font-medium">
+            Replaces a booking whose venue became unavailable. Approving it releases that booking.
+          </p>
+        )}
       </div>
       <HoldForm request={request} />
       <BookingDecisionForm requestId={request.id} purpose={request.purpose} />
