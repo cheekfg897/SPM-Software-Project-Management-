@@ -1,8 +1,8 @@
 """Unit tests for SCRUM-37 "Record what equipment an event needs": the equipment lines.
 
 AC1: an Event Coordinator adds one or more lines to an event, each with an equipment
-type, a quantity and technical notes. AC2: a line can be edited or removed while the
-request is still awaiting review (``submitted`` or ``under_review``). AC3: a quantity
+type, a quantity and technical notes. AC2: a line can be added, edited or removed at
+any time before the event is Confirmed, and is locked from then on. AC3: a quantity
 of zero or less is refused. AC4: the lines and their current state are visible on the
 event record. One line per equipment type per event, and the database holds the same
 rules as the schema (ADR-0019). Only the event's assigned coordinator (SCRUM-30) adds,
@@ -36,7 +36,6 @@ from app.modules.events.models import (
 from app.modules.events.schemas import EquipmentLineSchema, EventRequestDetailSchema
 from app.modules.events.services import (
     DUPLICATE_LINE_MESSAGE,
-    EQUIPMENT_NOT_EDITABLE_MESSAGE,
     EquipmentNotEditableError,
     add_equipment_line,
     get_event_request_for_organiser,
@@ -62,12 +61,18 @@ OTHER_REFERENCE = "EVR-BBBBBBBB"
 UNKNOWN_REFERENCE = "EVR-ZZZZZZZZ"
 UNKNOWN_ID = 999
 REQUESTED = EquipmentLineStatus.REQUESTED
-#: A draft is out of scope here: it is hidden from coordinators altogether
-#: (SCRUM-20, ADR-0024), not merely refused as locked. A request awaiting
-#: clarification is back with its organiser, so its coordinator can't change it
-#: (SCRUM-32, ADR-0029).
-EQUIPMENT_LOCKED_STATUSES = [
+#: The statuses before the event is Confirmed (AC2, ADR-0092). A draft is out of scope
+#: here: it is hidden from coordinators altogether (SCRUM-20, ADR-0024), not merely
+#: refused as locked.
+EQUIPMENT_EDITABLE_STATUSES = [
+    EventRequestStatus.SUBMITTED,
+    EventRequestStatus.UNDER_REVIEW,
     EventRequestStatus.AWAITING_CLARIFICATION,
+    EventRequestStatus.APPROVED,
+    EventRequestStatus.SAFETY_REVIEW,
+]
+#: Confirmed and every status after it, and an event that will not run.
+EQUIPMENT_LOCKED_STATUSES = [
     EventRequestStatus.CONFIRMED,
     EventRequestStatus.COMPLETED,
     EventRequestStatus.CANCELLED,
@@ -534,12 +539,8 @@ def test_a_line_can_only_be_reached_through_its_own_event(
     ]
 
 
-@pytest.mark.parametrize(
-    "status",
-    [EventRequestStatus.SUBMITTED, EventRequestStatus.UNDER_REVIEW, EventRequestStatus.APPROVED],
-    ids=lambda status: status.value,
-)
-def test_lines_may_change_while_the_request_is_submitted_under_review_or_approved(
+@pytest.mark.parametrize("status", EQUIPMENT_EDITABLE_STATUSES, ids=lambda status: status.value)
+def test_lines_may_change_at_any_time_before_the_event_is_confirmed(
     db_session: Session,
     saved_event_request: EventRequest,
     valid_equipment_line_payload: dict[str, Any],
@@ -573,10 +574,14 @@ def test_lines_cannot_be_added_once_the_requests_equipment_is_locked(
 
     assert exc_info.value.status_code == 409
     assert exc_info.value.error_code == "equipment_not_editable"
-    assert exc_info.value.message == EQUIPMENT_NOT_EDITABLE_MESSAGE
+    assert exc_info.value.message == (
+        "Equipment can only be changed before the event is confirmed, and not once it is "
+        "rejected or cancelled."
+    )
     assert _stored_lines(db_session) == []
 
 
+@pytest.mark.parametrize("status", EQUIPMENT_LOCKED_STATUSES, ids=lambda status: status.value)
 @pytest.mark.parametrize("operation", LINE_OPERATIONS, ids=LINE_OPERATION_IDS)
 def test_lines_cannot_be_edited_or_removed_once_the_requests_equipment_is_locked(
     saved_event_request: EventRequest,
@@ -584,8 +589,9 @@ def test_lines_cannot_be_edited_or_removed_once_the_requests_equipment_is_locked
     save: Save,
     reload_equipment_line: ReloadEquipmentLine,
     operation: LineOperation,
+    status: EventRequestStatus,
 ) -> None:
-    saved_event_request.status = EventRequestStatus.CONFIRMED
+    saved_event_request.status = status
     save(saved_event_request)
 
     with pytest.raises(EquipmentNotEditableError) as exc_info:

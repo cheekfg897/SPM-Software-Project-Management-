@@ -6,7 +6,8 @@ to Safety Review. A Pending or Rejected arrangement holds it back; a Withdrawn o
 ignored. AC2: an event with no equipment requests passes the equipment check. An
 event with no venue arranged at all is held back (ADR-0047). The move is written to
 the event history; a refusal changes nothing. Once in Safety Review, the event can't
-be edited nor its equipment changed (ADR-0047).
+be edited (ADR-0047), but its equipment can still change until it is Confirmed
+(SCRUM-37 AC2, ADR-0092).
 
 Runs against ``db_session`` with ``saved_users`` and ``saved_event_request``
 (``EVR-AAAAAAAA``, assigned to Event Coordinator 3), so the venue and equipment
@@ -34,11 +35,9 @@ from app.modules.events.models import (
     EventRequestStatus,
 )
 from app.modules.events.services import (
-    EQUIPMENT_NOT_EDITABLE_MESSAGE,
     NOT_APPROVED_FOR_SAFETY_REVIEW_MESSAGE,
     NOT_EDITABLE_MESSAGE,
     SAFETY_REVIEW_NOT_READY_MESSAGE,
-    EquipmentNotEditableError,
     RequestNotEditableError,
     SafetyReviewNotAllowedError,
     add_equipment_line,
@@ -336,19 +335,18 @@ def test_an_event_in_safety_review_cannot_be_edited(
     assert history_of(event_in_review.id) == []
 
 
-def test_the_equipment_of_an_event_in_safety_review_cannot_be_changed(
+def test_equipment_added_in_safety_review_leaves_the_event_in_safety_review(
     db_session: Session,
     event_in_review: EventRequest,
     valid_equipment_line_payload: dict[str, Any],
     reload_event_request: ReloadEventRequest,
 ) -> None:
-    with pytest.raises(EquipmentNotEditableError) as exc_info:
-        add_equipment_line(
-            COORDINATOR_ID, REFERENCE, valid_equipment_line_payload, session=db_session
-        )
+    """SCRUM-37 AC2: equipment may change until the event is Confirmed (ADR-0092)."""
+    add_equipment_line(COORDINATOR_ID, REFERENCE, valid_equipment_line_payload, session=db_session)
 
-    assert exc_info.value.message == EQUIPMENT_NOT_EDITABLE_MESSAGE
-    assert reload_event_request(event_in_review.id).equipment_lines == []
+    reloaded = reload_event_request(event_in_review.id)
+    assert reloaded.status is EventRequestStatus.SAFETY_REVIEW
+    assert len(reloaded.equipment_lines) == 1
 
 
 # --------------------------------------------------------------------------

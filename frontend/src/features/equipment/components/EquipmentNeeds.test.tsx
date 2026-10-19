@@ -270,7 +270,7 @@ describe('SCRUM-37 equipment page: adding a line (AC1, AC3)', () => {
     await addLine(user, { type: 'Lectern', quantity: '1' })
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Equipment can only be changed while the request is submitted, under review or approved.',
+      'Equipment can only be changed before the event is confirmed, and not once it is rejected or cancelled.',
     )
   })
 })

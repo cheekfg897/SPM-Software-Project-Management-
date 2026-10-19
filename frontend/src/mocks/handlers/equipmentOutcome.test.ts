@@ -11,6 +11,7 @@ import { refusal } from '@/test/refusal'
 
 import { MOCK_ACCOUNTS } from '../fixtures/accounts'
 
+import { eventForStaff } from './equipmentAccess'
 import {
   MOCK_OPEN_EVENT_REFERENCE,
   MOCK_OUTCOME_RECORDED_AT,
@@ -383,7 +384,7 @@ describe('SCRUM-48 equipment outcome mock: a revision withdraws the safety appro
     status: 409,
     code: 'equipment_not_editable',
     message:
-      'Equipment can only be changed while the request is submitted, under review or approved.',
+      'Equipment can only be changed before the event is confirmed, and not once it is rejected or cancelled.',
   }
 
   /** Technical Support record the one line's outcome on the event in `status`, `times` over. */
@@ -415,6 +416,7 @@ describe('SCRUM-48 equipment outcome mock: a revision withdraws the safety appro
   it('leaves an event in Safety Review where it is: the Safety Officer has not approved it yet', async () => {
     const reference = await recordOutcomeOnEventIn('safety_review', 2)
 
-    expect(await refusal(addEquipmentLine(reference, LECTERN))).toMatchObject(NOT_EDITABLE)
+    // Equipment may change in Safety Review too (SCRUM-37 AC2), so only the status shows it.
+    expect(eventForStaff(reference)?.status).toBe('safety_review')
   })
 })

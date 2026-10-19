@@ -8,9 +8,10 @@ changing only its technical notes, or sending the values it already has, does no
 coordinator, saved with the line, which ``has_safety_approval`` then reads as no
 approval.
 
-A line can only change while the event is submitted, under review or approved, so the
-event here is Approved and kept its approval when a flagged venue took it back from
-Confirmed (ADR-0053).
+A line can change until the event is Confirmed (AC2, ADR-0092). The event here is
+mostly Approved, having kept its approval when a flagged venue took it back from
+Confirmed (ADR-0053); the usual case, an event in Safety Review that the Safety Officer
+has approved, goes back to Approved for a new check (ADR-0087).
 
 The services run against ``db_session``, so ``has_safety_approval`` reads the history
 the line change wrote.
@@ -41,6 +42,7 @@ from app.modules.events.services import (
 pytestmark = pytest.mark.scrum_37
 
 WithdrawalsOf = Callable[[int], list[tuple[int | None, dict[str, Any] | None]]]
+ReloadEventRequest = Callable[[int], EventRequest]
 MakeEquipmentLine = Callable[..., EventEquipmentLine]
 
 REFERENCE = "EVR-AAAAAAAA"
@@ -128,6 +130,21 @@ def test_removing_a_line_withdraws_the_safety_approval(
             {"equipment_line_change": "removed", "equipment_type_id": equipment_type.id},
         )
     ]
+
+
+def test_a_line_change_after_the_safety_officer_approved_returns_the_event_to_approved(
+    saved_users: list[User],
+    approved_for_safety: Callable[[EventRequestStatus], EventRequest],
+    microphone: EquipmentType,
+    reload_event_request: ReloadEventRequest,
+) -> None:
+    event = approved_for_safety(EventRequestStatus.SAFETY_REVIEW)
+    payload = {"equipment_type_id": microphone.id, "quantity": 4}
+
+    add_equipment_line(COORDINATOR_ID, REFERENCE, payload)
+
+    assert reload_event_request(event.id).status is EventRequestStatus.APPROVED
+    assert has_safety_approval(event.id) is False
 
 
 # --------------------------------------------------------------------------
