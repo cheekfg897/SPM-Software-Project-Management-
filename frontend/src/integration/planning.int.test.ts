@@ -1,6 +1,10 @@
 import { ROLE } from '@/config/roles'
 import { register } from '@/features/auth/api'
-import { decideBookingRequest, raiseBookingRequest } from '@/features/booking/api'
+import {
+  decideBookingRequest,
+  raiseBookingRequest,
+  withdrawArrangement,
+} from '@/features/booking/api'
 import {
   completeEvent,
   confirmEvent,
@@ -22,7 +26,8 @@ import type { Credentials } from './backend'
 /**
  * The coordinator's planning actions against the running backend: sending an event to safety
  * review (SCRUM-97, ADR-0047), confirming it (SCRUM-49, ADR-0051), its registration settings
- * (SCRUM-69, ADR-0043) and marking it completed (SCRUM-68, ADR-0027) (ADR-0075).
+ * (SCRUM-69, ADR-0043) and marking it completed (SCRUM-68, ADR-0027) (ADR-0075). Also the
+ * decision a venue booking request locks (SCRUM-31 AC7, ADR-0084).
  *
  * The refusals that need no event of the coordinator's run with the staff account every run has
  * (an Event Coordinator) and new organisers. An event of the coordinator's needs a Lead to assign
@@ -496,6 +501,32 @@ describe('SCRUM-49 confirming an event against the backend', () => {
         event_reference: reference,
         message: 'Your event has been confirmed.',
       })
+    },
+  )
+})
+
+describe('SCRUM-31 AC7 a venue booking request locks the decision against the backend', () => {
+  const CHANGE = { outcome: 'rejected', reason: 'The venue fell through.' } as const
+  const DECISION_LOCKED = {
+    status: 409,
+    code: 'decision_locked',
+    message:
+      "The decision can't be changed once the event has an equipment request or a venue " +
+      'booking request.',
+  }
+
+  it.skipIf(!canApproveVenue)(
+    'refuses a new decision while the venue booking request is pending, and allows it once withdrawn (ADR-0084)',
+    async () => {
+      const { reference } = await approvedEvent()
+      const bookingId = await raiseVenueRequest(reference)
+
+      expect(await refusal(decideEventRequest(reference, CHANGE))).toMatchObject(DECISION_LOCKED)
+      expect((await fetchEventRequest(reference)).status).toBe('approved')
+
+      await withdrawArrangement(reference, bookingId)
+      await decideEventRequest(reference, CHANGE)
+      expect((await fetchEventRequest(reference)).status).toBe('rejected')
     },
   )
 })
