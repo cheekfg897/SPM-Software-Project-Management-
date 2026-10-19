@@ -74,3 +74,16 @@ export function newOrganiser(organisationId: number | null) {
     organisation_id: organisationId,
   }
 }
+
+/**
+ * A Technical Support account, for the checks only they can reach. CI makes one (frontend.yml); a
+ * local run reads it from these variables and skips those checks without them:
+ * INTEGRATION_TECH_SUPPORT_EMAIL=... INTEGRATION_TECH_SUPPORT_PASSWORD=... npm run test:integration
+ */
+const TECH_SUPPORT_EMAIL = import.meta.env.INTEGRATION_TECH_SUPPORT_EMAIL ?? ''
+const TECH_SUPPORT_PASSWORD = import.meta.env.INTEGRATION_TECH_SUPPORT_PASSWORD ?? ''
+export const hasTechSupport = TECH_SUPPORT_EMAIL !== '' && TECH_SUPPORT_PASSWORD !== ''
+
+export function signInAsTechSupport(): Promise<void> {
+  return signInAs({ email: TECH_SUPPORT_EMAIL, password: TECH_SUPPORT_PASSWORD })
+}

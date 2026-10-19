@@ -1,6 +1,8 @@
 import { screen, waitFor } from '@testing-library/react'
 
+import { useEventAvailability } from '@/features/equipment/hooks'
 import { MOCK_ACCOUNTS, mockSessionFor } from '@/mocks/fixtures/accounts'
+import { MOCK_OPEN_EVENT_REFERENCE } from '@/mocks/handlers/equipmentFixtures'
 import { recordRequests } from '@/test/recordRequests'
 import { renderWithProviders } from '@/test/render'
 
@@ -8,6 +10,9 @@ import {
   useCreateEquipmentType,
   useEquipmentType,
   useEquipmentTypes,
+  useOutOfService,
+  useReturnToService,
+  useTakeOutOfService,
   useUpdateEquipmentType,
 } from './hooks'
 
@@ -50,6 +55,32 @@ function TwoTypesProbe() {
   )
 }
 
+/** The projectors out of service, what is free of them for the open event, and the two changes. */
+function OutOfServiceProbe() {
+  const entries = useOutOfService('1')
+  const availability = useEventAvailability(MOCK_OPEN_EVENT_REFERENCE)
+  const takeOut = useTakeOutOfService('1')
+  const putBack = useReturnToService('1')
+  const free = availability.data?.find((row) => row.equipment_type_name === 'Projector')
+  const firstEntry = entries.data?.[0]
+
+  return (
+    <div>
+      <p>
+        Out:{' '}
+        {entries.data?.map((entry) => `${entry.quantity} ${entry.reason}`).join(', ') ?? 'loading'}
+      </p>
+      <p>Projectors free: {free?.available ?? 'loading'}</p>
+      <button onClick={() => takeOut.mutate({ quantity: 2, reason: 'damaged' })}>
+        Take two out
+      </button>
+      {firstEntry !== undefined && (
+        <button onClick={() => putBack.mutate(firstEntry.id)}>Put them back</button>
+      )}
+    </div>
+  )
+}
+
 async function renderProbe() {
   const rendered = renderWithProviders(<CatalogueProbe />, { session: SESSION })
   await screen.findByText('Microphones held: 12')
@@ -89,5 +120,41 @@ describe('SCRUM-27 equipment catalogue hooks', () => {
     const patch = requests.find((request) => request.method === 'PATCH')
     expect(new URL(patch?.url ?? '').pathname).toBe('/api/equipment/types/2')
     expect(await patch?.json()).toEqual(MICROPHONE_CHANGES)
+  })
+})
+
+describe('SCRUM-47 out-of-service hooks', () => {
+  async function renderOutOfServiceProbe() {
+    const rendered = renderWithProviders(<OutOfServiceProbe />, { session: SESSION })
+    await screen.findByText('Projectors free: 6')
+    return rendered
+  }
+
+  it("takes units out, then reads the type's list and the events' availability again", async () => {
+    const requests = recordRequests()
+    const { user } = await renderOutOfServiceProbe()
+
+    await user.click(screen.getByRole('button', { name: 'Take two out' }))
+
+    expect(await screen.findByText('Out: 2 damaged')).toBeInTheDocument()
+    expect(await screen.findByText('Projectors free: 4')).toBeInTheDocument()
+    const post = requests.find((request) => request.method === 'POST')
+    expect(new URL(post?.url ?? '').pathname).toBe('/api/equipment/types/1/out-of-service')
+    expect(await post?.json()).toEqual({ quantity: 2, reason: 'damaged' })
+  })
+
+  it('puts the units back, then reads both again', async () => {
+    const requests = recordRequests()
+    const { user } = await renderOutOfServiceProbe()
+    await user.click(screen.getByRole('button', { name: 'Take two out' }))
+
+    await user.click(await screen.findByRole('button', { name: 'Put them back' }))
+
+    expect(await screen.findByText('Projectors free: 6')).toBeInTheDocument()
+    expect(screen.getByText('Out:')).toBeInTheDocument()
+    const returned = requests.filter((request) => request.url.endsWith('/return'))
+    expect(returned.map((request) => new URL(request.url).pathname)).toEqual([
+      '/api/equipment/out-of-service/1/return',
+    ])
   })
 })

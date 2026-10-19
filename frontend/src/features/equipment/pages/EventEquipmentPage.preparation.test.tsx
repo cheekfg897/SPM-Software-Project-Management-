@@ -31,6 +31,7 @@ const RESERVATION_IN_PROGRESS: EquipmentReservation = {
   ends_at: '2026-10-12T22:00:00+08:00',
   reserved_by: 'Tariq Hassan',
   created_at: '2026-10-10T09:00:00+08:00',
+  needs_attention: false,
   preparation_status: 'in_progress',
   preparation_notes: 'Lamps tested.',
 }
