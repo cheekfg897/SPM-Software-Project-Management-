@@ -867,12 +867,28 @@ describe("SCRUM-24 booking mock: Venue Staff's list of events", () => {
     expect(afterWithdrawing).not.toContain(APPROVED_EVENT.reference)
   })
 
-  it('answers 401 without a token and 403 to anyone but Venue Staff', async () => {
+  it('answers 401 without a token', async () => {
     sendRequestsAs(null)
-    const signedOut = await errorOf(eventsWithVenueBookings())
-    sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.coordinator))
-    const coordinator = await errorOf(eventsWithVenueBookings())
 
-    expect([signedOut.status, coordinator.status]).toEqual([401, 403])
+    expect((await errorOf(eventsWithVenueBookings())).status).toBe(401)
+  })
+
+  it('answers 403 to every role but Venue Staff', async () => {
+    // The backend's requires_role(Role.VENUE_STAFF) refuses every other role, so the list is
+    // built from the accounts rather than written out, and a role added later is checked too.
+    const notVenueStaff = Object.values(MOCK_ACCOUNTS).filter(
+      (account) => account.role !== ROLE.VENUE_STAFF,
+    )
+
+    for (const account of notVenueStaff) {
+      sendRequestsAs(mockTokenFor(account))
+
+      const error = await errorOf(eventsWithVenueBookings())
+
+      expect({ role: account.role, status: error.status }).toEqual({
+        role: account.role,
+        status: 403,
+      })
+    }
   })
 })
