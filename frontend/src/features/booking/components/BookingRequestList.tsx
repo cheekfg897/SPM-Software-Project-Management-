@@ -3,6 +3,7 @@ import { useId } from 'react'
 import type { BookingRequest } from '../api'
 import { RETIRED_STATUSES, STATUS_LABELS } from '../constants'
 
+import { AlternativeVenueNotice } from './AlternativeVenueNotice'
 import { ArrangementActions } from './ArrangementActions'
 import { BookingRequestDetails } from './BookingRequestDetails'
 import { CancelAllArrangements } from './CancelAllArrangements'
@@ -34,14 +35,12 @@ function BookingRequestItem({
         <span className="text-flare font-medium">{STATUS_LABELS[request.status]}</span>
       </div>
       <BookingRequestDetails request={request} />
-      {request.needs_alternative_venue && (
-        <p className="text-danger font-medium">Needs an alternative venue</p>
-      )}
       {request.decision_reason !== null && (
         <p className="text-ink-muted">Reason: {request.decision_reason}</p>
       )}
       {/* Venue Staff prepare a booking once it is approved (SCRUM-84). */}
       {request.status === 'approved' && <PreparationSummary preparation={request} />}
+      {request.needs_alternative_venue && <AlternativeVenueNotice arrangement={request} />}
       {!RETIRED_STATUSES.includes(request.status) && (
         <ArrangementActions reference={reference} arrangement={request} />
       )}
