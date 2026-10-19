@@ -9,6 +9,7 @@ import {
   completeEvent,
   confirmEvent,
   decideEventRequest,
+  editEventRequest,
   fetchEventRequest,
   sendToSafetyReview,
   startEventRequestReview,
@@ -527,6 +528,28 @@ describe('SCRUM-31 AC7 a venue booking request locks the decision against the ba
       await withdrawArrangement(reference, bookingId)
       await decideEventRequest(reference, CHANGE)
       expect((await fetchEventRequest(reference)).status).toBe('rejected')
+    },
+  )
+})
+
+describe('SCRUM-33 a significant edit after the safety check, against the backend', () => {
+  it.skipIf(!canApproveSafety)(
+    'keeps a Confirmed event for a note, and sends it back to Approved without its approval for a significant change',
+    async () => {
+      const { reference } = await safetyApprovedEvent()
+      await confirmEvent(reference)
+
+      const noted = await editEventRequest(reference, { description: 'Doors open at 9.' })
+      const changed = await editEventRequest(reference, { expected_attendance: 150 })
+
+      expect(noted.status).toBe('confirmed')
+      expect(changed.status).toBe('approved')
+      // --- A new safety check is needed before it can be confirmed again (ADR-0087) ---
+      await sendToSafetyReview(reference)
+      const error = await refusal(confirmEvent(reference))
+      expect(error.fieldErrors).toEqual({
+        safety_check: ['The Safety Officer has not approved the event.'],
+      })
     },
   )
 })

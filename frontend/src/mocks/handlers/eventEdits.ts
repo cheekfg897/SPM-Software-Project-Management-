@@ -9,6 +9,7 @@ import type { FieldErrors } from '@/lib/api'
 import { errorResponse, readBody, validationError } from '../responses'
 
 import { MOCK_NOW, MOCK_TODAY } from './catalogueFixtures'
+import { NOTHING_PLANNED } from './eventPlanningFixtures'
 import { addToHistory } from './eventRecordSections'
 import { withSeconds } from './eventRequestRules'
 import { assignedOrRefusal } from './eventRequests'
@@ -18,7 +19,8 @@ import type { MockEventRequest } from './eventRequestFixtures'
 /**
  * The assigned coordinator's edit (PATCH /api/events/requests/<reference>; SCRUM-33, ADR-0025):
  * only the fields sent change, each checked as the backend checks it, and each change is
- * answered and written to the history, significant or not. Checks run in the backend's order:
+ * answered and written to the history, significant or not; a significant change withdraws a
+ * safety approval (AC7). Checks run in the backend's order:
  * the coordinator's own event (404), a status that can be edited (409), then the fields (400).
  * The internal planning notes are kept here: the record never shows them.
  */
@@ -31,6 +33,11 @@ const EDITABLE_STATUSES: readonly EventRequestStatus[] = [
   EVENT_REQUEST_STATUS.SUBMITTED,
   EVENT_REQUEST_STATUS.UNDER_REVIEW,
   EVENT_REQUEST_STATUS.APPROVED,
+  EVENT_REQUEST_STATUS.CONFIRMED,
+]
+/** Where a withdrawn safety approval sends an event back to Approved (ADR-0087). */
+const RETURNED_TO_PLANNING_ON_WITHDRAWAL: readonly EventRequestStatus[] = [
+  EVENT_REQUEST_STATUS.SAFETY_REVIEW,
   EVENT_REQUEST_STATUS.CONFIRMED,
 ]
 /** Every field the edit takes, in the backend's order (EditEventRequestSchema.Meta.fields). */
@@ -227,6 +234,49 @@ function historyOf(changes: FieldChange[], actorName: string): EventHistoryEntry
   }))
 }
 
+/**
+ * Whether the Safety Officer's approval stands (`has_safety_approval`). Every Confirmed event has
+ * one: the backend confirms only an approved event, and withdrawing it takes the event out of
+ * Confirmed. Other events have one only where their planning says so.
+ */
+function hasSafetyApproval(stored: MockEventRequest): boolean {
+  if (stored.request.status === EVENT_REQUEST_STATUS.CONFIRMED) {
+    return true
+  }
+  return stored.planning?.isSafetyApproved ?? false
+}
+
+/**
+ * A significant change withdraws the safety approval (SCRUM-33 AC7, `withdraw_safety_approval`):
+ * the event goes back to Approved for a new check, and the withdrawal, naming the significant
+ * fields, is the entry this returns. An event with no approval, or a change that isn't
+ * significant, withdraws nothing.
+ */
+function withdrawnSafetyApproval(
+  stored: MockEventRequest,
+  changes: FieldChange[],
+  actorName: string,
+): EventHistoryEntry[] {
+  const significantFields = changes
+    .filter((change) => change.significant)
+    .map((change) => change.field)
+  if (significantFields.length === 0 || !hasSafetyApproval(stored)) {
+    return []
+  }
+  stored.planning = { ...(stored.planning ?? NOTHING_PLANNED), isSafetyApproved: false }
+  if (RETURNED_TO_PLANNING_ON_WITHDRAWAL.includes(stored.request.status)) {
+    stored.request = { ...stored.request, status: EVENT_REQUEST_STATUS.APPROVED }
+  }
+  return [
+    {
+      kind: 'safety_approval_withdrawn',
+      occurred_at: MOCK_NOW,
+      actor_name: actorName,
+      details: { significant_fields: significantFields },
+    },
+  ]
+}
+
 export const eventEditHandlers: RequestHandler[] = [
   http.patch(`${REQUESTS_PATH}/:reference`, async ({ request, params }) => {
     const found = assignedOrRefusal(request, params.reference)
@@ -249,7 +299,10 @@ export const eventEditHandlers: RequestHandler[] = [
     }
 
     const changes = applyChanges(stored, values)
-    addToHistory(stored.request.reference, historyOf(changes, coordinator.full_name))
+    addToHistory(stored.request.reference, [
+      ...historyOf(changes, coordinator.full_name),
+      ...withdrawnSafetyApproval(stored, changes, coordinator.full_name),
+    ])
     return HttpResponse.json({
       ...stored.request,
       programme_notes: stored.record.programme_notes,

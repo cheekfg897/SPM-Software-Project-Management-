@@ -1,7 +1,9 @@
 import {
+  confirmEvent,
   editEventRequest,
   fetchEventHistory,
   fetchEventRequest,
+  sendToSafetyReview,
 } from '@/features/eventRequests/api'
 import { refusal } from '@/test/refusal'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
@@ -247,5 +249,64 @@ describe('SCRUM-33 mock of an edit: what is refused', () => {
 
     expect(coordinator).toMatchObject({ status: 404, code: 'not_found' })
     expect(organiser).toMatchObject({ status: 403, code: 'authorization_error' })
+  })
+})
+
+/**
+ * SCRUM-33 AC7 (ADR-0087): once the event has passed its safety check, a significant change
+ * withdraws the approval, and a Confirmed event goes back to Approved for a new check. Hana's
+ * EVR-PLAN0003 is in Safety Review with the Safety Officer's approval; EVR-PLAN0005 is Confirmed.
+ */
+describe('SCRUM-33 mock of an edit: the safety approval (AC7)', () => {
+  const HANA = MOCK_ACCOUNTS.planningCoordinator
+
+  /** The newest history entry, as the signed-in coordinator reads it. */
+  async function newestEntryOf(reference: string) {
+    return (await fetchEventHistory(reference)).history.at(-1)
+  }
+
+  it('withdraws the approval on a significant change, so a Confirmed event needs a new check', async () => {
+    signInAs(HANA)
+    await confirmEvent('EVR-PLAN0003')
+
+    const edited = await editEventRequest('EVR-PLAN0003', { expected_attendance: 300 })
+
+    expect(edited.status).toBe('approved')
+    expect(await newestEntryOf('EVR-PLAN0003')).toEqual({
+      kind: 'safety_approval_withdrawn',
+      occurred_at: MOCK_NOW,
+      actor_name: HANA.full_name,
+      details: { significant_fields: ['expected_attendance'] },
+    })
+    await sendToSafetyReview('EVR-PLAN0003')
+    expect(await refusal(confirmEvent('EVR-PLAN0003'))).toMatchObject({
+      status: 409,
+      fieldErrors: { safety_check: ['The Safety Officer has not approved the event.'] },
+    })
+  })
+
+  // The backend confirms only an approved event, so every Confirmed event has an approval.
+  it('sends any Confirmed event back to Approved on a significant change', async () => {
+    signInAs(MOCK_ACCOUNTS.coordinator)
+
+    const edited = await editEventRequest('EVR-BOOK0102', { venue_requirements: 'A stage.' })
+
+    expect(edited.status).toBe('approved')
+    expect(await newestEntryOf('EVR-BOOK0102')).toMatchObject({
+      kind: 'safety_approval_withdrawn',
+      details: { significant_fields: ['venue_requirements'] },
+    })
+  })
+
+  it.each([
+    ['a note', { description: 'New notes.' }],
+    ['a significant value sent again', { description: 'New notes.', expected_attendance: 150 }],
+  ])('keeps the approval for %s', async (_case, changes) => {
+    signInAs(HANA)
+
+    const edited = await editEventRequest('EVR-PLAN0005', changes)
+
+    expect(edited.status).toBe('confirmed')
+    expect(await newestEntryOf('EVR-PLAN0005')).toMatchObject({ kind: 'field_changed' })
   })
 })
