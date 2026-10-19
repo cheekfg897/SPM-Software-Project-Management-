@@ -91,7 +91,7 @@ class CatalogueEventSchema(Schema):
     starts_at = BusinessDateTime(dump_only=True)
     ends_at = BusinessDateTime(dump_only=True)
     # TODO: the booked venue's id and name, once the venue stack lets the events
-    # module find it (SCRUM-42, SCRUM-43; the same wait as ADR-0043's AC3).
+    # module find it (SCRUM-42, SCRUM-43; ADR-0032).
     venue = fields.Constant(None, dump_only=True)
     capacity = fields.Integer(dump_only=True)
     places_left = fields.Integer(dump_only=True)
