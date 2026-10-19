@@ -18,6 +18,7 @@ import {
   MOCK_CATALOGUE_EVENTS,
   MOCK_NOW,
   MOCK_TODAY,
+  MOCK_WITHDRAWAL_CUT_OFFS,
 } from './catalogueFixtures'
 import type { MockCatalogueEvent, MockUnlistedEvent } from './catalogueFixtures'
 
@@ -290,6 +291,19 @@ function knownEvents(): KnownEvent[] {
   return known
 }
 
+/**
+ * When withdrawals from `event` close, as the backend's `_withdrawal_closes_at`: the cut-off the
+ * coordinator recorded, or the start when there is none or it falls after the start (ADR-0086).
+ */
+function withdrawalClosesAt(event: KnownEvent['event']): string {
+  const cutOff = MOCK_WITHDRAWAL_CUT_OFFS.get(event.id)
+  if (cutOff === undefined) {
+    return event.starts_at
+  }
+  const cutOffComesFirst = new Date(cutOff) < new Date(event.starts_at)
+  return cutOffComesFirst ? cutOff : event.starts_at
+}
+
 /** Every event `userId` registered for, held or withdrawn, in no particular order. */
 function myEventRows(userId: number): MyEventRow[] {
   const rows: MyEventRow[] = []
@@ -393,13 +407,11 @@ export const catalogueHandlers: RequestHandler[] = [
     if (registration.status === 'withdrawn') {
       return errorResponse(409, 'already_withdrawn', 'You have already withdrawn from this event.')
     }
-    // Withdrawals close when the event starts, as on the backend, which has no optional
-    // cut-off yet (SCRUM-53 AC3, SCRUM-69 AC6; ADR-0032).
     const known = knownEvents().find(({ event }) => event.id === registration.event_id)
     if (known === undefined) {
       throw new Error(`Mock registration ${registration.id} names an event the mock lacks.`)
     }
-    const closesAt = known.event.starts_at
+    const closesAt = withdrawalClosesAt(known.event)
     if (new Date(MOCK_NOW) >= new Date(closesAt)) {
       return errorResponse(409, 'withdrawal_closed', 'Withdrawals for this event have closed.', {
         withdrawal_closed_at: closesAt,

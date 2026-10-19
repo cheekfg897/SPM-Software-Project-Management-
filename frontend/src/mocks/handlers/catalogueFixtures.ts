@@ -398,6 +398,17 @@ export const MOCK_ATTENDEE_REGISTRATIONS: number[] = [
   catalogueEventId('Sunrise Yoga on the Lawn'),
 ]
 
+/**
+ * The withdrawal cut-offs coordinators recorded (SCRUM-69 AC6, ADR-0086), by event id. The
+ * catalogue doesn't send them, so they live here rather than on the events. Data Viz Meetup's
+ * passed this morning, before the event starts. Sunrise Yoga's falls after its start, so the
+ * start closes withdrawals instead, as on the backend.
+ */
+export const MOCK_WITHDRAWAL_CUT_OFFS: ReadonlyMap<number, string> = new Map([
+  [catalogueEventId('Data Viz Meetup'), '2026-10-05T09:00:00+08:00'],
+  [catalogueEventId('Sunrise Yoga on the Lawn'), '2026-10-05T10:00:00+08:00'],
+])
+
 /** An event the mock attendee registered for that the catalogue no longer lists. */
 export interface MockUnlistedEvent {
   id: number
