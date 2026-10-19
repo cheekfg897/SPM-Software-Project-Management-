@@ -21,7 +21,7 @@ from app.common.errors import AuthenticationError, AuthorizationError
 from app.modules.auth.models import User
 from app.modules.auth.permissions import ALL_ROLES, Role
 from app.modules.venue import services
-from app.modules.venue.models import PreparationStatus, Venue
+from app.modules.venue.models import BookingRequestStatus, PreparationStatus, Venue
 from app.modules.venue.schemas import BookingRequestAsShown
 from tests.venue.conftest import (
     SECOND_PERIOD,
@@ -39,6 +39,10 @@ CallRoute = Callable[..., Any]
 ReplaceServices = Callable[[ModuleType, dict[str, Any]], dict[str, MagicMock]]
 
 NON_VENUE_STAFF_ROLES = sorted(ALL_ROLES - {Role.VENUE_STAFF}, key=lambda role: role.value)
+#: Every status but Approved, from the enum, so a status added later is checked too.
+NOT_APPROVED_STATUSES = sorted(
+    set(BookingRequestStatus) - {BookingRequestStatus.APPROVED}, key=lambda status: status.value
+)
 PATH = "/api/venues/booking-requests/approved"
 ENDPOINT = "venue.list_approved_booking_requests"
 
@@ -76,6 +80,22 @@ def test_only_approved_bookings_are_listed(
     raise_booking(breakout, event, db_session, **SECOND_PERIOD)
 
     assert _listed_ids(db_session) == [approved.id]
+
+
+@pytest.mark.parametrize("status", NOT_APPROVED_STATUSES, ids=lambda status: status.value)
+def test_a_booking_in_any_other_status_is_left_out(
+    db_session: Session, venue: Venue, saved_event: SavedEvent, status: BookingRequestStatus
+) -> None:
+    """Only an approved booking can be prepared, so nothing else is listed to prepare.
+
+    The status is set directly: the list reads only the status, and reaching each one
+    through its own route would need a different set-up per status.
+    """
+    request = raise_booking(venue, saved_event(), db_session)
+    request.status = status
+    db_session.flush()
+
+    assert _listed_ids(db_session) == []
 
 
 def test_the_earliest_event_comes_first_whatever_order_they_were_approved_in(
