@@ -119,8 +119,13 @@ for (const [screen, viewport] of NARROW_SCREENS) {
   })
 }
 
-// The coordinator and the Safety Officer have the most staff links.
-for (const account of [MOCK_ACCOUNTS.coordinator, MOCK_ACCOUNTS.safetyOfficer]) {
+// The coordinator, the Safety Officer and Venue Staff have the most staff links, and Venue Staff's
+// "Venue bookings" is the widest (SCRUM-84).
+for (const account of [
+  MOCK_ACCOUNTS.coordinator,
+  MOCK_ACCOUNTS.safetyOfficer,
+  MOCK_ACCOUNTS.venueStaff,
+]) {
   test(`on the smallest phone ${account.full_name}'s links each stay on one line, above the page`, async ({
     page,
   }) => {
