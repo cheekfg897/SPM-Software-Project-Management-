@@ -1,4 +1,5 @@
 import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
+import type { EventRequestStatus } from '@/config/eventStatus'
 import { ROLE } from '@/config/roles'
 import type { Role } from '@/config/roles'
 
@@ -14,6 +15,13 @@ import type { MockEvent } from './equipmentFixtures'
  * token, and the event as the backend's lookups find it. The events are kept in memory, as a
  * revised outcome can send one back to Approved, until resetMockEquipmentEvents.
  */
+
+/** Events that won't run, so nothing can be reserved for them (EQUIPMENT_NOT_NEEDED_STATUSES). */
+export const EQUIPMENT_NOT_NEEDED_STATUSES: readonly EventRequestStatus[] = [
+  EVENT_REQUEST_STATUS.COMPLETED,
+  EVENT_REQUEST_STATUS.CANCELLED,
+  EVENT_REQUEST_STATUS.REJECTED,
+]
 
 let events: MockEvent[] = []
 
