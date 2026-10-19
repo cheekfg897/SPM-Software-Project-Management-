@@ -31,6 +31,7 @@ from app.modules.events.services import (
 from app.modules.venue.models import BookingRequestStatus, Venue
 from tests.events.cases import (
     ACTIVE_ARRANGEMENT_STATUSES,
+    NON_DRAFT_STATUSES,
     RETIRED_ARRANGEMENT_STATUSES,
     SaveArrangement,
 )
@@ -147,13 +148,26 @@ def test_an_event_whose_only_request_is_retired_is_not_listed(
     assert list_event_requests_with_venue_bookings() == []
 
 
-@pytest.mark.parametrize("status", list(EventRequestStatus), ids=lambda status: status.value)
+@pytest.mark.parametrize("status", NON_DRAFT_STATUSES, ids=lambda status: status.value)
 def test_an_event_with_a_venue_request_is_listed_whatever_its_status(
     event_with_venue_request: EventWithVenueRequest, status: EventRequestStatus
 ) -> None:
     event_with_venue_request(status=status)
 
     assert _references(list_event_requests_with_venue_bookings()) == ["EVR-AAAAAAAA"]
+
+
+def test_a_draft_is_never_listed_even_with_a_venue_request(
+    event_with_venue_request: EventWithVenueRequest,
+) -> None:
+    """Every new staff list leaves drafts out (ADR-0024), whatever rows point at them.
+
+    Only an approved event can be given an arrangement today, so this pins the rule
+    rather than a path a user can take.
+    """
+    event_with_venue_request(status=EventRequestStatus.DRAFT)
+
+    assert list_event_requests_with_venue_bookings() == []
 
 
 # --------------------------------------------------------------------------
