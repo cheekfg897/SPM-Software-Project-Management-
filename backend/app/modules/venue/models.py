@@ -156,8 +156,9 @@ class BookingRequestStatus(str, enum.Enum):
     #: venue is free again (SCRUM-94, ADR-0052). Like a rejected request, it stays one
     #: of the event's arrangements until the coordinator withdraws it.
     EXPIRED = "expired"
-    #: Venue Staff approved a replacement for this arrangement after its venue became
-    #: unavailable, so it no longer holds the venue (SCRUM-92 AC7, ADR-0053).
+    #: The arrangement no longer holds its venue: Venue Staff approved a replacement
+    #: after the venue became unavailable (SCRUM-92 AC7, ADR-0053), or the coordinator
+    #: rejected the event during planning (SCRUM-49 AC10, ADR-0093).
     RELEASED = "released"
 
 

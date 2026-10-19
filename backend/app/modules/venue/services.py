@@ -2373,3 +2373,54 @@ def send_hold_expiry_warnings(
         resolve_session(session).commit()
         _notify_hold(request, event, NotificationKind.VENUE_HOLD_EXPIRING, session)
     return due
+
+
+# --------------------------------------------------------------------------
+# SCRUM-49 AC10 — release an event's venues when it is rejected during planning
+# --------------------------------------------------------------------------
+
+
+def _booking_holding_venue(
+    arrangement: VenueBookingRequest, session: Session | None
+) -> Booking | None:
+    """The hold or booking through which the arrangement holds its venue, if any.
+
+    A hold, and the booking a hold becomes on approval, is linked to its request
+    (SCRUM-75); a booking an ordinary approval made is found by its period.
+    """
+    if arrangement.booking is not None:
+        return arrangement.booking
+    return _booking_made_by(arrangement, session)
+
+
+def _release_and_free_venue(arrangement: VenueBookingRequest, session: Session | None) -> None:
+    """Mark an approved or held arrangement Released and cancel its booking or hold."""
+    booking = _booking_holding_venue(arrangement, session)
+    if booking is not None:
+        booking.status = BookingStatus.CANCELLED
+    arrangement.status = BookingRequestStatus.RELEASED
+
+
+def release_event_arrangements(
+    event_id: int, *, coordinator_id: int, session: Session | None = None
+) -> None:
+    """Free every venue an event still has arranged, without committing (SCRUM-49 AC10).
+
+    For an event rejected during planning, whose venues are released as a cancelled
+    event's are (SCRUM-61 AC3, AC8, ADR-0093). An arrangement Venue Staff haven't
+    approved is withdrawn, with its history entry, as the coordinator would withdraw it
+    (SCRUM-93). One that holds the venue, Approved or On Hold, is Released and its
+    booking or hold cancelled, so the venue is free for that period again. Arrangements
+    already withdrawn or released are left as they are. The caller commits, with the
+    rejection this is part of.
+
+    Args:
+        event_id: The event request's id.
+        coordinator_id: The coordinator rejecting the event, named in each withdrawal.
+        session: Database session; defaults to ``db.session``.
+    """
+    for arrangement in list_active_arrangements(event_id, session=session):
+        if arrangement.status in WITHDRAWABLE_REQUEST_STATUSES:
+            _withdraw_and_record(arrangement, coordinator_id, session)
+        else:
+            _release_and_free_venue(arrangement, session)
