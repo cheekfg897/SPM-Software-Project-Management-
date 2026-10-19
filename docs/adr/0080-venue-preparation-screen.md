@@ -65,5 +65,5 @@ their event's booking requests (ADR-0049). Nothing on the web used it, and two t
 ## Revisit when
 - The team settles ADR-0049's defaults (status names, notes replaced on each update), or wants
   the list limited to safety-approved or upcoming events.
-- Venue Staff get an event list of their own (SCRUM-24's later role lists), which may be a better
-  home for preparation than the decisions page.
+- Venue Staff's event list (SCRUM-24, ADR-0085, on main since this was written) gets a detail
+  view, which may be a better home for preparation than the decisions page.
