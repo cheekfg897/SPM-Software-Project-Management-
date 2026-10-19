@@ -1,9 +1,9 @@
 # ADR-0093: The assigned coordinator rejects an event during planning with a reason, which releases its venues and returns its equipment in the same commit
 
-- **Status:** Accepted; decision 5 (rejecting at any point in planning and releasing as for a cancelled event) is decided by the Product Owner (SCRUM-49 AC9, AC10, 19 Oct); decisions 2, 4 and 8 are defaults to review with the team
+- **Status:** Accepted; decision 5 (rejecting at any point in planning and releasing as for a cancelled event) is decided by the Product Owner (SCRUM-49 AC9, AC10, 19 Oct); decisions 2, 4, 8 and 10 are defaults to review with the team
 - **Date:** 2026-10-19
 - **Story:** SCRUM-49 Confirm an event once its arrangements are in place (AC9, AC10)
-- **Extends:** [ADR-0028](0028-review-and-decide.md), [ADR-0040](0040-equipment-review-outcome.md) (decision 15), [ADR-0047](0047-safety-officer-and-safety-review.md), [ADR-0051](0051-confirm-an-event.md) (decision 9), [ADR-0053](0053-flag-bookings-when-a-venue-becomes-unavailable.md)
+- **Extends:** [ADR-0028](0028-review-and-decide.md), [ADR-0040](0040-equipment-review-outcome.md) (decision 15), [ADR-0047](0047-safety-officer-and-safety-review.md), [ADR-0051](0051-confirm-an-event.md) (decision 9), [ADR-0053](0053-flag-bookings-when-a-venue-becomes-unavailable.md), [ADR-0075](0075-planning-actions-on-the-event-page.md)
 
 ## Context
 SCRUM-49 AC9: when an essential arrangement can't be fulfilled (no suitable venue, or essential equipment unavailable), the assigned Event Coordinator can reject the event with a reason; its status becomes Rejected. It is always a manual decision, and the Event Organiser is notified. AC10: once rejected during planning, the event's venue bookings and holds are released, reserved equipment returns to the available quantity and open equipment requests are closed, "as for a cancelled event (SCRUM-61)". The story's "Event rejection clarification" says SCRUM-31 covers only the first approve-or-reject decision, before any venue or equipment request exists, so this is a separate route; and that the release rule was first a team assumption, not the customer's. ADR-0051 decision 9 left all of it for its own ticket, with a question for the customer. On 19 Oct the Product Owner confirmed AC9 and AC10 as written in SCRUM-49: the coordinator can reject an event at any point in planning, manually, with a reason; the organiser is notified; and on rejection its venue bookings and holds are released, reserved equipment returns to the available quantity and open equipment requests are closed, as for a cancelled event (SCRUM-61).
@@ -29,11 +29,18 @@ SCRUM-61 (cancelling an event) is not built yet, so there is no cancellation rel
 
 **The frontend contract (CONVENTIONS §14):** the new route's mock and contract tests come with the screen that uses it. SCRUM-48 AC8's integration check, an `it.todo` until now, runs in `planning.int.test.ts` on an event the coordinator rejected (nothing can cancel one yet).
 
+### The web app
+9. **Reject event is a planning action on the coordinator's event page** (ADR-0075's `PLANNING_ACTIONS_BY_STATUS`), offered while the event is `approved` or `safety_review`, after the action that moves it on. Its card, "Reject the event", has a "Reason for rejecting" box and a "Reject event" button.
+10. **Default: it asks first.** Unlike the other planning actions (ADR-0075 decision 5), pressing Reject event shows what happens ("Its venue bookings and holds are released and its equipment returned.") with "Yes, reject the event" and "Keep planning", as cancelling all venue requests does (ADR-0069 decision 5): one press frees every venue and all the equipment at once.
+11. **The reason is sent only when one is typed,** as the decision form does (ADR-0060), so an empty box gets the backend's "A reason is required to reject the event." under it. The page doesn't check the reason itself; any refusal shows in the card's alert as it comes. After a rejection every event-request query is read again (ADR-0075 decision 6), so the status, the decision and the history come from the backend.
+12. **The mock** (`eventPlanning.ts`) answers `POST …/reject` as the backend does: the assigned coordinator only, the planning statuses, the check order, codes and messages (`loadRejectionReason` in `eventReviewRules.ts`). It records the decision on the event's record and in its history, withdraws each arrangement not yet approved with its own history entry and releases an approved one. Its arrangements now carry their `venueId`, for that entry, and may be `released`, which the gates treat as retired like `withdrawn`.
+
 ## Consequences
 - An event that can't go ahead no longer sits in planning holding venues and equipment: one action rejects it, frees what it held and tells the organiser why.
 - Venue Staff see a released arrangement as Released (or a withdrawn one as Withdrawn) on the event's list; an approved booking they made is cancelled without a notice to them (Still owed).
 - Technical Support can't record or revise an outcome on a rejected event (ADR-0040 decision 15), so its equipment record stays as it was when it was rejected.
 - SCRUM-61 can reuse both release functions as they are: they don't commit, and neither knows why the event stopped.
+- The coordinator can reject an event from its page; the other pages that show its venues or equipment (the venue requests and equipment pages) are read again when opened, not at the moment of the rejection.
 
 ## Still owed
 - **Venue Staff aren't told** when an approved booking or a hold is released; the ACs don't ask for it. A ticket to raise if they should be.

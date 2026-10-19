@@ -44,12 +44,14 @@ may do, not how the page offers it.
    would accept it in. Whether it is allowed there is still the backend's call, and its refusal
    is shown as it comes. One table, `PLANNING_ACTIONS_BY_STATUS`, is typed over every status:
 
-   | Status | Send to safety review | Confirm event | Registration settings | Mark completed |
-   |---|---|---|---|---|
-   | approved | yes | | | |
-   | safety_review | | yes | | |
-   | confirmed | | | yes | yes |
-   | every other status | | | | |
+   | Status | Send to safety review | Confirm event | Registration settings | Mark completed | Reject event |
+   |---|---|---|---|---|---|
+   | approved | yes | | | | yes |
+   | safety_review | | yes | | | yes |
+   | confirmed | | | yes | yes | |
+   | every other status | | | | | |
+
+   *(Reject event was added by [ADR-0093](0093-reject-an-event-during-planning.md).)*
 
    - **Confirm event shows for every event in Safety Review**, including one the Safety
      Officer hasn't approved yet. The record doesn't say whether the approval is in
@@ -89,7 +91,8 @@ may do, not how the page offers it.
      reply, not a guess, but it lasts only while the page is open (see Consequences).
 5. **No confirmation step.** Each action is one press, like the review actions (ADR-0060
    decision 3). Confirming tells the organiser and completing can't be undone, but so does
-   approving, which already goes without a confirmation.
+   approving, which already goes without a confirmation. *(Rejecting during planning asks first:
+   it releases every venue and returns all the equipment at once, ADR-0093.)*
 6. **After each action, every event-request query is read again** (`eventRequestKeys.all`), as
    for the review actions. The new status, and the action the new status offers, show because
    the backend says so. The registration reply is the only response the page reads directly.
@@ -130,15 +133,14 @@ after it, whose organiser asked for registration).
   ADR-0043), so the form has no venue refusal to show. SCRUM-69 AC6's withdrawal cut-off
   (ADR-0086) has no input on the form yet: listed under Tickets to open on the SCRUM-69 pull
   request.
-- SCRUM-49 AC9 and AC10 (rejecting an event during planning) and AC11 (what the organiser sees
-  once confirmed) have no backend yet (ADR-0051 decisions 9 and 10), so the page has nothing to
-  offer for them.
+- SCRUM-49 AC11 (what the organiser sees once confirmed) has no backend yet (ADR-0051 decision
+  10), so the page has nothing to offer for it. AC9 and AC10 (rejecting an event during
+  planning) are on the page since ADR-0093.
 - SCRUM-68 AC4 and SCRUM-69 AC6 are the backend's: a completed event's equipment and venue
   pages already show the backend's refusals, and the history records who changed the
   registration settings.
 
 ## Revisit when
 - The event record carries the registration settings: start the form from them.
-- The backend adds rejecting an event during planning (SCRUM-49 AC9): add it to the table.
 - The record says whether the Safety Officer has approved: Confirm event could show only then.
 - The customer wants confirming or completing to ask first.
