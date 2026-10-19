@@ -9,8 +9,9 @@ import { logIn } from './logIn'
  * SCRUM-97, SCRUM-49, SCRUM-69, SCRUM-68: a coordinator takes events through planning from
  * their pages: sends one to safety review and sees what holds another back, confirms one the
  * Safety Officer approved and opens its registration, and marks an ended one completed
- * (ADR-0075). Against the mock backend, which keeps its data only until the page reloads, so
- * the journey moves between events through the app, never by reloading.
+ * (ADR-0075); and rejects one whose arrangements can't be met (ADR-0093). Against the mock
+ * backend, which keeps its data only until the page reloads, so the journey moves between
+ * events through the app, never by reloading.
  */
 
 /** The event's status chip, which sits just before its reference. */
@@ -65,4 +66,32 @@ test('SCRUM-97, SCRUM-49, SCRUM-69, SCRUM-68: a coordinator takes events from ap
   await page.getByRole('button', { name: 'Mark completed' }).click()
   await expect(statusOf(page, 'EVR-PLAN0005')).toHaveText('Completed')
   await expect(page.getByRole('region', { name: 'Planning' })).toHaveCount(0)
+})
+
+test('SCRUM-49: a coordinator rejects an event whose arrangements cannot be met', async ({
+  page,
+}) => {
+  const reason = 'No venue large enough is free that week.'
+  await page.goto('/')
+  await page.getByRole('link', { name: 'Staff log in' }).click()
+  await logIn(page, MOCK_ACCOUNTS.planningCoordinator)
+  await expect(page).toHaveURL('/staff')
+  await openFromStaffHome(page, 'Winter Charity Run', 'EVR-PLAN0004')
+  const rejecting = page.getByRole('region', { name: 'Reject the event' })
+
+  // --- Without a reason the backend refuses, and says so under the box ---
+  await rejecting.getByRole('button', { name: 'Reject event' }).click()
+  await rejecting.getByRole('button', { name: 'Yes, reject the event' }).click()
+  await expect(rejecting.getByText('A reason is required to reject the event.')).toBeVisible()
+  await expect(statusOf(page, 'EVR-PLAN0004')).toHaveText('Safety review')
+
+  // --- With one, and once confirmed, the event is rejected and nothing is left to plan ---
+  await rejecting.getByLabel('Reason for rejecting').fill(reason)
+  await rejecting.getByRole('button', { name: 'Reject event' }).click()
+  await rejecting.getByRole('button', { name: 'Yes, reject the event' }).click()
+  await expect(statusOf(page, 'EVR-PLAN0004')).toHaveText('Rejected')
+  await expect(page.getByRole('region', { name: 'Planning' })).toHaveCount(0)
+  // --- It is the event's decision now, with the reason, and in its history ---
+  await expect(page.getByRole('region', { name: 'Decision' })).toContainText(reason)
+  await expect(page.getByRole('region', { name: 'History' })).toContainText(reason)
 })

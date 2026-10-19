@@ -17,6 +17,7 @@ import {
   fetchMyEventRequests,
   fetchRegistrants,
   registrantsKey,
+  rejectEvent,
   requestClarification,
   saveDraftEventRequest,
   sendToSafetyReview,
@@ -32,6 +33,7 @@ import type {
   EventEditChanges,
   EventRequestDetails,
   RegistrationChanges,
+  Rejection,
 } from './api'
 
 /** The signed-in organiser's event requests, read for whoever is signed in. */
@@ -150,6 +152,15 @@ export function useSendToSafetyReview(reference: string) {
 export function useConfirmEvent(reference: string) {
   const refresh = useRefreshEventRequests()
   return useMutation({ mutationFn: () => confirmEvent(reference), onSuccess: refresh })
+}
+
+/** Reject an event assigned to the coordinator during planning, with a reason (SCRUM-49 AC9). */
+export function useRejectEvent(reference: string) {
+  const refresh = useRefreshEventRequests()
+  return useMutation({
+    mutationFn: (rejection: Rejection) => rejectEvent(reference, rejection),
+    onSuccess: refresh,
+  })
 }
 
 /** Mark a confirmed event assigned to the coordinator completed once it has ended (SCRUM-68). */
