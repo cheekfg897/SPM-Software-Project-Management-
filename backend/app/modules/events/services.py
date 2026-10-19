@@ -3744,9 +3744,6 @@ def update_registration_settings(
     settings = _settings_after(event_request, data)
     _check_registration_may_be_enabled(event_request, settings)
     _check_capacity_covers_registrations(event_request, settings, sess)
-    # TODO: AC3 (capacity within the booked venue's) once SCRUM-42 and SCRUM-43 let the
-    # events module find the venue through the venue service: check ``settings`` here
-    # (ADR-0043).
     if now is None:
         now = datetime.now(timezone.utc)
 
