@@ -24,6 +24,11 @@ import {
 import type { MockEquipmentType } from './equipmentFixtures'
 import { equipmentLineHandlers, requestedQuantity, resetMockEquipmentLines } from './equipmentLines'
 import {
+  equipmentOutOfServiceHandlers,
+  outOfServiceQuantity,
+  resetMockOutOfService,
+} from './equipmentOutOfService'
+import {
   EQUIPMENT_TYPE_ID_RANGE_MESSAGE,
   MISSING_MESSAGE,
   positiveWholeNumberError,
@@ -38,8 +43,9 @@ import {
 /**
  * The equipment endpoints, as backend/app/modules/equipment/routes.py answers them (SCRUM-45
  * availability, SCRUM-46 reservations, SCRUM-85 preparation), and the events module's equipment
- * lines (SCRUM-37, equipmentLines.ts). The catalogue's types are answered in
- * equipmentCatalogue.ts. Reservations live in memory until resetMockEquipment.
+ * lines (SCRUM-37, equipmentLines.ts) and units out of service (SCRUM-47,
+ * equipmentOutOfService.ts). The catalogue's types are answered in equipmentCatalogue.ts.
+ * Reservations live in memory until resetMockEquipment.
  */
 
 const EVENT_PATH = '/api/equipment/events/:reference'
@@ -61,12 +67,13 @@ let reservations: MockReservation[] = []
 /** The event each reservation is for, by reservation id: the backend's foreign key. */
 let reservationEvents = new Map<number, string>()
 
-/** Forget every reservation and line change made since the mock started. Runs after every test. */
+/** Forget every reservation, line change and unit out of service. Runs after every test. */
 export function resetMockEquipment(): void {
   reservations = []
   reservationEvents = new Map()
   resetMockEquipmentLines()
   resetMockEquipmentEvents()
+  resetMockOutOfService()
 }
 
 /**
@@ -100,8 +107,35 @@ function reservedQuantity(equipmentTypeId: number): number {
   return total
 }
 
+/** What is left of `free` once this mock's reservations and the units out of service are taken. */
+function unreservedQuantity(equipmentTypeId: number, free: number): number {
+  return free - reservedQuantity(equipmentTypeId) - outOfServiceQuantity(equipmentTypeId)
+}
+
 function availableQuantity(equipmentTypeId: number, free: number): number {
-  return Math.max(free - reservedQuantity(equipmentTypeId), 0)
+  return Math.max(unreservedQuantity(equipmentTypeId, free), 0)
+}
+
+/** The types with fewer units in service than are reserved for the period. */
+function shortTypeIds(): Set<number> {
+  const short = new Set<number>()
+  for (const type of MOCK_EQUIPMENT_TYPES) {
+    if (unreservedQuantity(type.id, type.free) < 0) {
+      short.add(type.id)
+    }
+  }
+  return short
+}
+
+/**
+ * The reservation with its flag (SCRUM-47 AC3): units out of service have left fewer in service
+ * than are reserved for the period. Every mock event shares one period, so every reservation of
+ * that type is flagged, and the mock does not compare the period with today. The backend saves
+ * the flag when units go out or come back; reserving can't leave a type short, so working it out
+ * here gives the same answer.
+ */
+function asShown(reservation: MockReservation) {
+  return { ...reservation, needs_attention: shortTypeIds().has(reservation.equipment_type_id) }
 }
 
 /** One row per equipment type, by name, against what this event's lines ask for. */
@@ -160,7 +194,7 @@ export const equipmentHandlers: RequestHandler[] = [
     if (eventForReader(caller, String(params.reference)) === undefined) {
       return eventNotFound()
     }
-    return HttpResponse.json(reservations)
+    return HttpResponse.json(reservations.map(asShown))
   }),
 
   http.post(`${EVENT_PATH}/reservations`, async ({ request, params }) => {
@@ -213,7 +247,7 @@ export const equipmentHandlers: RequestHandler[] = [
     }
     reservations.push(reservation)
     reservationEvents.set(reservation.id, event.reference)
-    return HttpResponse.json(reservation, { status: 201 })
+    return HttpResponse.json(asShown(reservation), { status: 201 })
   }),
 
   // The backend's order: the body, then the reservation, then the event's safety approval.
@@ -241,9 +275,10 @@ export const equipmentHandlers: RequestHandler[] = [
       // preparationErrors has just checked the status is one of the three.
       reservation.preparation_status = body.status as PreparationStatus
       reservation.preparation_notes = savedNotes(body)
-      return HttpResponse.json(reservation)
+      return HttpResponse.json(asShown(reservation))
     },
   ),
 
   ...equipmentLineHandlers,
+  ...equipmentOutOfServiceHandlers,
 ]
