@@ -1,5 +1,7 @@
+import { ROUTES } from '@/config/routes'
 import { formText } from '@/features/auth/formText'
 import { toBusinessTimeIso } from '@/lib/businessTime'
+import { positiveIdParam } from '@/lib/positiveIdParam'
 
 import type { SuitabilityRequest, VenueSearchRequest } from './api'
 
@@ -12,6 +14,10 @@ import type { SuitabilityRequest, VenueSearchRequest } from './api'
 
 /** The URL parameter holding the id of the venue being checked (SCRUM-36). */
 const VENUE_TO_CHECK = 'venue'
+
+/** The URL parameters naming the event, and its flagged arrangement, a search replaces (SCRUM-92). */
+const REPLACING_EVENT = 'event'
+const REPLACED_ARRANGEMENT = 'replaces'
 
 /** The filters with one value each, named as the form fields and URL parameters are. */
 const SINGLE_FILTERS = [
@@ -133,8 +139,7 @@ export function toSuitabilityRequest(filters: SearchFilters): SuitabilityRequest
 
 /** The id of the venue being checked, or null when there is none (or it isn't an id). */
 export function readVenueToCheck(params: URLSearchParams): number | null {
-  const venueId = Number(params.get(VENUE_TO_CHECK) ?? '')
-  return Number.isInteger(venueId) && venueId > 0 ? venueId : null
+  return positiveIdParam(params, VENUE_TO_CHECK)
 }
 
 /** The URL checking `venueId`, the filters left as they are. */
@@ -142,4 +147,33 @@ export function withVenueToCheck(current: URLSearchParams, venueId: number): URL
   const next = new URLSearchParams(current)
   next.set(VENUE_TO_CHECK, String(venueId))
   return next
+}
+
+/** The flagged arrangement a search is finding a replacement venue for (SCRUM-92 AC6). */
+export interface ReplacementSearch {
+  /** The event's EVR- reference. */
+  reference: string
+  arrangementId: number
+}
+
+/** The replacement the URL's search is for, or null when it is an ordinary search. */
+export function readReplacementSearch(params: URLSearchParams): ReplacementSearch | null {
+  const reference = params.get(REPLACING_EVENT)
+  const arrangementId = positiveIdParam(params, REPLACED_ARRANGEMENT)
+  if (reference === null || arrangementId === null) {
+    return null
+  }
+  return { reference, arrangementId }
+}
+
+/** The search page set to `filters`, finding a venue to replace the flagged arrangement. */
+export function replacementSearchPath(
+  replacement: ReplacementSearch,
+  filters: SearchFilters,
+): string {
+  const params = new URLSearchParams({
+    [REPLACING_EVENT]: replacement.reference,
+    [REPLACED_ARRANGEMENT]: String(replacement.arrangementId),
+  })
+  return `${ROUTES.VENUE_SEARCH}?${withFilters(params, filters).toString()}`
 }
