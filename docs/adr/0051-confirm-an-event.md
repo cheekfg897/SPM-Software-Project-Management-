@@ -1,6 +1,6 @@
 # ADR-0051: The assigned coordinator confirms an event from Safety Review once every approval is in
 
-- **Status:** Accepted for the confirmation itself (SCRUM-49 AC1-AC8, AC12); decision 8 was deferred to SCRUM-92 and is now delivered by [ADR-0053](0053-flag-bookings-when-a-venue-becomes-unavailable.md) (the gate names each flagged active arrangement), and decisions 9-10 are defaults pending the customer
+- **Status:** Accepted for the confirmation itself (SCRUM-49 AC1-AC8, AC12); decision 8 was deferred to SCRUM-92 and is now delivered by [ADR-0053](0053-flag-bookings-when-a-venue-becomes-unavailable.md) (the gate names each flagged active arrangement), decision 9 is built by [ADR-0093](0093-reject-an-event-during-planning.md), and decision 10 is a default pending the customer
 - **Date:** 2026-10-17
 - **Stories:** SCRUM-49 Confirm an event once its arrangements are in place
 
@@ -23,16 +23,16 @@ SCRUM-49 is the last step of the lifecycle ADR-0047 set up: `approved` → `safe
 
 ### Deferred and pending the customer
 8. **"Needs Alternative Venue" (AC6) is deferred to SCRUM-92.** SCRUM-92 defines the flag: when a venue becomes unavailable, its bookings are flagged Needs Alternative Venue. The system has no such flag yet: nothing sets it and no model holds it, so confirmation does not check it. The gate still holds back any arrangement that isn't Approved. SCRUM-92 adds the check, naming a flagged booking beside the other gaps.
-9. **Rejecting an event during planning (AC9, AC10) is not built here.** It is a separate decision with a reason, a notification and a release of venue bookings, holds and equipment, "as for a cancelled event (SCRUM-61)". SCRUM-61 does not exist yet and the story says the release rule is a team assumption. It needs its own ticket.
+9. **Rejecting an event during planning (AC9, AC10) is not built here.** It is a separate decision with a reason, a notification and a release of venue bookings, holds and equipment, "as for a cancelled event (SCRUM-61)". SCRUM-61 does not exist yet and the story says the release rule is a team assumption. *(Built by [ADR-0093](0093-reject-an-event-during-planning.md): `POST …/reject` for an Approved or Safety Review event, releasing everything at once, as the Product Owner confirmed on 19 Oct.)*
 10. **What the organiser sees once confirmed (AC11) is what they see today:** the status, the date and times, and the history. The venue arrangements are not shown to the organiser: the organiser's event record has no venues, and the venue module has no organiser-facing read. It needs its own ticket, and the customer's question below.
 
 ## Still owed
 - **Frontend:** a Confirm button on the coordinator's event page, the `event_confirmed` notification's message, and showing the 409's `details`. The backend is ready. No response the frontend reads changes, so no mock or integration test changes here.
 - **SCRUM-84/85 and registration** already read `confirmed` and `has_safety_approval`; nothing changes for them.
-- **Decision 8**, with SCRUM-92. **Decisions 9-10**, above.
+- **Decision 8**, with SCRUM-92 (done, ADR-0053). **Decision 9**, done in ADR-0093. **Decision 10**, above.
 
 ## Questions for the customer
-1. When an event is rejected during planning because an essential arrangement can't be fulfilled, should its venue bookings, holds and equipment reservations be released at once, as for a cancelled event?
+1. When an event is rejected during planning because an essential arrangement can't be fulfilled, should its venue bookings, holds and equipment reservations be released at once, as for a cancelled event? *(Answered yes by the Product Owner on 19 Oct (SCRUM-49 AC10); built in ADR-0093.)*
 2. Once an event is confirmed, what should the Event Organiser be able to see: every venue, the date and times, and which equipment was confirmed? Should they also see the Technical Support outcomes and the Safety Officer's decision?
 
 ## Consequences
