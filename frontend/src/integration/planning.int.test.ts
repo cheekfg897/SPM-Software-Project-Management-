@@ -372,7 +372,32 @@ describe('SCRUM-69 registration settings against the backend', () => {
         registration_required: false,
         registration_enabled: false,
         registration_capacity: 50,
+        withdrawal_cut_off: null,
       })
+    },
+  )
+
+  it.skipIf(!canAssign)(
+    'records a withdrawal cut-off before the start in business time, refuses one at the start, and clears it (AC6)',
+    async () => {
+      const { reference } = await approvedEvent()
+      const dayBefore = `${daysFromNow(29)}T18:00:00+08:00`
+
+      const recorded = await updateRegistrationSettings(reference, {
+        registration_enabled: false,
+        withdrawal_cut_off: `${daysFromNow(29)}T10:00:00Z`,
+      })
+      const atTheStart = await refusal(
+        updateRegistrationSettings(reference, { withdrawal_cut_off: `${EVENT_DATE}T09:00:00` }),
+      )
+      const cleared = await updateRegistrationSettings(reference, { withdrawal_cut_off: null })
+
+      expect(recorded.withdrawal_cut_off).toBe(dayBefore)
+      expect(atTheStart).toMatchObject({ status: 400, code: 'validation_error' })
+      expect(atTheStart.fieldErrors).toEqual({
+        withdrawal_cut_off: ['The withdrawal cut-off must be before the event starts.'],
+      })
+      expect(cleared.withdrawal_cut_off).toBeNull()
     },
   )
 

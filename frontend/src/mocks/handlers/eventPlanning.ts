@@ -20,7 +20,8 @@ import { assignedOrRefusal, objectBodyOrRefusal } from './eventRequests'
  * The coordinator's planning actions on the stored event requests eventRequests.ts keeps, so
  * the record read afterwards shows the change: sending an event to safety review (SCRUM-97,
  * ADR-0047), marking it completed once it has ended, at the mock's "now", MOCK_NOW (SCRUM-68,
- * ADR-0027), its registration settings (SCRUM-69, ADR-0043) and confirming it once every
+ * ADR-0027), its registration settings and withdrawal cut-off (SCRUM-69, ADR-0043, ADR-0086)
+ * and confirming it once every
  * approval is in (SCRUM-49, ADR-0051). Only the event's assigned coordinator may; the checks,
  * their order, the codes, messages and the gaps named are the backend's (ADR-0075). Each action
  * that changes something is written to the event's history as the backend writes it (SCRUM-33
@@ -39,6 +40,7 @@ const NOT_YET_ENDED_MESSAGE = 'The event has not ended yet.'
 const BUSINESS_TIME_OFFSET = '+08:00'
 const CAPACITY_REQUIRED_MESSAGE = 'A capacity is required to enable registration.'
 const REGISTRATION_NOT_CONFIRMED_MESSAGE = 'Registration can be enabled only for a confirmed event.'
+const CUT_OFF_NOT_BEFORE_START_MESSAGE = 'The withdrawal cut-off must be before the event starts.'
 const NOT_IN_SAFETY_REVIEW_MESSAGE = 'Only an event in Safety Review can be confirmed.'
 const CONFIRMATION_NOT_READY_MESSAGE =
   'The event can be confirmed once the Safety Officer has approved it, every venue ' +
@@ -47,7 +49,11 @@ const CONFIRMATION_NOT_READY_MESSAGE =
 const SAFETY_NOT_APPROVED_GAP = 'The Safety Officer has not approved the event.'
 
 /** The settings the registration route changes, in the order the backend records them. */
-const REGISTRATION_FIELDS = ['registration_enabled', 'registration_capacity'] as const
+const REGISTRATION_FIELDS = [
+  'registration_enabled',
+  'registration_capacity',
+  'withdrawal_cut_off',
+] as const
 
 /** One history entry by the coordinator at the mock's "now", as `record_event_history` writes it. */
 function entryBy(
@@ -114,13 +120,23 @@ function hasEnded(stored: MockEventRequest): boolean {
   return Date.parse(MOCK_NOW) >= endsAt
 }
 
+/** Whether the event's start (`proposed_date` + `start_time`, business time) is at or before `instant`. */
+function startsBy(stored: MockEventRequest, instant: string): boolean {
+  const { proposed_date: startDate, start_time: startTime } = stored.request
+  const startsAt = Date.parse(`${startDate ?? ''}T${startTime ?? ''}${BUSINESS_TIME_OFFSET}`)
+  return startsAt <= Date.parse(instant)
+}
+
 /** An event's registration settings as the backend stores them. */
-type RegistrationState = Pick<MockPlanning, 'registration_enabled' | 'registration_capacity'>
+type RegistrationState = Pick<
+  MockPlanning,
+  'registration_enabled' | 'registration_capacity' | 'withdrawal_cut_off'
+>
 
 /**
  * The settings once `changes` apply, as `_settings_after` works them out: what isn't sent stays,
  * except whether registration is open on an event that never had a capacity, which follows the
- * organiser's answer (SCRUM-69 AC1, ADR-0043).
+ * organiser's answer (SCRUM-69 AC1, ADR-0043). A cut-off sent as null is cleared (ADR-0086).
  */
 function settingsAfter(stored: MockEventRequest, changes: RegistrationChanges): RegistrationState {
   const planning = planningOf(stored)
@@ -133,14 +149,23 @@ function settingsAfter(stored: MockEventRequest, changes: RegistrationChanges): 
   return {
     registration_enabled: enabled,
     registration_capacity: changes.registration_capacity ?? planning.registration_capacity,
+    withdrawal_cut_off:
+      changes.withdrawal_cut_off === undefined
+        ? planning.withdrawal_cut_off
+        : changes.withdrawal_cut_off,
   }
 }
 
 /**
  * Why the settings are refused, in the backend's order: open with no capacity, open before the
- * event is confirmed, then, open or closed, a capacity below the number registered (ADR-0043).
+ * event is confirmed, then, open or closed, a capacity below the number registered (ADR-0043),
+ * then a cut-off sent for the event's start or later; one already saved isn't checked (ADR-0086).
  */
-function registrationRefusal(stored: MockEventRequest, settings: RegistrationState) {
+function registrationRefusal(
+  stored: MockEventRequest,
+  settings: RegistrationState,
+  changes: RegistrationChanges,
+) {
   if (settings.registration_enabled && settings.registration_capacity === null) {
     return validationError({ registration_capacity: [CAPACITY_REQUIRED_MESSAGE] })
   }
@@ -152,12 +177,16 @@ function registrationRefusal(stored: MockEventRequest, settings: RegistrationSta
     const message = `Capacity cannot be lower than the ${registeredCount} places already taken.`
     return validationError({ registration_capacity: [message] })
   }
+  const cutOff = changes.withdrawal_cut_off
+  if (typeof cutOff === 'string' && startsBy(stored, cutOff)) {
+    return validationError({ withdrawal_cut_off: [CUT_OFF_NOT_BEFORE_START_MESSAGE] })
+  }
   return null
 }
 
 /**
  * One `field_changed` entry per setting that differs from what is saved, as
- * `_record_field_changes` writes them: neither setting is a significant change.
+ * `_record_field_changes` writes them: no setting is a significant change.
  */
 function settingChanges(
   stored: MockEventRequest,
@@ -260,7 +289,7 @@ export const eventPlanningHandlers: RequestHandler[] = [
       return validationError(loaded.errors)
     }
     const settings = settingsAfter(stored, loaded.changes)
-    const refused = registrationRefusal(stored, settings)
+    const refused = registrationRefusal(stored, settings, loaded.changes)
     if (refused !== null) {
       return refused
     }

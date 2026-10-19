@@ -221,6 +221,7 @@ describe('SCRUM-69 mock: registration settings', () => {
       registration_required: true,
       registration_enabled: true,
       registration_capacity: 120,
+      withdrawal_cut_off: null,
     })
     const closed = await updateRegistrationSettings(ASKED_FOR_NOTHING_SET, {
       registration_enabled: false,
@@ -370,6 +371,101 @@ describe('SCRUM-69 mock: registration settings', () => {
 
     signInAs(null)
     expect(await refusal(patchWith(OPEN_FOR_50, {}))).toMatchObject(NOT_SIGNED_IN)
+  })
+})
+
+describe('SCRUM-69 mock: the optional withdrawal cut-off (AC6, ADR-0086)', () => {
+  /** EVR-PLAN0002 starts on 14 Nov 2026 at 10:00 in Singapore. */
+  const STARTS_14_NOV_10AM = APPROVED_AND_SETTLED
+  const DAY_BEFORE = '2026-11-13T10:00:00+08:00'
+  const NOT_BEFORE_START = 'The withdrawal cut-off must be before the event starts.'
+  const NOT_A_DATETIME = 'Not a valid datetime.'
+
+  /** Record `cutOff` on the event with registration left closed, as the backend allows. */
+  function recordCutOff(cutOff: unknown) {
+    return apiRequest(`/api/events/requests/${STARTS_14_NOV_10AM}/registration`, {
+      method: 'PATCH',
+      body: { registration_enabled: false, withdrawal_cut_off: cutOff },
+    })
+  }
+
+  it('records a cut-off and answers it in business time, keeps it, and clears it with null', async () => {
+    signInAs(HANA)
+
+    const recorded = await updateRegistrationSettings(STARTS_14_NOV_10AM, {
+      registration_enabled: false,
+      withdrawal_cut_off: DAY_BEFORE,
+    })
+    expect(recorded).toMatchObject({ registration_enabled: false, withdrawal_cut_off: DAY_BEFORE })
+    const kept = await updateRegistrationSettings(STARTS_14_NOV_10AM, { registration_capacity: 9 })
+    expect(kept.withdrawal_cut_off).toBe(DAY_BEFORE)
+    const cleared = await updateRegistrationSettings(STARTS_14_NOV_10AM, {
+      withdrawal_cut_off: null,
+    })
+    expect(cleared.withdrawal_cut_off).toBeNull()
+  })
+
+  it('reads a cut-off with no offset as business time, and one in UTC as the same instant', async () => {
+    signInAs(HANA)
+
+    expect(await recordCutOff('2026-11-13T10:00:00')).toMatchObject({
+      withdrawal_cut_off: DAY_BEFORE,
+    })
+    expect(await recordCutOff('2026-11-13T02:00:00Z')).toMatchObject({
+      withdrawal_cut_off: DAY_BEFORE,
+    })
+  })
+
+  it('refuses a cut-off at or after the start, compared as instants, and allows a second before', async () => {
+    signInAs(HANA)
+
+    for (const cutOff of [
+      '2026-11-14T10:00:00+08:00',
+      '2026-11-14T02:00:00Z',
+      '2026-11-14T12:00:00+08:00',
+    ]) {
+      expectInvalid(await refusal(recordCutOff(cutOff)), { withdrawal_cut_off: [NOT_BEFORE_START] })
+    }
+    expect(await recordCutOff('2026-11-14T09:59:59+08:00')).toMatchObject({
+      withdrawal_cut_off: '2026-11-14T09:59:59+08:00',
+    })
+  })
+
+  it('refuses anything that is not a date-time, as marshmallow words it', async () => {
+    signInAs(HANA)
+
+    for (const cutOff of [
+      'tomorrow',
+      '2026-11-13T25:00:00',
+      '2026-02-30T10:00:00',
+      1763000000,
+      true,
+    ]) {
+      expectInvalid(await refusal(recordCutOff(cutOff)), { withdrawal_cut_off: [NOT_A_DATETIME] })
+    }
+  })
+
+  it('records setting and clearing it in the history, in business time', async () => {
+    signInAs(HANA)
+
+    await recordCutOff('2026-11-13T02:00:00Z')
+    await recordCutOff(null)
+
+    const { history } = await fetchEventHistory(STARTS_14_NOV_10AM)
+    expect(history.map((entry) => entry.details)).toEqual([
+      {
+        field: 'withdrawal_cut_off',
+        previous_value: null,
+        new_value: DAY_BEFORE,
+        significant: false,
+      },
+      {
+        field: 'withdrawal_cut_off',
+        previous_value: DAY_BEFORE,
+        new_value: null,
+        significant: false,
+      },
+    ])
   })
 })
 
