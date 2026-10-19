@@ -50,7 +50,8 @@ describe("SCRUM-84 Venue Staff record a booking's preparation", () => {
       .getAllByRole('heading', { level: 3 })
       .map((entry) => entry.textContent)
 
-    expect(purposes).toEqual(['Grand ballroom', 'Exhibition hall', 'Main hall'])
+    // The Auditorium is flagged as needing an alternative venue but still approved (SCRUM-92).
+    expect(purposes).toEqual(['Grand ballroom', 'Exhibition hall', 'Main hall', 'Auditorium'])
     const ballroom = await findBooking('Grand ballroom')
     expect(ballroom.getByText('Preparation: In progress')).toBeInTheDocument()
     expect(ballroom.getByText('Preparation notes: Stage half built.')).toBeInTheDocument()

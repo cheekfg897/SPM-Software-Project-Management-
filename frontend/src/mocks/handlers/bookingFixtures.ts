@@ -9,7 +9,7 @@ export interface MockBookingEvent {
   /** For Venue Staff's list of events (SCRUM-24 AC4). */
   name: string
   coordinator_id: number
-  status: 'approved' | 'confirmed'
+  status: 'approved' | 'safety_review' | 'confirmed'
   expected_attendance: number
   proposed_date: string
   end_date: string | null
@@ -38,12 +38,13 @@ const APPROVED_EVENT: MockBookingEvent = {
 }
 
 /**
- * Ten events: one the coordinator can book for, one already confirmed, one assigned
+ * Eleven events: one the coordinator can book for, one already confirmed, one assigned
  * elsewhere, two whose requests are waiting for Venue Staff (SCRUM-43), two of the
- * coordinator's with several venue arrangements already decided (SCRUM-93), and two whose
- * arrangements reached the later statuses (Released, Expired, On hold), and one the Safety Officer
- * has approved, whose booking Venue Staff are preparing (SCRUM-84). The waiting two run on
- * different dates, so the queue's order is visible.
+ * coordinator's with several venue arrangements already decided (SCRUM-93), two whose
+ * arrangements reached the later statuses (Released, Expired, On hold), one the Safety Officer
+ * has approved, whose booking Venue Staff are preparing (SCRUM-84), and one in Safety Review
+ * whose venue was deactivated (SCRUM-92). The waiting two run on different dates, so the queue's
+ * order is visible.
  */
 export const MOCK_BOOKING_EVENTS = {
   approved: APPROVED_EVENT,
@@ -93,6 +94,14 @@ export const MOCK_BOOKING_EVENTS = {
     id: 110,
     reference: 'EVR-BOOK0110',
     proposed_date: '2026-11-12',
+  },
+  inSafetyReview: {
+    ...APPROVED_EVENT,
+    id: 111,
+    reference: 'EVR-BOOK0111',
+    name: 'Charity Gala',
+    status: 'safety_review',
+    proposed_date: '2026-11-29',
   },
 } as const satisfies Record<string, MockBookingEvent>
 
@@ -230,6 +239,9 @@ function arrangementOf(
  *
  * The safety-approved event's ballroom is approved and under way (SCRUM-84): Venue Staff can go
  * on preparing it, while the booked event's hall is refused until its safety approval.
+ *
+ * The venue of the event in Safety Review was deactivated, so its approved auditorium is flagged
+ * with no end to the unavailability (SCRUM-92).
  */
 export const MOCK_ARRANGEMENTS = {
   rejectedMain: arrangementOf(MOCK_BOOKING_EVENTS.multiVenue, {
@@ -334,5 +346,23 @@ export const MOCK_ARRANGEMENTS = {
     decision_reason: 'Booked',
     preparation_status: 'in_progress',
     preparation_notes: 'Stage half built.',
+  }),
+  reviewedAuditorium: arrangementOf(MOCK_BOOKING_EVENTS.inSafetyReview, {
+    id: 9110,
+    venue_id: MOCK_BOOKING_VENUES.roomy.id,
+    starts_at: '2026-11-29T09:00:00+08:00',
+    ends_at: '2026-11-29T17:00:00+08:00',
+    purpose: 'Auditorium',
+    status: 'approved',
+    decision_reason: 'Booked',
+    needs_alternative_venue: true,
+    unavailability: [
+      {
+        category: 'renovation',
+        reason: 'Closed for refit',
+        starts_at: '2026-11-01T12:00:00+08:00',
+        ends_at: null,
+      },
+    ],
   }),
 } as const satisfies Record<string, BookingRequest>

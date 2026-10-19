@@ -827,9 +827,11 @@ describe("SCRUM-24 booking mock: Venue Staff's list of events", () => {
 
   it('lists each event with an active booking request, newest first', async () => {
     // 106 has a withdrawn arrangement beside its rejected ones, and 108 a released one beside an
-    // expired one, so both stay listed, and 110 has the approved ballroom Venue Staff prepare
-    // (SCRUM-84); 101 to 103 have none.
+    // expired one, so both stay listed, 110 has the approved ballroom Venue Staff prepare
+    // (SCRUM-84), and 111 in Safety Review has a flagged approved one, which is still active
+    // (SCRUM-92); 101 to 103 have none.
     expect(await listedReferences()).toEqual([
+      'EVR-BOOK0111',
       'EVR-BOOK0110',
       'EVR-BOOK0109',
       'EVR-BOOK0108',
@@ -892,5 +894,135 @@ describe("SCRUM-24 booking mock: Venue Staff's list of events", () => {
         status: 403,
       })
     }
+  })
+})
+
+describe('SCRUM-92 booking mock: raising a replacement for a flagged arrangement', () => {
+  const { reviewedAuditorium } = MOCK_ARRANGEMENTS
+  const REVIEW_EVENT = MOCK_BOOKING_EVENTS.inSafetyReview
+
+  /** A replacement at the tiny venue for `replaced`'s period, as a coordinator would raise it. */
+  function replacementFor(replaced: { id: number; starts_at: string; ends_at: string }) {
+    return validPayload({
+      venue_id: TINY_VENUE.id,
+      expected_occupancy: 5,
+      starts_at: replaced.starts_at,
+      ends_at: replaced.ends_at,
+      replaces_request_id: replaced.id,
+    })
+  }
+
+  async function decideAsVenueStaff(requestId: unknown, outcome: string) {
+    sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.venueStaff))
+    await apiRequest(`/api/venues/booking-requests/${String(requestId)}/decision`, {
+      method: 'POST',
+      body: { outcome, reason: 'Checked with the venue' },
+    })
+    sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.coordinator))
+  }
+
+  async function bookedHallAsListed() {
+    const listed = await apiRequest<Record<string, unknown>[]>(bookingUrl(BOOKED_EVENT.reference))
+    return listed.find((arrangement) => arrangement.id === bookedHall.id)
+  }
+
+  it('saves a Pending replacement linked to the flagged arrangement', async () => {
+    const created = await raise(BOOKED_EVENT.reference, replacementFor(bookedHall))
+
+    expect(created).toMatchObject({ status: 'pending', replaces_request_id: bookedHall.id })
+  })
+
+  it('accepts a replacement while the event is in Safety Review, as the backend does', async () => {
+    const created = await raise(REVIEW_EVENT.reference, replacementFor(reviewedAuditorium))
+
+    expect(created).toMatchObject({ status: 'pending', replaces_request_id: reviewedAuditorium.id })
+  })
+
+  it('still refuses an ordinary request while the event is in Safety Review', async () => {
+    const error = await errorOf(raise(REVIEW_EVENT.reference, validPayload()))
+
+    expect([error.status, error.message]).toEqual([
+      409,
+      'Only an approved event can have a venue booking request; this one is safety_review.',
+    ])
+  })
+
+  it('refuses a replacement for an event neither approved nor in Safety Review', async () => {
+    const error = await errorOf(
+      raise(MOCK_BOOKING_EVENTS.confirmed.reference, replacementFor(bookedHall)),
+    )
+
+    expect([error.status, error.message]).toEqual([
+      409,
+      'Only an approved event or one in Safety Review can replace a venue; this one is confirmed.',
+    ])
+  })
+
+  it.each([
+    ['another event’s arrangement', reviewedAuditorium.id],
+    ['an arrangement that does not exist', 424242],
+  ])('names %s on replaces_request_id as not found (400)', async (_name, replacesId) => {
+    const error = await errorOf(
+      raise(BOOKED_EVENT.reference, {
+        ...replacementFor(bookedHall),
+        replaces_request_id: replacesId,
+      }),
+    )
+
+    expect([error.status, error.fieldErrors]).toEqual([
+      400,
+      { replaces_request_id: ['Venue arrangement not found.'] },
+    ])
+  })
+
+  it('refuses to replace an arrangement that does not need an alternative venue (400)', async () => {
+    const error = await errorOf(raise(BOOKED_EVENT.reference, replacementFor(bookedSideRoom)))
+
+    expect([error.status, error.fieldErrors]).toEqual([
+      400,
+      { replaces_request_id: ['This venue arrangement does not need an alternative venue.'] },
+    ])
+  })
+
+  it.each([
+    [0, 'replaces_request_id must be a positive number.'],
+    [1.5, 'Not a valid integer.'],
+    [String(bookedHall.id), 'Not a valid integer.'],
+  ])('names replaces_request_id %j with the other fields it refuses', async (value, message) => {
+    const error = await errorOf(
+      raise(BOOKED_EVENT.reference, { purpose: 'Keynote', replaces_request_id: value }),
+    )
+
+    expect(error.status).toBe(400)
+    expect(error.fieldErrors).toEqual({
+      venue_id: ['Missing data for required field.'],
+      starts_at: ['Missing data for required field.'],
+      ends_at: ['Missing data for required field.'],
+      replaces_request_id: [message],
+    })
+  })
+
+  it('releases the flagged arrangement once Venue Staff approve its replacement', async () => {
+    const replacement = await raise(BOOKED_EVENT.reference, replacementFor(bookedHall))
+
+    await decideAsVenueStaff(replacement.id, 'approved')
+
+    expect(await bookedHallAsListed()).toMatchObject({
+      status: 'released',
+      needs_alternative_venue: false,
+      // The backend keeps why it was flagged on the record (ADR-0053).
+      unavailability: bookedHall.unavailability,
+    })
+  })
+
+  it('leaves the flagged arrangement as it was when its replacement is rejected', async () => {
+    const replacement = await raise(BOOKED_EVENT.reference, replacementFor(bookedHall))
+
+    await decideAsVenueStaff(replacement.id, 'rejected')
+
+    expect(await bookedHallAsListed()).toMatchObject({
+      status: 'approved',
+      needs_alternative_venue: true,
+    })
   })
 })
