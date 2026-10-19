@@ -23,7 +23,13 @@ import pytest
 from app.modules.auth.models import User
 from app.modules.auth.permissions import Role
 from app.modules.events.models import EventHistoryKind, EventRequest, EventRequestStatus
-from app.modules.events.services import EventEdit, has_safety_approval, list_event_history
+from app.modules.events.schemas import EditEventRequestSchema
+from app.modules.events.services import (
+    SIGNIFICANT_FIELDS,
+    EventEdit,
+    has_safety_approval,
+    list_event_history,
+)
 
 pytestmark = pytest.mark.scrum_33
 
@@ -39,24 +45,45 @@ COORDINATOR_ID = 3
 ORGANISER_ID = 7
 WITHDRAWN = EventHistoryKind.SAFETY_APPROVAL_WITHDRAWN
 
+#: One changed value for each significant field, written out (ADR-0025), and the
+#: fields the withdrawal names: a new proposed date moves the end date with it.
+#: ``saved_event_request`` runs 2026-10-15, 09:00-17:00, for 250 people.
+SIGNIFICANT_CHANGES = [
+    ({"proposed_date": "2026-10-20"}, ["proposed_date", "end_date"]),
+    ({"end_date": "2026-10-16"}, ["end_date"]),
+    ({"start_time": "08:00"}, ["start_time"]),
+    ({"end_time": "18:00"}, ["end_time"]),
+    ({"expected_attendance": 300}, ["expected_attendance"]),
+    ({"venue_requirements": "Stage needed"}, ["venue_requirements"]),
+    ({"equipment_requirements": "4 mics"}, ["equipment_requirements"]),
+]
+#: The editable fields that aren't significant: the notes (AC1).
+NOTE_FIELDS = ["description", "programme_notes", "accessibility_needs", "internal_planning_notes"]
+
 
 # --------------------------------------------------------------------------
 # AC7 — a significant change withdraws the approval
 # --------------------------------------------------------------------------
 
 
+def test_the_cases_cover_every_editable_field() -> None:
+    """A field made editable or significant later needs a case here."""
+    significant = {field for payload, _ in SIGNIFICANT_CHANGES for field in payload}
+
+    assert significant == SIGNIFICANT_FIELDS
+    assert sorted([*significant, *NOTE_FIELDS]) == sorted(EditEventRequestSchema.Meta.fields)
+
+
 @pytest.mark.parametrize(
     ("payload", "significant_fields"),
     [
-        ({"expected_attendance": 300}, ["expected_attendance"]),
-        ({"venue_requirements": "Stage needed"}, ["venue_requirements"]),
-        ({"equipment_requirements": "4 mics"}, ["equipment_requirements"]),
+        *SIGNIFICANT_CHANGES,
         (
             {"description": "New notes", "expected_attendance": 300, "end_time": "18:00"},
             ["end_time", "expected_attendance"],
         ),
     ],
-    ids=["timing-and-size", "venue-only", "equipment-only", "only-the-significant-fields"],
+    ids=[*(next(iter(payload)) for payload, _ in SIGNIFICANT_CHANGES), "only-the-significant"],
 )
 def test_a_significant_change_withdraws_the_safety_approval(
     approved_for_safety: ApprovedForSafety,
@@ -107,15 +134,26 @@ def test_an_approved_event_with_an_approval_loses_it_and_stays_approved(
 # --------------------------------------------------------------------------
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        *({field: "New notes"} for field in NOTE_FIELDS),
+        {"expected_attendance": 250},
+        {"description": "New notes", "expected_attendance": 250, "start_time": "09:00"},
+    ],
+    ids=[*NOTE_FIELDS, "same-attendance-sent-again", "a-note-and-same-timing-sent-again"],
+)
 def test_a_change_that_is_not_significant_keeps_the_safety_approval(
     approved_for_safety: ApprovedForSafety,
     edit_event: EditEvent,
     safety_withdrawals_of: WithdrawalsOf,
     reload_event_request: ReloadEventRequest,
+    payload: dict[str, Any],
 ) -> None:
+    """A note, or a significant field sent with the value it already has (ADR-0025)."""
     event = approved_for_safety(EventRequestStatus.CONFIRMED)
 
-    edit_event(COORDINATOR_ID, {"description": "New notes"})
+    edit_event(COORDINATOR_ID, payload)
 
     assert has_safety_approval(event.id) is True
     assert safety_withdrawals_of(event.id) == []
