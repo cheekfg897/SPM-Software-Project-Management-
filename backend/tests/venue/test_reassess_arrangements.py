@@ -336,3 +336,43 @@ def test_venue_staff_are_told_about_each_arrangement_flagged_and_why(
         ),
         (event.id, f"Venue arrangement {breakout_id} at Breakout room: {TIMING_REASON}"),
     ]
+
+
+# --------------------------------------------------------------------------
+# SCRUM-58 AC3 — a flagged arrangement holds the event back, and is named
+# --------------------------------------------------------------------------
+
+
+def test_safety_review_is_refused_naming_only_the_arrangement_flagged(
+    db_session: Session, event: EventRequest, main_id: int, breakout_id: int
+) -> None:
+    """SCRUM-97 shares the venue check with confirmation (ADR-0051)."""
+    _edit(db_session, event, {"expected_attendance": 150})
+
+    with pytest.raises(event_services.SafetyReviewNotAllowedError) as refusal:
+        event_services.submit_for_safety_review(COORDINATOR_ID, event.reference, session=db_session)
+
+    assert refusal.value.details == {
+        "venue_arrangements": [
+            f"Venue arrangement {main_id} is flagged (no longer suitable): {CAPACITY_REASON}"
+        ]
+    }
+
+
+def test_confirmation_is_refused_while_an_arrangement_is_flagged(
+    db_session: Session, event: EventRequest, main_id: int, breakout_id: int
+) -> None:
+    _edit(db_session, event, {"end_time": "18:00"})
+    event.status = EventRequestStatus.SAFETY_REVIEW
+    approve_safety(event, db_session)
+
+    with pytest.raises(event_services.EventConfirmationNotAllowedError) as refusal:
+        event_services.confirm_event_request(COORDINATOR_ID, event.reference, session=db_session)
+
+    reconfirm = f"is flagged (requires reconfirmation): {TIMING_REASON}"
+    assert refusal.value.details == {
+        "venue_arrangements": [
+            f"Venue arrangement {main_id} {reconfirm}",
+            f"Venue arrangement {breakout_id} {reconfirm}",
+        ]
+    }

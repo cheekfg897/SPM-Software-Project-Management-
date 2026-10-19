@@ -2583,3 +2583,19 @@ def tell_venue_staff_of_flags(
         _notify_about_booking(
             staff_ids, event, NotificationKind.SIGNIFICANT_CHANGE, detail=detail, session=session
         )
+
+
+def list_arrangements_flagged_after_change(
+    event_id: int, *, session: Session | None = None
+) -> list[VenueBookingRequest]:
+    """The event's live arrangements a significant change flagged (SCRUM-58 AC3).
+
+    For SCRUM-49 and SCRUM-97, which hold the event back while any is listed, until
+    Venue Staff reconfirm or withdraw it (SCRUM-59) or a replacement releases it.
+    Earliest period first.
+    """
+    flagged = []
+    for arrangement in _live_arrangements_of(event_id, session):
+        if arrangement.is_flagged_after_change:
+            flagged.append(arrangement)
+    return flagged
