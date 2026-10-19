@@ -16,7 +16,10 @@ import type { MockEvent } from './equipmentFixtures'
  * revised outcome can send one back to Approved, until resetMockEquipmentEvents.
  */
 
-/** Events that won't run, so nothing can be reserved for them (EQUIPMENT_NOT_NEEDED_STATUSES). */
+/**
+ * Events that won't run, so nothing can be reserved for them and no outcome recorded on their
+ * lines (EQUIPMENT_NOT_NEEDED_STATUSES).
+ */
 export const EQUIPMENT_NOT_NEEDED_STATUSES: readonly EventRequestStatus[] = [
   EVENT_REQUEST_STATUS.COMPLETED,
   EVENT_REQUEST_STATUS.CANCELLED,

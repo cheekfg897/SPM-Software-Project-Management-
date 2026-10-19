@@ -307,6 +307,6 @@ describe('SCRUM-48 equipment outcomes against the backend', () => {
   it.todo('records the whole line as fulfilled, keeping no note, and revises it')
   it.todo('answers 404 "Equipment line not found." for another event\'s line')
   it.todo(
-    'refuses an outcome on a cancelled event, naming its status (SCRUM-48 AC8, once the backend has it)',
+    'refuses an outcome on a cancelled event (409 conflict), naming its status, and keeps the line as it was (SCRUM-48 AC8; needs a cancelled event with a line)',
   )
 })

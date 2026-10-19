@@ -5,6 +5,8 @@ This file covers how an outcome's status follows from the quantity provided, and
 SCRUM-50 section (marked ``scrum_50``) covers what the coordinator's notice says: the
 equipment, the outcome and the note (SCRUM-50 AC4, ADR-0055). AC7: revising an outcome
 once the event has passed its safety check withdraws the approval (ADR-0040, ADR-0087).
+AC8: a rejected, cancelled or completed event refuses an outcome, naming its status, and
+saves and sends nothing (ADR-0040).
 """
 
 from __future__ import annotations
@@ -18,7 +20,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.common.errors import NotFoundError, ValidationError
+from app.common.errors import ConflictError, NotFoundError, ValidationError
 from app.modules.auth.models import User
 from app.modules.auth.permissions import Role
 from app.modules.equipment.models import EquipmentType
@@ -765,3 +767,115 @@ def test_the_withdrawal_is_saved_with_the_outcome_even_if_the_notice_fails(
 
     db_session.rollback()
     assert services.has_safety_approval(saved_event_request.id, session=db_session) is False
+
+
+# --------------------------------------------------------------------------
+# AC8 — a rejected, cancelled or completed event takes no outcome
+# --------------------------------------------------------------------------
+
+#: The refusal, up to the closed status it names (SCRUM-48 AC8).
+CLOSED_REFUSAL = (
+    "An equipment outcome can't be recorded for an event that is completed, cancelled"
+    " or rejected; this one is "
+)
+#: Each closed status, with the refusal that names it.
+CLOSED_STATUS_REFUSALS = [
+    (EventRequestStatus.REJECTED, CLOSED_REFUSAL + "rejected."),
+    (EventRequestStatus.CANCELLED, CLOSED_REFUSAL + "cancelled."),
+    (EventRequestStatus.COMPLETED, CLOSED_REFUSAL + "completed."),
+]
+CLOSED_STATUSES = [status for status, _message in CLOSED_STATUS_REFUSALS]
+#: Every other status but a draft, which staff never find (ADR-0024). Built from the
+#: enum, so a new status is tested too.
+OPEN_STATUSES = [
+    status
+    for status in EventRequestStatus
+    if status not in CLOSED_STATUSES and status is not EventRequestStatus.DRAFT
+]
+
+
+@pytest.mark.parametrize(
+    ("status", "message"),
+    CLOSED_STATUS_REFUSALS,
+    ids=[status.value for status in CLOSED_STATUSES],
+)
+def test_a_closed_event_refuses_an_outcome_naming_its_status_and_saves_nothing(
+    db_session: Session,
+    record_outcome: Callable[..., EventEquipmentLine],
+    ten_requested: EventEquipmentLine,
+    set_status: Callable[[EventRequestStatus], None],
+    saved_event_request: EventRequest,
+    history_of: HistoryOf,
+    notifications_of: Callable[[int], list[tuple[Any, ...]]],
+    status: EventRequestStatus,
+    message: str,
+) -> None:
+    set_status(status)
+
+    with pytest.raises(ConflictError) as exc_info:
+        record_outcome(ten_requested, provided_quantity=10)
+
+    assert exc_info.value.message == message
+    assert _unchanged(db_session, ten_requested)
+    assert history_of(saved_event_request.id) == []
+    assert notifications_of(COORDINATOR_ID) == []
+
+
+@pytest.mark.parametrize("status", CLOSED_STATUSES)
+def test_a_closed_event_refuses_a_revision_and_keeps_the_last_outcome(
+    db_session: Session,
+    record_outcome: Callable[..., EventEquipmentLine],
+    ten_requested: EventEquipmentLine,
+    set_status: Callable[[EventRequestStatus], None],
+    saved_event_request: EventRequest,
+    history_of: HistoryOf,
+    notifications_of: Callable[[int], list[tuple[Any, ...]]],
+    status: EventRequestStatus,
+) -> None:
+    """A rejected event keeps its last outcome (the closed event clarification)."""
+    record_outcome(ten_requested, provided_quantity=6, note="Only six in stock")
+    set_status(status)
+
+    with pytest.raises(ConflictError):
+        record_outcome(ten_requested, provided_quantity=0, note="All out on loan")
+
+    db_session.expire_all()
+    assert (ten_requested.status, ten_requested.provided_quantity, ten_requested.outcome_note) == (
+        EquipmentLineStatus.PARTIALLY_FULFILLED,
+        6,
+        "Only six in stock",
+    )
+    assert len(history_of(saved_event_request.id)) == 1
+    assert len(notifications_of(COORDINATOR_ID)) == 1
+
+
+def test_a_closed_event_is_refused_before_its_line_is_looked_for(
+    db_session: Session,
+    saved_event_request: EventRequest,
+    set_status: Callable[[EventRequestStatus], None],
+) -> None:
+    """A line id the event doesn't have still gets the event's refusal (ADR-0040)."""
+    set_status(EventRequestStatus.CANCELLED)
+
+    with pytest.raises(ConflictError):
+        services.record_equipment_outcome(
+            REVIEWER_ID,
+            saved_event_request.reference,
+            999,
+            {"provided_quantity": 1},
+            session=db_session,
+        )
+
+
+@pytest.mark.parametrize("status", OPEN_STATUSES)
+def test_every_other_status_still_takes_an_outcome(
+    record_outcome: Callable[..., EventEquipmentLine],
+    ten_requested: EventEquipmentLine,
+    set_status: Callable[[EventRequestStatus], None],
+    status: EventRequestStatus,
+) -> None:
+    set_status(status)
+
+    line = record_outcome(ten_requested, provided_quantity=10)
+
+    assert line.status is EquipmentLineStatus.FULFILLED

@@ -500,7 +500,7 @@ describe('SCRUM-48 equipment page: the outcome beside each line (AC1, AC2, AC5)'
   })
 })
 
-describe('SCRUM-48 equipment page: recording an outcome (AC1, AC2, AC3, AC6)', () => {
+describe('SCRUM-48 equipment page: recording an outcome (AC1, AC2, AC3, AC6, AC8)', () => {
   const OUTCOME_FORM = { name: 'Outcome for Projector' }
 
   async function openAsTechnicalSupport() {
@@ -678,26 +678,20 @@ describe('SCRUM-48 equipment page: recording an outcome (AC1, AC2, AC3, AC6)', (
     expect(screen.queryByRole('form', OUTCOME_FORM)).not.toBeInTheDocument()
   })
 
-  it('shows a refusal that is not about a field as an alert, and stays open (AC8)', async () => {
-    server.use(
-      http.post(`${LINES_PATH}/:lineId/outcome`, () =>
-        HttpResponse.json(
-          {
-            error: 'equipment_outcome_not_allowed',
-            message: 'An outcome cannot be recorded on a cancelled event.',
-          },
-          { status: 409 },
-        ),
-      ),
-    )
-    const { user } = await openAsTechnicalSupport()
+  it("shows the backend's refusal for a cancelled event as an alert, and stays open (AC8)", async () => {
+    const { user } = renderApp(eventEquipmentPath(mockStatusEventReference('cancelled')), {
+      session: TECHNICAL_SUPPORT,
+    })
+    await screen.findByRole('table', { name: 'Equipment lines' })
 
-    const form = await recordProjector(user, { provided: '8' })
+    const form = await openOutcome(user, 'Record', 'Microphone')
+    await user.type(within(form).getByLabelText('Quantity provided'), '2')
+    await user.click(within(form).getByRole('button', { name: 'Save outcome' }))
 
     expect(await within(form).findByRole('alert')).toHaveTextContent(
-      'An outcome cannot be recorded on a cancelled event.',
+      "An equipment outcome can't be recorded for an event that is completed, cancelled or rejected; this one is cancelled.",
     )
-    expect(screen.getByRole('form', OUTCOME_FORM)).toBeInTheDocument()
+    expect(screen.getByRole('form', { name: 'Outcome for Microphone' })).toBeInTheDocument()
   })
 
   it('closes without sending anything on cancel', async () => {
