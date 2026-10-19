@@ -28,6 +28,8 @@ const MAIN_HALL = 9002
 const HELD_STUDIO = 9108
 const BEFORE_THE_WORKSHOP = '2026-11-15T17:00:00+08:00'
 const LATER_BEFORE_THE_WORKSHOP = '2026-11-18T12:00:00+08:00'
+/** Before the approved event, which starts at 09:00 on 10 Nov. */
+const BEFORE_THE_KEYNOTE = '2026-11-01T17:00:00+08:00'
 const HOLD_URL = (requestId: number) => `/api/venues/booking-requests/${requestId}/hold`
 
 function hold(requestId: number, expiresAt = BEFORE_THE_WORKSHOP) {
@@ -49,6 +51,30 @@ async function raiseOverlappingRequest(): Promise<number> {
   })
   signInAs(MOCK_ACCOUNTS.venueStaff)
   return overlapping.id
+}
+
+/**
+ * As the coordinator, raise two requests for the approved event (10 Nov, 09:00) at different
+ * venues, then sign back in as Venue Staff; answers their ids.
+ */
+async function raiseTwoVenues(): Promise<{ kept: number; other: number }> {
+  signInAs(MOCK_ACCOUNTS.coordinator)
+  const reference = MOCK_BOOKING_EVENTS.approved.reference
+  const kept = await raiseBookingRequest(reference, {
+    venue_id: 1,
+    starts_at: '2026-11-10T09:00:00+08:00',
+    ends_at: '2026-11-10T12:00:00+08:00',
+    purpose: 'Keynote',
+  })
+  const other = await raiseBookingRequest(reference, {
+    venue_id: 2,
+    starts_at: '2026-11-10T13:00:00+08:00',
+    ends_at: '2026-11-10T15:00:00+08:00',
+    purpose: 'Workshop',
+    expected_occupancy: 10,
+  })
+  signInAs(MOCK_ACCOUNTS.venueStaff)
+  return { kept: kept.id, other: other.id }
 }
 
 beforeEach(() => signInAs(MOCK_ACCOUNTS.venueStaff))
@@ -81,29 +107,25 @@ describe('SCRUM-75 booking mock: placing a hold', () => {
   })
 
   it('counts only the venues the event still has: a withdrawn one does not make it multi-venue', async () => {
+    const { kept, other } = await raiseTwoVenues()
     signInAs(MOCK_ACCOUNTS.coordinator)
-    const reference = MOCK_BOOKING_EVENTS.approved.reference
-    const kept = await raiseBookingRequest(reference, {
-      venue_id: 1,
-      starts_at: '2026-11-10T09:00:00+08:00',
-      ends_at: '2026-11-10T12:00:00+08:00',
-      purpose: 'Keynote',
-    })
-    const dropped = await raiseBookingRequest(reference, {
-      venue_id: 2,
-      starts_at: '2026-11-10T13:00:00+08:00',
-      ends_at: '2026-11-10T15:00:00+08:00',
-      purpose: 'Workshop',
-      expected_occupancy: 10,
-    })
-    await withdrawArrangement(reference, dropped.id)
+    await withdrawArrangement(MOCK_BOOKING_EVENTS.approved.reference, other)
     signInAs(MOCK_ACCOUNTS.venueStaff)
 
-    const error = await refusalOf(hold(kept.id, '2026-11-01T17:00:00+08:00'))
+    const error = await refusalOf(hold(kept, BEFORE_THE_KEYNOTE))
 
     expect(error.message).toBe(
       'A hold can only be placed on a request of an event with more than one venue.',
     )
+  })
+
+  it('still counts a rejected venue until the coordinator withdraws it, so the event stays multi-venue', async () => {
+    const { kept, other } = await raiseTwoVenues()
+    await decideBookingRequest(other, { outcome: 'rejected', reason: 'Hall closed' })
+
+    const held = await hold(kept, BEFORE_THE_KEYNOTE)
+
+    expect(held).toMatchObject({ id: kept, status: 'on_hold' })
   })
 
   it.each([
