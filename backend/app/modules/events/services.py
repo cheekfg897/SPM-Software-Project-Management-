@@ -262,6 +262,22 @@ def record_event_history(
     return entry
 
 
+#: What a changed field's value is stored as in the history's JSON ``details``
+#: (ADR-0025): a date or time becomes its ISO string, everything else keeps its
+#: native JSON type.
+HistoryValue = str | int | None
+
+
+@dataclass(frozen=True)
+class FieldChange:
+    """One field an edit changed, as the history and the API show it (ADR-0025)."""
+
+    field: str
+    previous_value: HistoryValue
+    new_value: HistoryValue
+    significant: bool
+
+
 def _user_ids_named_in(entries: list[EventHistoryEntry]) -> set[int]:
     """Every user id showing ``entries`` needs a name for (ADR-0025, ADR-0028).
 
@@ -2006,27 +2022,12 @@ EQUIPMENT_AFFECTING_FIELDS: frozenset[str] = frozenset(
 #: Every field whose change is marked significant in the event's history (ADR-0025).
 SIGNIFICANT_FIELDS: frozenset[str] = VENUE_AFFECTING_FIELDS | EQUIPMENT_AFFECTING_FIELDS
 
-#: What a changed field's value is stored as in the history's JSON ``details``
-#: (ADR-0025): a date or time becomes its ISO string, everything else keeps its
-#: native JSON type.
-HistoryValue = str | int | None
-
 
 class RequestNotEditableError(AppError):
     """The request isn't in a status that can be edited right now (409)."""
 
     status_code = 409
     error_code = "request_not_editable"
-
-
-@dataclass(frozen=True)
-class FieldChange:
-    """One field an edit changed, as the history and the API show it (ADR-0025)."""
-
-    field: str
-    previous_value: HistoryValue
-    new_value: HistoryValue
-    significant: bool
 
 
 @dataclass(frozen=True)
