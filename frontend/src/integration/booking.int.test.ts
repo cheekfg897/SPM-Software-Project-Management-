@@ -153,6 +153,8 @@ describe('SCRUM-43 venue booking decisions against the backend', () => {
       expect(typeof waiting.event_proposed_date).toBe('string')
       expect(typeof waiting.needs_alternative_venue).toBe('boolean')
       expect(Array.isArray(waiting.unavailability)).toBe(true)
+      expect(typeof waiting.flagged_after_change).toBe('boolean')
+      expect(Array.isArray(waiting.reassessment_flags)).toBe(true)
     }
   })
 

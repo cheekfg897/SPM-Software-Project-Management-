@@ -79,6 +79,15 @@ export interface Unavailability {
   ends_at: string | null
 }
 
+/**
+ * One reason a significant change to the event flagged a booking (SCRUM-33 AC6): Venue Staff
+ * must reconfirm it, or its venue no longer suits it, with what changed or what it now fails.
+ */
+export interface ReassessmentFlag {
+  kind: 'requires_reconfirmation' | 'no_longer_suitable'
+  reason: string
+}
+
 /** What the backend accepts when Venue Staff decide a request (SCRUM-43). */
 export interface BookingDecision {
   outcome: 'approved' | 'rejected'
@@ -114,6 +123,10 @@ export interface BookingRequest {
   unavailability: Unavailability[]
   /** The flagged arrangement this one replaces, if it is a replacement (SCRUM-92). */
   replaces_request_id: number | null
+  /** Flagged by a significant change to the event, until it is reconfirmed or replaced (SCRUM-33). */
+  flagged_after_change: boolean
+  /** Each reason a change flagged it, oldest first; kept once it is released. */
+  reassessment_flags: ReassessmentFlag[]
   /** The event's own timing: dates as `2026-11-10`, times as `09:00:00`, in business time. */
   event_proposed_date: string
   event_end_date: string | null

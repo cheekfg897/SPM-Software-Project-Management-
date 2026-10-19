@@ -123,6 +123,8 @@ def test_raising_a_request_returns_201_with_the_request_and_the_events_details(
         "needs_alternative_venue": False,
         "unavailability": [],
         "replaces_request_id": None,
+        "flagged_after_change": False,
+        "reassessment_flags": [],
         "event_proposed_date": "2026-11-01",
         "event_end_date": "2026-11-02",
         "event_start_time": "09:00:00",

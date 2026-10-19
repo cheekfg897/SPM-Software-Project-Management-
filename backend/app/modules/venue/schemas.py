@@ -37,6 +37,7 @@ from app.modules.venue.models import (
     CalendarEntryKind,
     LayoutType,
     PreparationStatus,
+    ReassessmentFlagKind,
     RequirementKind,
     UnavailabilityCategory,
     Venue,
@@ -576,6 +577,17 @@ class AlternativeVenueFlagSchema(Schema):
     ends_at = BusinessDateTime(dump_only=True, allow_none=True)
 
 
+class ReassessmentFlagSchema(Schema):
+    """One reason a significant change to the event flagged an arrangement (ADR-0094).
+
+    SCRUM-33 AC6: ``kind`` is ``requires_reconfirmation`` or ``no_longer_suitable``
+    (SCRUM-58 AC1, AC2), and ``reason`` says what changed or what the venue now fails.
+    """
+
+    kind = fields.Enum(ReassessmentFlagKind, by_value=True, dump_only=True)
+    reason = fields.String(dump_only=True)
+
+
 class VenueBookingRequestSchema(Schema):
     """A booking request as Venue Staff see it, in business time (AC4, ADR-0009)."""
 
@@ -605,6 +617,14 @@ class VenueBookingRequestSchema(Schema):
         fields.Nested(AlternativeVenueFlagSchema), attribute="request.flags", dump_only=True
     )
     replaces_request_id = fields.Integer(attribute="request.replaces_request_id", dump_only=True)
+    flagged_after_change = fields.Boolean(
+        attribute="request.is_flagged_after_change", dump_only=True
+    )
+    reassessment_flags = fields.List(
+        fields.Nested(ReassessmentFlagSchema),
+        attribute="request.reassessment_flags",
+        dump_only=True,
+    )
     event_proposed_date = fields.Date(attribute="proposed_date", dump_only=True)
     event_end_date = fields.Date(attribute="end_date", dump_only=True)
     event_start_time = fields.Time(attribute="start_time", dump_only=True)

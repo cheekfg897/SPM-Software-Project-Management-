@@ -33,6 +33,8 @@ const EXISTING_REQUEST: BookingRequest = {
   needs_alternative_venue: false,
   unavailability: [],
   replaces_request_id: null,
+  flagged_after_change: false,
+  reassessment_flags: [],
   event_proposed_date: '2026-11-10',
   event_end_date: null,
   event_start_time: '09:00:00',

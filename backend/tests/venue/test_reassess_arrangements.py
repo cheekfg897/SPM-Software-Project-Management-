@@ -29,7 +29,13 @@ from app.modules.auth.models import User
 from app.modules.events import services as event_services
 from app.modules.events.models import EventRequest, EventRequestStatus
 from app.modules.notifications.services import NotificationKind, list_notifications_for_recipient
-from app.modules.venue.models import Venue
+from app.modules.venue.models import (
+    BookingRequestStatus,
+    ReassessmentFlag,
+    ReassessmentFlagKind,
+    Venue,
+)
+from app.modules.venue.schemas import BookingRequestAsShown, VenueBookingRequestSchema
 from tests.venue.conftest import (
     COORDINATOR_ID,
     SECOND_PERIOD,
@@ -376,3 +382,31 @@ def test_confirmation_is_refused_while_an_arrangement_is_flagged(
             f"Venue arrangement {breakout_id} {reconfirm}",
         ]
     }
+
+
+# --------------------------------------------------------------------------
+# The coordinator's and Venue Staff's lists show each flag and its reason
+# --------------------------------------------------------------------------
+
+
+def test_a_flagged_request_shows_each_reason(shown: BookingRequestAsShown) -> None:
+    shown.request.status = BookingRequestStatus.APPROVED
+    shown.request.reassessment_flags = [
+        ReassessmentFlag(kind=ReassessmentFlagKind.REQUIRES_RECONFIRMATION, reason=TIMING_REASON),
+        ReassessmentFlag(kind=ReassessmentFlagKind.NO_LONGER_SUITABLE, reason=CAPACITY_REASON),
+    ]
+
+    body = VenueBookingRequestSchema().dump(shown)
+
+    assert body["flagged_after_change"] is True
+    assert body["reassessment_flags"] == [
+        {"kind": RECONFIRM, "reason": TIMING_REASON},
+        {"kind": UNSUITABLE, "reason": CAPACITY_REASON},
+    ]
+
+
+def test_a_request_no_change_flagged_shows_no_flags(shown: BookingRequestAsShown) -> None:
+    body = VenueBookingRequestSchema().dump(shown)
+
+    assert body["flagged_after_change"] is False
+    assert body["reassessment_flags"] == []
