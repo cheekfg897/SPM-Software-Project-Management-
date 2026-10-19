@@ -10,7 +10,7 @@ import { useWithdrawFromEvent } from '../hooks'
 /**
  * Withdraw from one of the Attendee's events, after they confirm, since someone else may take
  * the place (SCRUM-53 AC2). Whether withdrawals are still open is the backend's to say: its
- * refusal is shown with the cut-off it sends (AC3).
+ * refusal is shown with when withdrawals closed, as it sends it (AC4).
  */
 export function WithdrawAction({ event }: { event: MyEvent }) {
   const [isConfirming, setIsConfirming] = useState(false)

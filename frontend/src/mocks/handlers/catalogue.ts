@@ -393,7 +393,8 @@ export const catalogueHandlers: RequestHandler[] = [
     if (registration.status === 'withdrawn') {
       return errorResponse(409, 'already_withdrawn', 'You have already withdrawn from this event.')
     }
-    // Withdrawals close when the event starts, until the customer sets a cut-off (ADR-0032).
+    // Withdrawals close when the event starts, as on the backend, which has no optional
+    // cut-off yet (SCRUM-53 AC3, SCRUM-69 AC6; ADR-0032).
     const known = knownEvents().find(({ event }) => event.id === registration.event_id)
     if (known === undefined) {
       throw new Error(`Mock registration ${registration.id} names an event the mock lacks.`)
