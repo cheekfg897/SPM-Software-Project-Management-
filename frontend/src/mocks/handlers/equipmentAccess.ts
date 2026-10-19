@@ -11,8 +11,18 @@ import type { MockEvent } from './equipmentFixtures'
 
 /**
  * Who may reach an event's equipment, shared by the equipment mocks: the caller from their
- * token, and the event as the backend's lookups find it.
+ * token, and the event as the backend's lookups find it. The events are kept in memory, as a
+ * revised outcome can send one back to Approved, until resetMockEquipmentEvents.
  */
+
+let events: MockEvent[] = []
+
+/** Put every event back as it started. Runs after every test. */
+export function resetMockEquipmentEvents(): void {
+  events = MOCK_EVENTS.map((event) => ({ ...event }))
+}
+
+resetMockEquipmentEvents()
 
 /** The caller, or the refusal for a missing token or a role that may not call this. */
 export function callerOrRefusal(
@@ -39,7 +49,7 @@ export function eventNotFound() {
  */
 export function eventForStaff(reference: string): MockEvent | undefined {
   const normalised = reference.trim().toUpperCase()
-  const event = MOCK_EVENTS.find((candidate) => candidate.reference === normalised)
+  const event = events.find((candidate) => candidate.reference === normalised)
   if (event === undefined || event.status === EVENT_REQUEST_STATUS.DRAFT) {
     return undefined
   }
