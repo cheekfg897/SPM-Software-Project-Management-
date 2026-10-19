@@ -33,6 +33,30 @@ function metRequirements(matched: MatchedRequirements): string[] {
 }
 
 /**
+ * In a search for a replacement, the way to request this venue as one (SCRUM-92 AC6). The venue
+ * being replaced is never offered: a replacement is always another venue.
+ */
+function ReplacementChoice({ venue }: { venue: VenueMatch }) {
+  const replacement = useReplacementSearch()
+
+  if (replacement === null) {
+    return null
+  }
+  if (venue.id === replacement.venueId) {
+    return <p className="text-ink-muted mt-5">This is the venue being replaced.</p>
+  }
+  return (
+    <ButtonLink
+      to={replacementRequestPath(replacement.reference, replacement.arrangementId, venue.id)}
+      aria-label={`Request ${venue.name} as the replacement`}
+      className="mt-5"
+    >
+      Request this venue
+    </ButtonLink>
+  )
+}
+
+/**
  * One venue the search found: its name, capacity and location, its id for the venue request
  * form (SCRUM-42), and what it meets of what was asked for. In a search for a replacement it
  * also leads to requesting it as one (SCRUM-92).
@@ -40,7 +64,6 @@ function metRequirements(matched: MatchedRequirements): string[] {
 export function VenueMatchCard({ venue }: { venue: VenueMatch }) {
   const headingId = useId()
   const met = metRequirements(venue.matched_requirements)
-  const replacement = useReplacementSearch()
 
   return (
     <article aria-labelledby={headingId} className="border-line bg-surface rounded-2xl border p-6">
@@ -62,15 +85,7 @@ export function VenueMatchCard({ venue }: { venue: VenueMatch }) {
           ))}
         </ul>
       )}
-      {replacement !== null && (
-        <ButtonLink
-          to={replacementRequestPath(replacement.reference, replacement.arrangementId, venue.id)}
-          aria-label={`Request ${venue.name} as the replacement`}
-          className="mt-5"
-        >
-          Request this venue
-        </ButtonLink>
-      )}
+      <ReplacementChoice venue={venue} />
     </article>
   )
 }

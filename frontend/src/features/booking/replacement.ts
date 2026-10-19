@@ -15,7 +15,7 @@ export function findAnotherVenuePath(reference: string, arrangement: BookingRequ
   const startDate = businessDate(arrangement.starts_at)
   const endDate = businessDate(arrangement.ends_at)
   return replacementSearchPath(
-    { reference, arrangementId: arrangement.id },
+    { reference, arrangementId: arrangement.id, venueId: arrangement.venue_id },
     {
       date: startDate,
       start: businessTimeOfDay(arrangement.starts_at),

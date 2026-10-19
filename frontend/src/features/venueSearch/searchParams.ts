@@ -15,9 +15,13 @@ import type { SuitabilityRequest, VenueSearchRequest } from './api'
 /** The URL parameter holding the id of the venue being checked (SCRUM-36). */
 const VENUE_TO_CHECK = 'venue'
 
-/** The URL parameters naming the event, and its flagged arrangement, a search replaces (SCRUM-92). */
+/**
+ * The URL parameters naming the event, its flagged arrangement and that arrangement's venue, which
+ * a search is finding a replacement for (SCRUM-92).
+ */
 const REPLACING_EVENT = 'event'
 const REPLACED_ARRANGEMENT = 'replaces'
+const REPLACED_VENUE = 'instead_of'
 
 /** The filters with one value each, named as the form fields and URL parameters are. */
 const SINGLE_FILTERS = [
@@ -154,16 +158,19 @@ export interface ReplacementSearch {
   /** The event's EVR- reference. */
   reference: string
   arrangementId: number
+  /** The flagged arrangement's own venue: a replacement is always another venue (AC6). */
+  venueId: number
 }
 
 /** The replacement the URL's search is for, or null when it is an ordinary search. */
 export function readReplacementSearch(params: URLSearchParams): ReplacementSearch | null {
   const reference = params.get(REPLACING_EVENT)
   const arrangementId = positiveIdParam(params, REPLACED_ARRANGEMENT)
-  if (reference === null || arrangementId === null) {
+  const venueId = positiveIdParam(params, REPLACED_VENUE)
+  if (reference === null || arrangementId === null || venueId === null) {
     return null
   }
-  return { reference, arrangementId }
+  return { reference, arrangementId, venueId }
 }
 
 /** The search page set to `filters`, finding a venue to replace the flagged arrangement. */
@@ -174,6 +181,7 @@ export function replacementSearchPath(
   const params = new URLSearchParams({
     [REPLACING_EVENT]: replacement.reference,
     [REPLACED_ARRANGEMENT]: String(replacement.arrangementId),
+    [REPLACED_VENUE]: String(replacement.venueId),
   })
   return `${ROUTES.VENUE_SEARCH}?${withFilters(params, filters).toString()}`
 }
