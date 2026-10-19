@@ -1,6 +1,6 @@
 # ADR-0032: The event catalogue API, and registering for an event
 
-- **Status:** Accepted. Proposed by the frontend on 2026-09-29; implemented by SCRUM-52 on 2026-10-14. The items marked *default to review* are the team's to confirm. The attendee's own list (`GET /api/events/registrations`) is extended by [ADR-0044](0044-attendee-events-list.md): upcoming and past, the event's status, and a message when empty. Withdrawing is added by SCRUM-53 on 2026-10-16 (see *Withdrawing*).
+- **Status:** Accepted. Proposed by the frontend on 2026-09-29; implemented by SCRUM-52 on 2026-10-14. The items marked *default to review* are the team's to confirm. The attendee's own list (`GET /api/events/registrations`) is extended by [ADR-0044](0044-attendee-events-list.md): upcoming and past, the event's status, and a message when empty. Withdrawing is added by SCRUM-53 on 2026-10-16 (see *Withdrawing*); its optional cut-off is settled by [ADR-0086](0086-optional-withdrawal-cut-off.md) on 2026-10-19.
 - **Date:** 2026-09-29
 - **Story:** SCRUM-52 Register for a confirmed event (with SCRUM-54 and SCRUM-69 for capacity)
 
@@ -64,7 +64,7 @@ Query parameters, all optional:
 - `description` is `""` for an event that has none.
 - **`venue` is `null` for every event for now.** `main` has no way to find an event's booked
   venue through the venue module's public services, and the events module must not read the
-  venue module's models; this is the same wait as ADR-0043's AC3. The shape stays
+  venue module's models. The shape stays
   `{"id", "name"}` when it arrives (SCRUM-42 and SCRUM-43), and the frontend already shows
   "Venue to be announced" for `null`.
 - `places_left`, `is_full` and `total_pages` are the backend's numbers, worked out from the
@@ -151,12 +151,12 @@ list gain `withdrawn_at` (`null` while the place is held).
   After withdrawals close: `409 withdrawal_closed`, with
   `details.withdrawal_closed_at` giving the moment in business time, so the screen can show it
   (AC3).
-- **When withdrawals close: at the event's start.** *Default to review.* AC2 and AC3 name an
-  Organiser's withdrawal cut-off, but nothing in the system sets one and the customer has not
-  said what it is (the story is labelled *needs-customer-clarification*). Until they do, the
-  rule lives in one helper (`_withdrawal_closes_at`) that answers the event's start, so the
-  cut-off later changes only that helper. An event that has started cannot be withdrawn from,
-  so a completed one cannot either (AC5, ADR-0027).
+- **When withdrawals close: at the event's start.** *Superseded on 2026-10-19 by
+  [ADR-0086](0086-optional-withdrawal-cut-off.md):* withdrawals close at the optional cut-off the
+  coordinator records with the registration settings, and at the event's start when there is
+  none. Until then the rule lived in one helper (`_withdrawal_closes_at`) that answered the
+  event's start, so the cut-off changed only that helper. An event that has started cannot be
+  withdrawn from, so a completed one cannot either (SCRUM-53 AC6, ADR-0027).
 - **A withdrawn registration stays in its tab** of the attendee's list (ADR-0044), with its
   status, as AC1 asks to see each registration with its current status. *Default to review.*
 - **The Organiser's registration list** (AC6) is SCRUM-55's. It is not merged yet; it should show
@@ -194,9 +194,9 @@ enabled or not. Turning registration off with attendees registered is allowed.
 ## Open
 - **What "registration information" SCRUM-52 AC2 needs,** if the customer wants more than the
   account. Adding fields means a body schema and a form on the card.
-- **The Organiser's withdrawal cut-off (SCRUM-53 AC2, AC3).** Who sets it, where, and what it
-  is when they haven't. Waiting on the customer; withdrawals close at the event's start until
-  then (see *Withdrawing*).
+- ~~**The Organiser's withdrawal cut-off (SCRUM-53 AC2, AC3).**~~ Settled by ADR-0086: the
+  organiser decides it, the coordinator records it with the registration settings, and with
+  none set withdrawals close at the event's start.
 - **Lowering the capacity while someone registers.** Registering locks the event's row, but
   `update_registration_settings` does not, so a capacity lowered in the same instant as the last
   registration could leave one more registration than the new capacity. The catalogue shows
@@ -205,6 +205,7 @@ enabled or not. Turning registration off with attendees registered is allowed.
 
 ## Revisit when
 - SCRUM-42 and SCRUM-43 merge: fill in `venue`, and make `q` match the venue's name.
-- The customer defines the withdrawal cut-off: change `_withdrawal_closes_at` to read it.
+- ~~The customer defines the withdrawal cut-off: change `_withdrawal_closes_at` to read it.~~
+  Done by ADR-0086.
 - SCRUM-55 merges: check its list shows `withdrawn` registrations (SCRUM-53 AC6).
 - The customer defines SCRUM-52's registration information.

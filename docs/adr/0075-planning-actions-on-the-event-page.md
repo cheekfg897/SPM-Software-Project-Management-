@@ -126,8 +126,10 @@ after it, whose organiser asked for registration).
   what changed keeps the rest, so nothing is lost, but the page can't show it.
   Listed under Tickets to open: add `registration_enabled` and `registration_capacity` to the
   event record, then start the form from them.
-- SCRUM-69 AC3 (capacity within the booked venue's) is still deferred on the backend
-  (ADR-0043); the form shows its refusal once it lands, with no change.
+- SCRUM-69 AC3 no longer limits the capacity to the booked venue's (customer answer A74,
+  ADR-0043), so the form has no venue refusal to show. SCRUM-69 AC6's withdrawal cut-off
+  (ADR-0086) has no input on the form yet: listed under Tickets to open on the SCRUM-69 pull
+  request.
 - SCRUM-49 AC9 and AC10 (rejecting an event during planning) and AC11 (what the organiser sees
   once confirmed) have no backend yet (ADR-0051 decisions 9 and 10), so the page has nothing to
   offer for them.
