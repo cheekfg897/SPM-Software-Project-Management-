@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import ColumnElement, func, select
+from sqlalchemy import ColumnElement, delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
@@ -748,3 +748,26 @@ def update_preparation_details(
     sess.commit()
     (shown,) = _as_shown([reservation], sess)
     return shown
+
+
+# --------------------------------------------------------------------------
+# SCRUM-49 AC10 — return a rejected event's equipment
+# --------------------------------------------------------------------------
+
+
+def release_event_reservations(event_id: int, *, session: Session | None = None) -> None:
+    """Return every unit reserved for the event to stock, without committing.
+
+    SCRUM-49 AC10: an event rejected during planning gives its equipment back, as a
+    cancelled event does (SCRUM-61 AC4, ADR-0093). Availability counts every
+    reservation row (SCRUM-45), so the event's rows are deleted and their units are
+    free for the period at once. Each reservation's ``equipment_reserved`` history
+    entry stays, so the event's record still says what was set aside. The caller
+    commits, with the rejection this is part of.
+
+    Args:
+        event_id: The event request's id.
+        session: Database session; defaults to ``db.session``.
+    """
+    statement = delete(EquipmentReservation).where(EquipmentReservation.event_id == event_id)
+    resolve_session(session).execute(statement)
