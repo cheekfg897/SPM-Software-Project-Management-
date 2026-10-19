@@ -1189,19 +1189,21 @@ def _notify_venue_staff(event: EventForBooking, session: Session | None) -> None
 def _check_replaceable(event_id: int, arrangement_id: int, session: Session | None) -> None:
     """Refuse a replacement unless it names a flagged arrangement of the event (AC6).
 
-    An arrangement of another event is reported as missing, as ADR-0035 §6 does for
-    the arrangement routes, so it is not discoverable.
+    Flagged either because its venue became unavailable (SCRUM-92) or by a significant
+    change to the event (SCRUM-33 AC6, ADR-0094). An arrangement of another event is
+    reported as missing, as ADR-0035 §6 does for the arrangement routes, so it is not
+    discoverable.
 
     Raises:
         ValidationError: 400 — on ``replaces_request_id``: no such arrangement on the
-            event, or it doesn't need an alternative venue.
+            event, or it is not flagged.
     """
     replaced = resolve_session(session).get(VenueBookingRequest, arrangement_id)
     if replaced is None or replaced.event_id != event_id:
         raise ValidationError(
             "Invalid request.", details={"replaces_request_id": [ARRANGEMENT_NOT_FOUND_MESSAGE]}
         )
-    if not replaced.needs_alternative_venue:
+    if not replaced.needs_alternative_venue and not replaced.is_flagged_after_change:
         raise ValidationError(
             "Invalid request.", details={"replaces_request_id": [NOT_FLAGGED_MESSAGE]}
         )
