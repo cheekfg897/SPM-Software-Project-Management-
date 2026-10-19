@@ -276,9 +276,12 @@ describe('SCRUM-35 venue search page', () => {
 })
 
 describe('SCRUM-92 finding a replacement venue', () => {
-  /** A search for event EVR-BOOK0107's flagged arrangement 9104: 26 Nov, 1 pm to 5 pm, for 10. */
+  /**
+   * A search for event EVR-BOOK0107's flagged arrangement 9104 at the Lawn Marquee (venue 27):
+   * 26 Nov, 1 pm to 5 pm, for 10.
+   */
   const REPLACEMENT_PATH =
-    `${ROUTES.VENUE_SEARCH}?event=EVR-BOOK0107&replaces=9104` +
+    `${ROUTES.VENUE_SEARCH}?event=EVR-BOOK0107&replaces=9104&instead_of=27` +
     '&date=2026-11-26&start=13:00&end=17:00&min_capacity=10'
 
   it('offers each venue found as the replacement, back on the event’s venue requests page', async () => {
@@ -290,6 +293,17 @@ describe('SCRUM-92 finding a replacement venue', () => {
 
     expect(view.router.state.location.pathname).toBe('/events/EVR-BOOK0107/venue-requests')
     expect(view.router.state.location.search).toBe('?replaces=9104&venue=2')
+  })
+
+  it('never offers the venue being replaced, as a replacement is always another venue', async () => {
+    renderApp(REPLACEMENT_PATH, COORDINATOR)
+
+    const replaced = await screen.findByRole('article', { name: 'Lawn Marquee' })
+    expect(within(replaced).queryByRole('link')).not.toBeInTheDocument()
+    expect(replaced).toHaveTextContent('This is the venue being replaced.')
+    expect(
+      screen.getByRole('link', { name: 'Request Boardroom Two as the replacement' }),
+    ).toBeInTheDocument()
   })
 
   it('says which event the replacement is for, with a way back to it', async () => {

@@ -155,11 +155,12 @@ describe('SCRUM-92 raising a replacement for a flagged arrangement (AC6)', () =>
 
     expect(view.router.state.location.pathname).toBe(ROUTES.VENUE_SEARCH)
     const params = new URLSearchParams(view.router.state.location.search)
-    expect([params.get('replaces'), params.get('date'), params.get('start')]).toEqual([
-      String(bookedHall.id),
-      '2026-11-26',
-      '13:00',
-    ])
+    expect([
+      params.get('replaces'),
+      params.get('instead_of'),
+      params.get('date'),
+      params.get('start'),
+    ]).toEqual([String(bookedHall.id), String(bookedHall.venue_id), '2026-11-26', '13:00'])
   })
 
   it('offers no venue search for an arrangement that is not flagged', async () => {

@@ -17,6 +17,7 @@ describe('SCRUM-92 finding another venue for a flagged arrangement', () => {
     expect(paramsOf(path)).toEqual({
       event: 'EVR-BOOK0107',
       replaces: String(bookedHall.id),
+      instead_of: String(bookedHall.venue_id),
       date: '2026-11-26',
       start: '13:00',
       end: '17:00',
