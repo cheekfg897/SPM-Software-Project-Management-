@@ -328,6 +328,23 @@ export function confirmEvent(reference: string): Promise<EventRequest> {
   return apiRequest<EventRequest>(`${requestPath(reference)}/confirm`, { method: 'POST' })
 }
 
+/** A planning rejection's body: the reason, left out when none was typed (ADR-0093). */
+export interface Rejection {
+  reason?: string
+}
+
+/**
+ * Reject an approved event or one in safety review because an essential arrangement can't be
+ * met. The backend requires the reason, releases the event's venues, returns its equipment and
+ * tells the organiser (SCRUM-49 AC9, AC10, ADR-0093).
+ */
+export function rejectEvent(reference: string, rejection: Rejection): Promise<EventRequest> {
+  return apiRequest<EventRequest>(`${requestPath(reference)}/reject`, {
+    method: 'POST',
+    body: rejection,
+  })
+}
+
 /** Mark a confirmed event completed once it has ended; there is no body (SCRUM-68, ADR-0027). */
 export function completeEvent(reference: string): Promise<EventRequest> {
   return apiRequest<EventRequest>(`${requestPath(reference)}/complete`, { method: 'POST' })

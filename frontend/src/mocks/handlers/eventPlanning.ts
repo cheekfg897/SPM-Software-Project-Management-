@@ -2,6 +2,7 @@ import { http, HttpResponse } from 'msw'
 import type { RequestHandler } from 'msw'
 
 import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
+import type { EventRequestStatus } from '@/config/eventStatus'
 import type { EventHistoryEntry, RegistrationChanges } from '@/features/eventRequests/api'
 import type { EventHistoryKind } from '@/features/eventRequests/eventHistory'
 import type { FieldErrors } from '@/lib/api'
@@ -10,22 +11,23 @@ import { errorResponse, validationError } from '../responses'
 
 import { MOCK_NOW } from './catalogueFixtures'
 import { NOTHING_PLANNED } from './eventPlanningFixtures'
-import type { MockPlanning } from './eventPlanningFixtures'
+import type { MockArrangement, MockArrangementStatus, MockPlanning } from './eventPlanningFixtures'
 import { loadRegistrationChanges } from './eventPlanningRules'
 import { addToHistory } from './eventRecordSections'
 import type { MockEventRequest } from './eventRequestFixtures'
 import { assignedOrRefusal, objectBodyOrRefusal } from './eventRequests'
+import { loadRejectionReason } from './eventReviewRules'
 
 /**
  * The coordinator's planning actions on the stored event requests eventRequests.ts keeps, so
  * the record read afterwards shows the change: sending an event to safety review (SCRUM-97,
  * ADR-0047), marking it completed once it has ended, at the mock's "now", MOCK_NOW (SCRUM-68,
- * ADR-0027), its registration settings and withdrawal cut-off (SCRUM-69, ADR-0043, ADR-0086)
- * and confirming it once every
- * approval is in (SCRUM-49, ADR-0051). Only the event's assigned coordinator may; the checks,
- * their order, the codes, messages and the gaps named are the backend's (ADR-0075). Each action
- * that changes something is written to the event's history as the backend writes it (SCRUM-33
- * AC4). No notification is raised.
+ * ADR-0027), its registration settings and withdrawal cut-off (SCRUM-69, ADR-0043, ADR-0086),
+ * confirming it once every approval is in (SCRUM-49, ADR-0051) and rejecting it during planning
+ * (SCRUM-49 AC9, AC10, ADR-0093). Only the event's assigned coordinator may; the checks, their
+ * order, the codes, messages and the gaps named are the backend's (ADR-0075). Each action that
+ * changes something is written to the event's history as the backend writes it (SCRUM-33 AC4).
+ * No notification is raised.
  */
 
 const REQUEST_PATH = '/api/events/requests/:reference'
@@ -47,6 +49,17 @@ const CONFIRMATION_NOT_READY_MESSAGE =
   'arrangement is approved and every equipment request has an outcome from Technical ' +
   'Support.'
 const SAFETY_NOT_APPROVED_GAP = 'The Safety Officer has not approved the event.'
+const NOT_IN_PLANNING_FOR_REJECTION_MESSAGE =
+  'Only an approved event or one in Safety Review can be rejected during planning.'
+/** Where an event may be rejected during planning (`PLANNING_STATUSES`). */
+const PLANNING_STATUSES: readonly EventRequestStatus[] = [
+  EVENT_REQUEST_STATUS.APPROVED,
+  EVENT_REQUEST_STATUS.SAFETY_REVIEW,
+]
+/** Arrangements no longer counted among the event's venues (`RETIRED_REQUEST_STATUSES`). */
+const RETIRED_STATUSES: readonly MockArrangementStatus[] = ['withdrawn', 'released']
+/** Arrangements holding their venue, which a rejection releases rather than withdraws. */
+const HOLDING_STATUSES: readonly MockArrangementStatus[] = ['approved']
 
 /** The settings the registration route changes, in the order the backend records them. */
 const REGISTRATION_FIELDS = [
@@ -76,10 +89,12 @@ function planningOf(stored: MockEventRequest): MockPlanning {
 
 /**
  * Why the event's venues hold it back, as `_venue_gaps` words it: no venue at all, or each
- * active arrangement (a withdrawn one is retired) that isn't approved, with its status.
+ * active arrangement (a withdrawn or released one is retired) that isn't approved, with its status.
  */
 function venueGaps(planning: MockPlanning): string[] {
-  const active = planning.arrangements.filter((arrangement) => arrangement.status !== 'withdrawn')
+  const active = planning.arrangements.filter(
+    (arrangement) => !RETIRED_STATUSES.includes(arrangement.status),
+  )
   if (active.length === 0) {
     return [NO_VENUE_GAP]
   }
@@ -210,6 +225,33 @@ function settingChanges(
   return entries
 }
 
+/** What a rejection leaves of the event's arrangements, and the history it writes for them. */
+interface Release {
+  arrangements: MockArrangement[]
+  withdrawals: EventHistoryEntry[]
+}
+
+/**
+ * The event's arrangements once it is rejected, as `release_event_arrangements` leaves them:
+ * one holding its venue is released, any other still active is withdrawn with its own history
+ * entry, and a retired one stays as it is.
+ */
+function releaseArrangements(planning: MockPlanning, coordinatorName: string): Release {
+  const release: Release = { arrangements: [], withdrawals: [] }
+  for (const arrangement of planning.arrangements) {
+    if (RETIRED_STATUSES.includes(arrangement.status)) {
+      release.arrangements.push(arrangement)
+    } else if (HOLDING_STATUSES.includes(arrangement.status)) {
+      release.arrangements.push({ ...arrangement, status: 'released' })
+    } else {
+      release.arrangements.push({ ...arrangement, status: 'withdrawn' })
+      const details = { venue_booking_request_id: arrangement.id, venue_id: arrangement.venueId }
+      release.withdrawals.push(entryBy(coordinatorName, 'venue_arrangement_withdrawn', details))
+    }
+  }
+  return release
+}
+
 export const eventPlanningHandlers: RequestHandler[] = [
   http.post(`${REQUEST_PATH}/safety-review`, ({ request, params }) => {
     const found = assignedOrRefusal(request, params.reference)
@@ -301,5 +343,39 @@ export const eventPlanningHandlers: RequestHandler[] = [
       registration_required: stored.request.registration_required,
       ...settings,
     })
+  }),
+
+  http.post(`${REQUEST_PATH}/reject`, async ({ request, params }) => {
+    const found = assignedOrRefusal(request, params.reference)
+    if ('refusal' in found) {
+      return found.refusal
+    }
+    const { coordinator, stored } = found
+    if (!PLANNING_STATUSES.includes(stored.request.status)) {
+      return errorResponse(409, 'rejection_not_allowed', NOT_IN_PLANNING_FOR_REJECTION_MESSAGE)
+    }
+    const payload = await objectBodyOrRefusal(request)
+    if ('refusal' in payload) {
+      return payload.refusal
+    }
+    const loaded = loadRejectionReason(payload.body)
+    if ('errors' in loaded) {
+      return validationError(loaded.errors)
+    }
+
+    const planning = planningOf(stored)
+    const { arrangements, withdrawals } = releaseArrangements(planning, coordinator.full_name)
+    const decision = { outcome: 'rejected' as const, reason: loaded.text }
+    stored.request.status = EVENT_REQUEST_STATUS.REJECTED
+    stored.record = {
+      ...stored.record,
+      decision: { ...decision, decided_by: coordinator.full_name, decided_at: MOCK_NOW },
+    }
+    addToHistory(stored.request.reference, [
+      entryBy(coordinator.full_name, 'decision_recorded', decision),
+      ...withdrawals,
+    ])
+    stored.planning = { ...planning, arrangements }
+    return HttpResponse.json(stored.request)
   }),
 ]

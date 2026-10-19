@@ -2,6 +2,7 @@ import { ROLE } from '@/config/roles'
 import { register } from '@/features/auth/api'
 import {
   decideBookingRequest,
+  fetchBookingRequests,
   raiseBookingRequest,
   withdrawArrangement,
 } from '@/features/booking/api'
@@ -16,6 +17,7 @@ import {
   decideEventRequest,
   editEventRequest,
   fetchEventRequest,
+  rejectEvent,
   sendToSafetyReview,
   startEventRequestReview,
   submitEventRequest,
@@ -32,9 +34,10 @@ import type { Credentials } from './backend'
 /**
  * The coordinator's planning actions against the running backend: sending an event to safety
  * review (SCRUM-97, ADR-0047), confirming it (SCRUM-49, ADR-0051), its registration settings
- * (SCRUM-69, ADR-0043) and marking it completed (SCRUM-68, ADR-0027) (ADR-0075), and what a
- * closed event's equipment requests then refuse (SCRUM-48 AC8). Also the decision a venue
- * booking request locks (SCRUM-31 AC7, ADR-0084).
+ * (SCRUM-69, ADR-0043), marking it completed (SCRUM-68, ADR-0027) (ADR-0075) and rejecting it
+ * during planning (SCRUM-49 AC9, AC10, ADR-0093), and what a closed event's equipment requests
+ * then refuse (SCRUM-48 AC8). Also the decision a venue booking request locks (SCRUM-31 AC7,
+ * ADR-0084).
  *
  * The refusals that need no event of the coordinator's run with the staff account every run has
  * (an Event Coordinator) and new organisers. An event of the coordinator's needs a Lead to assign
@@ -641,6 +644,107 @@ describe('SCRUM-48 no equipment outcome on a closed event against the backend', 
         status: 'requested',
         provided_quantity: null,
       })
+    },
+  )
+})
+
+describe('SCRUM-49 rejecting an event during planning against the backend', () => {
+  const REASON = 'No venue large enough is free that week.'
+
+  it('refuses an organiser by role, and a visitor without a token', async () => {
+    const { reference } = await submittedEvent()
+
+    expect(await refusal(rejectEvent(reference, { reason: REASON }))).toMatchObject(NOT_PERMITTED)
+    sendRequestsAs(null)
+    expect(await refusal(rejectEvent(reference, { reason: REASON }))).toMatchObject(NOT_SIGNED_IN)
+  })
+
+  it('answers a coordinator an event not assigned to them as not found', async () => {
+    const { reference } = await submittedEvent()
+    await signInAs(staffAccount())
+
+    expect(await refusal(rejectEvent(reference, { reason: REASON }))).toMatchObject(NOT_FOUND)
+  })
+
+  it.skipIf(!canAssign)(
+    'refuses a request still awaiting its first decision, before reading the body',
+    async () => {
+      const { reference } = await assignedEvent()
+
+      expect(await refusal(rejectEvent(reference, {}))).toMatchObject({
+        status: 409,
+        code: 'rejection_not_allowed',
+        message: 'Only an approved event or one in Safety Review can be rejected during planning.',
+      })
+    },
+  )
+
+  it.skipIf(!canAssign)('asks for a reason under its field', async () => {
+    const { reference } = await approvedEvent()
+
+    const missing = await refusal(rejectEvent(reference, {}))
+    const blank = await refusal(rejectEvent(reference, { reason: '   ' }))
+
+    expect(missing).toMatchObject({ status: 400, code: 'validation_error' })
+    expect(missing.fieldErrors).toEqual({ reason: ['A reason is required to reject the event.'] })
+    expect(blank.fieldErrors).toEqual({ reason: ['Must not be blank.'] })
+    expect((await fetchEventRequest(reference)).status).toBe('approved')
+  })
+
+  it.skipIf(!canAssign)(
+    'rejects an approved event, answering in the shape the page reads, and tells the organiser why',
+    async () => {
+      const { reference, organiser } = await approvedEvent()
+
+      const rejected = await rejectEvent(reference, { reason: REASON })
+
+      expect(Object.keys(rejected).sort()).toEqual(EVENT_REQUEST_FIELDS)
+      expect(rejected).toMatchObject({ reference, status: 'rejected' })
+      await signInAs(organiser)
+      const notices = await fetchNotifications()
+      const notice = notices.find((notification) => notification.kind === 'event_request_rejected')
+      expect(notice).toMatchObject({
+        event_reference: reference,
+        message: 'Your event request was rejected.',
+        detail: REASON,
+      })
+    },
+  )
+
+  it.skipIf(!canApproveVenue)(
+    'releases an approved venue and withdraws a pending one (AC10)',
+    async () => {
+      const { reference } = await settledEvent()
+      const [booked] = await fetchBookingRequests(reference)
+      const pendingId = await raiseVenueRequest(reference)
+
+      await rejectEvent(reference, { reason: REASON })
+
+      const statuses = (await fetchBookingRequests(reference)).map((arrangement) => [
+        arrangement.id,
+        arrangement.status,
+      ])
+      expect(statuses).toEqual(
+        expect.arrayContaining([
+          [booked?.id, 'released'],
+          [pendingId, 'withdrawn'],
+        ]),
+      )
+    },
+  )
+
+  it.skipIf(!canApproveVenue)(
+    'rejects an event in Safety Review, releasing its venue',
+    async () => {
+      const { reference } = await eventInSafetyReview()
+
+      const rejected = await rejectEvent(reference, { reason: REASON })
+
+      expect(rejected.status).toBe('rejected')
+      const statuses = (await fetchBookingRequests(reference)).map(
+        (arrangement) => arrangement.status,
+      )
+      expect(statuses).toEqual(['released'])
     },
   )
 })

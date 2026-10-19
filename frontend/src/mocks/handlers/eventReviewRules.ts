@@ -5,9 +5,9 @@ import { MISSING_MESSAGE } from './eventRequestRules'
 
 /**
  * The backend's checks on the review actions' bodies, worded as marshmallow words them
- * (events/schemas.py DecideEventRequestSchema, RequestClarificationSchema and
- * ResubmitEventRequestSchema; common/validation.py not_blank; ADR-0028, ADR-0029). Each field
- * is checked on its own and every message is reported at once.
+ * (events/schemas.py DecideEventRequestSchema, RequestClarificationSchema,
+ * ResubmitEventRequestSchema and RejectEventSchema; common/validation.py not_blank; ADR-0028,
+ * ADR-0029, ADR-0093). Each field is checked on its own and every message is reported at once.
  */
 
 const NOT_NULL_MESSAGE = 'Field may not be null.'
@@ -16,6 +16,7 @@ const BLANK_MESSAGE = 'Must not be blank.'
 const UNKNOWN_FIELD_MESSAGE = 'Unknown field.'
 const OUTCOME_MESSAGE = 'Outcome must be approved or rejected.'
 const DECISION_FIELDS: readonly string[] = ['outcome', 'reason']
+const REJECTION_REASON_REQUIRED_MESSAGE = 'A reason is required to reject the event.'
 
 /** One of the two outcomes a decision may have. */
 function isOutcome(value: unknown): value is Decision['outcome'] {
@@ -103,6 +104,24 @@ export function loadDecision(
   }
 }
 
+/** A body holding only `field`, loaded (trimmed), or `fieldErrors` and any unknown field. */
+function loadOnlyText(
+  body: Record<string, unknown>,
+  field: string,
+  fieldErrors: string[] | undefined,
+): { text: string } | { errors: FieldErrors } {
+  const errors = unknownFieldErrors(body, [field])
+  if (fieldErrors !== undefined) {
+    errors[field] = fieldErrors
+  }
+  const value = body[field]
+  // The typeof only tells TypeScript what textErrors already checked.
+  if (Object.keys(errors).length > 0 || typeof value !== 'string') {
+    return { errors }
+  }
+  return { text: value.trim() }
+}
+
 /**
  * A body holding one required text field and nothing else, loaded (trimmed), or what it is
  * refused for: a question's `message` or an answer's `response`. The backend also takes
@@ -113,15 +132,22 @@ export function loadText(
   body: Record<string, unknown>,
   field: string,
 ): { text: string } | { errors: FieldErrors } {
-  const errors = unknownFieldErrors(body, [field])
-  const value = body[field]
-  const fieldErrors = requiredErrors(body, field) ?? textErrors(value)
-  if (fieldErrors !== undefined) {
-    errors[field] = fieldErrors
-  }
-  // The typeof only tells TypeScript what textErrors already checked.
-  if (Object.keys(errors).length > 0 || typeof value !== 'string') {
-    return { errors }
-  }
-  return { text: value.trim() }
+  return loadOnlyText(body, field, requiredErrors(body, field) ?? textErrors(body[field]))
+}
+
+/**
+ * A planning rejection's body, its `reason` loaded (trimmed), or what it is refused for
+ * (RejectEventSchema, ADR-0093): a missing or null reason gets the schema's own message, a blank
+ * or non-text one marshmallow's.
+ */
+export function loadRejectionReason(
+  body: Record<string, unknown>,
+): { text: string } | { errors: FieldErrors } {
+  const { reason } = body
+  const isMissing = reason === undefined || reason === null
+  return loadOnlyText(
+    body,
+    'reason',
+    isMissing ? [REJECTION_REASON_REQUIRED_MESSAGE] : textErrors(reason),
+  )
 }

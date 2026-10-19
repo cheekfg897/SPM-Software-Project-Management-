@@ -4,6 +4,7 @@ import {
   decideEventRequest,
   fetchEventHistory,
   fetchAssignedEventRequests,
+  rejectEvent,
   sendToSafetyReview,
   updateRegistrationSettings,
 } from '@/features/eventRequests/api'
@@ -734,5 +735,139 @@ describe('SCRUM-33 mock: the history each planning action writes', () => {
       actor_name: CHLOE.full_name,
       details: { field: 'registration_capacity', previous_value: null, new_value: 120 },
     })
+  })
+})
+
+/**
+ * SCRUM-49 AC9, AC10 (ADR-0093): the assigned coordinator rejects an approved event or one in
+ * Safety Review with a reason. It is recorded as a decision, each arrangement not yet approved
+ * is withdrawn with its own entry, and an approved one is released, as reject_event_during_planning
+ * does.
+ */
+describe('SCRUM-49 mock: rejecting an event during planning', () => {
+  const REASON = 'No venue large enough is free that week.'
+  const READY_TO_CONFIRM = 'EVR-PLAN0003'
+  const HELD_BACK_EVERYWHERE = 'EVR-PLAN0004'
+  const REASON_REQUIRED = 'A reason is required to reject the event.'
+
+  /** An entry by Hana, now, as the backend shows it. */
+  function byHana(kind: string, details: Record<string, unknown>) {
+    return { kind, occurred_at: MOCK_NOW, actor_name: HANA.full_name, details }
+  }
+
+  it.each([APPROVED_WITH_GAPS, READY_TO_CONFIRM])(
+    'rejects %s, in the reply and the record',
+    async (reference) => {
+      signInAs(HANA)
+
+      const rejected = await rejectEvent(reference, { reason: `  ${REASON}  ` })
+
+      expect(rejected).toMatchObject({ reference, status: 'rejected' })
+      expect(rejected).not.toHaveProperty('coordinator')
+      expect(await statusOf(reference)).toBe('rejected')
+    },
+  )
+
+  it('records the decision, then withdraws each arrangement not yet approved', async () => {
+    signInAs(HANA)
+
+    await rejectEvent(APPROVED_WITH_GAPS, { reason: REASON })
+
+    expect((await fetchEventHistory(APPROVED_WITH_GAPS)).history).toEqual([
+      byHana('decision_recorded', { outcome: 'rejected', reason: REASON }),
+      byHana('venue_arrangement_withdrawn', { venue_booking_request_id: 42, venue_id: 3 }),
+    ])
+  })
+
+  it('withdraws a rejected arrangement too, but not an approved one, which is released', async () => {
+    signInAs(HANA)
+
+    await rejectEvent(HELD_BACK_EVERYWHERE, { reason: REASON })
+
+    const details = (await fetchEventHistory(HELD_BACK_EVERYWHERE)).history.map(
+      (entry) => entry.details,
+    )
+    expect(details).toEqual([
+      { outcome: 'rejected', reason: REASON },
+      { venue_booking_request_id: 48, venue_id: 3 },
+    ])
+  })
+
+  it.each([
+    [{}, REASON_REQUIRED],
+    [{ reason: null }, REASON_REQUIRED],
+    [{ reason: '   ' }, 'Must not be blank.'],
+    [{ reason: 7 }, 'Not a valid string.'],
+  ])('refuses the body %j on reason, and leaves the event as it was', async (body, message) => {
+    signInAs(HANA)
+
+    const error = await refusal(
+      apiRequest(`/api/events/requests/${APPROVED_WITH_GAPS}/reject`, { method: 'POST', body }),
+    )
+
+    expectInvalid(error, { reason: [message] })
+    expect(await statusOf(APPROVED_WITH_GAPS)).toBe('approved')
+    expect((await fetchEventHistory(APPROVED_WITH_GAPS)).history).toEqual([])
+  })
+
+  it('names a field it does not know beside the reason', async () => {
+    signInAs(HANA)
+
+    const error = await refusal(
+      apiRequest(`/api/events/requests/${APPROVED_WITH_GAPS}/reject`, {
+        method: 'POST',
+        body: { reason: REASON, status: 'rejected' },
+      }),
+    )
+
+    expectInvalid(error, { status: ['Unknown field.'] })
+  })
+
+  it('refuses a body that is not a JSON object', async () => {
+    signInAs(HANA)
+
+    const error = await refusal(
+      apiRequest(`/api/events/requests/${APPROVED_WITH_GAPS}/reject`, { method: 'POST', body: [] }),
+    )
+
+    expectNotAnObject(error)
+  })
+
+  it.each(
+    statusesOtherThan(EVENT_REQUEST_STATUS.APPROVED).filter(
+      (status) => status !== EVENT_REQUEST_STATUS.SAFETY_REVIEW,
+    ),
+  )('refuses an event that is %s, before reading the body, and leaves it there', async (status) => {
+    const reference = await ownEventIn(status)
+
+    const error = await refusal(
+      apiRequest(`/api/events/requests/${reference}/reject`, { method: 'POST', body: {} }),
+    )
+
+    expect(error).toMatchObject({
+      status: 409,
+      code: 'rejection_not_allowed',
+      message: 'Only an approved event or one in Safety Review can be rejected during planning.',
+    })
+    expect(await statusOf(reference)).toBe(status)
+  })
+
+  it("answers another coordinator's event as not found, and refuses other roles", async () => {
+    signInAs(CHLOE)
+    expect(await refusal(rejectEvent(APPROVED_WITH_GAPS, { reason: REASON }))).toMatchObject(
+      NOT_FOUND,
+    )
+
+    signInAs(MOCK_ACCOUNTS.organiser)
+    expect(await refusal(rejectEvent(APPROVED_WITH_GAPS, { reason: REASON }))).toMatchObject(
+      NOT_PERMITTED,
+    )
+
+    signInAs(null)
+    expect(await refusal(rejectEvent(APPROVED_WITH_GAPS, { reason: REASON }))).toMatchObject(
+      NOT_SIGNED_IN,
+    )
+    signInAs(HANA)
+    expect(await statusOf(APPROVED_WITH_GAPS)).toBe('approved')
   })
 })
