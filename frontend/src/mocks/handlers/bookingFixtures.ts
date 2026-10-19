@@ -38,7 +38,7 @@ const APPROVED_EVENT: MockBookingEvent = {
 }
 
 /**
- * Nine events: one the coordinator can book for, one already confirmed, one assigned
+ * Ten events: one the coordinator can book for, one already confirmed, one assigned
  * elsewhere, two whose requests are waiting for Venue Staff (SCRUM-43), two of the
  * coordinator's with several venue arrangements already decided (SCRUM-93), and two whose
  * arrangements reached the later statuses (Released, Expired, On hold), and one the Safety Officer
