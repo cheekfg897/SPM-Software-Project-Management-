@@ -1,9 +1,11 @@
 import {
   businessDate,
+  businessTimeOfDay,
   formatDateTime,
   formatShortDate,
   formatTimeRange,
   formatWeekday,
+  toDateTimeInputValue,
 } from './formatDate'
 
 describe('SCRUM-52 formatDate', () => {
@@ -32,5 +34,20 @@ describe('SCRUM-52 formatDate', () => {
   it('gives the date and time in Singapore, whatever offset the time was sent with', () => {
     expect(formatDateTime('2026-10-05T09:00:00+08:00')).toBe('5 Oct, 9:00 am')
     expect(formatDateTime('2026-10-05T17:30:00Z')).toBe('6 Oct, 1:30 am')
+  })
+})
+
+describe('SCRUM-92 businessTimeOfDay', () => {
+  it('reads the 24-hour time of day in Singapore, whatever offset the time was sent with', () => {
+    expect(businessTimeOfDay('2026-11-26T13:00:00+08:00')).toBe('13:00')
+    expect(businessTimeOfDay('2026-11-26T00:05:00+08:00')).toBe('00:05')
+    expect(businessTimeOfDay('2026-10-05T17:30:00Z')).toBe('01:30')
+  })
+})
+
+describe('SCRUM-92 toDateTimeInputValue', () => {
+  it('turns an ISO date-time into what a date-time input holds, in business time', () => {
+    expect(toDateTimeInputValue('2026-11-26T13:00:00+08:00')).toBe('2026-11-26T13:00')
+    expect(toDateTimeInputValue('2026-11-26T17:30:00Z')).toBe('2026-11-27T01:30')
   })
 })

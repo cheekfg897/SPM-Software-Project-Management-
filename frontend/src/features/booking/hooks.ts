@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useSearchParams } from 'react-router'
 
 import type { PreparationUpdate } from '@/config/preparation'
 
@@ -16,7 +17,14 @@ import {
   updateBookingPreparation,
   withdrawArrangement,
 } from './api'
-import type { ArrangementChange, BookingDecision, HoldExpiry, RaiseBookingRequest } from './api'
+import type {
+  ArrangementChange,
+  BookingDecision,
+  BookingRequest,
+  HoldExpiry,
+  RaiseBookingRequest,
+} from './api'
+import { readReplacementRequest } from './replacement'
 
 /**
  * What to run after a change to the event's requests: their list is read again, so it shows
@@ -46,6 +54,26 @@ export function useBookingRequests(reference: string) {
     queryKey: bookingKeys.forEvent(reference),
     queryFn: () => fetchBookingRequests(reference),
   })
+}
+
+/**
+ * The replacement the request form is raising, from the page URL, with the flagged arrangement
+ * it replaces when the event's list holds it (SCRUM-92 AC6). Stopping drops it from the URL.
+ */
+export function useReplacementRequest(reference: string) {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const requests = useBookingRequests(reference)
+  const replacement = readReplacementRequest(searchParams)
+  let replaced: BookingRequest | undefined
+  if (replacement !== null) {
+    replaced = requests.data?.find((arrangement) => arrangement.id === replacement.arrangementId)
+  }
+
+  return {
+    replacement,
+    replaced,
+    stopReplacing: () => setSearchParams(new URLSearchParams()),
+  }
 }
 
 /** Raise a request for the event. */

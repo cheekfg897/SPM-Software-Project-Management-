@@ -80,6 +80,25 @@ export function venueRequestsPath(reference: string): string {
   return withReference(ROUTES.VENUE_REQUESTS, reference)
 }
 
+/**
+ * The search parameters of a replacement venue request (SCRUM-92): the flagged arrangement it
+ * replaces, and the venue chosen for it.
+ */
+export const REPLACEMENT_PARAMS = { ARRANGEMENT: 'replaces', VENUE: 'venue' } as const
+
+/** The event's venue requests, its request form set to replace an arrangement with a venue. */
+export function replacementRequestPath(
+  reference: string,
+  arrangementId: number,
+  venueId: number,
+): string {
+  const params = new URLSearchParams({
+    [REPLACEMENT_PARAMS.ARRANGEMENT]: String(arrangementId),
+    [REPLACEMENT_PARAMS.VENUE]: String(venueId),
+  })
+  return `${venueRequestsPath(reference)}?${params.toString()}`
+}
+
 /** The equipment page for one event, by its EVR- reference. */
 export function eventEquipmentPath(reference: string): string {
   return withReference(ROUTES.EVENT_EQUIPMENT, reference)

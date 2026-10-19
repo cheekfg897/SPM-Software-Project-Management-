@@ -1,9 +1,11 @@
 import { useId } from 'react'
 
-import { Badge } from '@/components/ui'
+import { Badge, ButtonLink } from '@/components/ui'
 import { LAYOUT_OPTIONS } from '@/config/roomLayouts'
+import { replacementRequestPath } from '@/config/routes'
 
 import type { MatchedRequirements, VenueMatch } from '../api'
+import { useReplacementSearch } from '../hooks'
 
 function Detail({ term, children }: { term: string; children: string | number }) {
   return (
@@ -32,11 +34,13 @@ function metRequirements(matched: MatchedRequirements): string[] {
 
 /**
  * One venue the search found: its name, capacity and location, its id for the venue request
- * form (SCRUM-42), and what it meets of what was asked for.
+ * form (SCRUM-42), and what it meets of what was asked for. In a search for a replacement it
+ * also leads to requesting it as one (SCRUM-92).
  */
 export function VenueMatchCard({ venue }: { venue: VenueMatch }) {
   const headingId = useId()
   const met = metRequirements(venue.matched_requirements)
+  const replacement = useReplacementSearch()
 
   return (
     <article aria-labelledby={headingId} className="border-line bg-surface rounded-2xl border p-6">
@@ -57,6 +61,15 @@ export function VenueMatchCard({ venue }: { venue: VenueMatch }) {
             </li>
           ))}
         </ul>
+      )}
+      {replacement !== null && (
+        <ButtonLink
+          to={replacementRequestPath(replacement.reference, replacement.arrangementId, venue.id)}
+          aria-label={`Request ${venue.name} as the replacement`}
+          className="mt-5"
+        >
+          Request this venue
+        </ButtonLink>
       )}
     </article>
   )

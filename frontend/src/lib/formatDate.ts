@@ -12,6 +12,13 @@ const DATE_KEY_FORMAT = new Intl.DateTimeFormat('en-CA', {
   month: '2-digit',
   day: '2-digit',
 })
+// en-GB with a 23-hour clock writes times as 13:00, as a time input holds them.
+const TIME_OF_DAY_FORMAT = new Intl.DateTimeFormat('en-GB', {
+  timeZone: BUSINESS_TIME_ZONE,
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+})
 const WEEKDAY_FORMAT = new Intl.DateTimeFormat(DISPLAY_LOCALE, {
   timeZone: BUSINESS_TIME_ZONE,
   weekday: 'long',
@@ -42,6 +49,16 @@ const DATE_TIME_FORMAT = new Intl.DateTimeFormat(DISPLAY_LOCALE, {
 /** The business date a moment falls on, e.g. "2026-10-05". */
 export function businessDate(isoDateTime: string): string {
   return DATE_KEY_FORMAT.format(new Date(isoDateTime))
+}
+
+/** The business time of day a moment falls at, on a 24-hour clock, e.g. "13:00". */
+export function businessTimeOfDay(isoDateTime: string): string {
+  return TIME_OF_DAY_FORMAT.format(new Date(isoDateTime))
+}
+
+/** `2026-11-10T09:30:00+08:00` as a date-time input holds it, in business time: `2026-11-10T09:30`. */
+export function toDateTimeInputValue(isoDateTime: string): string {
+  return `${businessDate(isoDateTime)}T${businessTimeOfDay(isoDateTime)}`
 }
 
 /** e.g. "Monday" */
