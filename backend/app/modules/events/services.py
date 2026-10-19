@@ -27,7 +27,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import ColumnElement
 
-from app.common.clock import as_utc, local_today
+from app.common.clock import as_utc, local_today, to_business_time
 from app.common.database import resolve_session
 from app.common.errors import AppError, ConflictError, NotFoundError, ValidationError
 from app.common.validation import load_or_raise
@@ -2036,7 +2036,12 @@ class EventEdit:
 
 
 def _as_history_value(value: Any) -> HistoryValue:
-    """``value`` in the form the history's JSON ``details`` column can hold."""
+    """``value`` in the form the history's JSON ``details`` column can hold.
+
+    An instant is shown in business time, as the API shows it (ADR-0009).
+    """
+    if isinstance(value, datetime):
+        return to_business_time(value).isoformat()
     if isinstance(value, date | time):
         return value.isoformat()
     return value
@@ -3631,6 +3636,7 @@ REGISTRATION_NOT_CONFIRMED_MESSAGE = "Registration can be enabled only for a con
 CAPACITY_BELOW_REGISTERED_MESSAGE = (
     "Capacity cannot be lower than the {registered} places already taken."
 )
+CUT_OFF_NOT_BEFORE_START_MESSAGE = "The withdrawal cut-off must be before the event starts."
 
 
 class RegistrationNotEnablableError(AppError):
@@ -3645,16 +3651,21 @@ def _settings_after(event_request: EventRequest, data: Mapping[str, Any]) -> dic
 
     A setting left out of ``data`` keeps its current value, except ``enabled`` on an
     event that has never had a capacity: that follows what the organiser asked for
-    (SCRUM-69 AC1, ADR-0043).
+    (SCRUM-69 AC1, ADR-0043). A cut-off sent as ``None`` is cleared (ADR-0086).
     """
     capacity = data.get("registration_capacity", event_request.registration_capacity)
+    cut_off = data.get("withdrawal_cut_off", event_request.withdrawal_cut_off)
     if "registration_enabled" in data:
         enabled = data["registration_enabled"]
     elif event_request.registration_capacity is None:
         enabled = event_request.registration_required
     else:
         enabled = event_request.registration_enabled
-    return {"registration_enabled": enabled, "registration_capacity": capacity}
+    return {
+        "registration_enabled": enabled,
+        "registration_capacity": capacity,
+        "withdrawal_cut_off": cut_off,
+    }
 
 
 def _check_registration_may_be_enabled(
@@ -3701,6 +3712,24 @@ def _check_capacity_covers_registrations(
         raise ValidationError("Invalid request.", details={"registration_capacity": [message]})
 
 
+def _check_cut_off_before_start(event_request: EventRequest, data: Mapping[str, Any]) -> None:
+    """Refuse a withdrawal cut-off sent for the event's start or later (SCRUM-69 AC6).
+
+    Only a cut-off in ``data`` is checked: one already saved is left alone if the event
+    has since moved earlier, and withdrawals then close at the start (ADR-0086).
+
+    Raises:
+        ValidationError: 400 — the cut-off is not before the event starts.
+    """
+    cut_off = data.get("withdrawal_cut_off")
+    if cut_off is None:
+        return
+    if cut_off >= _starts_at(event_request):
+        raise ValidationError(
+            "Invalid request.", details={"withdrawal_cut_off": [CUT_OFF_NOT_BEFORE_START_MESSAGE]}
+        )
+
+
 def update_registration_settings(
     coordinator_id: int | str,
     reference: str,
@@ -3714,17 +3743,19 @@ def update_registration_settings(
     Only the request's assigned coordinator may (ADR-0043). Only what is sent changes;
     when ``registration_enabled`` is left out of an event that has never had a capacity,
     it follows the organiser's ``registration_required`` (AC1). Enabling needs a
-    capacity (AC2) and a confirmed event (AC4), and a capacity can't be lower than the
-    number already registered (AC5). Each setting that changes is written to
-    the event history as a ``field_changed`` entry naming the caller, sharing one
-    ``occurred_at``, in the same commit as the change (AC6). A call that changes
-    nothing writes and commits nothing.
+    capacity (AC2) and a confirmed event (AC4); the capacity is whatever the organiser
+    decided, whatever the venue holds (AC3), but can't be lower than the number
+    already registered (AC5). An optional withdrawal cut-off must be before the event
+    starts (AC6, ADR-0086). Each setting that changes is written to the event history
+    as a ``field_changed`` entry naming the caller, sharing one ``occurred_at``, in
+    the same commit as the change (AC7). A call that changes nothing writes and
+    commits nothing.
 
     Args:
         coordinator_id: The caller's user id, taken from their token.
         reference: The ``EVR-…`` reference; case and surrounding spaces are ignored.
-        payload: Decoded JSON body: ``registration_enabled``, ``registration_capacity``
-            or both.
+        payload: Decoded JSON body: any of ``registration_enabled``,
+            ``registration_capacity`` and ``withdrawal_cut_off``.
         session: Database session; defaults to ``db.session``.
         now: The current instant, timezone-aware; defaults to the real clock.
 
@@ -3734,7 +3765,8 @@ def update_registration_settings(
     Raises:
         NotFoundError: 404 — no such request, a draft, or not the caller's.
         ValidationError: 400 — payload invalid, registration enabled with no capacity,
-            or a capacity below the number registered (details per field).
+            a capacity below the number registered, or a cut-off not before the event
+            starts (details per field).
         RegistrationNotEnablableError: 409 — registration enabled while the event isn't
             confirmed.
     """
@@ -3744,6 +3776,7 @@ def update_registration_settings(
     settings = _settings_after(event_request, data)
     _check_registration_may_be_enabled(event_request, settings)
     _check_capacity_covers_registrations(event_request, settings, sess)
+    _check_cut_off_before_start(event_request, data)
     if now is None:
         now = datetime.now(timezone.utc)
 

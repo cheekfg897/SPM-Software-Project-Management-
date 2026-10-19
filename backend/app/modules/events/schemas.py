@@ -35,7 +35,7 @@ from marshmallow import (
     validates_schema,
 )
 
-from app.common.clock import local_today
+from app.common.clock import as_utc, local_today
 from app.common.fields import BusinessDateTime, PositiveId, PositiveQuantity, WholeNumber
 from app.common.validation import not_blank
 from app.modules.events.models import (
@@ -633,10 +633,12 @@ _INTEGER_COLUMN_MAX = 2_147_483_647
 class UpdateRegistrationSettingsSchema(Schema):
     """Payload for ``PATCH /api/events/requests/<reference>/registration`` (SCRUM-69).
 
-    Both fields are optional: only what is sent changes, and what a missing
+    Every field is optional: only what is sent changes, and what a missing
     ``registration_enabled`` means depends on the event, so the service decides
-    (ADR-0043). Neither may be ``null``: to stop registration, send
-    ``registration_enabled`` as ``false``.
+    (ADR-0043). Neither of the first two may be ``null``: to stop registration, send
+    ``registration_enabled`` as ``false``. ``withdrawal_cut_off`` may: ``null`` clears
+    it, so withdrawals close when the event starts again (AC6, ADR-0086). A cut-off
+    with no offset is business time, as an event's own times are (ADR-0009).
     """
 
     registration_enabled = fields.Boolean(truthy={True}, falsy={False})
@@ -647,19 +649,28 @@ class UpdateRegistrationSettingsSchema(Schema):
             error=f"Capacity must be between 1 and {_INTEGER_COLUMN_MAX}.",
         )
     )
+    withdrawal_cut_off = fields.DateTime(allow_none=True)
+
+    @post_load
+    def _cut_off_to_utc(self, data: dict[str, Any], **_: Any) -> dict[str, Any]:
+        if data.get("withdrawal_cut_off") is not None:
+            data["withdrawal_cut_off"] = as_utc(data["withdrawal_cut_off"])
+        return data
 
 
 class RegistrationSettingsSchema(Schema):
     """An event's registration settings as the API shows them (SCRUM-69, ADR-0043).
 
     ``registration_required`` is what the organiser asked for, shown beside what the
-    coordinator has set.
+    coordinator has set. The withdrawal cut-off is in business time, or ``null`` when
+    none is set (ADR-0086).
     """
 
     reference = fields.String(dump_only=True)
     registration_required = fields.Boolean(dump_only=True)
     registration_enabled = fields.Boolean(dump_only=True)
     registration_capacity = fields.Integer(dump_only=True, allow_none=True)
+    withdrawal_cut_off = BusinessDateTime(dump_only=True, allow_none=True)
 
 
 class EditEquipmentLineSchema(Schema):
