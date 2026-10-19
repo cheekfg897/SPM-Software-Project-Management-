@@ -6,6 +6,7 @@ import {
   addEquipmentLine,
   fetchEventAvailability,
   fetchEventEquipmentLines,
+  recordEquipmentOutcome,
   removeEquipmentLine,
   updateEquipmentLine,
 } from '@/features/equipment/api'
@@ -148,15 +149,15 @@ describe('SCRUM-37 equipment line mock: listing', () => {
   })
 
   it('works the shortfall out from the quantity and what will be provided', async () => {
-    signInAs(MOCK_ACCOUNTS.coordinator)
-    await updateEquipmentLine(MOCK_OPEN_EVENT_REFERENCE, {
-      lineId: MICROPHONE_LINE_ID,
-      body: { quantity: 7 },
+    signInAs(MOCK_ACCOUNTS.technicalSupport)
+    await recordEquipmentOutcome(MOCK_OPEN_EVENT_REFERENCE, {
+      lineId: PROJECTOR_LINE_ID,
+      body: { provided_quantity: 5, note: 'Only five in stock' },
     })
 
-    const [, microphone] = await openEventLines()
+    const [projector] = await openEventLines()
 
-    expect(microphone).toMatchObject({ quantity: 7, provided_quantity: 4, shortfall: 3 })
+    expect(projector).toMatchObject({ quantity: 8, provided_quantity: 5, shortfall: 3 })
   })
 
   it("lets Technical Support read any event's lines, another coordinator's too", async () => {
@@ -532,20 +533,34 @@ describe('SCRUM-37 equipment line mock: changing (AC2, AC3)', () => {
     ).rejects.toMatchObject({ fieldErrors: { equipment_type_id: ['Equipment type not found.'] } })
   })
 
-  it('refuses a quantity below what Technical Support will provide, but not equal to it', async () => {
+  it.each([
+    ['a lower quantity', { quantity: 3 }],
+    ['a higher quantity', { quantity: 6 }],
+    ['another equipment type', { equipment_type_id: LECTERN_TYPE_ID }],
+  ])('reopens a reviewed line for review on %s, clearing its outcome', async (_, body) => {
     signInAs(MOCK_ACCOUNTS.coordinator)
 
-    await expect(change(MICROPHONE_LINE_ID, { quantity: 3 })).rejects.toMatchObject({
-      status: 400,
-      fieldErrors: {
-        quantity: [
-          'Quantity cannot be below the 4 units Technical Support has said they will provide.',
-        ],
-      },
+    await expect(change(MICROPHONE_LINE_ID, body)).resolves.toMatchObject({ status: 'requested' })
+    const [, microphone] = await openEventLines()
+    expect(microphone).toMatchObject({
+      status: 'requested',
+      provided_quantity: null,
+      shortfall: null,
+      outcome_note: null,
+      reviewed_by: null,
+      reviewed_at: null,
     })
-    await expect(change(MICROPHONE_LINE_ID, { quantity: 4 })).resolves.toMatchObject({
-      quantity: 4,
-    })
+  })
+
+  it.each([
+    ['only its notes', { notes: 'Two handheld' }],
+    ['the quantity it already has', { quantity: 4 }],
+  ])("keeps a reviewed line's outcome on %s", async (_, body) => {
+    signInAs(MOCK_ACCOUNTS.coordinator)
+
+    await expect(change(MICROPHONE_LINE_ID, body)).resolves.toMatchObject({ status: 'fulfilled' })
+    const [, microphone] = await openEventLines()
+    expect(microphone).toMatchObject({ provided_quantity: 4 })
   })
 
   it('lets a line with no outcome go down to 1', async () => {

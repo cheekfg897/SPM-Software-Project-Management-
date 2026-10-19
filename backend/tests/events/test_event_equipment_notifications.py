@@ -1,8 +1,10 @@
 """Unit tests for SCRUM-37 "Record what equipment an event needs": the notifications.
 
-Covers AC5: Technical Support Staff are notified when equipment is requested. Every
+Covers AC6: Technical Support Staff are notified when equipment is requested. Every
 Technical Support Staff member gets one notification per added line, and nobody else
-does; editing or removing a line notifies nobody (ADR-0019). Runs against
+does (ADR-0019). Changing what a line asks for, or removing it, is a significant
+change they hear about too (AC4, ``test_equipment_line_reopens_review.py``); changing
+only its notes tells nobody. Runs against
 ``db_session`` with ``saved_users``, so the recipients are found by a real query. A
 failed notification write doesn't fail the saved line (ADR-0015); that test uses
 ``mock_session``.
@@ -24,7 +26,6 @@ from app.modules.equipment.models import EquipmentType
 from app.modules.events.models import EventRequest
 from app.modules.events.services import (
     add_equipment_line,
-    remove_equipment_line,
     update_equipment_line,
 )
 from app.modules.notifications.schemas import NotificationSchema
@@ -59,7 +60,7 @@ def requested_notification(saved_event_request: EventRequest) -> tuple[Any, ...]
 
 
 # --------------------------------------------------------------------------
-# AC5 — every Technical Support Staff member hears about requested equipment
+# AC6 — every Technical Support Staff member hears about requested equipment
 # --------------------------------------------------------------------------
 
 
@@ -121,7 +122,7 @@ def test_a_rejected_line_notifies_nobody(
     assert notifications_of(5) == []
 
 
-def test_editing_or_removing_a_line_notifies_nobody(
+def test_editing_only_a_lines_notes_notifies_nobody(
     saved_users: list[User],
     saved_event_request: EventRequest,
     valid_equipment_line_payload: dict[str, Any],
@@ -130,8 +131,7 @@ def test_editing_or_removing_a_line_notifies_nobody(
 ) -> None:
     line = add_equipment_line(COORDINATOR_ID, REFERENCE, valid_equipment_line_payload)
 
-    update_equipment_line(COORDINATOR_ID, REFERENCE, line.id, {"quantity": 3})
-    remove_equipment_line(COORDINATOR_ID, REFERENCE, line.id)
+    update_equipment_line(COORDINATOR_ID, REFERENCE, line.id, {"notes": "Bring a spare"})
 
     assert notifications_of(5) == [requested_notification]
 

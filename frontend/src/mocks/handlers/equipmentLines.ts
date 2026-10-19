@@ -226,18 +226,21 @@ function typeNotFound() {
   return validationError({ equipment_type_id: ['Equipment type not found.'] })
 }
 
-/** Whether `quantity` is below what Technical Support have said they will provide (SCRUM-48). */
-function isBelowOutcome(line: MockEquipmentLine, quantity: number): boolean {
-  return line.provided_quantity !== null && quantity < line.provided_quantity
+/** Whether `changed` asks for another equipment type or quantity than `line` (`_changes_the_equipment`). */
+function asksForNewEquipment(line: MockEquipmentLine, changed: MockEquipmentLine): boolean {
+  return changed.equipment_type_id !== line.equipment_type_id || changed.quantity !== line.quantity
 }
 
-function belowOutcome(line: MockEquipmentLine) {
-  const provided = String(line.provided_quantity)
-  return validationError({
-    quantity: [
-      `Quantity cannot be below the ${provided} units Technical Support has said they will provide.`,
-    ],
-  })
+/** The line with no outcome, awaiting Technical Support's review again (`_clear_outcome`). */
+function withoutOutcome(line: MockEquipmentLine): MockEquipmentLine {
+  return {
+    ...line,
+    status: 'requested',
+    provided_quantity: null,
+    outcome_note: null,
+    reviewed_by: null,
+    reviewed_at: null,
+  }
 }
 
 /** Whether another of the event's lines already has the type (one line per type, ADR-0019). */
@@ -361,8 +364,8 @@ export const equipmentLineHandlers: RequestHandler[] = [
     return HttpResponse.json(savedLine(line), { status: 201 })
   }),
 
-  // The body, the event, whether it is editable, the line, the type, the quantity against what
-  // will be provided, then a duplicate. Only the fields sent change.
+  // The body, the event, whether it is editable, the line, the type, then a duplicate. Only the
+  // fields sent change, and a new type or quantity reopens the line for review (SCRUM-37 AC4).
   http.patch(LINE_PATH, async ({ request, params }) => {
     const caller = callerOrRefusal(request, LINE_WRITER_ROLES)
     if (caller instanceof Response) {
@@ -388,9 +391,6 @@ export const equipmentLineHandlers: RequestHandler[] = [
     if (body.equipment_type_id !== undefined && !isKnownType(Number(body.equipment_type_id))) {
       return typeNotFound()
     }
-    if (body.quantity !== undefined && isBelowOutcome(line, Number(body.quantity))) {
-      return belowOutcome(line)
-    }
     const changed = { ...line }
     if (body.equipment_type_id !== undefined) {
       changed.equipment_type_id = Number(body.equipment_type_id)
@@ -405,7 +405,7 @@ export const equipmentLineHandlers: RequestHandler[] = [
       return duplicateLine()
     }
 
-    Object.assign(line, changed)
+    Object.assign(line, asksForNewEquipment(line, changed) ? withoutOutcome(changed) : changed)
     return HttpResponse.json(savedLine(line))
   }),
 

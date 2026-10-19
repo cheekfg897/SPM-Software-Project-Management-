@@ -154,11 +154,10 @@ describe('SCRUM-37 equipment line hooks', () => {
 
   type LineHooks = ReturnType<typeof useLineHooks>
 
-  // A second Projector line is a conflict, the microphones can't go below the four that will be
-  // provided, and there is no line 999.
+  // A second Projector line is a conflict, no line can ask for none, and there is no line 999.
   it.each([
     ['add', (hooks: LineHooks) => hooks.add.mutate({ equipment_type_id: 1, quantity: 1 })],
-    ['update', (hooks: LineHooks) => hooks.update.mutate({ lineId: 42, body: { quantity: 3 } })],
+    ['update', (hooks: LineHooks) => hooks.update.mutate({ lineId: 42, body: { quantity: 0 } })],
     ['remove', (hooks: LineHooks) => hooks.remove.mutate(999)],
   ] as const)(
     'reads the lines again after a refused %s, to show what the backend has now',

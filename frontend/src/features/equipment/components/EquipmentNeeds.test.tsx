@@ -338,20 +338,16 @@ describe('SCRUM-37 equipment page: changing a line (AC2)', () => {
     expect(await sentBody(requests, 'PATCH')).toEqual({})
   })
 
-  it("shows the backend's message for a quantity below what will be provided", async () => {
+  it('shows a reviewed line awaiting Technical Support again once its quantity changes', async () => {
     const { user } = await openAsCoordinator()
     const form = await startChanging(user, 'Microphone')
+    expect(statusOf('Microphone')).toBe('Fulfilled')
 
     await user.clear(within(form).getByLabelText('Quantity'))
     await user.type(within(form).getByLabelText('Quantity'), '3')
     await user.click(within(form).getByRole('button', { name: 'Save changes' }))
 
-    expect(
-      await within(form).findByText(
-        'Quantity cannot be below the 4 units Technical Support has said they will provide.',
-      ),
-    ).toBeInTheDocument()
-    expect(within(form).getByLabelText('Quantity')).toBeInvalid()
+    await waitFor(() => expect(statusOf('Microphone')).toBe('Awaiting Technical Support'))
   })
 
   it('shows a refusal that is not about a field as an alert, and stays open', async () => {
