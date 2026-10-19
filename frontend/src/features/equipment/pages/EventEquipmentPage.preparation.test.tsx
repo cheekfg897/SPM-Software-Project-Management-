@@ -143,6 +143,7 @@ describe("SCRUM-85 the coordinator sees each reservation's preparation", () => {
       'Quantity',
       'Reserved by',
       'When',
+      'Attention',
       'Preparation',
       'Preparation notes',
     ])

@@ -16,6 +16,30 @@ import { reserveProjectors } from '../test/reserveProjectors'
 const TECHNICAL_SUPPORT = mockSessionFor(MOCK_ACCOUNTS.technicalSupport)
 const COORDINATOR = mockSessionFor(MOCK_ACCOUNTS.coordinator)
 const OPEN_PAGE = eventEquipmentPath(MOCK_OPEN_EVENT_REFERENCE)
+const RESERVATIONS_PATH = `/api/equipment/events/${MOCK_OPEN_EVENT_REFERENCE}/reservations`
+
+/** A reservation as the backend lists it: two projectors, with `changes` on top. */
+function reservation(changes: Record<string, unknown>) {
+  return {
+    id: 1,
+    equipment_type_id: 1,
+    equipment_type_name: 'Projector',
+    quantity: 2,
+    starts_at: '2026-10-12T19:30:00+08:00',
+    ends_at: '2026-10-12T22:00:00+08:00',
+    reserved_by: 'Tariq Hassan',
+    created_at: '2026-10-10T09:00:00+08:00',
+    needs_attention: false,
+    preparation_status: 'not_started',
+    preparation_notes: null,
+    ...changes,
+  }
+}
+
+/** The backend lists these reservations for the open event. */
+function listReservations(reservations: ReturnType<typeof reservation>[]) {
+  server.use(http.get(RESERVATIONS_PATH, () => HttpResponse.json(reservations)))
+}
 
 /** The Projector row's cell texts: name, available, requested, shortfall. */
 function projectorCells(): (string | null)[] {
@@ -54,7 +78,7 @@ describe('SCRUM-45 equipment page: what is free for the event', () => {
 
   it('shows the backend message when only the reservations cannot be read', async () => {
     server.use(
-      http.get(`/api/equipment/events/${MOCK_OPEN_EVENT_REFERENCE}/reservations`, () =>
+      http.get(RESERVATIONS_PATH, () =>
         HttpResponse.json(
           { error: 'internal_error', message: 'Reservations are unavailable.' },
           { status: 500 },
@@ -76,24 +100,7 @@ describe('SCRUM-45 equipment page: what is free for the event', () => {
   })
 
   it('names a reserver whose account is gone as unknown', async () => {
-    server.use(
-      http.get(`/api/equipment/events/${MOCK_OPEN_EVENT_REFERENCE}/reservations`, () =>
-        HttpResponse.json([
-          {
-            id: 1,
-            equipment_type_id: 1,
-            equipment_type_name: 'Projector',
-            quantity: 2,
-            starts_at: '2026-10-12T19:30:00+08:00',
-            ends_at: '2026-10-12T22:00:00+08:00',
-            reserved_by: null,
-            created_at: '2026-10-10T09:00:00+08:00',
-            preparation_status: 'not_started',
-            preparation_notes: null,
-          },
-        ]),
-      ),
-    )
+    listReservations([reservation({ reserved_by: null })])
     renderApp(OPEN_PAGE, { session: COORDINATOR })
 
     const table = await screen.findByRole('table', { name: 'Reserved equipment' })
@@ -174,5 +181,54 @@ describe('SCRUM-45 equipment page: who may open it', () => {
     renderApp(eventEquipmentPath(MOCK_CLOSED_EVENT_REFERENCE), { session: COORDINATOR })
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Event request not found.')
+  })
+})
+
+describe('SCRUM-47 equipment page: reservations left short', () => {
+  const SHORT = 'Needs attention: units of this type have gone out of service.'
+
+  /** Each reservation row's equipment and what its Attention cell says. */
+  async function attentionByEquipment() {
+    const table = await screen.findByRole('table', { name: 'Reserved equipment' })
+    const headers = within(table)
+      .getAllByRole('columnheader')
+      .map((header) => header.textContent)
+    const attention = headers.indexOf('Attention')
+    return within(table)
+      .getAllByRole('row')
+      .slice(1)
+      .map((row) => {
+        const cells = within(row).getAllByRole('cell')
+        return [cells[0]?.textContent, cells[attention]?.textContent]
+      })
+  }
+
+  it.each([
+    ['Technical Support', TECHNICAL_SUPPORT],
+    ['the coordinator', COORDINATOR],
+  ])(
+    'marks a flagged reservation for %s, and says so above the list (AC3)',
+    async (_who, session) => {
+      listReservations([
+        reservation({ id: 1, needs_attention: true }),
+        reservation({ id: 2, equipment_type_id: 2, equipment_type_name: 'Microphone' }),
+      ])
+      renderApp(OPEN_PAGE, { session })
+
+      expect(await attentionByEquipment()).toEqual([
+        ['Projector', SHORT],
+        ['Microphone', 'Not needed'],
+      ])
+      const reserved = screen.getByRole('region', { name: 'Reserved for this event' })
+      expect(within(reserved).getByText(/Some reserved equipment is short/)).toBeInTheDocument()
+    },
+  )
+
+  it('says nothing is short while no reservation is flagged', async () => {
+    listReservations([reservation({})])
+    renderApp(OPEN_PAGE, { session: COORDINATOR })
+
+    expect(await attentionByEquipment()).toEqual([['Projector', 'Not needed']])
+    expect(screen.queryByText(/Some reserved equipment is short/)).not.toBeInTheDocument()
   })
 })
