@@ -18,7 +18,8 @@ export interface MockArrangement {
  * keep in their own copies of events (ADR-0075): its venue arrangements, in period order, the
  * ids of its equipment requests Technical Support hasn't answered, whether the Safety Officer
  * has approved it (`has_safety_approval`), its registration settings as the backend stores them
- * (ADR-0043) and how many attendees have registered.
+ * (ADR-0043; the withdrawal cut-off as the backend shows it, in business time, ADR-0086) and how
+ * many attendees have registered.
  */
 export interface MockPlanning {
   arrangements: readonly MockArrangement[]
@@ -26,12 +27,13 @@ export interface MockPlanning {
   isSafetyApproved: boolean
   registration_enabled: boolean
   registration_capacity: number | null
+  withdrawal_cut_off: string | null
   registeredCount: number
 }
 
 /**
  * An event the mock holds nothing for: no venue arranged, no equipment requested, no safety
- * approval, registration closed with no capacity and nobody registered.
+ * approval, registration closed with no capacity or cut-off, and nobody registered.
  */
 export const NOTHING_PLANNED: MockPlanning = {
   arrangements: [],
@@ -39,6 +41,7 @@ export const NOTHING_PLANNED: MockPlanning = {
   isSafetyApproved: false,
   registration_enabled: false,
   registration_capacity: null,
+  withdrawal_cut_off: null,
   registeredCount: 0,
 }
 

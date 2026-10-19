@@ -335,19 +335,26 @@ export function completeEvent(reference: string): Promise<EventRequest> {
 
 /**
  * An event's registration settings, as the backend answers a change: what the organiser asked
- * for beside what the coordinator set (SCRUM-69, ADR-0043). The capacity is null until set.
+ * for beside what the coordinator set (SCRUM-69, ADR-0043). The capacity is null until set; the
+ * withdrawal cut-off is in business time, or null when withdrawals close as the event starts
+ * (AC6, ADR-0086).
  */
 export interface RegistrationSettings {
   reference: string
   registration_required: boolean
   registration_enabled: boolean
   registration_capacity: number | null
+  withdrawal_cut_off: string | null
 }
 
-/** A change to the settings: only what is sent changes, and a capacity can't be emptied. */
+/**
+ * A change to the settings: only what is sent changes. A capacity can't be emptied; a cut-off
+ * sent as null is cleared.
+ */
 export interface RegistrationChanges {
   registration_enabled?: boolean
   registration_capacity?: number
+  withdrawal_cut_off?: string | null
 }
 
 /** Open or close registration for a confirmed event, and set its capacity (SCRUM-69). */
