@@ -12,6 +12,7 @@ import type { MockAccount } from '../fixtures/accounts'
 import { errorResponse, notAllowed, notAuthenticated, validationError } from '../responses'
 
 import { accountForRequest } from './auth'
+import { hasActiveArrangement } from './booking'
 import { MOCK_NOW } from './catalogueFixtures'
 import {
   DETAIL_FIELDS,
@@ -275,8 +276,9 @@ export async function objectBodyOrRefusal(request: Request) {
 
 /**
  * Whether a decision may be made in the request's state: not once the event is past its
- * decision, and not a new one once it has an equipment request or a venue booking request that
- * hasn't been withdrawn or released, which the fixture's flag stands for (SCRUM-31 AC7, ADR-0084).
+ * decision, and not a new one once it has an equipment request (the fixture's flag) or a venue
+ * booking request that hasn't been withdrawn or released (the booking mock's own store)
+ * (SCRUM-31 AC7, ADR-0028, ADR-0084).
  */
 function undecidableRefusal(stored: MockEventRequest) {
   const { status } = stored.request
@@ -284,7 +286,9 @@ function undecidableRefusal(stored: MockEventRequest) {
   if (!isDecided && !AWAITING_DECISION_STATUSES.includes(status)) {
     return errorResponse(409, 'request_not_decidable', NOT_DECIDABLE_MESSAGE)
   }
-  if (isDecided && stored.hasEquipmentRequest === true) {
+  const hasArrangements =
+    stored.hasEquipmentRequest === true || hasActiveArrangement(stored.request.reference)
+  if (isDecided && hasArrangements) {
     return errorResponse(409, 'decision_locked', DECISION_LOCKED_MESSAGE)
   }
   return null

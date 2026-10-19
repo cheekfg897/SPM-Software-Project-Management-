@@ -24,7 +24,7 @@ Both rows stay in the table only so that the event's history and SCRUM-75's venu
 ## Consequences
 - A coordinator who has raised a venue booking request can't reject the event by changing the decision. To undo the planning, they withdraw the arrangement first, as they would remove the equipment.
 - Checking a decision now runs one more query: a count of the event's active arrangements, made only when the event has no equipment request.
-- The frontend's mock refuses a locked decision from a flag on its fixture, so it needed only its comment updated. The response is unchanged.
+- The frontend's mock refuses a locked decision from a flag on its fixture for equipment, and asks the booking mock's own store for venue booking requests, leaving out the same two retired statuses (`frontend/src/mocks/handlers/eventReview.test.ts`). The response is unchanged.
 - Tests: `tests/events/test_change_decision.py` (marker `scrum_31`), parametrised over every active and every retired status, so a status added to the enum later is checked too.
 
 ## Revisit when
