@@ -198,8 +198,8 @@ def make_open_event(
     """Factory for saved events that are open for registration unless told otherwise.
 
     By default the event is confirmed, has registration enabled for 100 places, and runs
-    on Tuesday 20 October 2026 from 19:30 to 22:00 (business time), after ``now``. Each
-    one gets its own reference, so a test can save several.
+    on Tuesday 20 October 2026 from 19:30 to 22:00 (business time), after ``now``, with
+    no withdrawal cut-off. Each one gets its own reference, so a test can save several.
     """
     counter = {"made": 0}
 
@@ -213,6 +213,7 @@ def make_open_event(
         day: date = date(2026, 10, 20),
         start: time = time(19, 30),
         end: time = time(22, 0),
+        cut_off: datetime | None = None,
     ) -> EventRequest:
         counter["made"] += 1
         event = make_event_request(
@@ -227,6 +228,7 @@ def make_open_event(
         event.end_time = end
         event.registration_enabled = enabled
         event.registration_capacity = capacity
+        event.withdrawal_cut_off = cut_off
         save(event)
         return event
 
