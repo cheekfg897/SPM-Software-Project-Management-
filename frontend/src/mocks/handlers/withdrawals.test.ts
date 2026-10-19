@@ -104,6 +104,7 @@ describe('SCRUM-53 catalogue mock: withdrawing', () => {
     })
   })
 
+  // Sunrise Yoga's cut-off falls after its start, so the start closes withdrawals (ADR-0086).
   it('refuses once the event has started, giving when withdrawals closed (409 withdrawal_closed)', async () => {
     const error = await refusalOf(withdrawFromEvent(SUNRISE_YOGA.id))
 
@@ -112,6 +113,18 @@ describe('SCRUM-53 catalogue mock: withdrawing', () => {
       code: 'withdrawal_closed',
       message: 'Withdrawals for this event have closed.',
       details: { withdrawal_closed_at: SUNRISE_YOGA.starts_at },
+    })
+  })
+
+  it('refuses once the cut-off the coordinator set has passed, before the start, giving the cut-off (SCRUM-53 AC3, ADR-0086)', async () => {
+    await registerForEvent(DATA_VIZ.id)
+
+    const error = await refusalOf(withdrawFromEvent(DATA_VIZ.id))
+
+    expect(error).toMatchObject({
+      status: 409,
+      code: 'withdrawal_closed',
+      details: { withdrawal_closed_at: '2026-10-05T09:00:00+08:00' },
     })
   })
 
