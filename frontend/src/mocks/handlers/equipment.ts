@@ -1,8 +1,6 @@
 import { http, HttpResponse } from 'msw'
 import type { RequestHandler } from 'msw'
 
-import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
-import type { EventRequestStatus } from '@/config/eventStatus'
 import { EQUIPMENT_READER_ROLES, ROLE } from '@/config/roles'
 import type { PreparationStatus } from '@/config/preparation'
 import { isRecord } from '@/lib/isRecord'
@@ -11,6 +9,7 @@ import { errorResponse, readBody, validationError } from '../responses'
 
 import {
   callerOrRefusal,
+  EQUIPMENT_NOT_NEEDED_STATUSES,
   eventForReader,
   eventForStaff,
   eventNotFound,
@@ -43,13 +42,6 @@ import {
  */
 
 const EVENT_PATH = '/api/equipment/events/:reference'
-
-/** Events nothing can be reserved for any more (EQUIPMENT_NOT_NEEDED_STATUSES). */
-const RESERVATIONS_CLOSED_STATUSES: readonly EventRequestStatus[] = [
-  EVENT_REQUEST_STATUS.COMPLETED,
-  EVENT_REQUEST_STATUS.CANCELLED,
-  EVENT_REQUEST_STATUS.REJECTED,
-]
 
 interface MockReservation {
   id: number
@@ -169,7 +161,7 @@ export const equipmentHandlers: RequestHandler[] = [
     if (event === undefined) {
       return eventNotFound()
     }
-    if (RESERVATIONS_CLOSED_STATUSES.includes(event.status)) {
+    if (EQUIPMENT_NOT_NEEDED_STATUSES.includes(event.status)) {
       return errorResponse(
         409,
         'equipment_not_reservable',
