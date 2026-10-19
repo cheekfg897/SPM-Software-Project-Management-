@@ -5,11 +5,15 @@ import type { MockCoordinator, MockEventRequest } from './eventRequestFixtures'
 
 /** A venue arrangement's status, as the venue module names it (BookingRequestStatus). */
 export type MockArrangementStatus =
-  'pending' | 'withdrawn' | 'approved' | 'rejected' | 'conflicting'
+  'pending' | 'withdrawn' | 'approved' | 'rejected' | 'conflicting' | 'released'
 
-/** One of the event's venue arrangements: all the gates read is its id and status. */
+/**
+ * One of the event's venue arrangements: the gates read its id and status, and a withdrawal's
+ * history entry names its venue.
+ */
 export interface MockArrangement {
   id: number
+  venueId: number
   status: MockArrangementStatus
 }
 
@@ -94,9 +98,9 @@ export const PLANNING_EVENT_REQUESTS: readonly MockEventRequest[] = [
     planning: {
       ...NOTHING_PLANNED,
       arrangements: [
-        { id: 41, status: 'approved' },
-        { id: 40, status: 'withdrawn' },
-        { id: 42, status: 'pending' },
+        { id: 41, venueId: 2, status: 'approved' },
+        { id: 40, venueId: 3, status: 'withdrawn' },
+        { id: 42, venueId: 3, status: 'pending' },
       ],
       equipmentWithoutOutcome: [43],
     },
@@ -116,8 +120,8 @@ export const PLANNING_EVENT_REQUESTS: readonly MockEventRequest[] = [
     planning: {
       ...NOTHING_PLANNED,
       arrangements: [
-        { id: 44, status: 'withdrawn' },
-        { id: 45, status: 'approved' },
+        { id: 44, venueId: 2, status: 'withdrawn' },
+        { id: 45, venueId: 3, status: 'approved' },
       ],
       equipmentWithoutOutcome: [],
     },
@@ -135,7 +139,7 @@ export const PLANNING_EVENT_REQUESTS: readonly MockEventRequest[] = [
     ...HANAS_EVENT,
     planning: {
       ...NOTHING_PLANNED,
-      arrangements: [{ id: 46, status: 'approved' }],
+      arrangements: [{ id: 46, venueId: 2, status: 'approved' }],
       isSafetyApproved: true,
     },
     request: {
@@ -153,8 +157,8 @@ export const PLANNING_EVENT_REQUESTS: readonly MockEventRequest[] = [
     planning: {
       ...NOTHING_PLANNED,
       arrangements: [
-        { id: 47, status: 'approved' },
-        { id: 48, status: 'rejected' },
+        { id: 47, venueId: 2, status: 'approved' },
+        { id: 48, venueId: 3, status: 'rejected' },
       ],
       equipmentWithoutOutcome: [49],
     },
