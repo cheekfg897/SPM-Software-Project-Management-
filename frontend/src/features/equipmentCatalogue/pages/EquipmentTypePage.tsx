@@ -6,10 +6,14 @@ import { editEquipmentTypePath, ROUTES } from '@/config/routes'
 
 import { EquipmentTypeDetails } from '../components/EquipmentTypeDetails'
 import { EquipmentTypeLoader } from '../components/EquipmentTypeLoader'
+import { OutOfServiceSection } from '../components/OutOfServiceSection'
 import { useEquipmentType } from '../hooks'
 import { useMayEditCatalogue } from '../useMayEditCatalogue'
 
-/** One equipment type's page, under its name (SCRUM-27 AC2). Technical Support can edit it (AC1, AC3). */
+/**
+ * One equipment type's page, under its name (SCRUM-27 AC2). Technical Support can edit it (AC1,
+ * AC3), and take its units out of service and back (SCRUM-47): the same people may do both.
+ */
 export function EquipmentTypePage() {
   // The route always supplies it; useParams just types it as possibly missing.
   const { equipmentTypeId = '' } = useParams()
@@ -25,9 +29,12 @@ export function EquipmentTypePage() {
             <>
               <EquipmentTypeDetails type={loaded} />
               {mayEdit && (
-                <ButtonLink to={editEquipmentTypePath(loaded.id)} variant="secondary">
-                  Edit
-                </ButtonLink>
+                <>
+                  <ButtonLink to={editEquipmentTypePath(loaded.id)} variant="secondary">
+                    Edit
+                  </ButtonLink>
+                  <OutOfServiceSection type={loaded} />
+                </>
               )}
             </>
           )}
