@@ -247,6 +247,19 @@ function requestsOf(event: MockBookingEvent): BookingRequest[] {
   return inPeriodOrder(requests.filter((existing) => existing.event_id === event.id))
 }
 
+/**
+ * Whether the event has a venue booking request that is still one of its arrangements: any
+ * status but withdrawn or released, as the backend's count_active_arrangements counts them. It
+ * locks the event's decision (SCRUM-31 AC7, ADR-0084).
+ */
+export function hasActiveArrangement(reference: string): boolean {
+  const event = events.find((known) => known.reference === reference)
+  if (event === undefined) {
+    return false
+  }
+  return requestsOf(event).some((existing) => !RETIRED_STATUSES.includes(existing.status))
+}
+
 /** One of the event's own arrangements; an id on another event is as missing as an unknown one. */
 function findArrangement(event: MockBookingEvent, arrangementId: unknown) {
   return requests.find(

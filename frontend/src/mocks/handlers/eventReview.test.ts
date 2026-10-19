@@ -1,6 +1,11 @@
 import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
 import { ROLE } from '@/config/roles'
 import {
+  decideBookingRequest,
+  raiseBookingRequest,
+  withdrawArrangement,
+} from '@/features/booking/api'
+import {
   decideEventRequest,
   fetchAssignedEventRequests,
   fetchEventRequest,
@@ -11,6 +16,7 @@ import { refusal } from '@/test/refusal'
 
 import { MOCK_ACCOUNTS } from '../fixtures/accounts'
 
+import { MOCK_BOOKING_VENUES } from './bookingFixtures'
 import { MOCK_NOW } from './catalogueFixtures'
 import {
   accountsOfEveryRoleBut,
@@ -266,6 +272,51 @@ describe('SCRUM-31 AC4, AC6 mock: deciding', () => {
       )
     },
   )
+})
+
+describe('SCRUM-31 AC7 mock: a venue booking request locks the decision (ADR-0084)', () => {
+  /** Chloe's approved event, which the booking mock lets her raise venue requests for. */
+  const BOOKABLE = 'EVR-BOOK0101'
+  const CHANGE = { outcome: 'rejected', reason: 'The venue fell through.' } as const
+
+  /** Chloe raises a venue booking request for BOOKABLE; it starts Pending. */
+  async function raiseVenueRequest() {
+    const raised = await raiseBookingRequest(BOOKABLE, {
+      venue_id: MOCK_BOOKING_VENUES.roomy.id,
+      starts_at: '2026-11-10T09:00:00+08:00',
+      ends_at: '2026-11-10T12:00:00+08:00',
+      purpose: 'Keynote',
+    })
+    return raised.id
+  }
+
+  beforeEach(() => signInAs(CHLOE))
+
+  it('refuses a new decision once the event has a pending venue booking request', async () => {
+    await raiseVenueRequest()
+
+    expect(await refusal(decideEventRequest(BOOKABLE, CHANGE))).toMatchObject(LOCKED)
+    expect(await statusOf(BOOKABLE)).toBe('approved')
+  })
+
+  it('still refuses it once Venue Staff have rejected the venue booking request', async () => {
+    const requestId = await raiseVenueRequest()
+    signInAs(MOCK_ACCOUNTS.venueStaff)
+    await decideBookingRequest(requestId, { outcome: 'rejected', reason: 'Hall closed.' })
+    signInAs(CHLOE)
+
+    expect(await refusal(decideEventRequest(BOOKABLE, CHANGE))).toMatchObject(LOCKED)
+    expect(await statusOf(BOOKABLE)).toBe('approved')
+  })
+
+  it('lets the decision change again once the venue booking request is withdrawn', async () => {
+    const requestId = await raiseVenueRequest()
+    await withdrawArrangement(BOOKABLE, requestId)
+
+    await decideEventRequest(BOOKABLE, CHANGE)
+
+    expect(await statusOf(BOOKABLE)).toBe('rejected')
+  })
 })
 
 describe('SCRUM-32 AC3 mock: deciding while a question is outstanding', () => {
