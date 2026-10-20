@@ -158,6 +158,17 @@ function clashingApproval(waiting: BookingRequest): BookingRequest | undefined {
   )
 }
 
+/**
+ * Move a request to `status`. A change's flags count only while it still holds or asks for its
+ * venue, as the backend's is_flagged_after_change says; once it doesn't, they stay as the record of
+ * why (SCRUM-33 AC6, ADR-0094).
+ */
+function moveTo(request: BookingRequest, status: BookingRequestStatus): void {
+  request.status = status
+  request.flagged_after_change =
+    FLAGGABLE_STATUSES.includes(status) && request.reassessment_flags.length > 0
+}
+
 /** The backend marks each Pending request that clashes with a newly approved one Conflicting (SCRUM-44). */
 function markClashingRequestsConflicting(approved: BookingRequest): void {
   for (const existing of requests) {
@@ -166,7 +177,7 @@ function markClashingRequestsConflicting(approved: BookingRequest): void {
       existing.id !== approved.id &&
       overlapsAtSameVenue(existing, approved)
     ) {
-      existing.status = 'conflicting'
+      moveTo(existing, 'conflicting')
     }
   }
 }
@@ -594,7 +605,7 @@ export const bookingHandlers: RequestHandler[] = [
       }
     }
 
-    waiting.status = body.outcome
+    moveTo(waiting, body.outcome)
     waiting.decision_reason = reason
     // The backend shows an expiry only while a request is On Hold or Expired.
     waiting.hold_expires_at = null
@@ -621,7 +632,7 @@ export const bookingHandlers: RequestHandler[] = [
       return withdrawRefusal(arrangement)
     }
 
-    arrangement.status = 'withdrawn'
+    moveTo(arrangement, 'withdrawn')
     return HttpResponse.json(arrangement)
   }),
 
@@ -642,7 +653,7 @@ export const bookingHandlers: RequestHandler[] = [
     }
 
     for (const arrangement of active) {
-      arrangement.status = 'withdrawn'
+      moveTo(arrangement, 'withdrawn')
     }
     return HttpResponse.json(active)
   }),
@@ -715,7 +726,7 @@ export const bookingHandlers: RequestHandler[] = [
       return errorResponse(409, 'conflict', clashMessage(clash.id))
     }
 
-    waiting.status = 'on_hold'
+    moveTo(waiting, 'on_hold')
     waiting.hold_expires_at = expiresAt
     return HttpResponse.json(waiting)
   }),
