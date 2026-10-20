@@ -8,6 +8,7 @@ import {
   MOCK_BOOKING_EVENTS,
   MOCK_BOOKING_VENUES,
 } from '@/mocks/handlers/bookingFixtures'
+import { errorResponse, validationError } from '@/mocks/responses'
 import { server } from '@/mocks/server'
 import { recordRequests } from '@/test/recordRequests'
 import { renderApp } from '@/test/render'
@@ -255,6 +256,27 @@ describe('SCRUM-92 raising a replacement for a flagged arrangement (AC6)', () =>
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Only an approved event or one in Safety Review can replace a venue; this one is confirmed.',
     )
+  })
+
+  it.each([
+    [
+      'its 400 on the arrangement replaced, beside the replacement',
+      () => validationError({ replaces_request_id: ['Arrangement 9104 was replaced on 12 Nov.'] }),
+      'Arrangement 9104 was replaced on 12 Nov.',
+    ],
+    [
+      'its 409 on the event',
+      () => errorResponse(409, 'conflict', 'The event was cancelled at 3:12 pm.'),
+      'The event was cancelled at 3:12 pm.',
+    ],
+  ])('shows the backend’s own words for %s', async (_case, respond, message) => {
+    server.use(http.post(BOOKING_URL, respond))
+    const view = openReplacing(BOOKED_EVENT.reference, bookedHall.id)
+    await screen.findByText(REPLACEMENT_NOTE, { exact: false })
+
+    await view.user.click(requestButton(view))
+
+    expect(await screen.findByText(message)).toBeInTheDocument()
   })
 
   it('raises an ordinary request once the coordinator stops replacing', async () => {
