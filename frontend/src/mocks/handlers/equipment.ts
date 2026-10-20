@@ -14,20 +14,13 @@ import {
   eventForReader,
   eventForStaff,
   eventNotFound,
+  hasSafetyApproval,
   resetMockEquipmentEvents,
 } from './equipmentAccess'
-import {
-  MOCK_EQUIPMENT_TYPES,
-  MOCK_EVENT_PERIOD,
-  MOCK_SAFETY_APPROVED_EVENT_REFERENCES,
-} from './equipmentFixtures'
+import { MOCK_EQUIPMENT_TYPES, MOCK_EVENT_PERIOD } from './equipmentFixtures'
 import type { MockEquipmentType } from './equipmentFixtures'
 import { equipmentLineHandlers, requestedQuantity, resetMockEquipmentLines } from './equipmentLines'
-import {
-  equipmentOutOfServiceHandlers,
-  outOfServiceQuantity,
-  resetMockOutOfService,
-} from './equipmentOutOfService'
+import { outOfServiceQuantity, resetMockOutOfService } from './equipmentOutOfServiceEntries'
 import {
   EQUIPMENT_TYPE_ID_RANGE_MESSAGE,
   MISSING_MESSAGE,
@@ -43,9 +36,9 @@ import {
 /**
  * The equipment endpoints, as backend/app/modules/equipment/routes.py answers them (SCRUM-45
  * availability, SCRUM-46 reservations, SCRUM-85 preparation), and the events module's equipment
- * lines (SCRUM-37, equipmentLines.ts) and units out of service (SCRUM-47,
- * equipmentOutOfService.ts). The catalogue's types are answered in equipmentCatalogue.ts.
- * Reservations live in memory until resetMockEquipment.
+ * lines (SCRUM-37, equipmentLines.ts). Units out of service (SCRUM-47) are answered in
+ * equipmentOutOfService.ts and count here; the catalogue's types are answered in
+ * equipmentCatalogue.ts. Reservations live in memory until resetMockEquipment.
  */
 
 const EVENT_PATH = '/api/equipment/events/:reference'
@@ -116,15 +109,23 @@ function availableQuantity(equipmentTypeId: number, free: number): number {
   return Math.max(unreservedQuantity(equipmentTypeId, free), 0)
 }
 
-/** The types with fewer units in service than are reserved for the period. */
-function shortTypeIds(): Set<number> {
-  const short = new Set<number>()
-  for (const type of MOCK_EQUIPMENT_TYPES) {
-    if (unreservedQuantity(type.id, type.free) < 0) {
-      short.add(type.id)
+/** Whether the type has fewer units in service than are reserved for the period (SCRUM-47). */
+export function isTypeShort(equipmentTypeId: number): boolean {
+  const type = MOCK_EQUIPMENT_TYPES.find((candidate) => candidate.id === equipmentTypeId)
+  return type !== undefined && unreservedQuantity(type.id, type.free) < 0
+}
+
+/** The events holding a reservation of the type, by reference, each once. */
+export function eventsReservingType(equipmentTypeId: number): string[] {
+  const references: string[] = []
+  for (const reservation of reservations) {
+    const reference = reservationEvents.get(reservation.id)
+    const reservesType = reservation.equipment_type_id === equipmentTypeId
+    if (reservesType && reference !== undefined && !references.includes(reference)) {
+      references.push(reference)
     }
   }
-  return short
+  return references
 }
 
 /**
@@ -135,7 +136,7 @@ function shortTypeIds(): Set<number> {
  * here gives the same answer.
  */
 function asShown(reservation: MockReservation) {
-  return { ...reservation, needs_attention: shortTypeIds().has(reservation.equipment_type_id) }
+  return { ...reservation, needs_attention: isTypeShort(reservation.equipment_type_id) }
 }
 
 /** One row per equipment type, by name, against what this event's lines ask for. */
@@ -268,7 +269,7 @@ export const equipmentHandlers: RequestHandler[] = [
         return errorResponse(404, 'not_found', 'Equipment reservation not found.')
       }
       const eventReference = reservationEvents.get(reservation.id) ?? ''
-      if (!MOCK_SAFETY_APPROVED_EVENT_REFERENCES.includes(eventReference)) {
+      if (!hasSafetyApproval(eventReference)) {
         return errorResponse(409, 'conflict', PREPARATION_NEEDS_SAFETY_APPROVAL_MESSAGE)
       }
 
@@ -280,5 +281,4 @@ export const equipmentHandlers: RequestHandler[] = [
   ),
 
   ...equipmentLineHandlers,
-  ...equipmentOutOfServiceHandlers,
 ]
