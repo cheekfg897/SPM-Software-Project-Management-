@@ -28,6 +28,7 @@ import { UnassignedQueuePage } from '@/features/lead/pages/UnassignedQueuePage'
 import { SafetyReviewPage } from '@/features/safety/pages/SafetyReviewPage'
 import { VenueSearchPage } from '@/features/venueSearch/pages/VenueSearchPage'
 import { EquipmentEventRequests } from '@/features/eventRequests/components/EquipmentEventRequests'
+import { VenueBookingEventRequests } from '@/features/eventRequests/components/VenueBookingEventRequests'
 import { EquipmentQueue } from '@/features/techSupport/components/EquipmentQueue'
 import { OversightPage } from '@/features/lead/pages/OversightPage'
 import { OrganisationsPage } from '@/features/organisations/pages/OrganisationsPage'
@@ -118,6 +119,7 @@ export const appRoutes: RouteObject[] = [
               <AssignedEventRequests />
               <EquipmentQueue />
               <EquipmentEventRequests />
+              <VenueBookingEventRequests />
             </StaffHomePage>
           </RequireRole>
         ),

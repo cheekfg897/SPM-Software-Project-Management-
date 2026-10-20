@@ -14,6 +14,7 @@ import {
   fetchEventHistory,
   fetchEventRequest,
   fetchEventRequestsWithEquipment,
+  fetchEventRequestsWithVenueBookings,
   fetchMyEventRequests,
   fetchRegistrants,
   registrantsKey,
@@ -26,6 +27,7 @@ import {
   updateDraftEventRequest,
   updateRegistrationSettings,
   WITH_EQUIPMENT_KEY,
+  WITH_VENUE_BOOKINGS_KEY,
 } from './api'
 import type {
   DecisionChoice,
@@ -214,5 +216,13 @@ export function useEventRequestsWithEquipment() {
   return useQuery({
     queryKey: WITH_EQUIPMENT_KEY,
     queryFn: fetchEventRequestsWithEquipment,
+  })
+}
+
+/** The events with a venue booking request or booking, for Venue Staff's Staff home (AC4). */
+export function useEventRequestsWithVenueBookings() {
+  return useQuery({
+    queryKey: WITH_VENUE_BOOKINGS_KEY,
+    queryFn: fetchEventRequestsWithVenueBookings,
   })
 }
