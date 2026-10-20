@@ -9,14 +9,22 @@ import { fetchEquipmentTypes } from '@/features/equipmentCatalogue/api'
 import { apiRequest } from '@/lib/api'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
 
-import { refusal, signInAs, signInAsNewAttendee, staffAccount } from './backend'
+import { refusal, signInAs, signInAsNewAttendee, staffAccount, uniqueEmail } from './backend'
+import {
+  approvedEvent,
+  coordinatorPosts,
+  LEAD,
+  SAFETY_OFFICER,
+  safetyApprovedEvent,
+  VENUE_STAFF,
+} from './plannedEvent'
 
 /**
  * SCRUM-37's equipment lines and SCRUM-27's equipment types against the running backend: the
  * paths, roles, refusals and wording the equipment page relies on (ADR-0019, ADR-0065).
  *
- * The staff account is an Event Coordinator with no event assigned here, so what needs an
- * assigned event is still a todo.
+ * The staff account is an Event Coordinator. The checks that need an assigned event take one
+ * through plannedEvent.ts when CI has the accounts for it; the rest are still todos.
  */
 
 /** A well-formed reference no database has, so the lookup finds nothing. */
@@ -47,6 +55,25 @@ const hasTechSupport = TECH_SUPPORT_EMAIL !== '' && TECH_SUPPORT_PASSWORD !== ''
 
 function signInAsTechSupport() {
   return signInAs({ email: TECH_SUPPORT_EMAIL, password: TECH_SUPPORT_PASSWORD })
+}
+
+/** Whether a check can take an event to Approved (a Lead assigns it) and record an outcome. */
+const canReviewALine = hasTechSupport && LEAD !== null
+/** Whether a check can also take the event through the safety check to Confirmed. */
+const canConfirm = canReviewALine && VENUE_STAFF !== null && SAFETY_OFFICER !== null
+
+/** As Technical Support: a new equipment type with ten units; answers its id. */
+async function newEquipmentType(): Promise<number> {
+  await signInAsTechSupport()
+  const type = await apiRequest<{ id: number }>('/api/equipment/types', {
+    method: 'POST',
+    body: {
+      name: `Integration Lectern ${uniqueEmail('type')}`,
+      total_quantity: 10,
+      store_name: 'Integration store',
+    },
+  })
+  return type.id
 }
 
 afterEach(() => sendRequestsAs(null))
@@ -187,8 +214,56 @@ describe('SCRUM-37 equipment lines against the backend', () => {
   it.todo('refuses an unknown equipment type on equipment_type_id (400)')
   it.todo('answers 404 "Equipment line not found." for another event\'s line')
   it.todo('removes a line (204), so the list no longer has it')
-  it.todo(
+  it.skipIf(!canConfirm)(
     'refuses a change once the event is confirmed (409 equipment_not_editable, with the backend wording)',
+    async () => {
+      const equipmentTypeId = await newEquipmentType()
+      const event = await safetyApprovedEvent()
+      await coordinatorPosts(event.reference, 'confirm')
+
+      const error = await refusal(
+        addEquipmentLine(event.reference, { equipment_type_id: equipmentTypeId, quantity: 1 }),
+      )
+
+      expect(error).toMatchObject({
+        status: 409,
+        code: 'equipment_not_editable',
+        message:
+          'Equipment can only be changed before the event is confirmed, and not once it is rejected or cancelled.',
+      })
+    },
+  )
+
+  it.skipIf(!canReviewALine)(
+    'reopens a reviewed line for Technical Support when its quantity changes, clearing the outcome (SCRUM-37 AC4)',
+    async () => {
+      const equipmentTypeId = await newEquipmentType()
+      const event = await approvedEvent()
+      const line = await addEquipmentLine(event.reference, {
+        equipment_type_id: equipmentTypeId,
+        quantity: 4,
+      })
+      await signInAsTechSupport()
+      await recordEquipmentOutcome(event.reference, {
+        lineId: line.id,
+        body: { provided_quantity: 4 },
+      })
+      await signInAs(staffAccount())
+
+      await updateEquipmentLine(event.reference, { lineId: line.id, body: { quantity: 6 } })
+
+      const { equipment_lines: lines } = await fetchEventEquipmentLines(event.reference)
+      expect(lines).toEqual([
+        expect.objectContaining({
+          id: line.id,
+          quantity: 6,
+          status: 'requested',
+          provided_quantity: null,
+          outcome_note: null,
+          reviewed_by: null,
+        }),
+      ])
+    },
   )
   it.todo("lets Technical Support list any event's lines but refuses them adding one (403)")
 })
