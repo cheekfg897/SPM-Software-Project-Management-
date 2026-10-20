@@ -33,7 +33,7 @@ The AC leaves open which requests count. A venue booking request can be in eight
 
 ## Consequences
 - AC4 is met. AC9 ("opening an event from the list shows the event detail view containing only the sections that role may see") is not, for Venue Staff: `GET /api/events/requests/<reference>` is for organisers and coordinators only, and the only event route Venue Staff can open is its history. A Venue Staff detail view needs its own ticket, with the team deciding which sections they see.
-- The frontend has no screen for this list yet. The mock backend answers it, so a screen can be built against it, and its integration tests check the refusals against the real backend. The list itself is checked against the backend only when the run has a Venue Staff account (`INTEGRATION_VENUE_STAFF_EMAIL`), like the decision queue.
+- Staff home shows this list to Venue Staff since ADR-0090. The mock backend answers it, and its integration tests check the refusals against the real backend. The list itself is checked against the backend only when the run has a Venue Staff account (`INTEGRATION_VENUE_STAFF_EMAIL`), like the decision queue.
 - No migration: `venue_booking_requests.event_id` is already indexed (SCRUM-42).
 - Tests: `tests/events/test_events_by_role.py` and `test_events_by_role_routes.py` (marker `scrum_24`).
 
