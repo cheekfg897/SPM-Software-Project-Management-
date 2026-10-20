@@ -1,9 +1,11 @@
 import { useId } from 'react'
 
-import { Badge } from '@/components/ui'
+import { Badge, ButtonLink } from '@/components/ui'
 import { LAYOUT_OPTIONS } from '@/config/roomLayouts'
+import { replacementRequestPath } from '@/config/routes'
 
 import type { MatchedRequirements, VenueMatch } from '../api'
+import { useReplacementSearch } from '../hooks'
 
 function Detail({ term, children }: { term: string; children: string | number }) {
   return (
@@ -31,8 +33,33 @@ function metRequirements(matched: MatchedRequirements): string[] {
 }
 
 /**
+ * In a search for a replacement, the way to request this venue as one (SCRUM-92 AC6). The venue
+ * being replaced is never offered: a replacement is always another venue.
+ */
+function ReplacementChoice({ venue }: { venue: VenueMatch }) {
+  const replacement = useReplacementSearch()
+
+  if (replacement === null) {
+    return null
+  }
+  if (venue.id === replacement.venueId) {
+    return <p className="text-ink-muted mt-5">This is the venue being replaced.</p>
+  }
+  return (
+    <ButtonLink
+      to={replacementRequestPath(replacement.reference, replacement.arrangementId, venue.id)}
+      aria-label={`Request ${venue.name} as the replacement`}
+      className="mt-5"
+    >
+      Request this venue
+    </ButtonLink>
+  )
+}
+
+/**
  * One venue the search found: its name, capacity and location, its id for the venue request
- * form (SCRUM-42), and what it meets of what was asked for.
+ * form (SCRUM-42), and what it meets of what was asked for. In a search for a replacement it
+ * also leads to requesting it as one (SCRUM-92).
  */
 export function VenueMatchCard({ venue }: { venue: VenueMatch }) {
   const headingId = useId()
@@ -58,6 +85,7 @@ export function VenueMatchCard({ venue }: { venue: VenueMatch }) {
           ))}
         </ul>
       )}
+      <ReplacementChoice venue={venue} />
     </article>
   )
 }

@@ -2,9 +2,11 @@ import { ROLE } from '@/config/roles'
 import { register } from '@/features/auth/api'
 import {
   decideBookingRequest,
+  fetchBookingRequests,
   raiseBookingRequest,
   withdrawArrangement,
 } from '@/features/booking/api'
+import type { BookingRequest } from '@/features/booking/api'
 import {
   completeEvent,
   confirmEvent,
@@ -18,6 +20,8 @@ import {
 } from '@/features/eventRequests/api'
 import { assignCoordinator } from '@/features/lead/api'
 import { fetchNotifications } from '@/features/notifications/api'
+import { blockVenue, removeVenueBlock } from '@/features/venues/api'
+import type { CreatedBlock } from '@/features/venues/api'
 import { apiRequest } from '@/lib/api'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
 
@@ -35,6 +39,9 @@ import type { Credentials } from './backend'
  * it, an approved venue needs Venue Staff and a safety approval needs a Safety Officer, so those
  * checks read the accounts from INTEGRATION_LEAD_*, INTEGRATION_VENUE_STAFF_* and
  * INTEGRATION_SAFETY_OFFICER_* and skip without them. CI makes all three (frontend.yml).
+ *
+ * Replacing an approved venue that Venue Staff then block (SCRUM-92, ADR-0053) runs here too,
+ * since it starts from the same settled event.
  */
 
 const NOT_PERMITTED = {
@@ -574,6 +581,122 @@ describe('SCRUM-33 a significant edit after the safety check, against the backen
       const error = await refusal(confirmEvent(reference))
       expect(error.fieldErrors).toEqual({
         safety_check: ['The Safety Officer has not approved the event.'],
+      })
+    },
+  )
+})
+
+describe('SCRUM-92 replacing a venue that became unavailable', () => {
+  /** The settled event's one arrangement, as the coordinator's list shows it. */
+  async function onlyArrangement(reference: string): Promise<BookingRequest> {
+    const [arrangement] = await fetchBookingRequests(reference)
+    if (arrangement === undefined) {
+      throw new Error('The settled event should have its approved venue arrangement.')
+    }
+    return arrangement
+  }
+
+  /**
+   * As Venue Staff: block the arrangement's venue for the whole event day, then sign back in.
+   * Returns the block.
+   */
+  async function blockVenueOf(arrangement: BookingRequest): Promise<CreatedBlock> {
+    await signInAs(required(VENUE_STAFF))
+    const block = await blockVenue(arrangement.venue_id, {
+      start_time: `${EVENT_DATE}T08:00`,
+      end_time: `${EVENT_DATE}T18:00`,
+      category: 'equipment_failure',
+      reason: 'Lift broken',
+    })
+    await signInAs(staffAccount())
+    return block
+  }
+
+  it.skipIf(!canApproveVenue)(
+    'flags the booked arrangement, takes a replacement linked to it, and releases it once the replacement is approved',
+    async () => {
+      const { reference } = await settledEvent()
+      const original = await onlyArrangement(reference)
+
+      await blockVenueOf(original)
+
+      // --- The block flags the booking, with its category, note and period (AC1, AC2) ---
+      const flagged = await onlyArrangement(reference)
+      expect(flagged).toMatchObject({ status: 'approved', needs_alternative_venue: true })
+      expect(flagged.unavailability).toEqual([
+        {
+          category: 'equipment_failure',
+          reason: 'Lift broken',
+          starts_at: `${EVENT_DATE}T08:00:00+08:00`,
+          ends_at: `${EVENT_DATE}T18:00:00+08:00`,
+        },
+      ])
+      // --- A replacement for the same period names the flagged arrangement (AC6) ---
+      const otherVenue = await newVenue()
+      await signInAs(staffAccount())
+      const replacement = await raiseBookingRequest(reference, {
+        venue_id: otherVenue,
+        starts_at: original.starts_at,
+        ends_at: original.ends_at,
+        purpose: 'Integration replacement',
+        replaces_request_id: original.id,
+      })
+      expect(replacement).toMatchObject({ status: 'pending', replaces_request_id: original.id })
+      // --- An arrangement with no flag can't be replaced (ADR-0053 decision 10) ---
+      const error = await refusal(
+        raiseBookingRequest(reference, {
+          venue_id: otherVenue,
+          starts_at: `${EVENT_DATE}T13:00:00+08:00`,
+          ends_at: `${EVENT_DATE}T15:00:00+08:00`,
+          purpose: 'Integration second replacement',
+          replaces_request_id: replacement.id,
+        }),
+      )
+      expect(error).toMatchObject({ status: 400, code: 'validation_error' })
+      expect(error.fieldErrors).toEqual({
+        replaces_request_id: ['This venue arrangement does not need an alternative venue.'],
+      })
+      // --- Approving the replacement releases the original, which keeps why (AC7) ---
+      await signInAs(required(VENUE_STAFF))
+      await decideBookingRequest(replacement.id, { outcome: 'approved' })
+      await signInAs(staffAccount())
+      const listed = await fetchBookingRequests(reference)
+      expect(listed.map((each) => [each.id, each.status, each.needs_alternative_venue])).toEqual([
+        [original.id, 'released', false],
+        [replacement.id, 'approved', false],
+      ])
+      expect(listed[0]?.unavailability).toHaveLength(1)
+    },
+  )
+
+  it.skipIf(!canApproveVenue)(
+    'tells the coordinator why, and clears the flag once Venue Staff remove the block (AC5, AC8)',
+    async () => {
+      const { reference } = await settledEvent()
+      const original = await onlyArrangement(reference)
+      const block = await blockVenueOf(original)
+
+      // --- The coordinator is told the venue, the reason and the period (AC5) ---
+      const notices = await fetchNotifications()
+      const notice = notices.find(
+        (notification) =>
+          notification.kind === 'alternative_venue_needed' &&
+          notification.event_reference === reference,
+      )
+      // The venue's name (newVenue's "Integration Hall <unique>"), then the period and the reason.
+      expect(notice?.detail).toMatch(/^Integration Hall /)
+      expect(notice?.detail).toContain(
+        `is unavailable from ${EVENT_DATE} 08:00 to ${EVENT_DATE} 18:00 (equipment failure): Lift broken`,
+      )
+      // --- Removing the block clears the flag; the original booking stands (AC8) ---
+      await signInAs(required(VENUE_STAFF))
+      await removeVenueBlock(original.venue_id, block.id)
+      await signInAs(staffAccount())
+      expect(await onlyArrangement(reference)).toMatchObject({
+        id: original.id,
+        status: 'approved',
+        needs_alternative_venue: false,
+        unavailability: [],
       })
     },
   )

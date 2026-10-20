@@ -274,3 +274,59 @@ describe('SCRUM-35 venue search page', () => {
     expect(router.state.location.pathname).toBe(ROUTES.STAFF_HOME)
   })
 })
+
+describe('SCRUM-92 finding a replacement venue', () => {
+  /**
+   * A search for event EVR-BOOK0107's flagged arrangement 9104 at the Lawn Marquee (venue 27):
+   * 26 Nov, 1 pm to 5 pm, for 10.
+   */
+  const REPLACEMENT_PATH =
+    `${ROUTES.VENUE_SEARCH}?event=EVR-BOOK0107&replaces=9104&instead_of=27` +
+    '&date=2026-11-26&start=13:00&end=17:00&min_capacity=10'
+
+  it('offers each venue found as the replacement, back on the event’s venue requests page', async () => {
+    const view = renderApp(REPLACEMENT_PATH, COORDINATOR)
+
+    await view.user.click(
+      await screen.findByRole('link', { name: 'Request Boardroom Two as the replacement' }),
+    )
+
+    expect(view.router.state.location.pathname).toBe('/events/EVR-BOOK0107/venue-requests')
+    expect(view.router.state.location.search).toBe('?replaces=9104&venue=2')
+  })
+
+  it('never offers the venue being replaced, as a replacement is always another venue', async () => {
+    renderApp(REPLACEMENT_PATH, COORDINATOR)
+
+    const replaced = await screen.findByRole('article', { name: 'Lawn Marquee' })
+    expect(within(replaced).queryByRole('link')).not.toBeInTheDocument()
+    expect(replaced).toHaveTextContent('This is the venue being replaced.')
+    expect(
+      screen.getByRole('link', { name: 'Request Boardroom Two as the replacement' }),
+    ).toBeInTheDocument()
+  })
+
+  it('says which event the replacement is for, with a way back to it', async () => {
+    renderApp(REPLACEMENT_PATH, COORDINATOR)
+
+    expect(
+      await screen.findByText('Finding a replacement venue for event EVR-BOOK0107.', {
+        exact: false,
+      }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Back to its venue requests' })).toHaveAttribute(
+      'href',
+      '/events/EVR-BOOK0107/venue-requests',
+    )
+  })
+
+  it('offers no replacement in an ordinary search', async () => {
+    renderApp(SEARCHED_PATH, COORDINATOR)
+
+    await within(await screen.findByRole('list', { name: 'Venues that match' })).findAllByRole(
+      'article',
+    )
+    expect(screen.queryByRole('link', { name: /as the replacement/ })).not.toBeInTheDocument()
+    expect(screen.queryByText(/Finding a replacement venue/)).not.toBeInTheDocument()
+  })
+})

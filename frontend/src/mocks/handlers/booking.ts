@@ -29,6 +29,7 @@ import {
   preparationErrors,
   savedNotes,
 } from './preparationRules'
+import { unknownFieldErrors } from './venueRules'
 
 /**
  * The venue module's booking request endpoints (SCRUM-42, SCRUM-43, SCRUM-93, SCRUM-75, SCRUM-84),
@@ -49,6 +50,14 @@ const HOLD_PATH = `${PENDING_PATH}/:requestId/hold`
 const APPROVED_PATH = `${PENDING_PATH}/approved`
 const PREPARATION_PATH = `${PENDING_PATH}/:requestId/preparation`
 const REQUIRED_FIELDS = ['venue_id', 'starts_at', 'ends_at', 'purpose'] as const
+/** Every field RaiseBookingRequestSchema declares; anything else is an "Unknown field." */
+const RAISE_FIELDS = [
+  ...REQUIRED_FIELDS,
+  'expected_occupancy',
+  'required_layout',
+  'justification',
+  'replaces_request_id',
+]
 const MISSING_FIELD_MESSAGE = 'Missing data for required field.'
 /** The backend's EVENT_REQUEST_NOT_FOUND_MESSAGE (events/services.py), also sent for another coordinator's event. */
 const EVENT_NOT_FOUND_MESSAGE = 'Event request not found.'
@@ -72,6 +81,16 @@ function clashMessage(bookingId: number): string {
 }
 /** The backend's messages for an event's arrangements (venue/services.py, SCRUM-93). */
 const ARRANGEMENT_NOT_FOUND_MESSAGE = 'Venue arrangement not found.'
+/** The backend's NOT_FLAGGED_MESSAGE, for a replacement of an arrangement with no flag (SCRUM-92). */
+const NOT_FLAGGED_MESSAGE = 'This venue arrangement does not need an alternative venue.'
+/**
+ * As the backend's REPLACEMENT_BOOKING_STATUSES (events/services.py): a flag leaves an event that
+ * was not yet Confirmed in Safety Review, so a replacement may be raised there too (ADR-0053).
+ */
+const REPLACEMENT_EVENT_STATUSES: readonly MockBookingEvent['status'][] = [
+  'approved',
+  'safety_review',
+]
 /**
  * As the backend's WITHDRAWABLE_REQUEST_STATUSES: a rejected arrangement stays active until
  * withdrawn, a conflicting one (SCRUM-44) may be withdrawn like a pending one, and so may one
@@ -266,14 +285,57 @@ function eventsWithVenueBookings() {
     }))
 }
 
-function missingFieldErrors(body: Record<string, unknown>): FieldErrors {
-  const errors: FieldErrors = {}
+/** PositiveId's message for `replaces_request_id`, or null when it is a whole number from 1. */
+function replacesIdError(value: unknown): string | null {
+  if (value === null) {
+    return 'Field may not be null.'
+  }
+  if (typeof value !== 'number' || !Number.isInteger(value)) {
+    return 'Not a valid integer.'
+  }
+  return value < 1 ? 'replaces_request_id must be a positive number.' : null
+}
+
+/**
+ * RaiseBookingRequestSchema's messages: each field it doesn't declare, each required field left
+ * out, and a bad replacement id.
+ */
+function raiseFieldErrors(body: Record<string, unknown>): FieldErrors {
+  const errors = unknownFieldErrors(body, RAISE_FIELDS)
   for (const field of REQUIRED_FIELDS) {
     if (body[field] === undefined) {
       errors[field] = [MISSING_FIELD_MESSAGE]
     }
   }
+  if (body.replaces_request_id !== undefined) {
+    const message = replacesIdError(body.replaces_request_id)
+    if (message !== null) {
+      errors.replaces_request_id = [message]
+    }
+  }
   return errors
+}
+
+/**
+ * The backend's refusal of an event at a status that can't take this request, or null. An
+ * ordinary request needs an approved event; a replacement may also be raised in Safety Review.
+ */
+function eventStatusRefusal(event: MockBookingEvent, isReplacement: boolean) {
+  if (isReplacement && !REPLACEMENT_EVENT_STATUSES.includes(event.status)) {
+    return errorResponse(
+      409,
+      'conflict',
+      `Only an approved event or one in Safety Review can replace a venue; this one is ${event.status}.`,
+    )
+  }
+  if (!isReplacement && event.status !== 'approved') {
+    return errorResponse(
+      409,
+      'conflict',
+      `Only an approved event can have a venue booking request; this one is ${event.status}.`,
+    )
+  }
+  return null
 }
 
 function toRequest(event: MockBookingEvent, body: Record<string, unknown>, id: number) {
@@ -378,6 +440,37 @@ function findArrangement(event: MockBookingEvent, arrangementId: unknown) {
   )
 }
 
+/**
+ * The backend's refusal of a replacement that doesn't name one of the event's arrangements
+ * needing an alternative venue, or null (SCRUM-92 AC6). Another event's is as missing as an
+ * unknown one.
+ */
+function replacementRefusal(event: MockBookingEvent, replacesId: unknown) {
+  const replaced = findArrangement(event, replacesId)
+  if (replaced === undefined) {
+    return validationError({ replaces_request_id: [ARRANGEMENT_NOT_FOUND_MESSAGE] })
+  }
+  if (!replaced.needs_alternative_venue) {
+    return validationError({ replaces_request_id: [NOT_FLAGGED_MESSAGE] })
+  }
+  return null
+}
+
+/**
+ * Approving a replacement releases the arrangement it replaces, which then no longer needs an
+ * alternative venue (SCRUM-92 AC7). The backend leaves an arrangement that already stopped
+ * holding its venue as it is; the mock's flagged arrangements are all approved, which nothing
+ * but a replacement retires, so it needs no such check.
+ */
+function releaseReplaced(approved: BookingRequest): void {
+  const replaced = requests.find((existing) => existing.id === approved.replaces_request_id)
+  if (replaced === undefined) {
+    return
+  }
+  replaced.status = 'released'
+  replaced.needs_alternative_venue = false
+}
+
 function withdrawRefusal(arrangement: BookingRequest) {
   return errorResponse(
     409,
@@ -457,21 +550,25 @@ export const bookingHandlers: RequestHandler[] = [
       return refusal
     }
     const body = await readBody(request)
-    const missing = missingFieldErrors(body)
-    if (Object.keys(missing).length > 0) {
-      return validationError(missing)
+    const invalid = raiseFieldErrors(body)
+    if (Object.keys(invalid).length > 0) {
+      return validationError(invalid)
     }
 
     const event = findOwnEvent(params.reference, user.id)
     if (event === undefined) {
       return notFound(EVENT_NOT_FOUND_MESSAGE)
     }
-    if (event.status !== 'approved') {
-      return errorResponse(
-        409,
-        'conflict',
-        `Only an approved event can have a venue booking request; this one is ${event.status}.`,
-      )
+    const isReplacement = body.replaces_request_id !== undefined
+    const statusRefusal = eventStatusRefusal(event, isReplacement)
+    if (statusRefusal !== null) {
+      return statusRefusal
+    }
+    if (isReplacement) {
+      const refusal = replacementRefusal(event, body.replaces_request_id)
+      if (refusal !== null) {
+        return refusal
+      }
     }
 
     const created = toRequest(event, body, requests.length + 1)
@@ -540,6 +637,7 @@ export const bookingHandlers: RequestHandler[] = [
     waiting.hold_expires_at = null
     if (body.outcome === 'approved') {
       markClashingRequestsConflicting(waiting)
+      releaseReplaced(waiting)
     }
     return HttpResponse.json(waiting)
   }),

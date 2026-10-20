@@ -5,9 +5,19 @@ import { LAYOUT_OPTIONS } from '@/config/roomLayouts'
 import { formText } from '@/features/auth/formText'
 import { fieldErrorsOf } from '@/lib/api'
 import { toBusinessTimeIso } from '@/lib/businessTime'
+import { toDateTimeInputValue } from '@/lib/formatDate'
 
-import type { RaiseBookingRequest } from '../api'
-import { useRaiseBookingRequest } from '../hooks'
+import type { BookingRequest, RaiseBookingRequest } from '../api'
+import { useRaiseBookingRequest, useReplacementRequest } from '../hooks'
+import type { ReplacementRequest } from '../replacement'
+
+/** What the form starts with: empty, or a replacement's venue and its flagged arrangement's needs. */
+type FormDefaults = Partial<
+  Record<
+    'venue_id' | 'starts_at' | 'ends_at' | 'purpose' | 'expected_occupancy' | 'required_layout',
+    string
+  >
+>
 
 /** The request for the backend; fields left empty are left out so it can fill them in. */
 function requestFrom(form: FormData): RaiseBookingRequest {
@@ -32,19 +42,96 @@ function requestFrom(form: FormData): RaiseBookingRequest {
   return request
 }
 
-/** Raise a venue request for the event. The list beside it is read again once it succeeds. */
+/**
+ * A replacement starts from the venue chosen and the flagged arrangement's period, purpose,
+ * occupancy and layout, for the coordinator to check before sending.
+ */
+function defaultsFor(
+  replacement: ReplacementRequest | null,
+  replaced: BookingRequest | undefined,
+): FormDefaults {
+  if (replacement === null) {
+    return {}
+  }
+  if (replaced === undefined) {
+    return { venue_id: replacement.venueId }
+  }
+  return {
+    venue_id: replacement.venueId,
+    starts_at: toDateTimeInputValue(replaced.starts_at),
+    ends_at: toDateTimeInputValue(replaced.ends_at),
+    purpose: replaced.purpose,
+    expected_occupancy: String(replaced.expected_occupancy),
+    required_layout: replaced.required_layout ?? '',
+  }
+}
+
+interface ReplacementNoteProps {
+  /** The flagged arrangement's name: its purpose, or its id when the list doesn't hold it. */
+  name: string
+  /** The backend's messages about the arrangement named, e.g. that it isn't flagged. */
+  errors: string[] | undefined
+  onStop: () => void
+}
+
+/** Says the request replaces a flagged arrangement, with the backend's word on that link. */
+function ReplacementNote({ name, errors = [], onStop }: ReplacementNoteProps) {
+  return (
+    <div className="border-line bg-surface-raised space-y-2 rounded-xl border p-4 text-sm">
+      <p className="text-ink">
+        Replacing {name}, whose venue is unavailable. Approving this request releases it.
+      </p>
+      {errors.length > 0 && (
+        <ul className="text-danger space-y-0.5">
+          {errors.map((message) => (
+            <li key={message}>{message}</li>
+          ))}
+        </ul>
+      )}
+      <Button variant="ghost" onClick={onStop}>
+        Stop replacing
+      </Button>
+    </div>
+  )
+}
+
+/**
+ * Raise a venue request for the event, or a replacement for a flagged arrangement when the page
+ * URL names one (SCRUM-92 AC6). The list beside it is read again once it succeeds.
+ */
 export function BookingRequestForm({ reference }: { reference: string }) {
   const raise = useRaiseBookingRequest(reference)
+  const { replacement, replaced, stopReplacing } = useReplacementRequest(reference)
   const fieldErrors = fieldErrorsOf(raise.error)
+  const defaults = defaultsFor(replacement, replaced)
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const form = event.currentTarget
-    raise.mutate(requestFrom(new FormData(form)), { onSuccess: () => form.reset() })
+    const request = requestFrom(new FormData(form))
+    if (replacement !== null) {
+      request.replaces_request_id = replacement.arrangementId
+    }
+    raise.mutate(request, {
+      onSuccess: () => {
+        form.reset()
+        if (replacement !== null) {
+          stopReplacing()
+        }
+      },
+    })
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5">
+    // Drawn again when the replacement or its arrangement changes, so it starts from them.
+    <form key={JSON.stringify(defaults)} onSubmit={handleSubmit} className="space-y-5">
+      {replacement !== null && (
+        <ReplacementNote
+          name={replaced?.purpose ?? `arrangement ${replacement.arrangementId}`}
+          errors={fieldErrors.replaces_request_id}
+          onStop={stopReplacing}
+        />
+      )}
       <ErrorAlert error={raise.error} />
       <TextField
         label="Venue ID"
@@ -52,6 +139,7 @@ export function BookingRequestForm({ reference }: { reference: string }) {
         type="number"
         min={1}
         required
+        defaultValue={defaults.venue_id}
         errors={fieldErrors.venue_id}
       />
       <TextField
@@ -60,6 +148,7 @@ export function BookingRequestForm({ reference }: { reference: string }) {
         type="datetime-local"
         required
         hint="In Singapore time."
+        defaultValue={defaults.starts_at}
         errors={fieldErrors.starts_at}
       />
       <TextField
@@ -67,21 +156,30 @@ export function BookingRequestForm({ reference }: { reference: string }) {
         name="ends_at"
         type="datetime-local"
         required
+        defaultValue={defaults.ends_at}
         errors={fieldErrors.ends_at}
       />
-      <TextField label="Purpose" name="purpose" required errors={fieldErrors.purpose} />
+      <TextField
+        label="Purpose"
+        name="purpose"
+        required
+        defaultValue={defaults.purpose}
+        errors={fieldErrors.purpose}
+      />
       <TextField
         label="Expected occupancy"
         name="expected_occupancy"
         type="number"
         min={1}
         hint="Leave empty to use the event's expected attendance."
+        defaultValue={defaults.expected_occupancy}
         errors={fieldErrors.expected_occupancy}
       />
       <SelectField
         label="Required layout"
         name="required_layout"
         options={LAYOUT_OPTIONS}
+        defaultValue={defaults.required_layout}
         errors={fieldErrors.required_layout}
       />
       <TextField
