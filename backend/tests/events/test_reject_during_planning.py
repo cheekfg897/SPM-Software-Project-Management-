@@ -280,7 +280,7 @@ def test_its_open_equipment_requests_are_closed(
     _reject(db_session)
 
     assert list_equipment_requests_awaiting_action(session=db_session, today=today) == []
-    with pytest.raises(ConflictError):
+    with pytest.raises(ConflictError) as exc_info:
         record_equipment_outcome(
             TECHNICAL_SUPPORT_ID,
             REFERENCE,
@@ -288,6 +288,8 @@ def test_its_open_equipment_requests_are_closed(
             {"provided_quantity": 2},
             session=db_session,
         )
+    # SCRUM-48 AC8's refusal, naming the status the rejection set.
+    assert exc_info.value.message.endswith("; this one is rejected.")
 
 
 def test_the_rejection_and_the_release_are_saved_together_or_not_at_all(
