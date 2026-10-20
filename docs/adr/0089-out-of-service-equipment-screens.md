@@ -59,7 +59,10 @@ Also:
 - The mock backend answers the three routes as the backend does, takes units out of service off
   what is available, and flags a reservation of a type with fewer units in service than are
   reserved. Every mock event shares one period, so the mock flags every reservation of that type
-  and doesn't compare the period with today. It doesn't send the coordinator's notice (AC3).
+  and doesn't compare the period with today. When taking units out leaves a type short, every
+  event reserving it loses its safety approval, as on the backend (AC5): its preparation is
+  refused and a Confirmed event goes back to Approved. It doesn't send the coordinator's notice
+  (AC3): no mock raises notifications yet.
 
 ## Consequences
 - Other staff can't see how many units are out of service; they see the total held and, on an
@@ -72,8 +75,9 @@ Also:
 ## Tickets to open
 - Backend: send the counts in and out of service with the equipment type (to every internal role),
   so the page shows them rather than adding them up, and other staff see them too.
-- Decide with SCRUM-97 / SCRUM-98 how the web app shows AC5's new safety check once the backend
-  has it.
+- Word the `safety_approval_withdrawn` history entry the backend writes for AC5 (and for SCRUM-33,
+  SCRUM-48 and SCRUM-92): the event's history shows only "Safety approval withdrawn", without the
+  equipment type or how many units went out.
 
 ## Revisit when
 - The backend sends the counts, or lets other staff read the units out of service.
