@@ -29,6 +29,7 @@ import {
   preparationErrors,
   savedNotes,
 } from './preparationRules'
+import { unknownFieldErrors } from './venueRules'
 
 /**
  * The venue module's booking request endpoints (SCRUM-42, SCRUM-43, SCRUM-93, SCRUM-75, SCRUM-84),
@@ -49,6 +50,14 @@ const HOLD_PATH = `${PENDING_PATH}/:requestId/hold`
 const APPROVED_PATH = `${PENDING_PATH}/approved`
 const PREPARATION_PATH = `${PENDING_PATH}/:requestId/preparation`
 const REQUIRED_FIELDS = ['venue_id', 'starts_at', 'ends_at', 'purpose'] as const
+/** Every field RaiseBookingRequestSchema declares; anything else is an "Unknown field." */
+const RAISE_FIELDS = [
+  ...REQUIRED_FIELDS,
+  'expected_occupancy',
+  'required_layout',
+  'justification',
+  'replaces_request_id',
+]
 const MISSING_FIELD_MESSAGE = 'Missing data for required field.'
 /** The backend's EVENT_REQUEST_NOT_FOUND_MESSAGE (events/services.py), also sent for another coordinator's event. */
 const EVENT_NOT_FOUND_MESSAGE = 'Event request not found.'
@@ -278,15 +287,21 @@ function eventsWithVenueBookings() {
 
 /** PositiveId's message for `replaces_request_id`, or null when it is a whole number from 1. */
 function replacesIdError(value: unknown): string | null {
+  if (value === null) {
+    return 'Field may not be null.'
+  }
   if (typeof value !== 'number' || !Number.isInteger(value)) {
     return 'Not a valid integer.'
   }
   return value < 1 ? 'replaces_request_id must be a positive number.' : null
 }
 
-/** RaiseBookingRequestSchema's messages: each required field left out, and a bad replacement id. */
+/**
+ * RaiseBookingRequestSchema's messages: each field it doesn't declare, each required field left
+ * out, and a bad replacement id.
+ */
 function raiseFieldErrors(body: Record<string, unknown>): FieldErrors {
-  const errors: FieldErrors = {}
+  const errors = unknownFieldErrors(body, RAISE_FIELDS)
   for (const field of REQUIRED_FIELDS) {
     if (body[field] === undefined) {
       errors[field] = [MISSING_FIELD_MESSAGE]

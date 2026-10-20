@@ -988,6 +988,8 @@ describe('SCRUM-92 booking mock: raising a replacement for a flagged arrangement
     [0, 'replaces_request_id must be a positive number.'],
     [1.5, 'Not a valid integer.'],
     [String(bookedHall.id), 'Not a valid integer.'],
+    [true, 'Not a valid integer.'],
+    [null, 'Field may not be null.'],
   ])('names replaces_request_id %j with the other fields it refuses', async (value, message) => {
     const error = await errorOf(
       raise(BOOKED_EVENT.reference, { purpose: 'Keynote', replaces_request_id: value }),
@@ -1000,6 +1002,14 @@ describe('SCRUM-92 booking mock: raising a replacement for a flagged arrangement
       ends_at: ['Missing data for required field.'],
       replaces_request_id: [message],
     })
+  })
+
+  it('names a field the backend does not know, as RaiseBookingRequestSchema does', async () => {
+    const error = await errorOf(
+      raise(BOOKED_EVENT.reference, { ...replacementFor(bookedHall), replaces: bookedHall.id }),
+    )
+
+    expect([error.status, error.fieldErrors]).toEqual([400, { replaces: ['Unknown field.'] }])
   })
 
   it('releases the flagged arrangement once Venue Staff approve its replacement', async () => {
