@@ -5,11 +5,11 @@ name: Daily Standup Reminder
 #
 # Both `schedule` and `workflow_dispatch` only run from the default branch, so
 # this cannot be tested from a pull request — merge it, then use "Run workflow"
-# on the Actions tab to check it before the next weekday fires.
+# on the Actions tab to check it before it next fires.
 on:
   schedule:
-    # 04:10 UTC = 12:10 SGT, Monday to Friday. GitHub runs cron in UTC only.
-    - cron: "10 4 * * 1-5"
+    # 04:10 UTC = 12:10 SGT, every day. GitHub runs cron in UTC only.
+    - cron: "10 4 * * *"
 
   # Lets anyone send the reminder by hand, which is also how it gets tested.
   workflow_dispatch: {}
