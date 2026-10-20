@@ -371,6 +371,26 @@ export function hasActiveArrangement(reference: string): boolean {
   return requestsOf(event).some((existing) => !RETIRED_STATUSES.includes(existing.status))
 }
 
+/**
+ * Free every venue the event still has arranged, as the backend's release_event_arrangements
+ * does when the event is rejected during planning (SCRUM-49 AC10, ADR-0093): one Venue Staff
+ * haven't approved is withdrawn, one holding its venue (approved or on hold) is released, and a
+ * retired one stays as it is. Like the withdraw route here, it writes no history.
+ */
+export function releaseEventArrangements(reference: string): void {
+  const event = events.find((known) => known.reference === reference)
+  if (event === undefined) {
+    return
+  }
+  for (const arrangement of requestsOf(event)) {
+    if (WITHDRAWABLE_STATUSES.includes(arrangement.status)) {
+      arrangement.status = 'withdrawn'
+    } else if (!RETIRED_STATUSES.includes(arrangement.status)) {
+      arrangement.status = 'released'
+    }
+  }
+}
+
 /** One of the event's own arrangements; an id on another event is as missing as an unknown one. */
 function findArrangement(event: MockBookingEvent, arrangementId: unknown) {
   return requests.find(

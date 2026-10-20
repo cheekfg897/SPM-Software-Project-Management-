@@ -1,6 +1,7 @@
 import { http, HttpResponse } from 'msw'
 import type { RequestHandler } from 'msw'
 
+import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
 import { EQUIPMENT_READER_ROLES, ROLE } from '@/config/roles'
 import type { PreparationStatus } from '@/config/preparation'
 import { isRecord } from '@/lib/isRecord'
@@ -66,6 +67,22 @@ export function resetMockEquipment(): void {
   reservationEvents = new Map()
   resetMockEquipmentLines()
   resetMockEquipmentEvents()
+}
+
+/**
+ * The event, rejected during planning, gives back its equipment as the backend's
+ * release_event_reservations does (SCRUM-49 AC10, ADR-0093): its reservations go, and its
+ * status closes its open lines to outcomes and reservations (EQUIPMENT_NOT_NEEDED_STATUSES).
+ */
+export function rejectEventEquipment(reference: string): void {
+  const event = eventForStaff(reference)
+  if (event === undefined) {
+    return
+  }
+  event.status = EVENT_REQUEST_STATUS.REJECTED
+  reservations = reservations.filter(
+    (reservation) => reservationEvents.get(reservation.id) !== reference,
+  )
 }
 
 /** Every equipment type, by name, as the backend lists the catalogue. */

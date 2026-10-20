@@ -8,7 +8,18 @@ import {
   sendToSafetyReview,
   updateRegistrationSettings,
 } from '@/features/eventRequests/api'
+import {
+  decideBookingRequest,
+  fetchBookingRequests,
+  raiseBookingRequest,
+} from '@/features/booking/api'
+import {
+  fetchEventReservations,
+  recordEquipmentOutcome,
+  reserveEquipment,
+} from '@/features/equipment/api'
 import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
+import { ROLE } from '@/config/roles'
 import type { EventRequestStatus } from '@/config/eventStatus'
 import { apiRequest, fieldErrorsOf } from '@/lib/api'
 import { refusal } from '@/test/refusal'
@@ -16,7 +27,9 @@ import { refusal } from '@/test/refusal'
 import { MOCK_ACCOUNTS } from '../fixtures/accounts'
 import type { MockAccount } from '../fixtures/accounts'
 
+import { MOCK_BOOKING_VENUES } from './bookingFixtures'
 import { MOCK_NOW } from './catalogueFixtures'
+import { MOCK_OPEN_EVENT_REFERENCE } from './equipmentFixtures'
 import {
   expectInvalid,
   expectNotAnObject,
@@ -52,6 +65,10 @@ const APPROVED_WITH_NOTHING_ARRANGED = 'EVR-MOCK0001'
 const CHLOES_CONFIRMED = 'EVR-BOOK0102'
 const ENDED_AT_NOW = 'EVR-PLAN0005'
 const ENDS_A_MINUTE_AFTER_NOW = 'EVR-PLAN0006'
+/** Every mock account but the coordinators', by role: the planning routes refuse them all. */
+const OTHER_ROLES_THAN_COORDINATOR: [string, MockAccount][] = Object.values(MOCK_ACCOUNTS)
+  .filter((account) => account.role !== ROLE.EVENT_COORDINATOR)
+  .map((account) => [account.role, account])
 
 const SAFETY_REVIEW_NOT_READY = {
   status: 409,
@@ -869,5 +886,79 @@ describe('SCRUM-49 mock: rejecting an event during planning', () => {
     )
     signInAs(HANA)
     expect(await statusOf(APPROVED_WITH_GAPS)).toBe('approved')
+  })
+
+  it.each(OTHER_ROLES_THAN_COORDINATOR)('refuses %s by role', async (_role, account) => {
+    signInAs(account)
+
+    expect(await refusal(rejectEvent(APPROVED_WITH_GAPS, { reason: REASON }))).toMatchObject(
+      NOT_PERMITTED,
+    )
+  })
+})
+
+/**
+ * SCRUM-49 AC10: what a rejection frees lives in the venue and equipment mocks' own stores, so
+ * the rejection reaches them as release_event_arrangements and release_event_reservations do,
+ * and the event's open equipment requests close with its status (SCRUM-48 AC8). Chloe's
+ * EVR-BOOK0101 and EVR-MOCK0001 are in both stores.
+ */
+describe('SCRUM-49 mock: a rejection reaches the venue and equipment mocks (AC10)', () => {
+  const REASON = 'No venue large enough is free that week.'
+  const BOOKABLE = 'EVR-BOOK0101'
+  /** EVR-MOCK0001's projector line, still waiting for its outcome. */
+  const OPEN_LINE_ID = 41
+
+  /** Chloe raises a venue booking request for BOOKABLE from `startsAt`; it starts Pending. */
+  async function raiseVenueRequest(startsAt: string) {
+    const raised = await raiseBookingRequest(BOOKABLE, {
+      venue_id: MOCK_BOOKING_VENUES.roomy.id,
+      starts_at: startsAt,
+      ends_at: '2026-11-10T17:00:00+08:00',
+      purpose: 'Keynote',
+    })
+    return raised.id
+  }
+
+  it('releases an approved venue request and withdraws a pending one', async () => {
+    signInAs(CHLOE)
+    const approvedId = await raiseVenueRequest('2026-11-10T09:00:00+08:00')
+    const pendingId = await raiseVenueRequest('2026-11-10T13:00:00+08:00')
+    signInAs(MOCK_ACCOUNTS.venueStaff)
+    await decideBookingRequest(approvedId, { outcome: 'approved' })
+    signInAs(CHLOE)
+
+    await rejectEvent(BOOKABLE, { reason: REASON })
+
+    const statuses = (await fetchBookingRequests(BOOKABLE)).map((arrangement) => [
+      arrangement.id,
+      arrangement.status,
+    ])
+    expect(statuses).toEqual([
+      [approvedId, 'released'],
+      [pendingId, 'withdrawn'],
+    ])
+  })
+
+  it('returns its reserved equipment and refuses an outcome on its open lines', async () => {
+    signInAs(MOCK_ACCOUNTS.technicalSupport)
+    await reserveEquipment(MOCK_OPEN_EVENT_REFERENCE, { equipment_type_id: 3, quantity: 1 })
+    signInAs(CHLOE)
+
+    await rejectEvent(MOCK_OPEN_EVENT_REFERENCE, { reason: REASON })
+
+    signInAs(MOCK_ACCOUNTS.technicalSupport)
+    expect(await fetchEventReservations(MOCK_OPEN_EVENT_REFERENCE)).toEqual([])
+    const outcome = recordEquipmentOutcome(MOCK_OPEN_EVENT_REFERENCE, {
+      lineId: OPEN_LINE_ID,
+      body: { provided_quantity: 1 },
+    })
+    expect(await refusal(outcome)).toMatchObject({
+      status: 409,
+      code: 'conflict',
+      message:
+        "An equipment outcome can't be recorded for an event that is completed, cancelled or " +
+        'rejected; this one is rejected.',
+    })
   })
 })
