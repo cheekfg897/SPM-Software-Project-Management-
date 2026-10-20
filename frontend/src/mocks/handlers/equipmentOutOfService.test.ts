@@ -291,6 +291,16 @@ describe('SCRUM-47 equipment mock: availability and reservations', () => {
     ])
   })
 
+  it('leaves a reservation unflagged while the type still has units to spare (AC3)', async () => {
+    await reserve(PROJECTOR_ID, 2)
+
+    await takeOut(PROJECTOR_ID, { quantity: 4, reason: 'damaged' })
+    expect(await flagsByEquipment()).toEqual([['Projector', false]])
+
+    await takeOut(PROJECTOR_ID, { quantity: 1, reason: 'damaged' })
+    expect(await flagsByEquipment()).toEqual([['Projector', true]])
+  })
+
   it("answers recording a flagged reservation's preparation with the flag (SCRUM-85)", async () => {
     const reservation = await reserve(PROJECTOR_ID, 6)
     await takeOut(PROJECTOR_ID, { quantity: 1, reason: 'damaged' })
