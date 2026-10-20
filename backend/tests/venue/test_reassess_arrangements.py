@@ -62,6 +62,17 @@ RISE_REASON = (
 RECONFIRM = "requires_reconfirmation"
 UNSUITABLE = "no_longer_suitable"
 
+#: The statuses in which an arrangement still holds or asks for its venue (ADR-0094
+#: decision 2), written out so the test doesn't copy the code's own list.
+LIVE_STATUSES = [
+    BookingRequestStatus.PENDING,
+    BookingRequestStatus.CONFLICTING,
+    BookingRequestStatus.APPROVED,
+]
+#: Every other status, built from the enum so a status added later is checked too. On
+#: Hold is among them until the SCRUM-75 follow-up flags it (ADR-0094 decision 2).
+UNFLAGGED_STATUSES = [status for status in BookingRequestStatus if status not in LIVE_STATUSES]
+
 
 def _edit(session: Session, event: EventRequest, payload: dict[str, Any]) -> None:
     """Edit ``event`` as its coordinator (SCRUM-33)."""
@@ -91,6 +102,12 @@ def _approved(venue: Venue, event: EventRequest, session: Session, **overrides: 
     """Raise a request for ``event`` at ``venue`` and approve it; return its id."""
     request = raise_booking(venue, event, session, **overrides)
     return decide(request.id, "approved", session).id
+
+
+def _set_status(session: Session, request_id: int, status: BookingRequestStatus) -> None:
+    """Put the arrangement straight into ``status``, whatever the flow allows."""
+    reload_request(session, request_id).status = status
+    session.commit()
 
 
 @pytest.fixture()
@@ -302,6 +319,44 @@ def test_a_pending_arrangement_is_flagged_and_a_rejected_one_is_not(
     assert _flags(db_session, rejected.id) == []
 
 
+@pytest.mark.parametrize("status", LIVE_STATUSES, ids=lambda status: status.value)
+def test_every_live_arrangement_is_flagged_and_named_to_venue_staff(
+    db_session: Session,
+    event: EventRequest,
+    main_id: int,
+    breakout_id: int,
+    status: BookingRequestStatus,
+) -> None:
+    _set_status(db_session, breakout_id, status)
+
+    _edit(db_session, event, {"end_time": "18:00"})
+
+    assert _flags(db_session, breakout_id) == [(RECONFIRM, TIMING_REASON)]
+    assert (
+        event.id,
+        f"Venue arrangement {breakout_id} at Breakout room: {TIMING_REASON}",
+    ) in _venue_staff_notices()
+
+
+@pytest.mark.parametrize("status", UNFLAGGED_STATUSES, ids=lambda status: status.value)
+def test_an_arrangement_in_any_other_status_is_neither_flagged_nor_named_to_venue_staff(
+    db_session: Session,
+    event: EventRequest,
+    main_id: int,
+    breakout_id: int,
+    status: BookingRequestStatus,
+) -> None:
+    """The live arrangement beside it is the decoy that shows the edit did reassess."""
+    _set_status(db_session, breakout_id, status)
+
+    _edit(db_session, event, {"end_time": "18:00"})
+
+    assert _flags(db_session, breakout_id) == []
+    assert _venue_staff_notices() == [
+        (event.id, f"Venue arrangement {main_id} at Auditorium: {TIMING_REASON}")
+    ]
+
+
 def test_a_flagged_arrangement_counts_as_flagged_only_while_it_is_live(
     db_session: Session, auditorium: Venue, event: EventRequest
 ) -> None:
@@ -361,6 +416,24 @@ def test_safety_review_is_refused_naming_only_the_arrangement_flagged(
     assert refusal.value.details == {
         "venue_arrangements": [
             f"Venue arrangement {main_id} is flagged (no longer suitable): {CAPACITY_REASON}"
+        ]
+    }
+
+
+def test_safety_review_names_every_reason_each_arrangement_was_flagged(
+    db_session: Session, event: EventRequest, main_id: int, breakout_id: int
+) -> None:
+    _edit(db_session, event, {"end_time": "18:00", "expected_attendance": 150})
+
+    with pytest.raises(event_services.SafetyReviewNotAllowedError) as refusal:
+        event_services.submit_for_safety_review(COORDINATOR_ID, event.reference, session=db_session)
+
+    assert refusal.value.details == {
+        "venue_arrangements": [
+            f"Venue arrangement {main_id} is flagged (requires reconfirmation): {TIMING_REASON}",
+            f"Venue arrangement {main_id} is flagged (no longer suitable): {CAPACITY_REASON}",
+            f"Venue arrangement {breakout_id} is flagged (requires reconfirmation): "
+            f"{TIMING_REASON}",
         ]
     }
 
