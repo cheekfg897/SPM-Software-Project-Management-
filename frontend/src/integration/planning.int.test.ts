@@ -20,7 +20,8 @@ import {
 } from '@/features/eventRequests/api'
 import { assignCoordinator } from '@/features/lead/api'
 import { fetchNotifications } from '@/features/notifications/api'
-import { blockVenue } from '@/features/venues/api'
+import { blockVenue, removeVenueBlock } from '@/features/venues/api'
+import type { CreatedBlock } from '@/features/venues/api'
 import { apiRequest } from '@/lib/api'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
 
@@ -595,16 +596,20 @@ describe('SCRUM-92 replacing a venue that became unavailable', () => {
     return arrangement
   }
 
-  /** As Venue Staff: block the arrangement's venue for the whole event day, then sign back in. */
-  async function blockVenueOf(arrangement: BookingRequest): Promise<void> {
+  /**
+   * As Venue Staff: block the arrangement's venue for the whole event day, then sign back in.
+   * Returns the block.
+   */
+  async function blockVenueOf(arrangement: BookingRequest): Promise<CreatedBlock> {
     await signInAs(required(VENUE_STAFF))
-    await blockVenue(arrangement.venue_id, {
+    const block = await blockVenue(arrangement.venue_id, {
       start_time: `${EVENT_DATE}T08:00`,
       end_time: `${EVENT_DATE}T18:00`,
       category: 'equipment_failure',
       reason: 'Lift broken',
     })
     await signInAs(staffAccount())
+    return block
   }
 
   it.skipIf(!canApproveVenue)(
@@ -661,6 +666,38 @@ describe('SCRUM-92 replacing a venue that became unavailable', () => {
         [replacement.id, 'approved', false],
       ])
       expect(listed[0]?.unavailability).toHaveLength(1)
+    },
+  )
+
+  it.skipIf(!canApproveVenue)(
+    'tells the coordinator why, and clears the flag once Venue Staff remove the block (AC5, AC8)',
+    async () => {
+      const { reference } = await settledEvent()
+      const original = await onlyArrangement(reference)
+      const block = await blockVenueOf(original)
+
+      // --- The coordinator is told the venue, the reason and the period (AC5) ---
+      const notices = await fetchNotifications()
+      const notice = notices.find(
+        (notification) =>
+          notification.kind === 'alternative_venue_needed' &&
+          notification.event_reference === reference,
+      )
+      // The venue's name (newVenue's "Integration Hall <unique>"), then the period and the reason.
+      expect(notice?.detail).toMatch(/^Integration Hall /)
+      expect(notice?.detail).toContain(
+        `is unavailable from ${EVENT_DATE} 08:00 to ${EVENT_DATE} 18:00 (equipment failure): Lift broken`,
+      )
+      // --- Removing the block clears the flag; the original booking stands (AC8) ---
+      await signInAs(required(VENUE_STAFF))
+      await removeVenueBlock(original.venue_id, block.id)
+      await signInAs(staffAccount())
+      expect(await onlyArrangement(reference)).toMatchObject({
+        id: original.id,
+        status: 'approved',
+        needs_alternative_venue: false,
+        unavailability: [],
+      })
     },
   )
 })
