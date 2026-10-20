@@ -329,8 +329,11 @@ def test_the_rejection_and_the_release_are_saved_together_or_not_at_all(
         ({"reason": None}, PLANNING_REJECTION_REASON_REQUIRED_MESSAGE),
         ({"reason": ""}, "Must not be blank."),
         ({"reason": "   "}, "Must not be blank."),
+        ({"reason": 5}, "Not a valid string."),
+        ({"reason": True}, "Not a valid string."),
+        ({"reason": [REASON]}, "Not a valid string."),
     ],
-    ids=["missing", "null", "empty", "whitespace"],
+    ids=["missing", "null", "empty", "whitespace", "number", "boolean", "list"],
 )
 def test_a_rejection_without_a_reason_is_refused(
     db_session: Session,
