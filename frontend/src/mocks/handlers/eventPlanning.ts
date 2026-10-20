@@ -16,6 +16,7 @@ import { NOTHING_PLANNED } from './eventPlanningFixtures'
 import type { MockArrangement, MockArrangementStatus, MockPlanning } from './eventPlanningFixtures'
 import { loadRegistrationChanges } from './eventPlanningRules'
 import { addToHistory } from './eventRecordSections'
+import { flaggedGaps } from './reassessmentRules'
 import type { MockEventRequest } from './eventRequestFixtures'
 import { assignedOrRefusal, objectBodyOrRefusal } from './eventRequests'
 import { loadRejectionReason } from './eventReviewRules'
@@ -91,7 +92,8 @@ function planningOf(stored: MockEventRequest): MockPlanning {
 
 /**
  * Why the event's venues hold it back, as `_venue_gaps` words it: no venue at all, or each
- * active arrangement (a withdrawn or released one is retired) that isn't approved, with its status.
+ * active arrangement (a withdrawn or released one is retired) that isn't approved, with its status, then each
+ * reason a significant change flagged one (SCRUM-33 AC6, SCRUM-58 AC3).
  */
 function venueGaps(planning: MockPlanning): string[] {
   const active = planning.arrangements.filter(
@@ -105,6 +107,9 @@ function venueGaps(planning: MockPlanning): string[] {
     if (arrangement.status !== 'approved') {
       gaps.push(`Venue arrangement ${arrangement.id} is ${arrangement.status}.`)
     }
+  }
+  for (const arrangement of active) {
+    gaps.push(...flaggedGaps(arrangement.id, arrangement.reassessmentFlags))
   }
   return gaps
 }
