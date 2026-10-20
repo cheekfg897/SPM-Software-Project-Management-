@@ -1,8 +1,10 @@
 import { screen, waitFor } from '@testing-library/react'
+import { http, HttpResponse } from 'msw'
 
 import { useEventAvailability } from '@/features/equipment/hooks'
 import { MOCK_ACCOUNTS, mockSessionFor } from '@/mocks/fixtures/accounts'
 import { MOCK_OPEN_EVENT_REFERENCE } from '@/mocks/handlers/equipmentFixtures'
+import { server } from '@/mocks/server'
 import { recordRequests } from '@/test/recordRequests'
 import { renderWithProviders } from '@/test/render'
 
@@ -124,6 +126,21 @@ describe('SCRUM-27 equipment catalogue hooks', () => {
 })
 
 describe('SCRUM-47 out-of-service hooks', () => {
+  /** The two reads a change to the units out of service must send again. */
+  const READ_AGAIN = [
+    `/api/equipment/events/${MOCK_OPEN_EVENT_REFERENCE}/availability`,
+    '/api/equipment/types/1/out-of-service',
+  ]
+
+  /** The paths of the reads sent after the first `count` requests, in path order. */
+  function readsAfter(requests: Request[], count: number): string[] {
+    return requests
+      .slice(count)
+      .filter((request) => request.method === 'GET')
+      .map((request) => new URL(request.url).pathname)
+      .sort()
+  }
+
   async function renderOutOfServiceProbe() {
     const rendered = renderWithProviders(<OutOfServiceProbe />, { session: SESSION })
     await screen.findByText('Projectors free: 6')
@@ -156,5 +173,32 @@ describe('SCRUM-47 out-of-service hooks', () => {
     expect(returned.map((request) => new URL(request.url).pathname)).toEqual([
       '/api/equipment/out-of-service/1/return',
     ])
+  })
+
+  it('reads both again after a refusal too, since someone else may have changed them', async () => {
+    const requests = recordRequests()
+    const { user } = await renderOutOfServiceProbe()
+    await user.click(screen.getByRole('button', { name: 'Take two out' }))
+    await screen.findByText('Projectors free: 4')
+    server.use(
+      http.post('/api/equipment/types/:equipmentTypeId/out-of-service', () =>
+        HttpResponse.json(
+          { error: 'validation_error', message: 'Only 1 units are in service.' },
+          { status: 400 },
+        ),
+      ),
+      http.post('/api/equipment/out-of-service/:entryId/return', () =>
+        HttpResponse.json(
+          { error: 'conflict', message: 'These units are already back in service.' },
+          { status: 409 },
+        ),
+      ),
+    )
+
+    for (const button of ['Take two out', 'Put them back']) {
+      const sentBefore = requests.length
+      await user.click(screen.getByRole('button', { name: button }))
+      await waitFor(() => expect(readsAfter(requests, sentBefore)).toEqual(READ_AGAIN))
+    }
   })
 })
