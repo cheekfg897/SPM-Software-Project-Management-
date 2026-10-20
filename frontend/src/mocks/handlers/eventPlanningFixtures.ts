@@ -1,3 +1,5 @@
+import type { ReassessmentFlag } from '@/features/booking/api'
+
 import { MOCK_ACCOUNTS } from '../fixtures/accounts'
 
 import { NOTHING_RECORDED } from './eventRequestFixtures'
@@ -8,14 +10,23 @@ export type MockArrangementStatus =
   'pending' | 'withdrawn' | 'approved' | 'rejected' | 'conflicting' | 'released'
 
 /**
- * One of the event's venue arrangements: the gates read its id and status, and a withdrawal's
- * history entry names its venue.
+ * One of the event's venue arrangements: what the gates read (its id, its status and each reason a
+ * significant change flagged it, SCRUM-33 AC6), what reassessing it reads (its own expected
+ * occupancy and its venue's capacity, ADR-0094) and the venue a withdrawal's history entry names.
  */
 export interface MockArrangement {
   id: number
   venueId: number
   status: MockArrangementStatus
+  expectedOccupancy: number
+  venueCapacity: number
+  reassessmentFlags: readonly ReassessmentFlag[]
 }
+
+/** A hall booked for all of an event's 150 guests, in a venue for 200; nothing flagged yet. */
+const HALL = { expectedOccupancy: 150, venueCapacity: 200, reassessmentFlags: [] }
+/** A breakout room for 40 of them, in a venue for 50, so it never holds everyone. */
+const BREAKOUT_ROOM = { expectedOccupancy: 40, venueCapacity: 50, reassessmentFlags: [] }
 
 /**
  * What the backend counts when the coordinator plans an event, which the other feature mocks
@@ -98,9 +109,9 @@ export const PLANNING_EVENT_REQUESTS: readonly MockEventRequest[] = [
     planning: {
       ...NOTHING_PLANNED,
       arrangements: [
-        { id: 41, venueId: 2, status: 'approved' },
-        { id: 40, venueId: 3, status: 'withdrawn' },
-        { id: 42, venueId: 3, status: 'pending' },
+        { id: 41, venueId: 2, status: 'approved', ...HALL },
+        { id: 40, venueId: 3, status: 'withdrawn', ...HALL },
+        { id: 42, venueId: 3, status: 'pending', ...BREAKOUT_ROOM },
       ],
       equipmentWithoutOutcome: [43],
     },
@@ -120,8 +131,8 @@ export const PLANNING_EVENT_REQUESTS: readonly MockEventRequest[] = [
     planning: {
       ...NOTHING_PLANNED,
       arrangements: [
-        { id: 44, venueId: 2, status: 'withdrawn' },
-        { id: 45, venueId: 3, status: 'approved' },
+        { id: 44, venueId: 2, status: 'withdrawn', ...HALL },
+        { id: 45, venueId: 3, status: 'approved', ...HALL },
       ],
       equipmentWithoutOutcome: [],
     },
@@ -139,7 +150,7 @@ export const PLANNING_EVENT_REQUESTS: readonly MockEventRequest[] = [
     ...HANAS_EVENT,
     planning: {
       ...NOTHING_PLANNED,
-      arrangements: [{ id: 46, venueId: 2, status: 'approved' }],
+      arrangements: [{ id: 46, venueId: 2, status: 'approved', ...HALL }],
       isSafetyApproved: true,
     },
     request: {
@@ -157,8 +168,8 @@ export const PLANNING_EVENT_REQUESTS: readonly MockEventRequest[] = [
     planning: {
       ...NOTHING_PLANNED,
       arrangements: [
-        { id: 47, venueId: 2, status: 'approved' },
-        { id: 48, venueId: 3, status: 'rejected' },
+        { id: 47, venueId: 2, status: 'approved', ...HALL },
+        { id: 48, venueId: 3, status: 'rejected', ...HALL },
       ],
       equipmentWithoutOutcome: [49],
     },

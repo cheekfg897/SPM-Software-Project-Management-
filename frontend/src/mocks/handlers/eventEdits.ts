@@ -8,6 +8,7 @@ import type { FieldErrors } from '@/lib/api'
 
 import { errorResponse, readBody, validationError } from '../responses'
 
+import { flagArrangementsAfterChange } from './booking'
 import { MOCK_NOW, MOCK_TODAY } from './catalogueFixtures'
 import { NOTHING_PLANNED } from './eventPlanningFixtures'
 import { addToHistory } from './eventRecordSections'
@@ -15,12 +16,15 @@ import { withSeconds } from './eventRequestRules'
 import { assignedOrRefusal } from './eventRequests'
 import { positiveWholeNumberError } from './equipmentValidation'
 import type { MockEventRequest } from './eventRequestFixtures'
+import { FLAGGABLE_STATUSES, reassessmentFlagsFor } from './reassessmentRules'
+import type { SignificantChange } from './reassessmentRules'
 
 /**
  * The assigned coordinator's edit (PATCH /api/events/requests/<reference>; SCRUM-33, ADR-0025):
  * only the fields sent change, each checked as the backend checks it, and each change is
  * answered and written to the history, significant or not; a significant change withdraws a
- * safety approval (AC7). Checks run in the backend's order:
+ * safety approval (AC7), and each venue arrangement it affects is flagged, in the booking mock and
+ * in the planning the gates count (AC6, ADR-0094). Checks run in the backend's order:
  * the coordinator's own event (404), a status that can be edited (409), then the fields (400).
  * The internal planning notes are kept here: the record never shows them.
  */
@@ -68,6 +72,8 @@ const SIGNIFICANT_FIELDS: readonly string[] = [
   'venue_requirements',
   'equipment_requirements',
 ]
+/** The fields that say when the event happens (`_TIMING_FIELDS`). */
+const TIMING_FIELDS: readonly string[] = ['proposed_date', 'end_date', 'start_time', 'end_time']
 const DAY_MS = 24 * 60 * 60_000
 /** What marshmallow reads as a date ("2026-11-12") and a time ("09:00" or "09:00:00"). */
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
@@ -277,6 +283,39 @@ function withdrawnSafetyApproval(
   ]
 }
 
+/** What `changes` did to the event's venue arrangements, as `_flag_venue_arrangements` sees it. */
+function significantChangeOf(
+  changes: FieldChange[],
+  previousAttendance: number,
+  newAttendance: number,
+): SignificantChange {
+  const changedFields = changes.map((change) => change.field)
+  return {
+    timingChanged: changedFields.some((field) => TIMING_FIELDS.includes(field)),
+    venueRequirementsChanged: changedFields.includes('venue_requirements'),
+    previousAttendance,
+    newAttendance,
+  }
+}
+
+/**
+ * Flag each live arrangement the gates count that `change` affects (SCRUM-33 AC6); a withdrawn or
+ * rejected one has nothing to lose, and an event with nothing planned has none.
+ */
+function flagPlannedArrangements(stored: MockEventRequest, change: SignificantChange): void {
+  if (stored.planning === undefined) {
+    return
+  }
+  const arrangements = stored.planning.arrangements.map((arrangement) => {
+    if (!FLAGGABLE_STATUSES.includes(arrangement.status)) {
+      return arrangement
+    }
+    const flags = reassessmentFlagsFor(arrangement, change)
+    return { ...arrangement, reassessmentFlags: [...arrangement.reassessmentFlags, ...flags] }
+  })
+  stored.planning = { ...stored.planning, arrangements }
+}
+
 export const eventEditHandlers: RequestHandler[] = [
   http.patch(`${REQUESTS_PATH}/:reference`, async ({ request, params }) => {
     const found = assignedOrRefusal(request, params.reference)
@@ -298,7 +337,15 @@ export const eventEditHandlers: RequestHandler[] = [
       return validationError(refused)
     }
 
+    const attendanceBefore = Number(stored.request.expected_attendance)
     const changes = applyChanges(stored, values)
+    const change = significantChangeOf(
+      changes,
+      attendanceBefore,
+      Number(stored.request.expected_attendance),
+    )
+    flagPlannedArrangements(stored, change)
+    flagArrangementsAfterChange(stored.request.reference, change)
     addToHistory(stored.request.reference, [
       ...historyOf(changes, coordinator.full_name),
       ...withdrawnSafetyApproval(stored, changes, coordinator.full_name),

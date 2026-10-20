@@ -1,4 +1,9 @@
 import {
+  fetchBookingRequests,
+  raiseBookingRequest,
+  withdrawArrangement,
+} from '@/features/booking/api'
+import {
   confirmEvent,
   editEventRequest,
   fetchEventHistory,
@@ -269,7 +274,8 @@ describe('SCRUM-33 mock of an edit: the safety approval (AC7)', () => {
     signInAs(HANA)
     await confirmEvent('EVR-PLAN0003')
 
-    const edited = await editEventRequest('EVR-PLAN0003', { expected_attendance: 300 })
+    // A fall: still significant, but the hall holds everyone, so no arrangement is flagged (AC6).
+    const edited = await editEventRequest('EVR-PLAN0003', { expected_attendance: 100 })
 
     expect(edited.status).toBe('approved')
     expect(await newestEntryOf('EVR-PLAN0003')).toEqual({
@@ -308,5 +314,138 @@ describe('SCRUM-33 mock of an edit: the safety approval (AC7)', () => {
 
     expect(edited.status).toBe('confirmed')
     expect(await newestEntryOf('EVR-PLAN0005')).toMatchObject({ kind: 'field_changed' })
+  })
+})
+
+/**
+ * SCRUM-33 AC6 (ADR-0094, `flag_arrangements_after_change`): a significant change reassesses each
+ * live venue arrangement (Pending, Conflicting or Approved) on its own, and only those it affects
+ * are flagged, so the event can't go to Safety Review until they're settled. Hana's EVR-PLAN0001
+ * has an approved hall for all 150 guests (41), a withdrawn room (40) and a pending breakout room
+ * for 40 (42); EVR-PLAN0002 has only its hall (45), in a venue for 200.
+ */
+describe('SCRUM-33 mock of an edit: reassessing each venue arrangement (AC6)', () => {
+  const HANA = MOCK_ACCOUNTS.planningCoordinator
+  const TIMING_CHANGED = "The event's date or time changed."
+  const REQUIREMENTS_CHANGED = "The event's venue requirements changed."
+
+  /** Safety Review is refused after `changes` to `reference`, naming exactly `gaps`. */
+  async function expectVenueGapsAfter(
+    reference: string,
+    changes: Record<string, unknown>,
+    gaps: string[],
+  ) {
+    signInAs(HANA)
+    await editEventRequest(reference, changes)
+    expect(await refusal(sendToSafetyReview(reference))).toMatchObject({
+      status: 409,
+      fieldErrors: { venue_arrangements: gaps },
+    })
+  }
+
+  it('flags every live arrangement on a change of time, but not a withdrawn one', async () => {
+    await expectVenueGapsAfter('EVR-PLAN0001', { end_time: '17:00' }, [
+      'Venue arrangement 42 is pending.',
+      `Venue arrangement 41 is flagged (requires reconfirmation): ${TIMING_CHANGED}`,
+      `Venue arrangement 42 is flagged (requires reconfirmation): ${TIMING_CHANGED}`,
+    ])
+  })
+
+  it('flags only the arrangement holding everyone when attendance rises within its venue', async () => {
+    await expectVenueGapsAfter('EVR-PLAN0001', { expected_attendance: 180 }, [
+      'Venue arrangement 42 is pending.',
+      "Venue arrangement 41 is flagged (requires reconfirmation): The event's expected " +
+        "attendance rose from 150 to 180, above this arrangement's expected occupancy of 150.",
+    ])
+  })
+
+  it("flags an arrangement no longer suitable when attendance outgrows its venue's capacity", async () => {
+    await expectVenueGapsAfter('EVR-PLAN0002', { expected_attendance: 250 }, [
+      "Venue arrangement 45 is flagged (no longer suitable): Expected attendance of 250 exceeds the venue's capacity of 200.",
+    ])
+  })
+
+  it('names every reason one change gives an arrangement, in the backend order', async () => {
+    const changes = { proposed_date: '2026-11-25', venue_requirements: 'Step-free stage.' }
+
+    await expectVenueGapsAfter('EVR-PLAN0002', changes, [
+      `Venue arrangement 45 is flagged (requires reconfirmation): ${TIMING_CHANGED}`,
+      `Venue arrangement 45 is flagged (requires reconfirmation): ${REQUIREMENTS_CHANGED}`,
+    ])
+  })
+
+  it.each([
+    ['a note', { description: 'New notes.' }],
+    ['the equipment requirements', { equipment_requirements: 'Two microphones.' }],
+    ['attendance falling', { expected_attendance: 100 }],
+    ['attendance rising to exactly the occupancy', { expected_attendance: 150 }],
+  ])('flags nothing for %s, so the event goes to Safety Review', async (_case, changes) => {
+    signInAs(HANA)
+    await editEventRequest('EVR-PLAN0002', changes)
+
+    expect(await sendToSafetyReview('EVR-PLAN0002')).toMatchObject({ status: 'safety_review' })
+  })
+
+  /**
+   * The arrangements themselves live in the booking mock: an edit to Chloe's EVR-BOOK0101 (80
+   * guests) flags them there, as the backend's arrangements answer them.
+   */
+  it('flags the arrangements the booking mock holds, leaving a smaller room alone', async () => {
+    signInAs(MOCK_ACCOUNTS.coordinator)
+    const period = { starts_at: '2026-11-10T09:00:00+08:00', ends_at: '2026-11-10T12:00:00+08:00' }
+    const hall = await raiseBookingRequest('EVR-BOOK0101', {
+      venue_id: 1,
+      purpose: 'Hall',
+      ...period,
+    })
+    const breakout = await raiseBookingRequest('EVR-BOOK0101', {
+      venue_id: 2,
+      purpose: 'Breakout',
+      expected_occupancy: 15,
+      ...period,
+    })
+
+    await editEventRequest('EVR-BOOK0101', { expected_attendance: 100 })
+
+    const arrangements = await fetchBookingRequests('EVR-BOOK0101')
+    expect(arrangements.find((each) => each.id === hall.id)).toMatchObject({
+      flagged_after_change: true,
+      reassessment_flags: [
+        {
+          kind: 'requires_reconfirmation',
+          reason:
+            "The event's expected attendance rose from 80 to 100, above this arrangement's " +
+            'expected occupancy of 80.',
+        },
+      ],
+    })
+    expect(arrangements.find((each) => each.id === breakout.id)).toMatchObject({
+      flagged_after_change: false,
+      reassessment_flags: [],
+    })
+  })
+
+  it('leaves a withdrawn arrangement in the booking mock unflagged', async () => {
+    signInAs(MOCK_ACCOUNTS.coordinator)
+    const period = { starts_at: '2026-11-10T09:00:00+08:00', ends_at: '2026-11-10T12:00:00+08:00' }
+    const withdrawn = await raiseBookingRequest('EVR-BOOK0101', {
+      venue_id: 1,
+      purpose: 'Hall',
+      ...period,
+    })
+    await withdrawArrangement('EVR-BOOK0101', withdrawn.id)
+    const live = await raiseBookingRequest('EVR-BOOK0101', {
+      venue_id: 1,
+      purpose: 'Hall',
+      ...period,
+    })
+
+    await editEventRequest('EVR-BOOK0101', { end_time: '18:00' })
+
+    const arrangements = await fetchBookingRequests('EVR-BOOK0101')
+    expect(arrangements.find((each) => each.id === withdrawn.id)?.flagged_after_change).toBe(false)
+    expect(arrangements.find((each) => each.id === live.id)?.reassessment_flags).toEqual([
+      { kind: 'requires_reconfirmation', reason: TIMING_CHANGED },
+    ])
   })
 })

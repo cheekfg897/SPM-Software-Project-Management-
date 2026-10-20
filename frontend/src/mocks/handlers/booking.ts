@@ -34,6 +34,8 @@ import {
   preparationErrors,
   savedNotes,
 } from './preparationRules'
+import { FLAGGABLE_STATUSES, reassessmentFlagsFor } from './reassessmentRules'
+import type { SignificantChange } from './reassessmentRules'
 
 /**
  * The venue module's booking request endpoints (SCRUM-42, SCRUM-43, SCRUM-93, SCRUM-75, SCRUM-84),
@@ -398,6 +400,35 @@ export function releaseEventArrangements(reference: string): void {
       arrangement.status = 'released'
     }
   }
+}
+
+/**
+ * Reassess each of the event's live arrangements after a significant change, flagging only those
+ * it affects (SCRUM-33 AC6, `flag_arrangements_after_change`), each judged by its own occupancy
+ * and its venue's capacity. The edit mock calls it, so the arrangements read back carry the flags.
+ */
+export function flagArrangementsAfterChange(reference: string, change: SignificantChange): void {
+  const event = events.find((known) => known.reference === reference)
+  if (event === undefined) {
+    return
+  }
+  requests = requests.map((existing) => {
+    const isLive = existing.event_id === event.id && FLAGGABLE_STATUSES.includes(existing.status)
+    if (!isLive) {
+      return existing
+    }
+    const venueCapacity = venues.find((venue) => venue.id === existing.venue_id)?.capacity ?? 0
+    const size = { expectedOccupancy: existing.expected_occupancy, venueCapacity }
+    const flags = reassessmentFlagsFor(size, change)
+    if (flags.length === 0) {
+      return existing
+    }
+    return {
+      ...existing,
+      flagged_after_change: true,
+      reassessment_flags: [...existing.reassessment_flags, ...flags],
+    }
+  })
 }
 
 /** One of the event's own arrangements; an id on another event is as missing as an unknown one. */
