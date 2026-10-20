@@ -192,10 +192,14 @@ export const equipmentHandlers: RequestHandler[] = [
     if (caller instanceof Response) {
       return caller
     }
-    if (eventForReader(caller, String(params.reference)) === undefined) {
+    const event = eventForReader(caller, String(params.reference))
+    if (event === undefined) {
       return eventNotFound()
     }
-    return HttpResponse.json(reservations.map(asShown))
+    const ofEvent = reservations.filter(
+      (reservation) => reservationEvents.get(reservation.id) === event.reference,
+    )
+    return HttpResponse.json(ofEvent.map(asShown))
   }),
 
   http.post(`${EVENT_PATH}/reservations`, async ({ request, params }) => {
