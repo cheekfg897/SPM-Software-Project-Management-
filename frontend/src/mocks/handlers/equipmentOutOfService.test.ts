@@ -327,6 +327,15 @@ describe('SCRUM-47 equipment mock: availability and reservations', () => {
     expect(await flagsByEquipment()).toEqual([['Projector', true]])
   })
 
+  it("leaves another event's flagged reservation off this event's list", async () => {
+    await reserve(PROJECTOR_ID, 2)
+    await reserveFor(CONFIRMED_EVENT_REFERENCE, MICROPHONE_ID, 12)
+
+    await takeOut(MICROPHONE_ID, { quantity: 1, reason: 'damaged' })
+
+    expect(await flagsByEquipment()).toEqual([['Projector', false]])
+  })
+
   it('shows the flag to the coordinator too', async () => {
     await reserve(PROJECTOR_ID, 6)
     await takeOut(PROJECTOR_ID, { quantity: 1, reason: 'damaged' })
