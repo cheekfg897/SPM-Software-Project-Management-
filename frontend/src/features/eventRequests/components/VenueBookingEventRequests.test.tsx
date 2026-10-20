@@ -1,6 +1,7 @@
 import { screen, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 
+import { INTERNAL_ROLES, ROLE } from '@/config/roles'
 import { ROUTES } from '@/config/routes'
 import { MOCK_ACCOUNTS, mockSessionFor } from '@/mocks/fixtures/accounts'
 import type { MockAccount } from '@/mocks/fixtures/accounts'
@@ -16,6 +17,15 @@ import { renderApp } from '@/test/render'
 
 const LIST_NAME = 'Events with venue bookings'
 const WITH_VENUE_BOOKINGS_PATH = '/api/events/requests/with-venue-bookings'
+const LOADING_TEXT = 'Loading your events…'
+
+/** An account for every staff role but Venue Staff; a test checks none is missing. */
+const OTHER_STAFF = [
+  ['an Event Coordinator', MOCK_ACCOUNTS.coordinator],
+  ['the Event Coordinator Lead', MOCK_ACCOUNTS.lead],
+  ['Technical Support', MOCK_ACCOUNTS.technicalSupport],
+  ['the Safety Officer', MOCK_ACCOUNTS.safetyOfficer],
+] as const
 
 function openStaffHome(account: MockAccount) {
   return renderApp(ROUTES.STAFF_HOME, { session: mockSessionFor(account) })
@@ -56,6 +66,14 @@ describe('SCRUM-24 AC4 Staff home: the events with venue bookings, for Venue Sta
     const rows = within(await venueBookingList()).getAllByRole('listitem')
     const references = rows.map((row) => within(row).getByText(/^EVR-/).textContent)
     expect(references).toEqual(LISTED_REFERENCES)
+  })
+
+  it('says it is loading until the list arrives', async () => {
+    openStaffHome(MOCK_ACCOUNTS.venueStaff)
+
+    expect(screen.getByText(LOADING_TEXT)).toBeInTheDocument()
+    await venueBookingList()
+    expect(screen.queryByText(LOADING_TEXT)).not.toBeInTheDocument()
   })
 
   it("shows each event's name, date, time, reference and status (AC8)", async () => {
@@ -105,12 +123,13 @@ describe('SCRUM-24 AC4 Staff home: the events with venue bookings, for Venue Sta
     expect(await screen.findByText('The venue list is down for a moment.')).toBeInTheDocument()
   })
 
-  it.each([
-    ['an Event Coordinator', MOCK_ACCOUNTS.coordinator],
-    ['the Event Coordinator Lead', MOCK_ACCOUNTS.lead],
-    ['Technical Support', MOCK_ACCOUNTS.technicalSupport],
-    ['the Safety Officer', MOCK_ACCOUNTS.safetyOfficer],
-  ])('shows %s no such list, and asks for none', async (_role, account) => {
+  it('tries every other staff role, so a role added later is checked too', () => {
+    const tried = OTHER_STAFF.map(([, account]) => account.role)
+
+    expect([...tried, ROLE.VENUE_STAFF].sort()).toEqual([...INTERNAL_ROLES].sort())
+  })
+
+  it.each(OTHER_STAFF)('shows %s no such list, and asks for none', async (_role, account) => {
     const requests = recordRequests()
     openStaffHome(account)
 
