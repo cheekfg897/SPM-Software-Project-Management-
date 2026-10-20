@@ -9,7 +9,9 @@ import type { FieldErrors } from '@/lib/api'
 
 import { errorResponse, validationError } from '../responses'
 
+import { releaseEventArrangements } from './booking'
 import { MOCK_NOW } from './catalogueFixtures'
+import { rejectEventEquipment } from './equipment'
 import { NOTHING_PLANNED } from './eventPlanningFixtures'
 import type { MockArrangement, MockArrangementStatus, MockPlanning } from './eventPlanningFixtures'
 import { loadRegistrationChanges } from './eventPlanningRules'
@@ -376,6 +378,9 @@ export const eventPlanningHandlers: RequestHandler[] = [
       ...withdrawals,
     ])
     stored.planning = { ...planning, arrangements }
+    // The venues and equipment the backend frees live in the venue and equipment mocks' stores.
+    releaseEventArrangements(stored.request.reference)
+    rejectEventEquipment(stored.request.reference)
     return HttpResponse.json(stored.request)
   }),
 ]
