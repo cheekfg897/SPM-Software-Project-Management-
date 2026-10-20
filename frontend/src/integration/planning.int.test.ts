@@ -213,14 +213,19 @@ async function raiseVenueRequest(reference: string): Promise<number> {
   return booking.id
 }
 
+/** A planned event with its one venue arrangement, which Venue Staff approved. */
+interface SettledEvent extends PlannedEvent {
+  bookingId: number
+}
+
 /** An approved event whose one venue Venue Staff approved: ready for safety review. */
-async function settledEvent(): Promise<PlannedEvent> {
+async function settledEvent(): Promise<SettledEvent> {
   const event = await approvedEvent()
   const bookingId = await raiseVenueRequest(event.reference)
   await signInAs(required(VENUE_STAFF))
   await decideBookingRequest(bookingId, { outcome: 'approved' })
   await signInAs(staffAccount())
-  return event
+  return { ...event, bookingId }
 }
 
 /** As Technical Support: a new equipment type with ten units. Returns its id. */
@@ -605,7 +610,9 @@ describe('SCRUM-33 a significant edit after the safety check, against the backen
       await confirmEvent(reference)
 
       const noted = await editEventRequest(reference, { description: 'Doors open at 9.' })
-      const changed = await editEventRequest(reference, { expected_attendance: 150 })
+      // Fewer people: significant, but the hall booked for all 120 still holds them, so no
+      // arrangement is flagged to hold back the new check (SCRUM-33 AC6, ADR-0094).
+      const changed = await editEventRequest(reference, { expected_attendance: 100 })
 
       expect(noted.status).toBe('confirmed')
       expect(changed.status).toBe('approved')
@@ -745,6 +752,28 @@ describe('SCRUM-49 rejecting an event during planning against the backend', () =
         (arrangement) => arrangement.status,
       )
       expect(statuses).toEqual(['released'])
+    },
+  )
+})
+
+describe('SCRUM-33 reassessing the venue arrangement after a significant edit, against the backend', () => {
+  it.skipIf(!canApproveVenue)(
+    'holds back safety review while a rise in attendance leaves the arrangement to reconfirm',
+    async () => {
+      const { reference, bookingId } = await settledEvent()
+
+      await editEventRequest(reference, { expected_attendance: 150 })
+      const error = await refusal(sendToSafetyReview(reference))
+
+      // --- Only the arrangement booked for everyone is flagged, with why (SCRUM-33 AC6) ---
+      expect(error).toMatchObject(SAFETY_REVIEW_NOT_READY)
+      expect(error.fieldErrors).toEqual({
+        venue_arrangements: [
+          `Venue arrangement ${bookingId} is flagged (requires reconfirmation): The event's ` +
+            "expected attendance rose from 120 to 150, above this arrangement's expected " +
+            'occupancy of 120.',
+        ],
+      })
     },
   )
 })
