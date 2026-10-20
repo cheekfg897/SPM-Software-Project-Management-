@@ -8,6 +8,7 @@ import { eventEditHandlers, resetMockEventEdits } from './eventEdits'
 import { eventRecordSectionHandlers, resetMockEventHistory } from './eventRecordSections'
 import { notificationHandlers, resetMockNotifications } from './notifications'
 import { equipmentHandlers, resetMockEquipment } from './equipment'
+import { equipmentOutOfServiceHandlers } from './equipmentOutOfService'
 import { leadHandlers, resetMockLeadQueue } from './lead'
 import { resetMockSafety, safetyHandlers } from './safety'
 import { venueSearchHandlers } from './venueSearch'
@@ -31,6 +32,7 @@ export const handlers: RequestHandler[] = [
   ...notificationHandlers,
   ...bookingHandlers,
   ...equipmentHandlers,
+  ...equipmentOutOfServiceHandlers,
   ...leadHandlers,
   ...safetyHandlers,
   ...venueSearchHandlers,

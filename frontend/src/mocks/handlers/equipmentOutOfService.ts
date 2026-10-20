@@ -7,9 +7,16 @@ import { isRecord } from '@/lib/isRecord'
 
 import { errorResponse, validationError } from '../responses'
 
-import { callerOrRefusal } from './equipmentAccess'
+import { eventsReservingType, isTypeShort } from './equipment'
+import { callerOrRefusal, withdrawSafetyApproval } from './equipmentAccess'
 import { idFromPath, mockCatalogueType, routeNotFound } from './equipmentCatalogue'
 import { MOCK_BACK_IN_SERVICE_AT, MOCK_OUT_OF_SERVICE_RECORDED_AT } from './equipmentFixtures'
+import {
+  addOutOfServiceEntry,
+  entriesStillOut,
+  outOfServiceEntry,
+  outOfServiceQuantity,
+} from './equipmentOutOfServiceEntries'
 import {
   MISSING_MESSAGE,
   positiveWholeNumberError,
@@ -19,44 +26,16 @@ import {
 /**
  * Taking units of an equipment type out of service and putting them back (SCRUM-47, ADR-0046),
  * as backend/app/modules/equipment/routes.py answers it: Technical Support only, the body checked
- * as MarkOutOfServiceSchema checks it, then the type, then how many are in service. Entries live
- * in memory until resetMockOutOfService. The coordinator's notice (AC3) is not sent: the
- * notifications mock keeps its own list.
+ * as MarkOutOfServiceSchema checks it, then the type, then how many are in service. An event whose
+ * reservation this leaves short loses its safety approval (AC5). The entries are kept in
+ * equipmentOutOfServiceEntries.ts. The coordinator's notice (AC3) is not sent: the notifications
+ * mock keeps its own list.
  */
 
 const REASONS = ['damaged', 'under_maintenance']
 const UNKNOWN_REASON_MESSAGE = 'Must be one of: damaged, under_maintenance.'
 const FIELDS = ['quantity', 'reason']
 const TECHNICAL_SUPPORT_ONLY = [ROLE.TECHNICAL_SUPPORT_STAFF]
-
-interface MockOutOfServiceEntry {
-  id: number
-  equipment_type_id: number
-  quantity: number
-  reason: string
-  recorded_by: string
-  recorded_at: string
-  resolved_by: string | null
-  resolved_at: string | null
-}
-
-let entries: MockOutOfServiceEntry[] = []
-
-/** Put every unit back in service and start the ids again. Runs with resetMockEquipment. */
-export function resetMockOutOfService(): void {
-  entries = []
-}
-
-/** How many units of the type are out of service now: every entry not yet put back. */
-export function outOfServiceQuantity(equipmentTypeId: number): number {
-  let total = 0
-  for (const entry of entries) {
-    if (entry.equipment_type_id === equipmentTypeId && entry.resolved_at === null) {
-      total += entry.quantity
-    }
-  }
-  return total
-}
 
 function reasonError(value: unknown): string | undefined {
   if (value === null) {
@@ -95,6 +74,17 @@ function tooManyUnits(inService: number) {
   )
 }
 
+/**
+ * Every event with a reservation of the type loses its safety approval (AC5). The backend
+ * withdraws it for each newly flagged reservation, and here every reservation of a type is
+ * flagged together (equipment.ts).
+ */
+function withdrawApprovalsOfEventsReserving(equipmentTypeId: number): void {
+  for (const reference of eventsReservingType(equipmentTypeId)) {
+    withdrawSafetyApproval(reference)
+  }
+}
+
 function typeNotFound() {
   return errorResponse(404, 'not_found', 'Equipment type not found.')
 }
@@ -128,8 +118,8 @@ export const equipmentOutOfServiceHandlers: RequestHandler[] = [
       return tooManyUnits(inService)
     }
 
-    const entry: MockOutOfServiceEntry = {
-      id: entries.length + 1,
+    const wasShort = isTypeShort(type.id)
+    const entry = addOutOfServiceEntry({
       equipment_type_id: type.id,
       quantity,
       reason: String(body.reason),
@@ -137,8 +127,10 @@ export const equipmentOutOfServiceHandlers: RequestHandler[] = [
       recorded_at: MOCK_OUT_OF_SERVICE_RECORDED_AT,
       resolved_by: null,
       resolved_at: null,
+    })
+    if (!wasShort && isTypeShort(type.id)) {
+      withdrawApprovalsOfEventsReserving(type.id)
     }
-    entries.push(entry)
     return HttpResponse.json(entry, { status: 201 })
   }),
 
@@ -154,11 +146,7 @@ export const equipmentOutOfServiceHandlers: RequestHandler[] = [
     if (mockCatalogueType(typeId) === undefined) {
       return typeNotFound()
     }
-    // Ids follow the order the entries were recorded, so this is oldest first.
-    const stillOut = entries.filter(
-      (entry) => entry.equipment_type_id === typeId && entry.resolved_at === null,
-    )
-    return HttpResponse.json(stillOut)
+    return HttpResponse.json(entriesStillOut(typeId))
   }),
 
   http.post('/api/equipment/out-of-service/:entryId/return', ({ request, params }) => {
@@ -170,7 +158,7 @@ export const equipmentOutOfServiceHandlers: RequestHandler[] = [
     if (caller instanceof Response) {
       return caller
     }
-    const entry = entries.find((candidate) => candidate.id === entryId)
+    const entry = outOfServiceEntry(entryId)
     if (entry === undefined) {
       return errorResponse(404, 'not_found', 'Out-of-service entry not found.')
     }

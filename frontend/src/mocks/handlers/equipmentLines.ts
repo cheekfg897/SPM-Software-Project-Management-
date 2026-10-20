@@ -17,6 +17,7 @@ import {
   eventForReader,
   eventForStaff,
   eventNotFound,
+  withdrawSafetyApproval,
 } from './equipmentAccess'
 import {
   MOCK_EQUIPMENT_LINES,
@@ -276,18 +277,6 @@ function outcomeRefusal(line: MockEquipmentLine, provided: number, note: string 
   return undefined
 }
 
-/**
- * A revised outcome withdraws the event's safety approval (AC7, `withdraw_safety_approval`):
- * the event goes back to Approved, to be sent for a new check (ADR-0087). Only a Confirmed event
- * has an approval here, as every one does on the backend, which confirms only an approved event;
- * this mock's event in Safety Review is still waiting for the Safety Officer.
- */
-function withdrawSafetyApproval(event: MockEvent): void {
-  if (event.status === EVENT_REQUEST_STATUS.CONFIRMED) {
-    event.status = EVENT_REQUEST_STATUS.APPROVED
-  }
-}
-
 /** An outcome on an event that won't run, refused naming its status (SCRUM-48 AC8). */
 function outcomesClosed(event: MockEvent) {
   return errorResponse(
@@ -468,8 +457,10 @@ export const equipmentLineHandlers: RequestHandler[] = [
     line.outcome_note = status === 'fulfilled' ? null : note
     line.reviewed_by = caller.full_name
     line.reviewed_at = MOCK_OUTCOME_RECORDED_AT
+    // A revision withdraws the event's safety approval (AC7); this mock's event in Safety Review
+    // is still waiting for the Safety Officer, so it has none to lose.
     if (isRevision) {
-      withdrawSafetyApproval(event)
+      withdrawSafetyApproval(event.reference)
     }
     return HttpResponse.json(shownLine(line))
   }),

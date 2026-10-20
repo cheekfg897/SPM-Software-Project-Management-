@@ -1,3 +1,5 @@
+import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
+import { addEquipmentLine } from '@/features/equipment/api'
 import { OTHER_STAFF } from '@/features/equipmentCatalogue/test/staff'
 import { apiRequest } from '@/lib/api'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
@@ -9,8 +11,10 @@ import {
   MOCK_BACK_IN_SERVICE_AT,
   MOCK_OPEN_EVENT_REFERENCE,
   MOCK_OUT_OF_SERVICE_RECORDED_AT,
+  mockStatusEventReference,
 } from './equipmentFixtures'
 import { resetMockEquipment } from './equipment'
+import { PREPARATION_NEEDS_SAFETY_APPROVAL_MESSAGE } from './preparationRules'
 
 /**
  * The out-of-service mock mirrors backend/app/modules/equipment/routes.py (SCRUM-47, ADR-0046):
@@ -49,6 +53,10 @@ const MISSING = 'Missing data for required field.'
 const ROUTE_NOT_FOUND =
   'The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.'
 const OPEN_EVENT = `/api/equipment/events/${MOCK_OPEN_EVENT_REFERENCE}`
+/** The mock coordinator's Confirmed event: it has passed its safety check, as every one has. */
+const CONFIRMED_EVENT_REFERENCE = mockStatusEventReference(EVENT_REQUEST_STATUS.CONFIRMED)
+/** A line the coordinator may add only while the event is Approved, not once it is Confirmed. */
+const LECTERN_LINE = { equipment_type_id: LECTERN_ID, quantity: 1 }
 
 /** Everyone the backend refuses with a 403: every role but Technical Support. */
 const NOT_TECHNICAL_SUPPORT: [string, MockAccount][] = [
@@ -98,11 +106,29 @@ async function flagsByEquipment(): Promise<[string, boolean][]> {
   ])
 }
 
-function reserve(equipmentTypeId: number, quantity: number) {
-  return apiRequest<Reservation>(`${OPEN_EVENT}/reservations`, {
+function reserveFor(reference: string, equipmentTypeId: number, quantity: number) {
+  return apiRequest<Reservation>(`/api/equipment/events/${reference}/reservations`, {
     method: 'POST',
     body: { equipment_type_id: equipmentTypeId, quantity },
   })
+}
+
+function reserve(equipmentTypeId: number, quantity: number) {
+  return reserveFor(MOCK_OPEN_EVENT_REFERENCE, equipmentTypeId, quantity)
+}
+
+/** Record that preparing the reservation has started, which needs the event's safety approval. */
+function prepare(reservationId: number) {
+  return apiRequest<Reservation>(`/api/equipment/reservations/${reservationId}/preparation`, {
+    method: 'PUT',
+    body: { status: 'in_progress' },
+  })
+}
+
+const NEEDS_SAFETY_APPROVAL = {
+  status: 409,
+  code: 'conflict',
+  message: PREPARATION_NEEDS_SAFETY_APPROVAL_MESSAGE,
 }
 
 describe('SCRUM-47 equipment mock: units out of service', () => {
@@ -301,18 +327,6 @@ describe('SCRUM-47 equipment mock: availability and reservations', () => {
     expect(await flagsByEquipment()).toEqual([['Projector', true]])
   })
 
-  it("answers recording a flagged reservation's preparation with the flag (SCRUM-85)", async () => {
-    const reservation = await reserve(PROJECTOR_ID, 6)
-    await takeOut(PROJECTOR_ID, { quantity: 1, reason: 'damaged' })
-
-    const prepared = await apiRequest<Reservation>(
-      `/api/equipment/reservations/${reservation.id}/preparation`,
-      { method: 'PUT', body: { status: 'in_progress' } },
-    )
-
-    expect(prepared.needs_attention).toBe(true)
-  })
-
   it('shows the flag to the coordinator too', async () => {
     await reserve(PROJECTOR_ID, 6)
     await takeOut(PROJECTOR_ID, { quantity: 1, reason: 'damaged' })
@@ -320,5 +334,48 @@ describe('SCRUM-47 equipment mock: availability and reservations', () => {
     signInAs(MOCK_ACCOUNTS.coordinator)
 
     expect(await flagsByEquipment()).toEqual([['Projector', true]])
+  })
+})
+
+describe('SCRUM-47 equipment mock: a reservation left short needs a new safety check (AC5)', () => {
+  beforeEach(() => signInAs(MOCK_ACCOUNTS.technicalSupport))
+
+  it("withdraws the event's safety approval, so its preparation is refused even once the units are back", async () => {
+    const reservation = await reserve(PROJECTOR_ID, 6)
+    await prepare(reservation.id)
+
+    const entry = await takeOut(PROJECTOR_ID, { quantity: 1, reason: 'damaged' })
+    await expect(prepare(reservation.id)).rejects.toMatchObject(NEEDS_SAFETY_APPROVAL)
+
+    await putBack(entry.id)
+    await expect(prepare(reservation.id)).rejects.toMatchObject(NEEDS_SAFETY_APPROVAL)
+  })
+
+  it('keeps the approval while the type has units to spare, or only another type is left short', async () => {
+    const projectors = await reserve(PROJECTOR_ID, 2)
+    await reserveFor(CONFIRMED_EVENT_REFERENCE, MICROPHONE_ID, 12)
+
+    await takeOut(PROJECTOR_ID, { quantity: 4, reason: 'damaged' })
+    await takeOut(MICROPHONE_ID, { quantity: 1, reason: 'damaged' })
+
+    await expect(prepare(projectors.id)).resolves.toMatchObject({
+      preparation_status: 'in_progress',
+    })
+  })
+
+  it('sends a Confirmed event it leaves short back to Approved, so its coordinator can plan again', async () => {
+    await reserveFor(CONFIRMED_EVENT_REFERENCE, MICROPHONE_ID, 12)
+    signInAs(MOCK_ACCOUNTS.coordinator)
+    await expect(addEquipmentLine(CONFIRMED_EVENT_REFERENCE, LECTERN_LINE)).rejects.toMatchObject({
+      status: 409,
+    })
+
+    signInAs(MOCK_ACCOUNTS.technicalSupport)
+    await takeOut(MICROPHONE_ID, { quantity: 1, reason: 'damaged' })
+
+    signInAs(MOCK_ACCOUNTS.coordinator)
+    await expect(addEquipmentLine(CONFIRMED_EVENT_REFERENCE, LECTERN_LINE)).resolves.toMatchObject(
+      LECTERN_LINE,
+    )
   })
 })
