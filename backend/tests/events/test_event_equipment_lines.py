@@ -539,6 +539,14 @@ def test_a_line_can_only_be_reached_through_its_own_event(
     ]
 
 
+def test_every_status_is_tested_as_either_open_or_locked_for_equipment() -> None:
+    """A status added later must go on one side of AC2 here (a draft is hidden)."""
+    sorted_statuses = set(EQUIPMENT_EDITABLE_STATUSES) | set(EQUIPMENT_LOCKED_STATUSES)
+    sorted_statuses.add(EventRequestStatus.DRAFT)
+
+    assert sorted_statuses == set(EventRequestStatus)
+
+
 @pytest.mark.parametrize("status", EQUIPMENT_EDITABLE_STATUSES, ids=lambda status: status.value)
 def test_lines_may_change_at_any_time_before_the_event_is_confirmed(
     db_session: Session,

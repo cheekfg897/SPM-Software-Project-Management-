@@ -24,6 +24,7 @@ from app.common.errors import ConflictError
 from app.modules.auth.models import User
 from app.modules.equipment.models import EquipmentReservation, EquipmentType
 from app.modules.equipment.services import available_quantity
+from app.modules.events import services
 from app.modules.events.models import EventEquipmentLine, EventRequest
 from app.modules.events.services import remove_equipment_line, update_equipment_line
 
@@ -53,6 +54,11 @@ def _reservation(
         ends_at=ENDS_AT,
         reserved_by=5,
     )
+
+
+def _notice_fails(*_: object, **__: object) -> None:
+    """Stands in for the notice when the notification service is down."""
+    raise RuntimeError("notification service down")
 
 
 def _held(session: Session) -> list[HeldUnits]:
@@ -167,6 +173,71 @@ def test_a_line_that_keeps_its_type_keeps_its_reservations(
     update_equipment_line(COORDINATOR_ID, REFERENCE, projector_line.id, payload)
 
     assert _held(db_session) == reservations
+
+
+def test_a_line_sent_its_own_type_with_a_new_quantity_keeps_its_reservations(
+    db_session: Session,
+    projector_line: EventEquipmentLine,
+    equipment_type: EquipmentType,
+    reservations: list[HeldUnits],
+) -> None:
+    """An edit may send the type the line already has: that is no move."""
+    payload = {"equipment_type_id": equipment_type.id, "quantity": 1}
+
+    update_equipment_line(COORDINATOR_ID, REFERENCE, projector_line.id, payload)
+
+    assert _held(db_session) == reservations
+
+
+@pytest.fixture()
+def held_once_released(
+    saved_event_request: EventRequest,
+    equipment_type: EquipmentType,
+    microphone: EquipmentType,
+    reservations: list[HeldUnits],
+) -> list[HeldUnits]:
+    """What ``reservations`` leaves once REFERENCE's projectors are released."""
+    return [(saved_event_request.id, microphone.id, 1), (99, equipment_type.id, 4)]
+
+
+def test_a_removed_lines_release_is_saved_with_the_removal_even_if_the_notice_fails(
+    db_session: Session,
+    projector_line: EventEquipmentLine,
+    held_once_released: list[HeldUnits],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The release rides in the removal's own commit; the notice comes after it."""
+    monkeypatch.setattr(services, "_notify_technical_support", _notice_fails)
+
+    with pytest.raises(RuntimeError):
+        remove_equipment_line(COORDINATOR_ID, REFERENCE, projector_line.id)
+
+    db_session.rollback()
+    assert db_session.get(EventEquipmentLine, projector_line.id) is None
+    assert _held(db_session) == held_once_released
+
+
+def test_a_moved_lines_release_is_saved_with_the_move_even_if_the_notice_fails(
+    db_session: Session,
+    projector_line: EventEquipmentLine,
+    make_equipment_type: Callable[..., EquipmentType],
+    held_once_released: list[HeldUnits],
+    save: Save,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The release rides in the type change's own commit; the notice comes after it."""
+    lectern = make_equipment_type(name="Lectern")
+    save(lectern)
+    monkeypatch.setattr(services, "_notify_technical_support", _notice_fails)
+
+    with pytest.raises(RuntimeError):
+        update_equipment_line(
+            COORDINATOR_ID, REFERENCE, projector_line.id, {"equipment_type_id": lectern.id}
+        )
+
+    db_session.rollback()
+    assert db_session.get(EventEquipmentLine, projector_line.id).equipment_type_id == lectern.id
+    assert _held(db_session) == held_once_released
 
 
 def test_a_refused_type_change_releases_nothing(
