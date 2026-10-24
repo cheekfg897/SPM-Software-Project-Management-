@@ -115,18 +115,28 @@ describe('SCRUM-48 equipment outcome mock: recording', () => {
     expect(await listedProjector()).toEqual(expected)
   })
 
-  it('records the whole request as fulfilled, keeping no note (AC2)', async () => {
+  it('records the whole request as fulfilled, keeping the note given with it (AC2)', async () => {
     signInAs(MOCK_ACCOUNTS.technicalSupport)
 
-    const recorded = await recordOnProjector({ provided_quantity: 8, note: 'All in the store.' })
+    const recorded = await recordOnProjector({ provided_quantity: 8, note: ' All in the store. ' })
 
     expect(recorded).toMatchObject({
       status: 'fulfilled',
       provided_quantity: 8,
       shortfall: 0,
-      outcome_note: null,
+      outcome_note: 'All in the store.',
       reviewed_by: 'Tariq Hassan',
     })
+    expect(await listedProjector()).toMatchObject({ outcome_note: 'All in the store.' })
+  })
+
+  it('clears the earlier note when a revision to fulfilled sends none (AC2, AC6)', async () => {
+    signInAs(MOCK_ACCOUNTS.technicalSupport)
+    await recordOnProjector({ provided_quantity: 6, note: 'Two are being repaired.' })
+
+    const revised = await recordOnProjector({ provided_quantity: 8 })
+
+    expect(revised).toMatchObject({ status: 'fulfilled', outcome_note: null })
   })
 
   it('records the whole request as fulfilled with no note at all (AC2)', async () => {

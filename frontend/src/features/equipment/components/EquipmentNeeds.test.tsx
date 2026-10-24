@@ -604,6 +604,17 @@ describe('SCRUM-48 equipment page: recording an outcome (AC1, AC2, AC3, AC6, AC8
     expect(within(outcomeCell('Projector')).getByText('8 of 8 provided')).toBeInTheDocument()
   })
 
+  it('records the whole request with a note as fulfilled, and shows the note (AC2)', async () => {
+    const { user } = await openAsTechnicalSupport()
+
+    await recordProjector(user, { provided: '8', note: 'Two are spares from the hall store.' })
+
+    await waitFor(() => expect(statusOf('Projector')).toBe('Fulfilled'))
+    const projector = within(outcomeCell('Projector'))
+    expect(projector.getByText('8 of 8 provided')).toBeInTheDocument()
+    expect(projector.getByText('Two are spares from the hall store.')).toBeInTheDocument()
+  })
+
   it('records none of it, with the reason, as unavailable (AC3)', async () => {
     const { user } = await openAsTechnicalSupport()
 

@@ -453,8 +453,8 @@ export const equipmentLineHandlers: RequestHandler[] = [
     const status = outcomeStatus(line.quantity, provided)
     line.status = status
     line.provided_quantity = provided
-    // A line met in full keeps no note, so a revision never keeps a stale reason.
-    line.outcome_note = status === 'fulfilled' ? null : note
+    // The note is replaced, not merged: a revision sent with no note clears the old one.
+    line.outcome_note = note
     line.reviewed_by = caller.full_name
     line.reviewed_at = MOCK_OUTCOME_RECORDED_AT
     // A revision withdraws the event's safety approval (AC7); this mock's event in Safety Review
