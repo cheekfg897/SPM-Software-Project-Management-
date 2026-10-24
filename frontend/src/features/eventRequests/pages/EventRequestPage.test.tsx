@@ -256,6 +256,48 @@ describe('SCRUM-37 AC5, SCRUM-48 AC5 event record: the equipment an organiser se
   })
 })
 
+describe('SCRUM-49 AC11 event record: the venues an organiser sees once it is confirmed', () => {
+  const SARA = mockSessionFor(MOCK_ACCOUNTS.otherOrganiser)
+
+  it('lists each booked venue with where it is, when, and what was arranged', async () => {
+    renderApp(organiserRequestPath('EVR-BOOK0112'), { session: SARA })
+
+    await section('Venues')
+    expect(rowsOf('Venues booked')).toEqual([
+      [
+        'Boardroom TwoLevel 3, Tower Block',
+        '5 Dec, 5:00 pm – 6:00 pm',
+        'Drinks reception',
+        'No layout set',
+        '10',
+      ],
+      [
+        'Marina HallLevel 1, Marina Wing',
+        '5 Dec, 6:00 pm – 11:00 pm',
+        'Gala dinner',
+        'Banquet',
+        '10',
+      ],
+    ])
+  })
+
+  it("shows none of Venue Staff's notes or preparation", async () => {
+    renderApp(organiserRequestPath('EVR-BOOK0112'), { session: SARA })
+
+    const venues = await section('Venues')
+    for (const internal of ['Booked for the dinner.', 'Tables set for 80.', 'Overflow room']) {
+      expect(within(venues).queryByText(internal, { exact: false })).not.toBeInTheDocument()
+    }
+  })
+
+  it('leaves the section out before the event is confirmed', async () => {
+    renderApp(organiserRequestPath('EVR-BOOK0101'), { session: SARA })
+
+    await section('About the event')
+    expect(screen.queryByRole('heading', { level: 2, name: 'Venues' })).not.toBeInTheDocument()
+  })
+})
+
 describe('SCRUM-24 AC9, AC10 event record: what a coordinator sees', () => {
   it('opens an event assigned to them, with links on to its venue requests and equipment', async () => {
     openAsCoordinator('EVR-BOOK0101')
