@@ -10,8 +10,11 @@ again and the Safety Officer approves it, which takes it off their list. Venue S
 and Technical Support can record the preparation of the booking and the reservation
 only once the Safety Officer has approved (SCRUM-84, SCRUM-85), and the coordinator
 then reads both. SCRUM-49: the coordinator can't confirm the event before that
-approval; once it is in, they confirm it and the event is confirmed. Every call goes
-through the real routes with Flask's test client (ADR-0031).
+approval; once it is in, they confirm it and the event is confirmed. Its organiser then
+sees the venue, its date and times, and the equipment they will get, which they didn't
+see before (SCRUM-49 AC11, ADR-0099), without the internal notes (SCRUM-37 AC5,
+SCRUM-48 AC5, ADR-0098). Every call goes through the real routes with Flask's test
+client (ADR-0031).
 
 Nothing here walks the request to approval: the event is saved as approved, with its
 coordinator, and that journey is test_request_to_approval_journey.py.
@@ -28,6 +31,7 @@ from sqlalchemy.orm import Session
 from werkzeug.test import TestResponse
 
 from app.common.clock import local_today
+from app.modules.auth.models import User
 from app.modules.auth.permissions import Role
 from app.modules.auth.services import create_staff_user
 from app.modules.events.models import EventRequest, EventRequestStatus
@@ -39,6 +43,7 @@ pytestmark = [
     pytest.mark.scrum_97,
     pytest.mark.scrum_98,
     pytest.mark.scrum_49,
+    pytest.mark.scrum_48,
     pytest.mark.e2e,
 ]
 
@@ -47,6 +52,7 @@ COORDINATOR_ACCOUNT = {"full_name": "Cara Coordinator", "email": "cara@example.c
 VENUE_STAFF_ACCOUNT = {"full_name": "Vera Venue", "email": "vera@example.com"}
 TECHNICAL_SUPPORT_ACCOUNT = {"full_name": "Tina Technician", "email": "tina@example.com"}
 SAFETY_OFFICER_ACCOUNT = {"full_name": "Sam Safety", "email": "sam@example.com"}
+ORGANISER_EMAIL = "olivia@example.com"
 EVENT = "EVR-AAAAAAAA"
 VENUE = {
     "name": "Main Hall",
@@ -127,6 +133,24 @@ def safety_officer(db_session: Session, sign_in: SignIn) -> Actor:
 
 
 @pytest.fixture()
+def organiser(db_session: Session, make_user: Callable[..., User], sign_in: SignIn) -> Actor:
+    """The event's organiser, signed in: user 7 of client organisation 3.
+
+    ``make_event_request`` files the event under them.
+    """
+    user = make_user(
+        email=ORGANISER_EMAIL,
+        password=PASSWORD,
+        role=Role.EVENT_ORGANISER,
+        organisation_id=3,
+        user_id=7,
+    )
+    db_session.add(user)
+    db_session.commit()
+    return sign_in(ORGANISER_EMAIL, PASSWORD)
+
+
+@pytest.fixture()
 def event_day() -> str:
     """The day of the event, a month away, as an ISO date."""
     return (local_today() + timedelta(days=30)).isoformat()
@@ -156,6 +180,7 @@ def test_a_settled_event_reaches_the_safety_officer(
     venue_staff: Actor,
     technical_support: Actor,
     safety_officer: Actor,
+    organiser: Actor,
     approved_event: None,
     event_day: str,
 ) -> None:
@@ -272,8 +297,37 @@ def test_a_settled_event_reaches_the_safety_officer(
         "Projectors tested.",
     )
 
+    # --- Until it is confirmed, its organiser sees no venues (SCRUM-49 AC11) ---
+    record_path = f"/api/events/requests/{EVENT}"
+    assert _body(organiser.get(record_path), 200)["venue_arrangements"] == []
+
     # --- The coordinator confirms the event (SCRUM-49 AC1) ---
     confirmed = _body(coordinator.post(confirm_path), 200)
     assert confirmed["status"] == "confirmed"
     # Confirmed once is enough: it is no longer in Safety Review to confirm again.
     assert _body(coordinator.post(confirm_path), 409)["error"] == "confirmation_not_allowed"
+
+    # --- Its organiser now sees the venue and what equipment they will get, and nothing
+    # --- internal (SCRUM-49 AC11, SCRUM-37 AC5, SCRUM-48 AC5) ---
+    record = _body(organiser.get(record_path), 200)
+    assert record["venue_arrangements"] == [
+        {
+            "venue_name": "Main Hall",
+            "venue_location": "Level 1",
+            "starts_at": f"{event_day}T09:00:00+08:00",
+            "ends_at": f"{event_day}T12:00:00+08:00",
+            "purpose": "Partner summit",
+            "layout": None,
+            # The request named no occupancy, so it took the event's attendance.
+            "expected_occupancy": 250,
+        }
+    ]
+    assert record["equipment_lines"] == [
+        {
+            "id": line["id"],
+            "equipment_type_name": "Projector",
+            "quantity": 2,
+            "status": "fulfilled",
+            "provided_quantity": 2,
+        }
+    ]
