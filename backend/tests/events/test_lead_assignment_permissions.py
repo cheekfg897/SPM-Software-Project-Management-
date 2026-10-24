@@ -109,7 +109,7 @@ def test_a_call_without_a_token_is_401(
         service.assert_not_called()
 
 
-def test_the_lead_sees_the_queue_as_the_reference_and_the_ac2_fields_only(
+def test_the_lead_sees_the_queue_as_the_reference_the_ac2_fields_and_the_status_only(
     call_route: CallRoute, token_for: Callable[..., str], lead_services: dict[str, MagicMock]
 ) -> None:
     response, status = call_route(
@@ -128,6 +128,7 @@ def test_the_lead_sees_the_queue_as_the_reference_and_the_ac2_fields_only(
         "end_time",
         "expected_attendance",
         "submitted_at",
+        "status",
     }
     assert queue[0]["name"] == "Partner Summit"
 
