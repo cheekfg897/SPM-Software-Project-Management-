@@ -1,6 +1,6 @@
 # ADR-0037: Equipment availability is calculated per event period; Technical Support reserve up to it under a row lock; out-of-service units are a read-only seam for SCRUM-47
 
-- **Status:** Accepted
+- **Status:** Accepted; section 5 (the coordinator is notified of each reservation) superseded by [ADR-0102](0102-reserving-equipment-notifies-nobody.md): reserving notifies nobody, and the coordinator hears once, when the outcome is recorded
 - **Date:** 2026-10-11
 - **Story:** SCRUM-45 Check whether enough equipment is free; SCRUM-46 Reserve equipment
 - **Extends:** [ADR-0014](0014-equipment-type-location-and-quantity.md): what is subtracted from `total_quantity`; [ADR-0015](0015-in-app-notifications.md) and [ADR-0018](0018-least-loaded-coordinator-and-event-history.md): a new notification kind and a new history kind; [ADR-0019](0019-event-equipment-lines.md) and [ADR-0022](0022-equipment-awaiting-action.md): what reserving does to an equipment line (nothing, for now), and who may read an event's equipment (as its lines, ADR-0019 and [ADR-0034](0034-coordinators-see-only-their-own-events.md)); [ADR-0025](0025-event-edits-significant-changes-and-history.md): history entries hidden from the organiser
@@ -128,6 +128,8 @@ Each reservation writes one event history entry of kind `EventHistoryKind.EQUIPM
 Internal staff see the entry in `GET /api/events/requests/<reference>/history` with the actor's name (ADR-0025). It is **internal only**: `INTERNAL_ONLY_KINDS = {EQUIPMENT_RESERVED}`, which `_shown_to_organiser` checks, so organisers never see it.
 
 ### 5. The coordinator is notified (SCRUM-46 AC5)
+*Superseded by [ADR-0102](0102-reserving-equipment-notifies-nobody.md):* AC5 now says reserving does not notify the coordinator by itself; they are notified once, when the outcome is recorded (SCRUM-48). `reserve_equipment` no longer calls `notify_coordinator_equipment_reserved`, which is gone, and the `equipment_reserved` notification kind stays only for notifications already sent. What follows is how it worked until then.
+
 After the reservation's commit, `reserve_equipment` calls `events.services.notify_coordinator_equipment_reserved(event_id)`. The events module owns it, so equipment never writes notification rows or reads event models.
 - **Who hears.** Only the event's assigned coordinator (ADR-0018), once per reservation, with kind `equipment_reserved` and the message "Equipment was reserved for an event.", linking to `/events/<reference>`.
 - **Its own commit (ADR-0015).** If the notification can't be saved, it is rolled back and logged (`event_request_notification_failed … kind=equipment_reserved`). The reservation stands and the reply is still `201`.
