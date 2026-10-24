@@ -74,6 +74,9 @@ describe('SCRUM-84 booking mock: the approved bookings', () => {
       AWAITING_SAFETY_BOOKING.id,
       // Flagged as needing an alternative venue, but still approved until a replacement is (SCRUM-92).
       MOCK_ARRANGEMENTS.reviewedAuditorium.id,
+      // The confirmed gala's two, which share its date and start, so by id.
+      MOCK_ARRANGEMENTS.galaDinner.id,
+      MOCK_ARRANGEMENTS.galaReception.id,
     ])
   })
 

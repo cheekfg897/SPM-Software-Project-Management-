@@ -1,5 +1,6 @@
 import { ROLE } from '@/config/roles'
 import type { Role } from '@/config/roles'
+import { decideBookingRequest, raiseBookingRequest } from '@/features/booking/api'
 import { recordEquipmentOutcome } from '@/features/equipment/api'
 import { fetchAssignedEventRequests, fetchEventRequest } from '@/features/eventRequests/api'
 import { refusal } from '@/test/refusal'
@@ -149,17 +150,19 @@ describe('SCRUM-24 mock of an event record', () => {
     ])
   })
 
-  it('shows a coordinator the same record for an event assigned to them, but for the equipment', async () => {
+  it('shows a coordinator the same record for an event assigned to them, but for the equipment and venues', async () => {
     signInAs(MOCK_ACCOUNTS.organiser)
     const organisersView = await fetchEventRequest(COORDINATORS_UNDER_REVIEW)
     signInAs(MOCK_ACCOUNTS.coordinator)
 
     const coordinatorsView = await fetchEventRequest(COORDINATORS_UNDER_REVIEW)
 
-    // Each sees the equipment their own way, checked below.
+    // Each sees the equipment their own way, and only the organiser is sent the venues: both
+    // checked below.
     expect({ ...coordinatorsView, equipment_lines: [] }).toEqual({
       ...organisersView,
       equipment_lines: [],
+      venue_arrangements: undefined,
     })
   })
 
@@ -273,5 +276,62 @@ describe('SCRUM-37 AC5, SCRUM-48 AC5 mock of the equipment on an event record', 
       status: 'partially_fulfilled',
       provided_quantity: 6,
     })
+  })
+})
+
+describe('SCRUM-49 AC11 mock of a confirmed event venues on its record', () => {
+  const CONFIRMED_GALA = 'EVR-BOOK0112'
+  const APPROVED_CAREERS_FAIR = 'EVR-BOOK0101'
+
+  it('shows the organiser each approved venue, earliest first, with its period and what was arranged, and nothing internal', async () => {
+    signInAs(MOCK_ACCOUNTS.otherOrganiser)
+
+    const record = await fetchEventRequest(CONFIRMED_GALA)
+
+    expect(record.venue_arrangements).toEqual([
+      {
+        venue_name: 'Boardroom Two',
+        venue_location: 'Level 3, Tower Block',
+        starts_at: '2026-12-05T17:00:00+08:00',
+        ends_at: '2026-12-05T18:00:00+08:00',
+        purpose: 'Drinks reception',
+        layout: null,
+        expected_occupancy: 10,
+      },
+      {
+        venue_name: 'Marina Hall',
+        venue_location: 'Level 1, Marina Wing',
+        starts_at: '2026-12-05T18:00:00+08:00',
+        ends_at: '2026-12-05T23:00:00+08:00',
+        purpose: 'Gala dinner',
+        layout: 'banquet',
+        expected_occupancy: 10,
+      },
+    ])
+  })
+
+  it('shows none before the event is confirmed, even once a venue is approved', async () => {
+    signInAs(MOCK_ACCOUNTS.coordinator)
+    const raised = await raiseBookingRequest(APPROVED_CAREERS_FAIR, {
+      venue_id: 1,
+      starts_at: '2026-11-10T09:00:00+08:00',
+      ends_at: '2026-11-10T12:00:00+08:00',
+      purpose: 'Careers fair',
+    })
+    signInAs(MOCK_ACCOUNTS.venueStaff)
+    await decideBookingRequest(raised.id, { outcome: 'approved' })
+    signInAs(MOCK_ACCOUNTS.otherOrganiser)
+
+    const record = await fetchEventRequest(APPROVED_CAREERS_FAIR)
+
+    expect(record.venue_arrangements).toEqual([])
+  })
+
+  it('sends the coordinator no venue list: they have the venue requests page', async () => {
+    signInAs(MOCK_ACCOUNTS.coordinator)
+
+    const record = await fetchEventRequest(APPROVED_CAREERS_FAIR)
+
+    expect(record).not.toHaveProperty('venue_arrangements')
   })
 })

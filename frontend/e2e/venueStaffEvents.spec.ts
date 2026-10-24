@@ -24,7 +24,7 @@ test('SCRUM-24 AC4: Venue Staff log in and see the events with venue bookings', 
   await expect(workshop).toContainText('Fri, 20 Nov · 9:00 am – 5:00 pm')
   await expect(workshop).toContainText('EVR-BOOK0105')
   await expect(workshop).toContainText('Approved')
-  // Every booking mock event with an active venue arrangement, EVR-BOOK0104 to EVR-BOOK0111.
-  await expect(events.getByRole('listitem')).toHaveCount(8)
-  await expect(events.getByRole('link')).toHaveCount(8)
+  // Every booking mock event with an active venue arrangement, EVR-BOOK0104 to EVR-BOOK0112.
+  await expect(events.getByRole('listitem')).toHaveCount(9)
+  await expect(events.getByRole('link')).toHaveCount(9)
 })
