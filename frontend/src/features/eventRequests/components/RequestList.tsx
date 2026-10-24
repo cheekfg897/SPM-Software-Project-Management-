@@ -15,31 +15,13 @@ export interface RequestListProps {
   requests: UseQueryResult<EventListRows>
   /** What the list is, for screen readers, e.g. "Your event requests". */
   label: string
-  /** The page a row opens. Left out, the rows open nothing (Venue Staff's list, ADR-0090). */
-  pathFor?: ((request: EventListRow) => string) | undefined
-}
-
-/** One row: a link to its page when the list has one for it, or just the row. */
-function ListedRow({
-  request,
-  pathFor,
-}: Pick<RequestListProps, 'pathFor'> & { request: EventListRow }) {
-  if (pathFor === undefined) {
-    return <EventRequestRow request={request} />
-  }
-  return (
-    <Link
-      to={pathFor(request)}
-      className="focus-visible:outline-flare block rounded-2xl focus-visible:outline-2"
-    >
-      <EventRequestRow request={request} />
-    </Link>
-  )
+  /** The page a row opens. */
+  pathFor: (request: EventListRow) => string
 }
 
 /**
  * A role's event requests, in the order the backend sends them, each opening where `pathFor`
- * says, if anywhere. An empty list shows the backend's own message (SCRUM-24 AC8, AC11).
+ * says. An empty list shows the backend's own message (SCRUM-24 AC8, AC11).
  */
 export function RequestList({ requests, label, pathFor }: RequestListProps) {
   if (requests.isPending) {
@@ -72,7 +54,12 @@ export function RequestList({ requests, label, pathFor }: RequestListProps) {
     >
       {rows.map((request) => (
         <li key={request.reference}>
-          <ListedRow request={request} pathFor={pathFor} />
+          <Link
+            to={pathFor(request)}
+            className="focus-visible:outline-flare block rounded-2xl focus-visible:outline-2"
+          >
+            <EventRequestRow request={request} />
+          </Link>
         </li>
       ))}
     </ul>

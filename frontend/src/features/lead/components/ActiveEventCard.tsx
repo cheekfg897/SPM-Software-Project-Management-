@@ -2,7 +2,7 @@ import { useId } from 'react'
 import { Link } from 'react-router'
 
 import { StatusChip } from '@/components/ui'
-import { ROUTES } from '@/config/routes'
+import { ROUTES, staffEventPath } from '@/config/routes'
 
 import type { ActiveEvent } from '../api'
 import { formatEventDates, formatProposedTimes } from '../formatRequest'
@@ -27,7 +27,7 @@ function ReassignForm({ event }: { event: ActiveEvent }) {
 /**
  * One active event: what it is, when, its status and who holds it, then the way to move it. An
  * event nobody holds can't be reassigned, so it points to the queue instead (docs/adr/0062). It
- * doesn't open the event: the backend refuses the Lead an event's record.
+ * links to the event's read-only record, which the Lead may open (SCRUM-24 AC10, ADR-0095).
  */
 export function ActiveEventCard({ event }: { event: ActiveEvent }) {
   const headingId = useId()
@@ -37,6 +37,12 @@ export function ActiveEventCard({ event }: { event: ActiveEvent }) {
         {event.name}
       </h3>
       <p className="text-ink-faint mt-1 text-sm">{event.reference}</p>
+      <Link
+        to={staffEventPath(event.reference)}
+        className="text-flare mt-2 inline-block text-sm font-medium hover:underline"
+      >
+        Open the event record
+      </Link>
       <dl className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Detail term="Date">{formatEventDates(event.proposed_date, event.end_date)}</Detail>
         <Detail term="Time">{formatProposedTimes(event.start_time, event.end_time)}</Detail>

@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 
-import { ROUTES } from '@/config/routes'
+import { ROUTES, staffEventPath } from '@/config/routes'
 import { MOCK_ACCOUNTS, mockSessionFor } from '@/mocks/fixtures/accounts'
 import { ALREADY_ASSIGNED_MESSAGE, NOT_A_COORDINATOR_MESSAGE } from '@/mocks/handlers/lead'
 import { server } from '@/mocks/server'
@@ -191,12 +191,28 @@ describe('SCRUM-96 the Lead oversight page: the active events', () => {
     expect(summit.queryByRole('button')).not.toBeInTheDocument()
   })
 
-  it('never links an event to its record, which the backend refuses the Lead', async () => {
+  it("links each active event to its read-only record, never to a coordinator's page (SCRUM-24 AC10)", async () => {
     renderOversight()
 
-    await findActiveEvent('Harbourfront Gala Dinner')
+    const gala = await findActiveEvent('Harbourfront Gala Dinner')
+    expect(gala.getByRole('link', { name: 'Open the event record' })).toHaveAttribute(
+      'href',
+      staffEventPath('EVR-LEAD0003'),
+    )
     const hrefs = screen.getAllByRole('link').map((link) => link.getAttribute('href'))
     expect(hrefs.some((href) => href?.startsWith('/events/'))).toBe(false)
+  })
+
+  it("opens the record of an event in a coordinator's workload (SCRUM-24 AC10)", async () => {
+    const { user, router } = renderOversight()
+
+    const chloe = await findWorkload('Chloe Lim')
+    await user.click(chloe.getByRole('link', { name: 'Harbourfront Gala Dinner' }))
+
+    expect(router.state.location.pathname).toBe(staffEventPath('EVR-LEAD0003'))
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Harbourfront Gala Dinner' }),
+    ).toBeInTheDocument()
   })
 
   it('shows the backend’s message when no event is active', async () => {

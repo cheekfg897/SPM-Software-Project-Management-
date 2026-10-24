@@ -85,13 +85,23 @@ describe('SCRUM-24 AC4 Staff home: the events with venue bookings, for Venue Sta
     expect(row).toHaveTextContent('Approved')
   })
 
-  it('opens nothing from a row, since Venue Staff have no page for one event yet (AC9)', async () => {
+  it("opens each event's read-only record from its row (AC9)", async () => {
     openStaffHome(MOCK_ACCOUNTS.venueStaff)
 
-    const list = await venueBookingList()
+    const links = within(await venueBookingList()).getAllByRole('link')
 
-    expect(within(list).getAllByRole('listitem')).toHaveLength(LISTED_REFERENCES.length)
-    expect(within(list).queryAllByRole('link')).toEqual([])
+    const opened = links.map((link) => link.getAttribute('href'))
+    expect(opened).toEqual(LISTED_REFERENCES.map((reference) => `/staff/events/${reference}`))
+  })
+
+  it("shows the record, with the venue's preparation, of the event a row opens", async () => {
+    const { user, router } = openStaffHome(MOCK_ACCOUNTS.venueStaff)
+
+    const row = rowFor(await venueBookingList(), 'EVR-BOOK0110')
+    await user.click(within(row).getByRole('link'))
+
+    expect(router.state.location.pathname).toBe('/staff/events/EVR-BOOK0110')
+    expect(await screen.findByText('Preparation notes: Stage half built.')).toBeInTheDocument()
   })
 
   it("shows the backend's message when no event has a venue booking (AC11)", async () => {

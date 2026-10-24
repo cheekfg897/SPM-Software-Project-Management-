@@ -1,5 +1,5 @@
 import { ROLE } from '@/config/roles'
-import { eventEquipmentPath } from '@/config/routes'
+import { staffEventPath } from '@/config/routes'
 import { selectSessionUser, useAppSelector } from '@/store'
 
 import type { EventListRow } from '../api'
@@ -9,9 +9,12 @@ import { RequestListSection } from './RequestListSection'
 
 const TITLE = 'Events with equipment'
 
-/** Technical Support can't open an event's record, but may open its Equipment page (ADR-0061). */
+/**
+ * Each row opens the event's read-only record, which links on to its Equipment page (ADR-0095).
+ * SCRUM-38's queue still opens the Equipment page itself (ADR-0061).
+ */
 function pathFor(request: EventListRow): string {
-  return eventEquipmentPath(request.reference)
+  return staffEventPath(request.reference)
 }
 
 function EquipmentList() {
