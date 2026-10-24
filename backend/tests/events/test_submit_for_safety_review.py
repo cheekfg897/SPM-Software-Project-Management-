@@ -5,9 +5,9 @@ an outcome from Technical Support, the assigned coordinator moves the approved e
 to Safety Review. A Pending or Rejected arrangement holds it back; a Withdrawn one is
 ignored. AC2: an event with no equipment requests passes the equipment check. An
 event with no venue arranged at all is held back (ADR-0047). The move is written to
-the event history; a refusal changes nothing. Once in Safety Review, the event can't
-be edited (ADR-0047), but its equipment can still change until it is Confirmed
-(SCRUM-37 AC2, ADR-0092).
+the event history; a refusal changes nothing. Once in Safety Review, the event can
+still be edited (SCRUM-33, ADR-0101) and its equipment changed (SCRUM-37 AC2,
+ADR-0092), until it is Confirmed.
 
 Runs against ``db_session`` with ``saved_users`` and ``saved_event_request``
 (``EVR-AAAAAAAA``, assigned to Event Coordinator 3), so the venue and equipment
@@ -36,9 +36,7 @@ from app.modules.events.models import (
 )
 from app.modules.events.services import (
     NOT_APPROVED_FOR_SAFETY_REVIEW_MESSAGE,
-    NOT_EDITABLE_MESSAGE,
     SAFETY_REVIEW_NOT_READY_MESSAGE,
-    RequestNotEditableError,
     SafetyReviewNotAllowedError,
     add_equipment_line,
     submit_for_safety_review,
@@ -310,8 +308,8 @@ def test_a_coordinator_not_assigned_to_the_event_gets_a_404(
 
 
 # --------------------------------------------------------------------------
-# ADR-0047 "Open" — an event in Safety Review can't be edited, nor its equipment
-# changed, until SCRUM-98 sends it back to approved
+# An event in Safety Review can still be edited (SCRUM-33, ADR-0101) and its
+# equipment changed (SCRUM-37 AC2, ADR-0092), until it is Confirmed
 # --------------------------------------------------------------------------
 
 
@@ -323,16 +321,21 @@ def event_in_review(approved_event: EventRequest, save: Callable[..., None]) -> 
     return approved_event
 
 
-def test_an_event_in_safety_review_cannot_be_edited(
-    db_session: Session, event_in_review: EventRequest, history_of: HistoryOf
+def test_an_event_in_safety_review_can_be_edited_and_stays_in_safety_review(
+    db_session: Session,
+    event_in_review: EventRequest,
+    reload_event_request: ReloadEventRequest,
+    history_of: HistoryOf,
 ) -> None:
-    with pytest.raises(RequestNotEditableError) as exc_info:
-        update_event_request(
-            COORDINATOR_ID, REFERENCE, {"description": "Revised"}, session=db_session
-        )
+    """A note changes nothing the Safety Officer is checking (SCRUM-33 AC1)."""
+    update_event_request(COORDINATOR_ID, REFERENCE, {"description": "Revised"}, session=db_session)
 
-    assert exc_info.value.message == NOT_EDITABLE_MESSAGE
-    assert history_of(event_in_review.id) == []
+    reloaded = reload_event_request(event_in_review.id)
+    assert reloaded.description == "Revised"
+    assert reloaded.status is EventRequestStatus.SAFETY_REVIEW
+    assert [kind for kind, _, _ in history_of(event_in_review.id)] == [
+        EventHistoryKind.FIELD_CHANGED
+    ]
 
 
 def test_equipment_added_in_safety_review_leaves_the_event_in_safety_review(

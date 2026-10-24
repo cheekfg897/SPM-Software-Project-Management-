@@ -36,10 +36,8 @@ from app.modules.events.models import (
 from app.modules.events.services import (
     CLARIFICATION_NOT_ALLOWED_MESSAGE,
     EVENT_REQUEST_NOT_FOUND_MESSAGE,
-    NOT_EDITABLE_MESSAGE,
     ClarificationNotAllowedError,
     EventEdit,
-    RequestNotEditableError,
     request_clarification,
 )
 from tests.events.cases import CLARIFICATION_QUESTION
@@ -157,15 +155,17 @@ def test_the_reference_ignores_case_and_surrounding_spaces(
     assert reloaded.status is EventRequestStatus.AWAITING_CLARIFICATION
 
 
-def test_the_coordinator_cannot_edit_a_request_awaiting_clarification(
-    edit_event: EditEvent, awaiting_clarification_request: EventRequest
+def test_the_coordinator_can_record_an_amendment_while_the_question_is_open(
+    edit_event: EditEvent,
+    awaiting_clarification_request: EventRequest,
+    reload_event_request: ReloadEventRequest,
 ) -> None:
-    """While the question is outstanding the request is the organiser's (ADR-0029)."""
-    with pytest.raises(RequestNotEditableError) as exc_info:
-        edit_event(COORDINATOR_ID, {"description": "Changed"})
+    """SCRUM-33 lets the coordinator edit; the question stays open (ADR-0101)."""
+    edit_event(COORDINATOR_ID, {"description": "Changed"})
 
-    assert exc_info.value.status_code == 409
-    assert exc_info.value.message == NOT_EDITABLE_MESSAGE
+    reloaded = reload_event_request(awaiting_clarification_request.id)
+    assert reloaded.description == "Changed"
+    assert reloaded.status is EventRequestStatus.AWAITING_CLARIFICATION
 
 
 # --------------------------------------------------------------------------

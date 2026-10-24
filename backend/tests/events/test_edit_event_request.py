@@ -8,8 +8,10 @@ to Venue Staff and Technical Support Staff (equipment lines, a venue's setup/
 turnaround) cannot be edited here; like any field outside the edit, sending one is
 refused as an unknown field, not silently ignored. AC4: every change is written to
 the event history with who made it and when, in the same commit as the change itself.
-Only the request's assigned coordinator may edit it, and only while it is submitted,
-under review or confirmed (ADR-0025).
+Only the request's assigned coordinator may edit it, and only before it is Confirmed:
+while it is submitted, under review, awaiting clarification, approved or in Safety
+Review (ADR-0101). AC8: a Confirmed event is refused, and the refusal says it changes
+only through a change request.
 
 Runs against ``db_session`` with ``saved_users`` and ``saved_event_request``
 (``EVR-AAAAAAAA``, assigned to Event Coordinator 3), so lookups are real SQL; the
@@ -40,7 +42,6 @@ from app.modules.events.models import (
 from app.modules.events.schemas import EventRequestDetailSchema
 from app.modules.events.services import (
     EVENT_REQUEST_NOT_FOUND_MESSAGE,
-    NOT_EDITABLE_MESSAGE,
     EventEdit,
     RequestNotEditableError,
     update_event_request,
@@ -59,17 +60,32 @@ REFERENCE = "EVR-AAAAAAAA"
 COORDINATOR_ID = 3
 OTHER_COORDINATOR_ID = 9
 
+#: Every status before Confirmed that a coordinator works in (SCRUM-33's status
+#: clarification, ADR-0101), written out so the test doesn't copy the code's own list.
 EDITABLE = [
     EventRequestStatus.SUBMITTED,
     EventRequestStatus.UNDER_REVIEW,
+    EventRequestStatus.AWAITING_CLARIFICATION,
     EventRequestStatus.APPROVED,
-    EventRequestStatus.CONFIRMED,
+    EventRequestStatus.SAFETY_REVIEW,
 ]
-FINISHED = [
-    EventRequestStatus.COMPLETED,
-    EventRequestStatus.CANCELLED,
-    EventRequestStatus.REJECTED,
+#: Every other status but Confirmed, which has its own message (AC8), and a draft,
+#: which staff never find (ADR-0024). Built from the enum so a status added later is
+#: checked too.
+REFUSED = [
+    status
+    for status in EventRequestStatus
+    if status not in EDITABLE
+    and status is not EventRequestStatus.CONFIRMED
+    and status is not EventRequestStatus.DRAFT
 ]
+
+
+def _refusal_to_edit(edit_event: EditEvent) -> RequestNotEditableError:
+    """The refusal of an edit to the description, which must be refused."""
+    with pytest.raises(RequestNotEditableError) as exc_info:
+        edit_event(COORDINATOR_ID, {"description": "Revised"})
+    return exc_info.value
 
 
 # --------------------------------------------------------------------------
@@ -399,7 +415,7 @@ def test_the_reference_ignores_case_and_surrounding_spaces(
 
 
 @pytest.mark.parametrize("status", EDITABLE, ids=lambda status: status.value)
-def test_a_submitted_under_review_approved_or_confirmed_event_can_be_edited(
+def test_an_event_not_yet_confirmed_can_be_edited_and_keeps_its_status(
     edit_event: EditEvent,
     set_status: SetStatus,
     reload_event_request: ReloadEventRequest,
@@ -410,10 +426,30 @@ def test_a_submitted_under_review_approved_or_confirmed_event_can_be_edited(
 
     edit_event(COORDINATOR_ID, {"description": "Revised"})
 
-    assert reload_event_request(saved_event_request.id).description == "Revised"
+    reloaded = reload_event_request(saved_event_request.id)
+    assert reloaded.description == "Revised"
+    assert reloaded.status is status
 
 
-@pytest.mark.parametrize("status", FINISHED, ids=lambda status: status.value)
+def test_a_confirmed_event_is_refused_and_pointed_to_a_change_request(
+    edit_event: EditEvent,
+    set_status: SetStatus,
+    history_of: HistoryOf,
+    reload_event_request: ReloadEventRequest,
+    saved_event_request: EventRequest,
+) -> None:
+    """AC8: a Confirmed event changes only through a change request (SCRUM-56/57)."""
+    set_status(EventRequestStatus.CONFIRMED)
+
+    refused = _refusal_to_edit(edit_event)
+
+    assert (refused.status_code, refused.error_code) == (409, "request_not_editable")
+    assert refused.message == "A confirmed event can only be changed through a change request."
+    assert reload_event_request(saved_event_request.id).description is None
+    assert history_of(saved_event_request.id) == []
+
+
+@pytest.mark.parametrize("status", REFUSED, ids=lambda status: status.value)
 def test_a_finished_event_cannot_be_edited(
     edit_event: EditEvent,
     set_status: SetStatus,
@@ -423,12 +459,13 @@ def test_a_finished_event_cannot_be_edited(
 ) -> None:
     set_status(status)
 
-    with pytest.raises(RequestNotEditableError) as exc_info:
-        edit_event(COORDINATOR_ID, {"description": "Revised"})
+    refused = _refusal_to_edit(edit_event)
 
-    refused = exc_info.value
     assert (refused.status_code, refused.error_code) == (409, "request_not_editable")
-    assert refused.message == NOT_EDITABLE_MESSAGE
+    assert refused.message == (
+        "An event request can only be edited before it is confirmed, and not once it is "
+        "rejected or cancelled."
+    )
     assert history_of(saved_event_request.id) == []
 
 
