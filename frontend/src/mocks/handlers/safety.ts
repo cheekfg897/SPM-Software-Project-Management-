@@ -3,6 +3,7 @@ import type { RequestHandler } from 'msw'
 
 import { ROLE } from '@/config/roles'
 import { CHECKLIST, SAFETY_OUTCOME } from '@/features/safety/constants'
+import type { SafetyChecklist } from '@/features/safety/api'
 import type { SafetyOutcome } from '@/features/safety/constants'
 import type { FieldErrors } from '@/lib/api'
 import { isRecord } from '@/lib/isRecord'
@@ -10,6 +11,7 @@ import { isRecord } from '@/lib/isRecord'
 import { errorResponse, notAllowed, notAuthenticated, validationError } from '../responses'
 
 import { accountForRequest } from './auth'
+import { MOCK_NOW } from './catalogueFixtures'
 import { MOCK_SAFETY_EVENTS } from './safetyFixtures'
 import type { MockSafetyEvent } from './safetyFixtures'
 
@@ -43,6 +45,11 @@ export function resetMockSafety(): void {
   events = MOCK_SAFETY_EVENTS.map((mock) => ({ ...mock, event: { ...mock.event } }))
 }
 resetMockSafety()
+
+/** The Safety Officer mock's event behind a reference, as it stands, for the staff record mock. */
+export function safetyEventByReference(reference: string): MockSafetyEvent | undefined {
+  return events.find((mock) => mock.event.reference === reference)
+}
 
 /** The 401 or 403 the backend's decorators send, or null when the caller is a Safety Officer. */
 function refusalFor(request: Request) {
@@ -149,6 +156,17 @@ function bodyErrors(body: Record<string, unknown>): Record<string, string[] | Fi
   return errors
 }
 
+/** The checklist as the backend saves it: each item's note, trimmed. Checked by bodyErrors first. */
+function recordedChecklist(checklist: unknown): SafetyChecklist {
+  const notes = isRecord(checklist) ? checklist : {}
+  const recorded: Record<string, string> = {}
+  for (const { item } of CHECKLIST) {
+    recorded[item] = String(notes[item]).trim()
+  }
+  // Every item of CHECKLIST has its note just above, which is all a SafetyChecklist holds.
+  return recorded as SafetyChecklist
+}
+
 export const safetyHandlers: RequestHandler[] = [
   http.get('/api/events/requests/awaiting-safety-review', ({ request }) => {
     const refusal = refusalFor(request)
@@ -190,6 +208,14 @@ export const safetyHandlers: RequestHandler[] = [
     const outcome = body.outcome as SafetyOutcome // checked against the outcomes above
     const approved = outcome === SAFETY_OUTCOME.APPROVED
     found.safety_approved = approved
+    // Kept as the backend keeps its history entry, for the event's staff record (ADR-0095).
+    found.outcome = {
+      outcome,
+      checklist: recordedChecklist(body.checklist),
+      reason: typeof body.reason === 'string' ? body.reason.trim() : null,
+      recorded_by: accountForRequest(request)?.full_name ?? null,
+      recorded_at: MOCK_NOW,
+    }
     found.event.status = approved ? 'safety_review' : 'approved'
     // Reduced on purpose: the real route sends the whole EventRequestSchema dump, which
     // src/integration/safety.int.test.ts pins. The web app reads only these event fields.

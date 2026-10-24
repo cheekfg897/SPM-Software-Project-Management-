@@ -88,6 +88,27 @@ function linesOfEvent(reference: string): MockEquipmentLine[] {
   return lines.filter((line) => line.event_reference === reference)
 }
 
+/** An equipment type's name; a line only ever names a type the catalogue holds. */
+function equipmentTypeName(equipmentTypeId: number): string {
+  const type = MOCK_EQUIPMENT_TYPES.find((candidate) => candidate.id === equipmentTypeId)
+  return type?.name ?? `Equipment type ${String(equipmentTypeId)}`
+}
+
+/**
+ * The event's lines in the order added, as the read-only staff record shows them: each type by
+ * name, with Technical Support's outcome, as the Safety Officer's list shows them (ADR-0095).
+ */
+export function equipmentLinesForRecord(reference: string) {
+  return linesOfEvent(reference).map((line) => ({
+    equipment_type_name: equipmentTypeName(line.equipment_type_id),
+    quantity: line.quantity,
+    notes: line.notes,
+    status: line.status,
+    provided_quantity: line.provided_quantity,
+    outcome_note: line.outcome_note,
+  }))
+}
+
 /** How many units of the type the event asks for: its line's quantity, or 0 without one. */
 export function requestedQuantity(reference: string, equipmentTypeId: number): number {
   const line = linesOfEvent(reference).find(

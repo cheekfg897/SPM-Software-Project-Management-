@@ -1,6 +1,10 @@
 import { apiRequest } from '@/lib/api'
 
 import type { EventRequestStatus } from '@/config/eventStatus'
+import type { Preparation } from '@/config/preparation'
+import type { BookingRequestStatus } from '@/features/booking/api'
+import type { SafetyChecklist, SafetyReviewEquipment } from '@/features/safety/api'
+import type { SafetyOutcome } from '@/features/safety/constants'
 
 const EVENT_REQUEST_PATHS = {
   MINE: '/api/events/requests',
@@ -425,4 +429,65 @@ export const WITH_VENUE_BOOKINGS_KEY = [...eventRequestKeys.all, 'withVenueBooki
 /** Every event with a venue booking request or a booking, newest first (SCRUM-24 AC4). */
 export function fetchEventRequestsWithVenueBookings(): Promise<EventListRows> {
   return apiRequest<EventListRows>(WITH_VENUE_BOOKINGS_PATH)
+}
+
+/** One of the event's venue arrangements on the read-only staff record (SCRUM-84 AC2). */
+export interface StaffVenueArrangement extends Preparation {
+  venue_name: string
+  /** ISO date-times with an offset. */
+  starts_at: string
+  ends_at: string
+  status: BookingRequestStatus
+}
+
+/** One equipment reservation on the read-only staff record (SCRUM-85 AC2). */
+export interface StaffReservation extends Preparation {
+  equipment_type_name: string
+  quantity: number
+  /** ISO date-times with an offset. */
+  starts_at: string
+  ends_at: string
+  /** Null once the reserver's account is gone. */
+  reserved_by: string | null
+}
+
+/** The Safety Officer's outcome on the event's current check (SCRUM-98, ADR-0095). */
+export interface SafetyCheckOutcome {
+  outcome: SafetyOutcome
+  /** The officer's note on each of the seven checklist items (SCRUM-98 AC2). */
+  checklist: SafetyChecklist
+  reason: string | null
+  recorded_by: string | null
+  /** ISO date-time with an offset. */
+  recorded_at: string
+}
+
+/**
+ * Any submitted event's read-only record, as Venue Staff, Technical Support, the Safety Officer
+ * and the Event Coordinator Lead see it (SCRUM-24 AC9, AC10; ADR-0095): the request and both
+ * notes, its coordinator, decision and clarifications, its venue arrangements and equipment with
+ * their preparation, and its current safety outcome (null until there is one). No registrants.
+ */
+export interface StaffEventRecord
+  extends EventRequest, Pick<EventRecord, 'coordinator' | 'decision' | 'clarifications'> {
+  programme_notes: string | null
+  internal_planning_notes: string | null
+  venue_arrangements: StaffVenueArrangement[]
+  /** The equipment requested, by name, with Technical Support's outcome. */
+  equipment_lines: SafetyReviewEquipment[]
+  equipment_reservations: StaffReservation[]
+  safety_outcome: SafetyCheckOutcome | null
+}
+
+/** One event's read-only staff record: whether it opens depends on who is asking. */
+export function staffRecordKey(reference: string, viewerId: number | null) {
+  return [...eventRequestKeys.all, 'staffRecord', viewerId, reference] as const
+}
+
+/**
+ * Any submitted event's read-only record, for Venue Staff, Technical Support, the Safety Officer
+ * and the Lead (SCRUM-24 AC9, AC10). Everyone else is refused; a draft is "not found".
+ */
+export function fetchStaffEventRecord(reference: string): Promise<StaffEventRecord> {
+  return apiRequest<StaffEventRecord>(`${requestPath(reference)}/staff-record`)
 }

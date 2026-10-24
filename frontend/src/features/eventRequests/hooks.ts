@@ -17,11 +17,13 @@ import {
   fetchEventRequestsWithVenueBookings,
   fetchMyEventRequests,
   fetchRegistrants,
+  fetchStaffEventRecord,
   registrantsKey,
   rejectEvent,
   requestClarification,
   saveDraftEventRequest,
   sendToSafetyReview,
+  staffRecordKey,
   startEventRequestReview,
   submitDraftEventRequest,
   submitEventRequest,
@@ -236,5 +238,15 @@ export function useEventRequestsWithVenueBookings() {
   return useQuery({
     queryKey: WITH_VENUE_BOOKINGS_KEY,
     queryFn: fetchEventRequestsWithVenueBookings,
+  })
+}
+
+/** Any submitted event's read-only staff record, read for whoever is signed in (ADR-0095). */
+export function useStaffEventRecord(reference: string) {
+  const viewer = useAppSelector(selectSessionUser)
+  return useQuery({
+    /* v8 ignore next -- the staff record page is for signed-in staff only (RequireRole), so a viewer is always there */
+    queryKey: staffRecordKey(reference, viewer?.id ?? null),
+    queryFn: () => fetchStaffEventRecord(reference),
   })
 }

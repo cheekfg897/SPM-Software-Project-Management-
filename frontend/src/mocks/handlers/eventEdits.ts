@@ -95,6 +95,11 @@ export function resetMockEventEdits(): void {
   internalNotes = {}
 }
 
+/** The event's internal planning notes as last saved, or null: staff read them (ADR-0095). */
+export function internalNotesOf(reference: string): string | null {
+  return internalNotes[reference] ?? null
+}
+
 function isEditableField(name: string): name is EditableField {
   return (EDITABLE_FIELDS as readonly string[]).includes(name)
 }
@@ -201,7 +206,7 @@ function currentValue(stored: MockEventRequest, field: EditableField) {
     return stored.record.programme_notes
   }
   if (field === 'internal_planning_notes') {
-    return internalNotes[stored.request.reference] ?? null
+    return internalNotesOf(stored.request.reference)
   }
   return stored.request[field]
 }
@@ -357,7 +362,7 @@ export const eventEditHandlers: RequestHandler[] = [
     return HttpResponse.json({
       ...stored.request,
       programme_notes: stored.record.programme_notes,
-      internal_planning_notes: internalNotes[stored.request.reference] ?? null,
+      internal_planning_notes: internalNotesOf(stored.request.reference),
       changes,
     })
   }),
