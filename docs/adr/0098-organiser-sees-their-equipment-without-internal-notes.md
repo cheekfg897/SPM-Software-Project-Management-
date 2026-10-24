@@ -1,0 +1,33 @@
+# ADR-0098: The organiser's record shows each equipment line's type, quantity, status and quantity provided, and nothing internal
+
+- **Status:** Accepted for what the organiser sees and doesn't see (SCRUM-37 AC5, SCRUM-48 AC5 and both stories' organiser visibility clarifications); sending the quantity provided for every reviewed line, leaving the shortfall out, and the screen's wording are defaults to review
+- **Date:** 2026-10-25
+- **Stories:** SCRUM-37 AC5; SCRUM-48 AC5
+- **Supersedes:** the organiser's part of [ADR-0040](0040-equipment-review-outcome.md) decision 9 (the organiser's record showed the staff line, without the outcome); [ADR-0056](0056-event-request-detail-page.md)'s and [ADR-0077](0077-equipment-outcome-screen.md)'s deferred organiser equipment view
+
+## Context
+SCRUM-37 AC5: "The equipment request and its current state are visible on the event record to internal staff. The Event Organiser sees each line's type, requested quantity and status, and the quantity provided when it is partially fulfilled (SCRUM-48)." SCRUM-48 AC5: "The outcome, the note and the reviewing staff member are visible on the event record to internal staff. The Event Organiser sees the outcome and the quantity provided, but not the note or the reviewer." Both stories' organiser visibility clarifications add that the technical notes on a line are for Technical Support, and that the outcome note and the reviewer's name are internal: the coordinator passes on any alternative.
+
+Before this, `GET /api/events/requests/<reference>` dumped the organiser's lines with `EquipmentLineSchema`, the staff schema: each line's equipment type id, quantity, **technical notes** and status, and no quantity provided. The organiser could read the notes, couldn't read the type's name (organisers may not read the equipment catalogue, `GET /api/equipment/types`), and couldn't see what will be provided. The web app's organiser page showed no equipment at all (ADR-0056, ADR-0077).
+
+## Decision
+1. **The organiser's record has its own line view.** Each line is `{"id", "equipment_type_name", "quantity", "status", "provided_quantity"}` (`OrganiserEquipmentLineSchema`, dumped from `EquipmentLineForOrganiser`), in the order the lines were added, under the same `equipment_lines` key. The type is sent by name, read from the equipment module's `list_equipment_types` through one shared helper (`_equipment_type_names`, which the Safety Officer's list already used), since the organiser can't look it up.
+2. **Left out, because they are internal:** the technical notes, the outcome note, the reviewer and the time of the review. The equipment type's id is left out too: the organiser has no use for it.
+3. **The coordinator's record is unchanged.** It keeps `EquipmentLineSchema`, notes included, and the Technical Support and coordinator equipment routes keep `EquipmentLineWithOutcomeSchema`. Internal staff see what they saw before.
+4. **Default to review: the quantity provided is sent for every reviewed line,** not only a partially fulfilled one, and is `null` until Technical Support review the line. SCRUM-48 AC5 says the organiser sees "the quantity provided" with no condition, and for a fulfilled or unavailable line it is the number the status already implies (all of it, or none). SCRUM-37 AC5's "when it is partially fulfilled" is met either way.
+5. **Default to review: the shortfall is not sent.** The organiser sees the quantity asked for beside the quantity provided; the frontend works nothing out from them.
+6. **How it is built.** `get_event_record_for_organiser` returns an `OrganiserEventRecord`, an `EventRecord` with the organiser's `equipment_lines` added, and the record route's organiser branch dumps it with `_organiser_event_record_body`, which replaces the staff lines `_event_record_body` dumps. The shared record function and the coordinator's branch are untouched. The organiser's record copies the shared sections from `_event_record` by name, so a section added to `EventRecord` later must be added to the copy too; a test checks the two records' shared sections agree.
+7. **The organiser's page shows an "Equipment" section** (`OrganiserEquipment`), a table captioned "Equipment requested" with the columns Equipment, Requested, Status and Provided. The status uses the Equipment page's words (`EQUIPMENT_LINE_STATUS_LABELS`, so "requested" reads "Awaiting Technical Support"), and an unreviewed line's quantity provided reads "Not reviewed yet". The section is left out when the event has no equipment, like the record's other optional sections. The coordinator's page doesn't show it: they work on the lines from the Equipment page. *Default to review:* the wording.
+8. **The frontend's type names both shapes.** `EventRecord.equipment_lines` is `OrganiserEquipmentLine | SavedEquipmentLine`, and the page keeps the organiser's lines with a type guard (`isOrganiserEquipmentLine`, which checks for `equipment_type_name`), so no assertion is needed.
+9. **The mock backend does the same** (CONVENTIONS §14): the record route sends each role its own line shape, read from the equipment line mock's store, so an outcome recorded through the equipment mock shows on the organiser's record at once. The mock organiser's Partner Summit (EVR-7K2M9QXA) gains two lines for the page and its tests: six of ten projectors with technical notes, an outcome note and a reviewer the organiser must not see, and microphones not reviewed yet.
+10. **The integration test** (`equipment.int.test.ts`) adds a line with notes to an approved event, records a partial outcome with a note, and reads the record as its organiser and as its coordinator, checking each sees exactly their own fields. It needs a Lead and a Technical Support account, so it skips without them, as the other assigned-event checks do; CI makes both. `plannedEvent.ts`'s events now also return the organiser who submitted them, so a check can sign in as that organiser again.
+
+## Consequences
+- An organiser can plan around a shortfall without asking: what they asked for and what they will get are on their own page.
+- The technical notes, the outcome note and the reviewer no longer reach the organiser through the record.
+- Opening the organiser's record reads the equipment types once more (one query).
+- A field added to `EventRecord` must also be copied into the organiser's record (decision 6).
+
+## Revisit when
+- The Product Owner wants the quantity provided shown only for a partial outcome, or the shortfall shown.
+- The record route is restructured for more roles (the staff and Lead record): the organiser's branch should keep its own line view.
