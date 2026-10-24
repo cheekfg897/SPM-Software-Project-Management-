@@ -1,5 +1,7 @@
 import { useId } from 'react'
 
+import { PreparationSummary } from '@/components/preparation/PreparationSummary'
+
 import type { BookingRequest } from '../api'
 import { RETIRED_STATUSES, STATUS_LABELS } from '../constants'
 import { needsAnotherVenue } from '../replacement'
@@ -8,7 +10,6 @@ import { AlternativeVenueNotice } from './AlternativeVenueNotice'
 import { ArrangementActions } from './ArrangementActions'
 import { BookingRequestDetails } from './BookingRequestDetails'
 import { CancelAllArrangements } from './CancelAllArrangements'
-import { PreparationSummary } from './PreparationSummary'
 
 interface BookingRequestListProps {
   reference: string

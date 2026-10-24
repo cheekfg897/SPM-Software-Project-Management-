@@ -1,7 +1,10 @@
 import { PREPARATION_STATUS_LABELS } from '@/config/preparation'
 import type { Preparation } from '@/config/preparation'
 
-/** An approved booking's preparation as the backend last saved it (SCRUM-84 AC2). */
+/**
+ * A booking's or a reservation's preparation as the backend last saved it (SCRUM-84 AC2, SCRUM-85
+ * AC2): on Venue Staff's pages and on the read-only event record (ADR-0095).
+ */
 export function PreparationSummary({ preparation }: { preparation: Preparation }) {
   return (
     <>
