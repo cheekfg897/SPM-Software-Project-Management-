@@ -428,14 +428,15 @@ class UnassignedRequestSchema(EventRequestSchema):
     followed by the fields AC2 lists: the event's name, date, times and expected
     attendance as :class:`EventRequestSchema` dumps them, plus when it was submitted.
     The request's ``created_at`` is shown as ``submitted_at`` in business time
-    (ADR-0009, ADR-0036). Subclassing keeps those field definitions in one place; the
-    request's other fields, such as its status, are not shown.
+    (ADR-0009, ADR-0036), and its status as every role's list shows it (SCRUM-24 AC8,
+    ADR-0095). Subclassing keeps those field definitions in one place; the request's
+    other fields are not shown.
     """
 
     submitted_at = BusinessDateTime(attribute="created_at", dump_only=True)
 
     class Meta:
-        """Restrict the dump to the reference and AC2's list."""
+        """Restrict the dump to the reference, AC2's list and the status."""
 
         fields = (
             "reference",
@@ -445,6 +446,7 @@ class UnassignedRequestSchema(EventRequestSchema):
             "end_time",
             "expected_attendance",
             "submitted_at",
+            "status",
         )
 
 

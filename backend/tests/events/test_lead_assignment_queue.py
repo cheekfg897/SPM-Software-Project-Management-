@@ -244,10 +244,13 @@ def test_the_oldest_submission_comes_first_and_an_equal_time_goes_by_id(
     ]
 
 
-def test_each_queue_entry_shows_its_reference_and_exactly_what_ac2_lists(
+def test_each_queue_entry_shows_its_reference_what_ac2_lists_and_its_status(
     make_event_request: MakeEventRequest,
 ) -> None:
-    """The reference, then AC2: name, date, times, attendance, submission time."""
+    """The reference, AC2's name, date, times, attendance and submission, and status.
+
+    The status is SCRUM-24 AC8's: every role's list shows it (ADR-0095).
+    """
     event_request = make_event_request()
     event_request.created_at = datetime(2026, 10, 1, 9, tzinfo=timezone.utc)
 
@@ -261,6 +264,7 @@ def test_each_queue_entry_shows_its_reference_and_exactly_what_ac2_lists(
         "end_time": "17:00:00",
         "expected_attendance": 250,
         "submitted_at": "2026-10-01T17:00:00+08:00",
+        "status": "submitted",
     }
 
 
