@@ -1,4 +1,4 @@
-import type { BookingRequestStatus } from './api'
+import type { BookingRequestStatus, ReassessmentFlag } from './api'
 
 /** How each status reads on screen. */
 export const STATUS_LABELS: Record<BookingRequestStatus, string> = {
@@ -17,3 +17,9 @@ export const STATUS_LABELS: Record<BookingRequestStatus, string> = {
  * approved replacement took over (SCRUM-92). It stays on record with nothing left to do.
  */
 export const RETIRED_STATUSES: readonly BookingRequestStatus[] = ['withdrawn', 'released']
+
+/** How each kind of flag a significant change raises reads on screen (SCRUM-33 AC6, ADR-0094). */
+export const REASSESSMENT_KIND_LABELS: Record<ReassessmentFlag['kind'], string> = {
+  requires_reconfirmation: 'Requires reconfirmation',
+  no_longer_suitable: 'No longer suitable',
+}
