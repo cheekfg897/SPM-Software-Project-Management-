@@ -39,6 +39,17 @@ async function section(name: string): Promise<HTMLElement> {
   return found
 }
 
+/** Each row of the table named `name`, as the text of its cells. */
+function rowsOf(name: string): string[][] {
+  const table = screen.getByRole('table', { name })
+  const rows = within(table).getAllByRole('row').slice(1)
+  return rows.map((row) =>
+    within(row)
+      .getAllByRole('cell')
+      .map((cell) => cell.textContent),
+  )
+}
+
 /** What the record says against `label` in the "About the event" list. */
 async function detail(label: string): Promise<string | null> {
   const about = await section('About the event')
@@ -199,6 +210,41 @@ describe('SCRUM-24 AC9 event record: what an organiser sees', () => {
 
     expect(screen.getByRole('status')).toHaveTextContent('Loading the event')
     expect(await section('About the event')).toBeInTheDocument()
+  })
+})
+
+describe('SCRUM-37 AC5, SCRUM-48 AC5 event record: the equipment an organiser sees', () => {
+  it("shows each line's equipment, quantity asked for, status and quantity provided", async () => {
+    openAsOrganiser('EVR-7K2M9QXA')
+
+    await section('Equipment')
+    expect(rowsOf('Equipment requested')).toEqual([
+      ['Projector', '10', 'Partially fulfilled', '6'],
+      ['Microphone', '4', 'Awaiting Technical Support', 'Not reviewed yet'],
+    ])
+  })
+
+  it('shows none of what stays internal: the technical notes, the outcome note or the reviewer', async () => {
+    openAsOrganiser('EVR-7K2M9QXA')
+
+    const equipment = await section('Equipment')
+    for (const internal of ['Two at the back of the hall.', 'Four are out for repair.', 'Tariq']) {
+      expect(within(equipment).queryByText(internal, { exact: false })).not.toBeInTheDocument()
+    }
+  })
+
+  it('leaves the section out of an event with no equipment', async () => {
+    openAsOrganiser('EVR-B6YF2K8V')
+
+    await section('About the event')
+    expect(screen.queryByRole('heading', { level: 2, name: 'Equipment' })).not.toBeInTheDocument()
+  })
+
+  it('leaves it out for the coordinator, who works on the equipment from its own page', async () => {
+    openAsCoordinator('EVR-7K2M9QXA')
+
+    await section('About the event')
+    expect(screen.queryByRole('heading', { level: 2, name: 'Equipment' })).not.toBeInTheDocument()
   })
 })
 
