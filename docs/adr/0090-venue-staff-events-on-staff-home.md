@@ -1,7 +1,7 @@
 # ADR-0090: Venue Staff's events on Staff home, with rows that open nothing yet
 
-- **Status:** Accepted. Which events Venue Staff may open is decided (SCRUM-24 AC9, 19 Oct); the
-  rows stay unlinked until the backend's record route lets them in
+- **Status:** Accepted. Which events Venue Staff may open is decided (SCRUM-24 AC9, 19 Oct). Decision
+  2 is superseded by [ADR-0095](0095-read-only-event-record-for-internal-staff.md): each row now opens the event's read-only record
 - **Date:** 2026-10-19
 - **Story:** SCRUM-24 See the events my role is involved in (AC4, AC8, AC9, AC11)
 - **Extends:** ADR-0056, ADR-0061, ADR-0085
@@ -57,5 +57,6 @@ The backend doesn't allow it yet; a separate change to the record route will.
   `e2e/venueStaffEvents.spec.ts`.
 
 ## Revisit when
-- The backend's record route allows Venue Staff (the product owner's AC9 decision): give the
-  section a `pathFor` to the event's read-only record, at a staff address.
+- ~~The backend's record route allows Venue Staff (the product owner's AC9 decision): give the
+  section a `pathFor` to the event's read-only record, at a staff address.~~ Done in [ADR-0095](0095-read-only-event-record-for-internal-staff.md):
+  each row opens `/staff/events/<reference>`, and `pathFor` is required again.

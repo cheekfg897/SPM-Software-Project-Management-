@@ -1,6 +1,6 @@
 # ADR-0050: Technical Support record a preparation status and notes on an equipment reservation
 
-- **Status:** Accepted (defaults to review)
+- **Status:** Accepted (defaults to review); decision 7 is extended by [ADR-0095](0095-read-only-event-record-for-internal-staff.md), whose read-only record shows other internal users the preparation details
 - **Date:** 2026-10-17
 - **Stories:** SCRUM-85 Update equipment preparation details
 
