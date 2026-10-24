@@ -172,11 +172,16 @@ def test_a_date_or_time_change_flags_every_arrangement_for_reconfirmation(
     assert _flags(db_session, breakout_id) == [(RECONFIRM, TIMING_REASON)]
 
 
-def test_a_confirmed_event_goes_back_to_approved_with_its_arrangements_flagged(
+def test_an_event_in_safety_review_goes_back_to_approved_with_its_arrangements_flagged(
     db_session: Session, event: EventRequest, main_id: int
 ) -> None:
-    """The withdrawn safety approval takes it back (AC7, ADR-0087)."""
-    event.status = EventRequestStatus.CONFIRMED
+    """The withdrawn safety approval takes it back (AC7, ADR-0087).
+
+    A Confirmed event can't be edited directly (AC8), so Safety Review, where every
+    arrangement is already approved, is the last status an edit reaches (ADR-0094
+    decision 11, ADR-0101).
+    """
+    event.status = EventRequestStatus.SAFETY_REVIEW
     approve_safety(event, db_session)
 
     _edit(db_session, event, {"end_time": "18:00"})

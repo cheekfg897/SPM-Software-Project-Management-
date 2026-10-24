@@ -2,11 +2,13 @@
 
 AC7: once the event has passed its Operational Safety Check, a significant change
 withdraws the safety approval, and the event must pass a new check before it can be
-confirmed or prepared. A Confirmed event goes back to Approved, from where the
-coordinator can send it to Safety Review again (ADR-0025, ADR-0053). The withdrawal
-is a ``safety_approval_withdrawn`` history entry by the coordinator, naming the
-significant fields, which internal staff see and the organiser does not. A change
-that isn't significant, or an event without an approval, withdraws nothing.
+confirmed or prepared. A Confirmed event can't be edited directly (AC8), so the
+approval an edit withdraws is one given in Safety Review: the event goes back to
+Approved, from where the coordinator can send it to Safety Review again (ADR-0087,
+ADR-0101). The withdrawal is a ``safety_approval_withdrawn`` history entry by the
+coordinator, naming the significant fields, which internal staff see and the
+organiser does not. A change that isn't significant, or an event without an
+approval, withdraws nothing.
 
 Runs against ``db_session`` with ``saved_users`` and ``saved_event_request``
 (``EVR-AAAAAAAA``, organiser 7, assigned to Event Coordinator 3), so
@@ -92,7 +94,7 @@ def test_a_significant_change_withdraws_the_safety_approval(
     payload: dict[str, Any],
     significant_fields: list[str],
 ) -> None:
-    event = approved_for_safety(EventRequestStatus.CONFIRMED)
+    event = approved_for_safety(EventRequestStatus.SAFETY_REVIEW)
 
     edit_event(COORDINATOR_ID, payload)
 
@@ -102,12 +104,12 @@ def test_a_significant_change_withdraws_the_safety_approval(
     ]
 
 
-def test_a_confirmed_event_goes_back_to_approved_for_a_new_safety_check(
+def test_an_event_in_safety_review_goes_back_to_approved_for_a_new_safety_check(
     approved_for_safety: ApprovedForSafety,
     edit_event: EditEvent,
     reload_event_request: ReloadEventRequest,
 ) -> None:
-    event = approved_for_safety(EventRequestStatus.CONFIRMED)
+    event = approved_for_safety(EventRequestStatus.SAFETY_REVIEW)
 
     edit = edit_event(COORDINATOR_ID, {"expected_attendance": 300})
 
@@ -151,13 +153,13 @@ def test_a_change_that_is_not_significant_keeps_the_safety_approval(
     payload: dict[str, Any],
 ) -> None:
     """A note, or a significant field sent with the value it already has (ADR-0025)."""
-    event = approved_for_safety(EventRequestStatus.CONFIRMED)
+    event = approved_for_safety(EventRequestStatus.SAFETY_REVIEW)
 
     edit_event(COORDINATOR_ID, payload)
 
     assert has_safety_approval(event.id) is True
     assert safety_withdrawals_of(event.id) == []
-    assert reload_event_request(event.id).status is EventRequestStatus.CONFIRMED
+    assert reload_event_request(event.id).status is EventRequestStatus.SAFETY_REVIEW
 
 
 def test_an_event_without_a_safety_approval_has_nothing_withdrawn(
@@ -168,13 +170,14 @@ def test_an_event_without_a_safety_approval_has_nothing_withdrawn(
     safety_withdrawals_of: WithdrawalsOf,
     reload_event_request: ReloadEventRequest,
 ) -> None:
-    saved_event_request.status = EventRequestStatus.CONFIRMED
+    """Still waiting for the Safety Officer, who checks the event as it now stands."""
+    saved_event_request.status = EventRequestStatus.SAFETY_REVIEW
     save(saved_event_request)
 
     edit_event(COORDINATOR_ID, {"expected_attendance": 300})
 
     assert safety_withdrawals_of(saved_event_request.id) == []
-    assert reload_event_request(saved_event_request.id).status is EventRequestStatus.CONFIRMED
+    assert reload_event_request(saved_event_request.id).status is EventRequestStatus.SAFETY_REVIEW
 
 
 # --------------------------------------------------------------------------
@@ -197,7 +200,7 @@ def test_only_internal_staff_see_the_withdrawal(
     viewer_role: Role,
     sees_it: bool,
 ) -> None:
-    approved_for_safety(EventRequestStatus.CONFIRMED)
+    approved_for_safety(EventRequestStatus.SAFETY_REVIEW)
     edit_event(COORDINATOR_ID, {"expected_attendance": 300})
 
     history = list_event_history(viewer_id, REFERENCE, viewer_role=viewer_role)

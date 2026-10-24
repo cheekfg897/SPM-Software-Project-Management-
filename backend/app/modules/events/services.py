@@ -2083,23 +2083,28 @@ def list_equipment_requests_awaiting_action(
 # SCRUM-33 — update event information and flag significant changes
 # --------------------------------------------------------------------------
 
-#: Statuses in which an assigned coordinator may still edit a request (ADR-0025;
-#: ``approved`` from SCRUM-31, ADR-0028).
-#: A completed event is set in stone (SCRUM-68 only changes its status to that); a
-#: draft has no coordinator to edit it, and a cancelled or rejected event is over.
-#: A request awaiting clarification is the organiser's to change, not the
-#: coordinator's, until the organiser answers (SCRUM-32, ADR-0029).
+#: Statuses in which an assigned coordinator may still edit a request: every status
+#: before Confirmed (SCRUM-33 AC8 and its status clarification, ADR-0101). Awaiting
+#: clarification is one, so the coordinator can record the organiser's answer and
+#: amendments; Safety Review is another, where a significant change withdraws the
+#: safety approval (AC7). A Confirmed event changes only through a change request
+#: (SCRUM-56, SCRUM-57); a completed, cancelled or rejected event is over, and a
+#: draft has no coordinator to edit it.
 EDITABLE_STATUSES: frozenset[EventRequestStatus] = frozenset(
     {
         EventRequestStatus.SUBMITTED,
         EventRequestStatus.UNDER_REVIEW,
+        EventRequestStatus.AWAITING_CLARIFICATION,
         EventRequestStatus.APPROVED,
-        EventRequestStatus.CONFIRMED,
+        EventRequestStatus.SAFETY_REVIEW,
     }
 )
 NOT_EDITABLE_MESSAGE = (
-    "Only a submitted, under-review, approved or confirmed event request can be edited."
+    "An event request can only be edited before it is confirmed, and not once it is "
+    "rejected or cancelled."
 )
+#: The refusal for a Confirmed event names the way it can still change (AC8).
+CONFIRMED_NOT_EDITABLE_MESSAGE = "A confirmed event can only be changed through a change request."
 
 #: When the event happens. Every venue arrangement was booked against it, so changing
 #: any of these affects each one (ADR-0094).
@@ -2154,15 +2159,17 @@ def _as_history_value(value: Any) -> HistoryValue:
 def _event_request_editable_by(
     coordinator_id: int | str, reference: str, session: Session
 ) -> EventRequest:
-    """The coordinator's request, if it can still be edited (ADR-0025).
+    """The coordinator's request, if it can still be edited (ADR-0025, ADR-0101).
 
     Raises:
         NotFoundError: 404 — no such request among the coordinator's own; a draft is
             never found (ADR-0024).
-        RequestNotEditableError: 409 — the request isn't submitted, under review,
-            approved or confirmed.
+        RequestNotEditableError: 409 — the request is Confirmed, so it changes only
+            through a change request (AC8), or it is completed, cancelled or rejected.
     """
     event_request = _event_request_assigned_to(coordinator_id, reference, session)
+    if event_request.status is EventRequestStatus.CONFIRMED:
+        raise RequestNotEditableError(CONFIRMED_NOT_EDITABLE_MESSAGE)
     if event_request.status not in EDITABLE_STATUSES:
         raise RequestNotEditableError(NOT_EDITABLE_MESSAGE)
     return event_request
@@ -2321,8 +2328,8 @@ def update_event_request(
     Raises:
         ValidationError: 400 — payload invalid (details per field).
         NotFoundError: 404 — no such event request among the coordinator's own.
-        RequestNotEditableError: 409 — the request isn't submitted, under review,
-            approved or confirmed.
+        RequestNotEditableError: 409 — the request is Confirmed (AC8), completed,
+            cancelled or rejected.
     """
     sess = resolve_session(session)
     event_request = _event_request_editable_by(coordinator_id, reference, sess)

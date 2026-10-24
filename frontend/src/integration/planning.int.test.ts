@@ -19,6 +19,7 @@ import {
   editEventRequest,
   fetchEventRequest,
   rejectEvent,
+  requestClarification,
   sendToSafetyReview,
   startEventRequestReview,
   submitEventRequest,
@@ -40,7 +41,7 @@ import type { Credentials } from './backend'
  * (SCRUM-69, ADR-0043), marking it completed (SCRUM-68, ADR-0027) (ADR-0075) and rejecting it
  * during planning (SCRUM-49 AC9, AC10, ADR-0093), and what a closed event's equipment requests
  * then refuse (SCRUM-48 AC8). Also the decision a venue booking request locks (SCRUM-31 AC7,
- * ADR-0084).
+ * ADR-0084), and the statuses the coordinator's edit is allowed in (SCRUM-33 AC8, ADR-0101).
  *
  * The refusals that need no event of the coordinator's run with the staff account every run has
  * (an Event Coordinator) and new organisers. An event of the coordinator's needs a Lead to assign
@@ -608,19 +609,77 @@ describe('SCRUM-31 AC7 a venue booking request locks the decision against the ba
   )
 })
 
-describe('SCRUM-33 a significant edit after the safety check, against the backend', () => {
+describe('SCRUM-33 AC8 the statuses an event can be edited in, against the backend', () => {
+  /** An edit to the description, which the backend must refuse. */
+  function refusedNote(reference: string) {
+    return refusal(editEventRequest(reference, { description: 'A late note.' }))
+  }
+
   it.skipIf(!canApproveSafety)(
-    'keeps a Confirmed event for a note, and sends it back to Approved without its approval for a significant change',
+    'refuses an edit to a Confirmed event, pointing to a change request, and changes nothing',
     async () => {
       const { reference } = await safetyApprovedEvent()
       await confirmEvent(reference)
+
+      expect(await refusedNote(reference)).toMatchObject({
+        status: 409,
+        code: 'request_not_editable',
+        message: 'A confirmed event can only be changed through a change request.',
+      })
+      expect(await fetchEventRequest(reference)).toMatchObject({
+        status: 'confirmed',
+        description: null,
+      })
+    },
+  )
+
+  it.skipIf(!canAssign)(
+    'refuses an edit to a rejected event with the general message',
+    async () => {
+      const { reference } = await assignedEvent()
+      await startEventRequestReview(reference)
+      await decideEventRequest(reference, { outcome: 'rejected', reason: 'It clashes with exams.' })
+
+      expect(await refusedNote(reference)).toMatchObject({
+        status: 409,
+        code: 'request_not_editable',
+        message:
+          'An event request can only be edited before it is confirmed, and not once it is ' +
+          'rejected or cancelled.',
+      })
+      expect((await fetchEventRequest(reference)).description).toBeNull()
+    },
+  )
+
+  it.skipIf(!canAssign)(
+    "lets the coordinator record an amendment while the organiser's answer is awaited",
+    async () => {
+      const { reference } = await assignedEvent()
+      await startEventRequestReview(reference)
+      await requestClarification(reference, 'Which hall would suit?')
+
+      const edited = await editEventRequest(reference, { description: 'The main hall.' })
+
+      expect(edited).toMatchObject({
+        status: 'awaiting_clarification',
+        description: 'The main hall.',
+      })
+    },
+  )
+})
+
+describe('SCRUM-33 AC7 a significant edit after the safety check, against the backend', () => {
+  it.skipIf(!canApproveSafety)(
+    'keeps an event in Safety Review for a note, and sends it back to Approved without its approval for a significant change',
+    async () => {
+      const { reference } = await safetyApprovedEvent()
 
       const noted = await editEventRequest(reference, { description: 'Doors open at 9.' })
       // Fewer people: significant, but the hall booked for all 120 still holds them, so no
       // arrangement is flagged to hold back the new check (SCRUM-33 AC6, ADR-0094).
       const changed = await editEventRequest(reference, { expected_attendance: 100 })
 
-      expect(noted.status).toBe('confirmed')
+      expect(noted.status).toBe('safety_review')
       expect(changed.status).toBe('approved')
       // --- A new safety check is needed before it can be confirmed again (ADR-0087) ---
       await sendToSafetyReview(reference)
