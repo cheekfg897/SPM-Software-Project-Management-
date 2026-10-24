@@ -12,7 +12,7 @@ import type { MockAccount } from '../fixtures/accounts'
 import { errorResponse, notAllowed, notAuthenticated, validationError } from '../responses'
 
 import { accountForRequest } from './auth'
-import { hasActiveArrangement } from './booking'
+import { hasActiveArrangement, organiserVenueArrangementsOf } from './booking'
 import { MOCK_NOW } from './catalogueFixtures'
 import { recordLinesOf } from './equipmentLines'
 import {
@@ -226,21 +226,40 @@ function ownDraftOrRefusal(organiser: MockAccount, organisationId: number, refer
   return { draft: stored.request }
 }
 
+/** When the organiser sees the event's venues: once it is confirmed (SCRUM-49 AC11, ADR-0099). */
+const VENUES_SHOWN_TO_ORGANISER_STATUSES: readonly EventRequestStatus[] = [
+  EVENT_REQUEST_STATUS.CONFIRMED,
+  EVENT_REQUEST_STATUS.COMPLETED,
+]
+
+/** The confirmed event's venues, which the backend adds to the organiser's record only. */
+function organiserVenuesOf(request: EventRequest) {
+  if (!VENUES_SHOWN_TO_ORGANISER_STATUSES.includes(request.status)) {
+    return []
+  }
+  return organiserVenueArrangementsOf(request.reference)
+}
+
 /**
  * A request's record as the backend shows it to `viewerRole`: the coordinator by name and email,
- * no ids, and the equipment lines as that role sees them (ADR-0098).
+ * no ids, and the equipment lines as that role sees them (ADR-0098). The organiser's also lists
+ * the confirmed event's venues (ADR-0099).
  */
 function recordOf(stored: MockEventRequest, viewerRole: Role) {
   const { coordinator } = stored
   const contact =
     coordinator === null ? null : { full_name: coordinator.full_name, email: coordinator.email }
   const equipmentLines = recordLinesOf(stored.request.reference, viewerRole)
-  return {
+  const record = {
     ...stored.request,
     ...stored.record,
     coordinator: contact,
     equipment_lines: equipmentLines,
   }
+  if (viewerRole !== ROLE.EVENT_ORGANISER) {
+    return record
+  }
+  return { ...record, venue_arrangements: organiserVenuesOf(stored.request) }
 }
 
 /** One of the coordinator's own assigned requests; no other, by any link (SCRUM-24 AC10). */

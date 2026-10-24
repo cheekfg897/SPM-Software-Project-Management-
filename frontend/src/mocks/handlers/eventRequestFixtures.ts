@@ -282,6 +282,24 @@ export const MOCK_EVENT_REQUESTS: readonly MockEventRequest[] = [
   {
     organiserId: OTHER_ORGANISER_ID,
     organisationId: OTHER_ORGANISATION_ID,
+    coordinator: MARCUS,
+    record: NOTHING_RECORDED,
+    request: {
+      ...DETAILS,
+      reference: 'EVR-BOOK0112',
+      status: 'confirmed',
+      name: 'Harbour Gala',
+      proposed_date: '2026-12-05',
+      end_date: '2026-12-05',
+      start_time: '17:00:00',
+      end_time: '23:00:00',
+      expected_attendance: 80,
+      created_at: '2026-09-01T03:00:00+00:00',
+    },
+  },
+  {
+    organiserId: OTHER_ORGANISER_ID,
+    organisationId: OTHER_ORGANISATION_ID,
     coordinator: CHLOE,
     record: NOTHING_RECORDED,
     request: {

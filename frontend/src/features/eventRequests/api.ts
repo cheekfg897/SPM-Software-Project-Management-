@@ -89,6 +89,23 @@ export interface OrganiserEquipmentLine {
 }
 
 /**
+ * A confirmed venue arrangement as the event's organiser is sent it (SCRUM-49 AC11, ADR-0099):
+ * the venue's name and location, the period, and what was arranged. Nothing internal.
+ */
+export interface OrganiserVenueArrangement {
+  venue_name: string
+  venue_location: string
+  /** ISO date-time with an offset. */
+  starts_at: string
+  /** ISO date-time with an offset. */
+  ends_at: string
+  purpose: string
+  /** A layout value (LAYOUT_OPTIONS), or null when none was asked for. */
+  layout: string | null
+  expected_occupancy: number
+}
+
+/**
  * An event request's record: the request, the coordinator's note the organiser may see, who
  * the coordinator is (null until one is assigned), the decision (null until one is made), the
  * clarification exchange, oldest first (SCRUM-24 AC9, ADR-0026, ADR-0056), and the equipment
@@ -101,6 +118,8 @@ export interface EventRecord extends EventRequest {
   decision: Decision | null
   clarifications: Clarification[]
   equipment_lines: (OrganiserEquipmentLine | SavedEquipmentLine)[]
+  /** Only on the organiser's record, and empty until the event is confirmed (ADR-0099). */
+  venue_arrangements?: OrganiserVenueArrangement[]
 }
 
 /** Whether the line is the organiser's view of it: only theirs names the equipment type. */

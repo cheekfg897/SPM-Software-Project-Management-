@@ -37,6 +37,7 @@ import {
 import { FLAGGABLE_STATUSES, reassessmentFlagsFor } from './reassessmentRules'
 import type { SignificantChange } from './reassessmentRules'
 import { unknownFieldErrors } from './venueRules'
+import { currentMockVenues } from './venues'
 
 /**
  * The venue module's booking request endpoints (SCRUM-42, SCRUM-43, SCRUM-93, SCRUM-75, SCRUM-84),
@@ -473,6 +474,35 @@ export function releaseEventArrangements(reference: string): void {
       moveTo(arrangement, 'released')
     }
   }
+}
+
+/**
+ * The event's approved arrangements as its organiser sees them, earliest period first, as the
+ * backend's list_organiser_venue_arrangements reads them (SCRUM-49 AC11, ADR-0099): each venue's
+ * name and location, the period and what was arranged, and nothing internal. When the organiser
+ * sees them is the event record mock's call.
+ */
+export function organiserVenueArrangementsOf(reference: string) {
+  const event = events.find((known) => known.reference === reference)
+  if (event === undefined) {
+    return []
+  }
+  const approved = requestsOf(event).filter((existing) => existing.status === 'approved')
+  return approved.map((arrangement) => {
+    const venue = currentMockVenues().find((known) => known.id === arrangement.venue_id)
+    if (venue === undefined) {
+      throw new Error(`Arrangement ${String(arrangement.id)} is at a venue the mock lacks`)
+    }
+    return {
+      venue_name: venue.name,
+      venue_location: venue.location,
+      starts_at: arrangement.starts_at,
+      ends_at: arrangement.ends_at,
+      purpose: arrangement.purpose,
+      layout: arrangement.required_layout,
+      expected_occupancy: arrangement.expected_occupancy,
+    }
+  })
 }
 
 /**
