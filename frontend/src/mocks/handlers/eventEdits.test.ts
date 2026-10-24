@@ -1,3 +1,5 @@
+import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
+import type { EventRequestStatus } from '@/config/eventStatus'
 import {
   fetchBookingRequests,
   raiseBookingRequest,
@@ -21,20 +23,60 @@ import type { MockAccount } from '../fixtures/accounts'
  * The mock of the coordinator's edit (PATCH /api/events/requests/<reference>), pinned to what
  * the backend does (SCRUM-33 AC1 to AC4; ADR-0025): only the fields sent change, a change to
  * the date, times, attendance or requirements is significant, every change is written to the
- * history, and the refusals come with the backend's codes and messages. The mock's "today" is
- * 5 Oct 2026.
+ * history, and the refusals come with the backend's codes and messages. An event can be edited
+ * in every status before Confirmed, and a Confirmed one is refused with a pointer to a change
+ * request (AC8, ADR-0101). The mock's "today" is 5 Oct 2026.
  */
 
 /** Chloe's, under review: 12 Nov, 9:00 am to 5:00 pm, 250 expected. */
 const PARTNER_SUMMIT = 'EVR-7K2M9QXA'
-/** Chloe's, awaiting the organiser's answer, so not editable. */
-const AWAITING_ANSWER = 'EVR-B6YF2K8V'
 /** Marcus's. */
 const NOT_CHLOES = 'EVR-W9CR5E7M'
 const MOCK_NOW = '2026-10-05T12:00:00+08:00'
+const NOT_EDITABLE_MESSAGE =
+  'An event request can only be edited before it is confirmed, and not once it is rejected or cancelled.'
+
+/** Every status but a draft's, which no coordinator is assigned. */
+type AssignedStatus = Exclude<EventRequestStatus, typeof EVENT_REQUEST_STATUS.DRAFT>
+
+/** Every status before Confirmed (SCRUM-33 AC8 and its status clarification, ADR-0101). */
+const EDITABLE_STATUSES: readonly AssignedStatus[] = [
+  EVENT_REQUEST_STATUS.SUBMITTED,
+  EVENT_REQUEST_STATUS.UNDER_REVIEW,
+  EVENT_REQUEST_STATUS.AWAITING_CLARIFICATION,
+  EVENT_REQUEST_STATUS.APPROVED,
+  EVENT_REQUEST_STATUS.SAFETY_REVIEW,
+]
+/**
+ * Every other assigned status but Confirmed, which has its own message. Built from the statuses,
+ * so one added later is checked too.
+ */
+const REFUSED_STATUSES = Object.values(EVENT_REQUEST_STATUS).filter(
+  (status): status is AssignedStatus =>
+    status !== EVENT_REQUEST_STATUS.DRAFT &&
+    status !== EVENT_REQUEST_STATUS.CONFIRMED &&
+    !EDITABLE_STATUSES.includes(status),
+)
+/** A mock event in each assigned status, with the coordinator it is assigned to. */
+const EVENT_IN_STATUS: Record<AssignedStatus, [MockAccount, string]> = {
+  submitted: [MOCK_ACCOUNTS.reviewingCoordinator, 'EVR-RV4K8N2P'],
+  under_review: [MOCK_ACCOUNTS.coordinator, PARTNER_SUMMIT],
+  awaiting_clarification: [MOCK_ACCOUNTS.coordinator, 'EVR-B6YF2K8V'],
+  approved: [MOCK_ACCOUNTS.coordinator, 'EVR-BOOK0101'],
+  safety_review: [MOCK_ACCOUNTS.planningCoordinator, 'EVR-PLAN0003'],
+  confirmed: [MOCK_ACCOUNTS.coordinator, 'EVR-BOOK0102'],
+  completed: [MOCK_ACCOUNTS.planningCoordinator, 'EVR-PLAN0007'],
+  cancelled: [MOCK_ACCOUNTS.planningCoordinator, 'EVR-PLAN0008'],
+  rejected: [MOCK_ACCOUNTS.reviewingCoordinator, 'EVR-RV9H6C1W'],
+}
 
 function signInAs(account: MockAccount) {
   sendRequestsAs(mockTokenFor(account))
+}
+
+/** An edit to the description, which the mock must refuse. */
+function refusedNote(reference: string) {
+  return refusal(editEventRequest(reference, { description: 'x' }))
 }
 
 /** The field errors an edit was refused with, by Chloe on Partner Summit. */
@@ -220,32 +262,47 @@ describe('SCRUM-33 mock of an edit: what is refused', () => {
     expect((await fetchEventRequest(PARTNER_SUMMIT)).description).toBeNull()
   })
 
-  it.each([
-    ['awaiting_clarification', MOCK_ACCOUNTS.coordinator, AWAITING_ANSWER],
-    ['rejected', MOCK_ACCOUNTS.reviewingCoordinator, 'EVR-RV9H6C1W'],
-  ])('refuses an event that is %s, as the backend does', async (_, account, reference) => {
+  it.each(EDITABLE_STATUSES)(
+    'lets the coordinator edit an event that is %s, and keeps its status',
+    async (status) => {
+      const [account, reference] = EVENT_IN_STATUS[status]
+      signInAs(account)
+
+      const edited = await editEventRequest(reference, { description: 'Edited.' })
+
+      expect(edited).toMatchObject({ status, description: 'Edited.' })
+    },
+  )
+
+  it('refuses a Confirmed event, pointing to a change request, and changes nothing (AC8)', async () => {
+    const [account, reference] = EVENT_IN_STATUS.confirmed
     signInAs(account)
 
-    expect(await refusal(editEventRequest(reference, { description: 'x' }))).toMatchObject({
+    expect(await refusedNote(reference)).toMatchObject({
       status: 409,
       code: 'request_not_editable',
-      message: 'Only a submitted, under-review, approved or confirmed event request can be edited.',
+      message: 'A confirmed event can only be changed through a change request.',
+    })
+    expect(await fetchEventRequest(reference)).toMatchObject({
+      status: 'confirmed',
+      description: null,
     })
   })
 
-  // Each status the backend lets an edit through (EDITABLE_STATUSES), so none is dropped.
-  it.each([
-    ['submitted', MOCK_ACCOUNTS.reviewingCoordinator, 'EVR-RV4K8N2P'],
-    ['under_review', MOCK_ACCOUNTS.coordinator, PARTNER_SUMMIT],
-    ['approved', MOCK_ACCOUNTS.coordinator, 'EVR-BOOK0101'],
-    ['confirmed', MOCK_ACCOUNTS.coordinator, 'EVR-BOOK0102'],
-  ])('lets the coordinator edit an event that is %s', async (status, account, reference) => {
-    signInAs(account)
+  it.each(REFUSED_STATUSES)(
+    'refuses an event that is %s with the general message, and changes nothing',
+    async (status) => {
+      const [account, reference] = EVENT_IN_STATUS[status]
+      signInAs(account)
 
-    const edited = await editEventRequest(reference, { description: 'Edited.' })
-
-    expect(edited).toMatchObject({ status, description: 'Edited.' })
-  })
+      expect(await refusedNote(reference)).toMatchObject({
+        status: 409,
+        code: 'request_not_editable',
+        message: NOT_EDITABLE_MESSAGE,
+      })
+      expect((await fetchEventRequest(reference)).description).toBeNull()
+    },
+  )
 
   it("answers another coordinator's event as not found, and refuses an organiser", async () => {
     signInAs(MOCK_ACCOUNTS.coordinator)
@@ -260,8 +317,10 @@ describe('SCRUM-33 mock of an edit: what is refused', () => {
 
 /**
  * SCRUM-33 AC7 (ADR-0087): once the event has passed its safety check, a significant change
- * withdraws the approval, and a Confirmed event goes back to Approved for a new check. Hana's
- * EVR-PLAN0003 is in Safety Review with the Safety Officer's approval; EVR-PLAN0005 is Confirmed.
+ * withdraws the approval, and an event in Safety Review goes back to Approved for a new check. A
+ * Confirmed event can't be edited (AC8), so Safety Review is where an edit meets an approval.
+ * Hana's EVR-PLAN0003 is in Safety Review with the Safety Officer's approval; EVR-PLAN0004 is in
+ * Safety Review without one.
  */
 describe('SCRUM-33 mock of an edit: the safety approval (AC7)', () => {
   const HANA = MOCK_ACCOUNTS.planningCoordinator
@@ -271,9 +330,8 @@ describe('SCRUM-33 mock of an edit: the safety approval (AC7)', () => {
     return (await fetchEventHistory(reference)).history.at(-1)
   }
 
-  it('withdraws the approval on a significant change, so a Confirmed event needs a new check', async () => {
+  it('withdraws the approval on a significant change, so the event needs a new check', async () => {
     signInAs(HANA)
-    await confirmEvent('EVR-PLAN0003')
 
     // A fall: still significant, but the hall holds everyone, so no arrangement is flagged (AC6).
     const edited = await editEventRequest('EVR-PLAN0003', { expected_attendance: 100 })
@@ -292,17 +350,13 @@ describe('SCRUM-33 mock of an edit: the safety approval (AC7)', () => {
     })
   })
 
-  // The backend confirms only an approved event, so every Confirmed event has an approval.
-  it('sends any Confirmed event back to Approved on a significant change', async () => {
-    signInAs(MOCK_ACCOUNTS.coordinator)
+  it('keeps an event in Safety Review without an approval there on a significant change', async () => {
+    signInAs(HANA)
 
-    const edited = await editEventRequest('EVR-BOOK0102', { venue_requirements: 'A stage.' })
+    const edited = await editEventRequest('EVR-PLAN0004', { expected_attendance: 100 })
 
-    expect(edited.status).toBe('approved')
-    expect(await newestEntryOf('EVR-BOOK0102')).toMatchObject({
-      kind: 'safety_approval_withdrawn',
-      details: { significant_fields: ['venue_requirements'] },
-    })
+    expect(edited.status).toBe('safety_review')
+    expect(await newestEntryOf('EVR-PLAN0004')).toMatchObject({ kind: 'field_changed' })
   })
 
   it.each([
@@ -311,10 +365,11 @@ describe('SCRUM-33 mock of an edit: the safety approval (AC7)', () => {
   ])('keeps the approval for %s', async (_case, changes) => {
     signInAs(HANA)
 
-    const edited = await editEventRequest('EVR-PLAN0005', changes)
+    const edited = await editEventRequest('EVR-PLAN0003', changes)
 
-    expect(edited.status).toBe('confirmed')
-    expect(await newestEntryOf('EVR-PLAN0005')).toMatchObject({ kind: 'field_changed' })
+    expect(edited.status).toBe('safety_review')
+    expect(await newestEntryOf('EVR-PLAN0003')).toMatchObject({ kind: 'field_changed' })
+    expect(await confirmEvent('EVR-PLAN0003')).toMatchObject({ status: 'confirmed' })
   })
 })
 

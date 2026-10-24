@@ -102,6 +102,8 @@ const DETAILS = {
  * then, so it has ended; EVR-PLAN0006 began the day before and ends a minute later, so it hasn't.
  * EVR-PLAN0005's registration is open for 50 with 30 registered, though its organiser didn't ask
  * for it; EVR-PLAN0006's organiser did, and nothing is set yet.
+ * Over: EVR-PLAN0007 is completed and EVR-PLAN0008 cancelled, so every status after the first
+ * decision has an event of hers.
  */
 export const PLANNING_EVENT_REQUESTS: readonly MockEventRequest[] = [
   {
@@ -215,6 +217,30 @@ export const PLANNING_EVENT_REQUESTS: readonly MockEventRequest[] = [
       end_date: '2026-10-05',
       end_time: '12:01:00',
       created_at: '2026-09-16T03:00:00+00:00',
+    },
+  },
+  {
+    ...HANAS_EVENT,
+    request: {
+      ...DETAILS,
+      reference: 'EVR-PLAN0007',
+      status: 'completed',
+      name: 'Summer Lantern Walk',
+      proposed_date: '2026-09-26',
+      end_date: '2026-09-26',
+      created_at: '2026-09-15T03:00:00+00:00',
+    },
+  },
+  {
+    ...HANAS_EVENT,
+    request: {
+      ...DETAILS,
+      reference: 'EVR-PLAN0008',
+      status: 'cancelled',
+      name: 'Rooftop Film Night',
+      proposed_date: '2026-11-07',
+      end_date: '2026-11-07',
+      created_at: '2026-09-14T03:00:00+00:00',
     },
   },
 ]

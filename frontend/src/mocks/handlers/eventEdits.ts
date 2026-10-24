@@ -25,19 +25,24 @@ import type { SignificantChange } from './reassessmentRules'
  * answered and written to the history, significant or not; a significant change withdraws a
  * safety approval (AC7), and each venue arrangement it affects is flagged, in the booking mock and
  * in the planning the gates count (AC6, ADR-0094). Checks run in the backend's order:
- * the coordinator's own event (404), a status that can be edited (409), then the fields (400).
- * The internal planning notes are kept here: the record never shows them.
+ * the coordinator's own event (404), a status that can be edited (409: every status before
+ * Confirmed, and a Confirmed event is pointed to a change request; AC8, ADR-0101), then the
+ * fields (400). The internal planning notes are kept here: the record never shows them.
  */
 
 const REQUESTS_PATH = '/api/events/requests'
 const NOT_EDITABLE_MESSAGE =
-  'Only a submitted, under-review, approved or confirmed event request can be edited.'
+  'An event request can only be edited before it is confirmed, and not once it is rejected or cancelled.'
+const CONFIRMED_NOT_EDITABLE_MESSAGE =
+  'A confirmed event can only be changed through a change request.'
 const NOT_NULL_MESSAGE = 'Field may not be null.'
+/** Every status before Confirmed (`EDITABLE_STATUSES`, SCRUM-33 AC8, ADR-0101). */
 const EDITABLE_STATUSES: readonly EventRequestStatus[] = [
   EVENT_REQUEST_STATUS.SUBMITTED,
   EVENT_REQUEST_STATUS.UNDER_REVIEW,
+  EVENT_REQUEST_STATUS.AWAITING_CLARIFICATION,
   EVENT_REQUEST_STATUS.APPROVED,
-  EVENT_REQUEST_STATUS.CONFIRMED,
+  EVENT_REQUEST_STATUS.SAFETY_REVIEW,
 ]
 /** Where a withdrawn safety approval sends an event back to Approved (ADR-0087). */
 const RETURNED_TO_PLANNING_ON_WITHDRAWAL: readonly EventRequestStatus[] = [
@@ -241,14 +246,10 @@ function historyOf(changes: FieldChange[], actorName: string): EventHistoryEntry
 }
 
 /**
- * Whether the Safety Officer's approval stands (`has_safety_approval`). Every Confirmed event has
- * one: the backend confirms only an approved event, and withdrawing it takes the event out of
- * Confirmed. Other events have one only where their planning says so.
+ * Whether the Safety Officer's approval stands (`has_safety_approval`), as the event's planning
+ * says. A Confirmed event, which always has one, can't be edited (AC8), so it never gets here.
  */
 function hasSafetyApproval(stored: MockEventRequest): boolean {
-  if (stored.request.status === EVENT_REQUEST_STATUS.CONFIRMED) {
-    return true
-  }
   return stored.planning?.isSafetyApproved ?? false
 }
 
@@ -323,6 +324,9 @@ export const eventEditHandlers: RequestHandler[] = [
       return found.refusal
     }
     const { coordinator, stored } = found
+    if (stored.request.status === EVENT_REQUEST_STATUS.CONFIRMED) {
+      return errorResponse(409, 'request_not_editable', CONFIRMED_NOT_EDITABLE_MESSAGE)
+    }
     if (!EDITABLE_STATUSES.includes(stored.request.status)) {
       return errorResponse(409, 'request_not_editable', NOT_EDITABLE_MESSAGE)
     }
