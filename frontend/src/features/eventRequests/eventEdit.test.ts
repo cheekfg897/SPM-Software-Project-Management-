@@ -27,6 +27,7 @@ const RECORD: EventRecord = {
   coordinator: null,
   decision: null,
   clarifications: [],
+  equipment_lines: [],
 }
 
 /** The form as it opens on RECORD, with `typed` changed. */

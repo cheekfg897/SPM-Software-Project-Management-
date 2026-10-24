@@ -101,7 +101,6 @@ describe('SCRUM-24 mock of the read-only staff record', () => {
         decision: null,
         clarifications: [],
         venue_arrangements: [],
-        equipment_lines: [],
         equipment_reservations: [],
         safety_outcome: null,
       })

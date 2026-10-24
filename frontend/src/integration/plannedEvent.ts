@@ -71,10 +71,18 @@ async function organiserOfNewOrganisation(): Promise<Credentials> {
   return { email: organiser.email, password: organiser.password }
 }
 
-/** A new organiser's submitted event request: the reference and name it was given. */
-export async function submittedEvent(): Promise<{ reference: string; name: string }> {
-  await signInAs(await organiserOfNewOrganisation())
-  return apiRequest<{ reference: string; name: string }>('/api/events/requests', {
+/** An event made here: the reference and name it was given, and the organiser who asked for it. */
+export interface PlannedEvent {
+  reference: string
+  name: string
+  organiser: Credentials
+}
+
+/** A new organiser's submitted event request. Leaves the organiser signed in. */
+export async function submittedEvent(): Promise<PlannedEvent> {
+  const organiser = await organiserOfNewOrganisation()
+  await signInAs(organiser)
+  const submitted = await apiRequest<{ reference: string; name: string }>('/api/events/requests', {
     method: 'POST',
     body: {
       name: `Integration Event ${uniqueEmail('event')}`,
@@ -86,6 +94,7 @@ export async function submittedEvent(): Promise<{ reference: string; name: strin
       accessibility_needs: 'Step-free entrance',
     },
   })
+  return { reference: submitted.reference, name: submitted.name, organiser }
 }
 
 /** As the staff account, the event's coordinator: POST to one of the event's actions. */
@@ -95,7 +104,7 @@ export async function coordinatorPosts(reference: string, action: string, body?:
 }
 
 /** A submitted event, assigned by the Lead to the staff account, who reviews and approves it. */
-export async function approvedEvent(): Promise<{ reference: string; name: string }> {
+export async function approvedEvent(): Promise<PlannedEvent> {
   const event = await submittedEvent()
   await signInAs(required(LEAD))
   await assignCoordinator({
