@@ -71,7 +71,8 @@ from app.modules.notifications.services import EventSummary, NotificationKind, n
 
 if TYPE_CHECKING:
     # Type only: the venue module imports this one, so it is imported where it is used.
-    from app.modules.venue.services import ArrangedVenue
+    from app.modules.equipment.services import ReservationAsShown
+    from app.modules.venue.services import ArrangedVenue, ArrangementForRecord
 
 logger = logging.getLogger("connectsphere.events")
 
@@ -4447,6 +4448,104 @@ def record_safety_outcome(
         event_request, NOTIFICATION_BY_SAFETY_OUTCOME[outcome], sess, detail=recorded["reason"]
     )
     return event_request
+
+
+# --------------------------------------------------------------------------
+# SCRUM-24 AC9, AC10 — the read-only record other internal users open
+# --------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class SafetyOutcomeAsShown:
+    """The Safety Officer's outcome on the event's current check (SCRUM-98, ADR-0095).
+
+    No user id: the officer is shown by name, ``None`` once their account is gone.
+    """
+
+    #: ``approved``, ``rejected`` or ``changes_requested``.
+    outcome: str
+    #: The officer's note on each checklist item (SCRUM-98 AC2).
+    checklist: dict[str, str]
+    reason: str | None
+    recorded_by: str | None
+    recorded_at: datetime
+
+
+@dataclass(frozen=True)
+class StaffEventRecord:
+    """An event's read-only record for internal users other than its coordinator.
+
+    SCRUM-24 AC9, AC10; SCRUM-84 AC2, SCRUM-85 AC2 (ADR-0095). The request's own
+    fields, internal notes included, come with ``record.event_request``; its history is
+    read from the history route, as on every event page (ADR-0076). No registrants:
+    they stay with the organiser and the assigned coordinator (SCRUM-55).
+    """
+
+    #: The sections the organiser's and coordinator's record shows too.
+    record: EventRecord
+    venue_arrangements: list[ArrangementForRecord]
+    equipment_lines: list[SafetyReviewEquipment]
+    equipment_reservations: list[ReservationAsShown]
+    #: The outcome of the event's current safety check, or ``None`` until there is one.
+    safety_outcome: SafetyOutcomeAsShown | None
+
+
+def _safety_outcome_of(
+    event_request: EventRequest, session: Session
+) -> SafetyOutcomeAsShown | None:
+    """The outcome of the event's current safety check, or ``None`` until there is one.
+
+    The officer's name is looked up now, so a removed account shows as ``None``.
+    """
+    entry = _current_safety_outcome_entry(event_request.id, session)
+    if entry is None:
+        return None
+
+    details = entry.details or {}
+    names = get_user_full_names(_user_ids_named_in([entry]), session=session)
+    return SafetyOutcomeAsShown(
+        outcome=details["outcome"],
+        checklist=details.get("checklist", {}),
+        reason=details.get("reason"),
+        recorded_by=_actor_name(entry, names),
+        recorded_at=entry.occurred_at,
+    )
+
+
+def get_staff_event_record(reference: str, *, session: Session | None = None) -> StaffEventRecord:
+    """Any submitted event's read-only record, for internal users (SCRUM-24 AC9, AC10).
+
+    Venue Staff, Technical Support Staff, the Safety Officer and the Event Coordinator
+    Lead open any event but a draft, whoever coordinates it or whether anyone does;
+    the route lets in only those roles (ADR-0095). Nothing here changes the event.
+
+    Args:
+        reference: The ``EVR-…`` reference; case and surrounding spaces are ignored.
+        session: Database session; defaults to ``db.session``.
+
+    Returns:
+        The event's record: its request and notes, coordinator, decision and
+        clarifications, its venue arrangements, its equipment requests and
+        reservations with their preparation, and its current safety outcome.
+
+    Raises:
+        NotFoundError: 404 — no such request, or it is still a draft (ADR-0024).
+    """
+    from app.modules.venue import services as venue_services  # circular at import time
+
+    sess = resolve_session(session)
+    event_request = _event_request_for_staff(reference, sess)
+    return StaffEventRecord(
+        record=_event_record(event_request, sess),
+        venue_arrangements=venue_services.list_arrangements_for_record(
+            event_request.id, session=sess
+        ),
+        equipment_lines=_equipment_for_safety_review(event_request, sess),
+        equipment_reservations=equipment_services.list_reservations_of_event(
+            event_request.id, session=sess
+        ),
+        safety_outcome=_safety_outcome_of(event_request, sess),
+    )
 
 
 # --------------------------------------------------------------------------

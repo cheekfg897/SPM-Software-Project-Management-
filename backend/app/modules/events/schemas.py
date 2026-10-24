@@ -872,3 +872,84 @@ class EventHistoryEntrySchema(Schema):
     occurred_at = BusinessDateTime(dump_only=True)
     actor_name = fields.String(dump_only=True, allow_none=True)
     details = fields.Dict(dump_only=True)
+
+
+class StaffEventRequestSchema(EventRequestSchema):
+    """An event request as the read-only staff record shows it (SCRUM-24 AC9, ADR-0095).
+
+    The request's own fields and both notes: the programme notes the organiser sees too,
+    and the internal planning notes they never do (ADR-0025). Its equipment comes in its
+    own sections of the record.
+    """
+
+    programme_notes = fields.String(dump_only=True, allow_none=True)
+    internal_planning_notes = fields.String(dump_only=True, allow_none=True)
+
+
+class StaffVenueArrangementSchema(Schema):
+    """A venue arrangement as the read-only staff record shows it (SCRUM-84 AC2).
+
+    Dumped from the venue module's ``ArrangementForRecord``, whose statuses are the
+    venue module's own enums, so each is shown by its value. Times are in business
+    time (ADR-0009).
+    """
+
+    venue_name = fields.String(dump_only=True)
+    starts_at = BusinessDateTime(dump_only=True)
+    ends_at = BusinessDateTime(dump_only=True)
+    status = fields.String(attribute="status.value", dump_only=True)
+    preparation_status = fields.String(attribute="preparation_status.value", dump_only=True)
+    preparation_notes = fields.String(dump_only=True, allow_none=True)
+
+
+class StaffReservationSchema(Schema):
+    """An equipment reservation as the read-only staff record shows it (SCRUM-85 AC2).
+
+    Dumped from the equipment module's ``ReservationAsShown``. No ids: nothing on the
+    record acts on a reservation. Times are in business time (ADR-0009).
+    """
+
+    equipment_type_name = fields.String(dump_only=True)
+    quantity = fields.Integer(dump_only=True)
+    starts_at = BusinessDateTime(dump_only=True)
+    ends_at = BusinessDateTime(dump_only=True)
+    reserved_by = fields.String(dump_only=True, allow_none=True)
+    preparation_status = fields.String(attribute="preparation_status.value", dump_only=True)
+    preparation_notes = fields.String(dump_only=True, allow_none=True)
+
+
+class SafetyOutcomeSchema(Schema):
+    """The outcome of an event's current safety check (SCRUM-98, ADR-0095).
+
+    The officer is shown by name, never by id; the time is in business time.
+    """
+
+    outcome = fields.String(dump_only=True)
+    checklist = fields.Dict(keys=fields.String(), values=fields.String(), dump_only=True)
+    reason = fields.String(dump_only=True, allow_none=True)
+    recorded_by = fields.String(dump_only=True, allow_none=True)
+    recorded_at = BusinessDateTime(dump_only=True)
+
+
+class StaffEventRecordSectionsSchema(Schema):
+    """Every section of the read-only staff record beside the request (ADR-0095).
+
+    Dumped from ``StaffEventRecord``. The coordinator, decision and clarifications are
+    shown as on the organiser's and coordinator's record; the equipment requests as the
+    Safety Officer's list shows them, by name with Technical Support's outcome
+    (SCRUM-97 AC6). No registrants (SCRUM-55).
+    """
+
+    coordinator = fields.Nested(
+        CoordinatorContactSchema, attribute="record.coordinator", allow_none=True, dump_only=True
+    )
+    decision = fields.Nested(
+        DecisionSchema, attribute="record.decision", allow_none=True, dump_only=True
+    )
+    clarifications = fields.Nested(
+        ClarificationSchema, attribute="record.clarifications", many=True, dump_only=True
+    )
+    venue_arrangements = fields.Nested(StaffVenueArrangementSchema, many=True, dump_only=True)
+    equipment_lines = fields.Nested(SafetyReviewEquipmentSchema, many=True, dump_only=True)
+    equipment_reservations = fields.Nested(StaffReservationSchema, many=True, dump_only=True)
+    safety_outcome = fields.Nested(SafetyOutcomeSchema, allow_none=True, dump_only=True)

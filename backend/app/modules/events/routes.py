@@ -30,6 +30,8 @@ from app.modules.events.schemas import (
     EventRequestSchema,
     FieldChangeSchema,
     RegistrationSettingsSchema,
+    StaffEventRecordSectionsSchema,
+    StaffEventRequestSchema,
     UnassignedRequestSchema,
 )
 from app.modules.events.services import (
@@ -42,6 +44,7 @@ from app.modules.events.services import (
     equipment_lines_as_shown,
     get_event_record_for_coordinator,
     get_event_record_for_organiser,
+    get_staff_event_record,
     list_active_requests,
     list_equipment_lines,
     list_equipment_requests_awaiting_action,
@@ -89,6 +92,17 @@ _event_history_entry_schema = EventHistoryEntrySchema()
 _event_list_row_schema = EventRequestSchema(only=EVENT_LIST_FIELDS)
 _unassigned_request_schema = UnassignedRequestSchema()
 _registration_settings_schema = RegistrationSettingsSchema()
+_staff_event_request_schema = StaffEventRequestSchema()
+_staff_record_sections_schema = StaffEventRecordSectionsSchema()
+
+#: Who opens any submitted event's read-only record (SCRUM-24 AC9, AC10; ADR-0095). An
+#: Event Coordinator opens only their own events, through ``/requests/<reference>``.
+_STAFF_RECORD_READERS = (
+    Role.VENUE_STAFF,
+    Role.TECHNICAL_SUPPORT_STAFF,
+    Role.SAFETY_OFFICER,
+    Role.EVENT_COORDINATOR_LEAD,
+)
 
 #: What each role's event list says when it is empty (SCRUM-24 AC10, ADR-0026).
 NO_ORGANISATION_REQUESTS_MESSAGE = "Your organisation has no event requests yet."
@@ -462,6 +476,29 @@ def list_history(reference: str) -> tuple[Response, int]:
         g.current_user_id, reference, viewer_role=Role(g.current_user_role)
     )
     body = {"history": _event_history_entry_schema.dump(history, many=True)}
+    return jsonify(body), 200
+
+
+# --------------------------------------------------------------------------
+# SCRUM-24 AC9, AC10 — the read-only record other internal users open
+# --------------------------------------------------------------------------
+
+
+@bp.get("/requests/<reference>/staff-record")
+@requires_role(*_STAFF_RECORD_READERS)
+def get_staff_record(reference: str) -> tuple[Response, int]:
+    """Any submitted event's read-only record, for internal users (ADR-0095).
+
+    Venue Staff, Technical Support Staff and the Safety Officer (SCRUM-24 AC9) and the
+    Event Coordinator Lead (AC10), for any event but a draft, assigned or not. The
+    request with its notes, then each section: coordinator, decision, clarifications,
+    venue arrangements and equipment with their preparation (SCRUM-84 AC2, SCRUM-85
+    AC2) and the current safety outcome. Its history is ``/history``; it has no
+    registrants (SCRUM-55).
+    """
+    staff_record = get_staff_event_record(reference)
+    body = _staff_event_request_schema.dump(staff_record.record.event_request)
+    body.update(_staff_record_sections_schema.dump(staff_record))
     return jsonify(body), 200
 
 
