@@ -10,6 +10,14 @@ import type { BookingRequest } from './api'
  * and the replacement the request form raises, read from the page URL.
  */
 
+/**
+ * Whether the backend flagged the arrangement as needing another venue: its venue became
+ * unavailable (SCRUM-92), or a significant change to the event flagged it (SCRUM-33 AC6).
+ */
+export function needsAnotherVenue(arrangement: BookingRequest): boolean {
+  return arrangement.needs_alternative_venue || arrangement.flagged_after_change
+}
+
 /** Find a venue, set to the flagged arrangement's period, occupancy and layout. */
 export function findAnotherVenuePath(reference: string, arrangement: BookingRequest): string {
   const startDate = businessDate(arrangement.starts_at)

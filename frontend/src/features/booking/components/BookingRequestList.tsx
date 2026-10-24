@@ -2,6 +2,7 @@ import { useId } from 'react'
 
 import type { BookingRequest } from '../api'
 import { RETIRED_STATUSES, STATUS_LABELS } from '../constants'
+import { needsAnotherVenue } from '../replacement'
 
 import { AlternativeVenueNotice } from './AlternativeVenueNotice'
 import { ArrangementActions } from './ArrangementActions'
@@ -55,7 +56,7 @@ function BookingRequestItem({ reference, request, replaces }: BookingRequestItem
       )}
       {/* Venue Staff prepare a booking once it is approved (SCRUM-84). */}
       {request.status === 'approved' && <PreparationSummary preparation={request} />}
-      {request.needs_alternative_venue && (
+      {needsAnotherVenue(request) && (
         <AlternativeVenueNotice reference={reference} arrangement={request} />
       )}
       {!RETIRED_STATUSES.includes(request.status) && (

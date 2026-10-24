@@ -13,7 +13,7 @@ import { server } from '@/mocks/server'
 import { recordRequests } from '@/test/recordRequests'
 import { renderApp } from '@/test/render'
 
-import type { BookingRequest } from '../api'
+import type { BookingRequest, ReassessmentFlag } from '../api'
 import { fillRequest, typeInto } from '../test/requestForm'
 
 /**
@@ -41,12 +41,17 @@ function item(purpose: string): Promise<HTMLElement> {
   return screen.findByRole('listitem', { name: purpose })
 }
 
-/** Each cause listed under the arrangement, as its text. */
-async function causesUnder(purpose: string): Promise<string[]> {
-  const causes = within(await item(purpose)).getByRole('list', { name: CAUSES_LABEL })
-  return within(causes)
+/** Each entry of the list named `listName` under the arrangement, as its text. */
+async function listedUnder(purpose: string, listName: string): Promise<string[]> {
+  const list = within(await item(purpose)).getByRole('list', { name: listName })
+  return within(list)
     .getAllByRole('listitem')
-    .map((cause) => cause.textContent)
+    .map((entry) => entry.textContent)
+}
+
+/** Each cause listed under the arrangement, as its text. */
+function causesUnder(purpose: string): Promise<string[]> {
+  return listedUnder(purpose, CAUSES_LABEL)
 }
 
 describe('SCRUM-92 why an arrangement needs an alternative venue', () => {
@@ -302,5 +307,80 @@ describe('SCRUM-92 raising a replacement for a flagged arrangement (AC6)', () =>
     openEvent(BOOKED_EVENT.reference)
 
     expect(await item('Stand-in hall')).toHaveTextContent('Replaces arrangement 777')
+  })
+})
+
+/**
+ * SCRUM-33 AC6 (ADR-0094): a significant change to the event flags the arrangements it affects.
+ * Until Venue Staff can reconfirm a booking (SCRUM-59), a replacement is the way to clear one,
+ * so the coordinator sees why and is offered the same venue search.
+ */
+describe('SCRUM-33 an arrangement flagged after a change to the event', () => {
+  const CHANGE_REASONS_LABEL = 'Why a change to the event flagged it'
+  const TIMING_CHANGED: ReassessmentFlag = {
+    kind: 'requires_reconfirmation',
+    reason: "The event's date or time changed.",
+  }
+  const TOO_MANY_PEOPLE: ReassessmentFlag = {
+    kind: 'no_longer_suitable',
+    reason: "Expected attendance of 250 exceeds the venue's capacity of 200.",
+  }
+  /** The booked event's hall, its venue still available, flagged by a change instead. */
+  const changeFlaggedHall: BookingRequest = {
+    ...bookedHall,
+    needs_alternative_venue: false,
+    unavailability: [],
+    flagged_after_change: true,
+    reassessment_flags: [TIMING_CHANGED, TOO_MANY_PEOPLE],
+  }
+
+  /** Each reason listed under the arrangement, as its text. */
+  function changeReasonsUnder(purpose: string): Promise<string[]> {
+    return listedUnder(purpose, CHANGE_REASONS_LABEL)
+  }
+
+  function findAnotherVenueLinks(hall: HTMLElement): HTMLElement[] {
+    return within(hall).queryAllByRole('link', {
+      name: `Find another venue for ${bookedHall.purpose}`,
+    })
+  }
+
+  it('names each reason with its kind, in the backend’s order, and offers another venue', async () => {
+    listBookedEventAs([changeFlaggedHall])
+
+    openEvent(BOOKED_EVENT.reference)
+
+    expect(await changeReasonsUnder(bookedHall.purpose)).toEqual([
+      "Requires reconfirmation: The event's date or time changed.",
+      "No longer suitable: Expected attendance of 250 exceeds the venue's capacity of 200.",
+    ])
+    expect(findAnotherVenueLinks(await item(bookedHall.purpose))).toHaveLength(1)
+  })
+
+  it('offers one venue search when its venue is also unavailable, listing both kinds of reason', async () => {
+    listBookedEventAs([
+      { ...bookedHall, flagged_after_change: true, reassessment_flags: [TIMING_CHANGED] },
+    ])
+
+    openEvent(BOOKED_EVENT.reference)
+
+    expect(await causesUnder(bookedHall.purpose)).toEqual([
+      'Maintenance: Roof repairs. Unavailable from 26 Nov, 8:00 am to 26 Nov, 6:00 pm.',
+    ])
+    expect(await changeReasonsUnder(bookedHall.purpose)).toEqual([
+      "Requires reconfirmation: The event's date or time changed.",
+    ])
+    expect(findAnotherVenueLinks(await item(bookedHall.purpose))).toHaveLength(1)
+  })
+
+  it('shows no flag once it stops counting, though the backend keeps the reasons', async () => {
+    listBookedEventAs([{ ...changeFlaggedHall, status: 'released', flagged_after_change: false }])
+
+    openEvent(BOOKED_EVENT.reference)
+
+    const hall = await item(bookedHall.purpose)
+    expect(hall).toHaveTextContent('Released')
+    expect(within(hall).queryByRole('list', { name: CHANGE_REASONS_LABEL })).not.toBeInTheDocument()
+    expect(findAnotherVenueLinks(hall)).toHaveLength(0)
   })
 })
