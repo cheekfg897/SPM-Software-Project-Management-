@@ -754,8 +754,7 @@ class EquipmentLineWithOutcomeSchema(EquipmentLineSchema):
     """An equipment line with its review outcome, for staff (SCRUM-48 AC4).
 
     Dumped from ``EquipmentLineAsShown``, so the reviewer is a name, never a user id.
-    The organiser's record keeps :class:`EquipmentLineSchema`: they see the line's
-    status, but not the provided quantity, shortfall, note, reviewer or time.
+    The organiser's record has :class:`OrganiserEquipmentLineSchema` instead.
     """
 
     provided_quantity = fields.Integer(dump_only=True, allow_none=True)
@@ -763,6 +762,21 @@ class EquipmentLineWithOutcomeSchema(EquipmentLineSchema):
     outcome_note = fields.String(dump_only=True, allow_none=True)
     reviewed_by = fields.String(dump_only=True, allow_none=True)
     reviewed_at = BusinessDateTime(dump_only=True, allow_none=True)
+
+
+class OrganiserEquipmentLineSchema(Schema):
+    """An equipment line on its organiser's record (SCRUM-37 AC5, SCRUM-48 AC5).
+
+    Dumped from ``EquipmentLineForOrganiser``: the type by name, the quantity asked
+    for, the status and the quantity provided. Never the technical notes, the outcome
+    note or the reviewer, which are internal (ADR-0098).
+    """
+
+    id = fields.Integer(dump_only=True)
+    equipment_type_name = fields.String(dump_only=True)
+    quantity = fields.Integer(dump_only=True)
+    status = fields.Enum(EquipmentLineStatus, by_value=True, dump_only=True)
+    provided_quantity = fields.Integer(dump_only=True, allow_none=True)
 
 
 class EquipmentAwaitingActionSchema(Schema):

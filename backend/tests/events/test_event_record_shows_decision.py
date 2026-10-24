@@ -20,14 +20,14 @@ from typing import Any
 import pytest
 
 from app.modules.events.models import EventHistoryKind, EventRequest
-from app.modules.events.services import DecisionAsShown, EventRecord
+from app.modules.events.services import DecisionAsShown, EventRecord, OrganiserEventRecord
 
 pytestmark = pytest.mark.scrum_31
 
 OpenRecord = Callable[[], EventRecord]
 RecordDecision = Callable[..., None]
 RecordEntry = Callable[..., None]
-OpenRecordRoute = Callable[[EventRecord], dict[str, Any]]
+OpenRecordRoute = Callable[[OrganiserEventRecord], dict[str, Any]]
 
 #: The Event Coordinator ``saved_event_request`` is assigned to.
 COORDINATOR_ID = 3
@@ -142,7 +142,9 @@ def test_the_record_route_shows_the_decision_in_business_time(
         decided_by="Coordinator Three",
         decided_at=LATEST_DECIDED_AT,
     )
-    record = EventRecord(event_request=make_event_request(), coordinator=None, decision=decision)
+    record = OrganiserEventRecord(
+        event_request=make_event_request(), coordinator=None, decision=decision
+    )
 
     body = open_record_route(record)
 
@@ -157,7 +159,7 @@ def test_the_record_route_shows_the_decision_in_business_time(
 def test_the_record_route_shows_null_until_a_decision_is_recorded(
     open_record_route: OpenRecordRoute, make_event_request: Callable[..., EventRequest]
 ) -> None:
-    record = EventRecord(event_request=make_event_request(), coordinator=None)
+    record = OrganiserEventRecord(event_request=make_event_request(), coordinator=None)
 
     body = open_record_route(record)
 

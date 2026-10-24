@@ -203,6 +203,34 @@ class EventRecord:
     clarifications: tuple[ClarificationAsShown, ...] = ()
 
 
+@dataclass(frozen=True)
+class EquipmentLineForOrganiser:
+    """An equipment line as its event's organiser sees it (SCRUM-37 AC5, SCRUM-48 AC5).
+
+    What was asked for and what will be provided, with the type by name, since
+    organisers can't read the equipment catalogue. The technical notes, the outcome
+    note and the reviewer are internal, so they aren't here (ADR-0098).
+    """
+
+    id: int
+    equipment_type_name: str
+    quantity: int
+    status: EquipmentLineStatus
+    #: How many units Technical Support will provide; ``None`` until they review it.
+    provided_quantity: int | None
+
+
+@dataclass(frozen=True)
+class OrganiserEventRecord(EventRecord):
+    """The record as the event's organiser sees it (ADR-0098).
+
+    The sections every record shows, and the organiser's own view of the equipment.
+    """
+
+    #: Each equipment line, in the order added.
+    equipment_lines: tuple[EquipmentLineForOrganiser, ...] = ()
+
+
 def generate_reference() -> str:
     """Return a random reference such as ``EVR-7K2QX9AB``."""
     return REFERENCE_PREFIX + "".join(
@@ -785,13 +813,34 @@ def _event_record(event_request: EventRequest, session: Session) -> EventRecord:
     )
 
 
+def _equipment_lines_for_organiser(
+    event_request: EventRequest, session: Session
+) -> tuple[EquipmentLineForOrganiser, ...]:
+    """The event's equipment lines in the order added, as its organiser sees them."""
+    type_names = _equipment_type_names(session)
+
+    shown = []
+    for line in event_request.equipment_lines:
+        shown.append(
+            EquipmentLineForOrganiser(
+                id=line.id,
+                equipment_type_name=type_names[line.equipment_type_id],
+                quantity=line.quantity,
+                status=line.status,
+                provided_quantity=line.provided_quantity,
+            )
+        )
+    return tuple(shown)
+
+
 def get_event_record_for_organiser(
     organiser_id: int | str, reference: str, *, session: Session | None = None
-) -> EventRecord:
+) -> OrganiserEventRecord:
     """One of the organisation's requests and its assigned coordinator (SCRUM-30 AC3).
 
     Same lookup and scope as :func:`get_event_request_for_organiser`; the coordinator
-    is ``None`` until one is assigned (ADR-0018).
+    is ``None`` until one is assigned (ADR-0018). The equipment lines are the
+    organiser's own view of them (SCRUM-37 AC5, SCRUM-48 AC5, ADR-0098).
 
     Args:
         organiser_id: The caller's user id, taken from their token.
@@ -799,8 +848,9 @@ def get_event_record_for_organiser(
         session: Database session; defaults to ``db.session``.
 
     Returns:
-        The request's record: the request, and its coordinator's name and email or
-        ``None``.
+        The request's record: the request, its coordinator's name and email or
+        ``None``, and each equipment line's type, quantity, status and quantity
+        provided.
 
     Raises:
         OrganiserWithoutOrganisationError: 403 — the organiser has no client
@@ -810,7 +860,14 @@ def get_event_record_for_organiser(
     """
     sess = resolve_session(session)
     event_request = get_event_request_for_organiser(organiser_id, reference, session=sess)
-    return _event_record(event_request, sess)
+    record = _event_record(event_request, sess)
+    return OrganiserEventRecord(
+        event_request=record.event_request,
+        coordinator=record.coordinator,
+        decision=record.decision,
+        clarifications=record.clarifications,
+        equipment_lines=_equipment_lines_for_organiser(event_request, sess),
+    )
 
 
 # --------------------------------------------------------------------------
