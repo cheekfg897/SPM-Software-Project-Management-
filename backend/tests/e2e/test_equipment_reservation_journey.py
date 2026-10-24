@@ -3,6 +3,7 @@
 Two events share a day. Technical Support reserve projectors for the first, so the
 second has fewer free (SCRUM-46 AC2, SCRUM-45 AC1), asking for more than are free is
 refused with how many are (AC3), and the event's history shows who reserved what (AC4).
+Reserving tells the coordinator nothing by itself (AC5, ADR-0102).
 The first event's coordinator reads its equipment but not the other event's, which is
 not assigned to them (ADR-0019, ADR-0037). Every call goes through the real routes
 with Flask's test client (ADR-0031).
@@ -158,7 +159,8 @@ def test_damaged_units_flag_the_reservation_until_they_are_returned(
     assert [row["needs_attention"] for row in _body(coordinator.get(reservations_path), 200)] == [
         False
     ]
-    assert _latest_notification_kind(coordinator) == "equipment_reserved"
+    # Reserving tells the coordinator nothing by itself (SCRUM-46 AC5, ADR-0102).
+    assert _latest_notification_kind(coordinator) is None
 
     # --- Seven of ten are damaged, so three serve four reserved (SCRUM-47 AC1) ---
     out_of_service_path = f"/api/equipment/types/{equipment_type['id']}/out-of-service"
