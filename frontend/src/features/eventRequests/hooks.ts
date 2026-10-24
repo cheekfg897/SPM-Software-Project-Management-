@@ -201,14 +201,15 @@ export function useEventHistory(reference: string) {
 }
 
 /**
- * Change the fields sent on an event assigned to the coordinator (SCRUM-33). Afterwards the
- * record, its history and the lists are read again, so they show what the backend saved.
+ * Change the fields sent on an event assigned to the coordinator (SCRUM-33). Afterwards, saved or
+ * refused, the record, its history and the lists are read again, so they show what the backend
+ * holds: a refusal may mean the event has moved on, such as to Confirmed (AC8).
  */
 export function useEditEventRequest(reference: string) {
   const refresh = useRefreshEventRequests()
   return useMutation({
     mutationFn: (changes: EventEditChanges) => editEventRequest(reference, changes),
-    onSuccess: refresh,
+    onSettled: refresh,
   })
 }
 
