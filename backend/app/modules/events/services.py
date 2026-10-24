@@ -71,7 +71,7 @@ from app.modules.notifications.services import EventSummary, NotificationKind, n
 
 if TYPE_CHECKING:
     # Type only: the venue module imports this one, so it is imported where it is used.
-    from app.modules.venue.services import ArrangedVenue
+    from app.modules.venue.services import ArrangedVenue, OrganiserVenueArrangement
 
 logger = logging.getLogger("connectsphere.events")
 
@@ -222,13 +222,16 @@ class EquipmentLineForOrganiser:
 
 @dataclass(frozen=True)
 class OrganiserEventRecord(EventRecord):
-    """The record as the event's organiser sees it (ADR-0098).
+    """The record as the event's organiser sees it (ADR-0098, ADR-0099).
 
-    The sections every record shows, and the organiser's own view of the equipment.
+    The sections every record shows, the organiser's own view of the equipment, and,
+    once the event is confirmed, its venues.
     """
 
     #: Each equipment line, in the order added.
     equipment_lines: tuple[EquipmentLineForOrganiser, ...] = ()
+    #: Each approved venue arrangement, earliest first; none until it is confirmed.
+    venue_arrangements: tuple[OrganiserVenueArrangement, ...] = ()
 
 
 def generate_reference() -> str:
@@ -833,6 +836,28 @@ def _equipment_lines_for_organiser(
     return tuple(shown)
 
 
+#: When the organiser sees the event's venues: once it is confirmed, and still once it
+#: has taken place (SCRUM-49 AC11). Before then, none: the AC's literal reading, a
+#: default pending the Product Owner (ADR-0051 question 2, ADR-0099).
+VENUES_SHOWN_TO_ORGANISER_STATUSES = frozenset(
+    {EventRequestStatus.CONFIRMED, EventRequestStatus.COMPLETED}
+)
+
+
+def _venue_arrangements_for_organiser(
+    event_request: EventRequest, session: Session
+) -> tuple[OrganiserVenueArrangement, ...]:
+    """The event's approved venue arrangements, once it is confirmed (SCRUM-49 AC11)."""
+    from app.modules.venue import services as venue_services  # circular at import time
+
+    if event_request.status not in VENUES_SHOWN_TO_ORGANISER_STATUSES:
+        return ()
+    arrangements = venue_services.list_organiser_venue_arrangements(
+        event_request.id, session=session
+    )
+    return tuple(arrangements)
+
+
 def get_event_record_for_organiser(
     organiser_id: int | str, reference: str, *, session: Session | None = None
 ) -> OrganiserEventRecord:
@@ -840,7 +865,8 @@ def get_event_record_for_organiser(
 
     Same lookup and scope as :func:`get_event_request_for_organiser`; the coordinator
     is ``None`` until one is assigned (ADR-0018). The equipment lines are the
-    organiser's own view of them (SCRUM-37 AC5, SCRUM-48 AC5, ADR-0098).
+    organiser's own view of them (SCRUM-37 AC5, SCRUM-48 AC5, ADR-0098), and the venue
+    arrangements are listed once the event is confirmed (SCRUM-49 AC11, ADR-0099).
 
     Args:
         organiser_id: The caller's user id, taken from their token.
@@ -849,8 +875,8 @@ def get_event_record_for_organiser(
 
     Returns:
         The request's record: the request, its coordinator's name and email or
-        ``None``, and each equipment line's type, quantity, status and quantity
-        provided.
+        ``None``, each equipment line's type, quantity, status and quantity
+        provided, and its confirmed venue arrangements.
 
     Raises:
         OrganiserWithoutOrganisationError: 403 — the organiser has no client
@@ -867,6 +893,7 @@ def get_event_record_for_organiser(
         decision=record.decision,
         clarifications=record.clarifications,
         equipment_lines=_equipment_lines_for_organiser(event_request, sess),
+        venue_arrangements=_venue_arrangements_for_organiser(event_request, sess),
     )
 
 
