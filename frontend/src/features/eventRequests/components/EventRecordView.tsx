@@ -200,7 +200,7 @@ export function EventRecordView({ record }: { record: EventRecord }) {
           <p className="text-ink whitespace-pre-line">{record.programme_notes}</p>
         </RecordSection>
       )}
-      {isCoordinator && <EditDetailsSection reference={record.reference} />}
+      {isCoordinator && <EditDetailsSection record={record} />}
       <EventHistorySection reference={record.reference} />
       <RegistrantsSection reference={record.reference} />
     </PageContainer>

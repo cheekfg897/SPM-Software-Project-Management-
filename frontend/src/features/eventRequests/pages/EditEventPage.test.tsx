@@ -1,9 +1,13 @@
 import { screen, waitFor, within } from '@testing-library/react'
 
+import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
+import type { EventRequestStatus } from '@/config/eventStatus'
 import { coordinatorEventPath, editEventPath, organiserRequestPath, ROUTES } from '@/config/routes'
 import { MOCK_ACCOUNTS, mockSessionFor } from '@/mocks/fixtures/accounts'
 import { recordRequests } from '@/test/recordRequests'
 import { renderApp } from '@/test/render'
+
+import { serveRecordInStatus } from '../test/recordPage'
 
 /**
  * SCRUM-33 AC1 to AC3: the assigned coordinator changes an event's details, is told which
@@ -18,6 +22,18 @@ const COORDINATOR = mockSessionFor(MOCK_ACCOUNTS.coordinator)
 const ORGANISER = mockSessionFor(MOCK_ACCOUNTS.organiser)
 const PARTNER_SUMMIT = 'EVR-7K2M9QXA'
 const TOWN_HALL = 'EVR-BOOK0102'
+/** Every status before Confirmed, which the backend lets an edit through (AC8, ADR-0101). */
+const EDIT_OFFERED_STATUSES: readonly EventRequestStatus[] = [
+  EVENT_REQUEST_STATUS.SUBMITTED,
+  EVENT_REQUEST_STATUS.UNDER_REVIEW,
+  EVENT_REQUEST_STATUS.AWAITING_CLARIFICATION,
+  EVENT_REQUEST_STATUS.APPROVED,
+  EVENT_REQUEST_STATUS.SAFETY_REVIEW,
+]
+/** Every other status, built from the statuses so one added later is checked too. */
+const EDIT_NOT_OFFERED_STATUSES = Object.values(EVENT_REQUEST_STATUS).filter(
+  (status) => !EDIT_OFFERED_STATUSES.includes(status),
+)
 
 type App = ReturnType<typeof renderApp>
 
@@ -183,6 +199,25 @@ describe("SCRUM-33 the backend's refusals", () => {
     expect(screen.queryByRole('region', { name: 'Saved' })).not.toBeInTheDocument()
   })
 
+  it('reads the event again after a refused save, in case it moved on', async () => {
+    const app = await openEditForm(TOWN_HALL)
+    const requests = recordRequests()
+
+    await replace(app, 'Description', 'A short one.')
+    await save(app)
+
+    await screen.findByRole('alert')
+    await waitFor(() => {
+      const methods = requests.map(
+        (request) => `${request.method} ${new URL(request.url).pathname}`,
+      )
+      expect(methods).toEqual([
+        `PATCH /api/events/requests/${TOWN_HALL}`,
+        `GET /api/events/requests/${TOWN_HALL}`,
+      ])
+    })
+  })
+
   it("can't open another coordinator's event, even by its link", async () => {
     renderApp(editEventPath('EVR-W9CR5E7M'), { session: COORDINATOR })
 
@@ -198,14 +233,30 @@ describe("SCRUM-33 the backend's refusals", () => {
 })
 
 describe('SCRUM-33 who reaches the edit form', () => {
-  it("links to it from the coordinator's record", async () => {
-    renderApp(coordinatorEventPath(PARTNER_SUMMIT), { session: COORDINATOR })
+  it.each(EDIT_OFFERED_STATUSES)(
+    "links to it from the coordinator's record of an event that is %s",
+    async (status) => {
+      await serveRecordInStatus(MOCK_ACCOUNTS.coordinator, PARTNER_SUMMIT, status)
+      renderApp(coordinatorEventPath(PARTNER_SUMMIT), { session: COORDINATOR })
 
-    expect(await screen.findByRole('link', { name: 'Edit event details' })).toHaveAttribute(
-      'href',
-      editEventPath(PARTNER_SUMMIT),
-    )
-  })
+      expect(await screen.findByRole('link', { name: 'Edit event details' })).toHaveAttribute(
+        'href',
+        editEventPath(PARTNER_SUMMIT),
+      )
+    },
+  )
+
+  it.each(EDIT_NOT_OFFERED_STATUSES)(
+    'offers no edit, and no Edit details section, for an event that is %s (AC8)',
+    async (status) => {
+      await serveRecordInStatus(MOCK_ACCOUNTS.coordinator, PARTNER_SUMMIT, status)
+      renderApp(coordinatorEventPath(PARTNER_SUMMIT), { session: COORDINATOR })
+
+      await screen.findByRole('region', { name: 'About the event' })
+      expect(screen.queryByRole('region', { name: 'Edit details' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('link', { name: 'Edit event details' })).not.toBeInTheDocument()
+    },
+  )
 
   it("gives the organiser's record no link to it", async () => {
     renderApp(organiserRequestPath(PARTNER_SUMMIT), { session: ORGANISER })
