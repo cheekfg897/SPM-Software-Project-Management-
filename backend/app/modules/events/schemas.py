@@ -781,6 +781,23 @@ class OrganiserEquipmentLineSchema(Schema):
     provided_quantity = fields.Integer(dump_only=True, allow_none=True)
 
 
+class OrganiserVenueArrangementSchema(Schema):
+    """A confirmed venue arrangement on its organiser's record (SCRUM-49 AC11).
+
+    Dumped from the venue module's ``OrganiserVenueArrangement``: the venue's name and
+    location, the period in business time (ADR-0009), and what was arranged. Nothing
+    internal (ADR-0099).
+    """
+
+    venue_name = fields.String(dump_only=True)
+    venue_location = fields.String(dump_only=True)
+    starts_at = BusinessDateTime(dump_only=True)
+    ends_at = BusinessDateTime(dump_only=True)
+    purpose = fields.String(dump_only=True)
+    layout = fields.String(dump_only=True, allow_none=True)
+    expected_occupancy = fields.Integer(dump_only=True)
+
+
 class EquipmentAwaitingActionSchema(Schema):
     """One event's equipment still awaiting Technical Support (SCRUM-38 AC2, ADR-0022).
 
