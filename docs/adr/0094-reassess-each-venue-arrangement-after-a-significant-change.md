@@ -1,6 +1,6 @@
 # ADR-0094: A significant change reassesses each venue arrangement on its own and flags only those it affects
 
-- **Status:** Accepted for the flag, the gate and the notice (SCRUM-33 AC6); what "affected" means for each field (decisions 3-5), asking for reconfirmation when attendance rises within capacity (decision 4), and clearing a flag only by a replacement until SCRUM-59 (decision 8) are defaults pending the customer
+- **Status:** Accepted for the flag, the gate and the notice (SCRUM-33 AC6); what "affected" means for each field (decisions 3-5), asking for reconfirmation when attendance rises within capacity (decision 4), clearing a flag by a replacement until SCRUM-59 and keeping flags after an undo (decision 8) were agreed by the Product Owner on 25 Oct (answers 6.1-6.5)
 - **Date:** 2026-10-19
 - **Stories:** SCRUM-33 AC6; mirrors SCRUM-58 AC1-AC5, which make the same reassessment for an approved change request
 - **Extends:** [ADR-0025](0025-event-edits-significant-changes-and-history.md) decision 14 (the venue hook); [ADR-0053](0053-flag-bookings-when-a-venue-becomes-unavailable.md) (a flag beside the arrangement's status, the gates, the replacement); [ADR-0087](0087-withdrawn-safety-approval-returns-the-event-to-approved.md) (a Confirmed event goes back to Approved)
@@ -43,14 +43,15 @@ SCRUM-59 (Sprint 4) is where Venue Staff reconfirm or withdraw a flagged booking
 
 ### Not covered here
 - **The organiser's amendment** (ADR-0029) reassesses nothing at the venue: it only happens while a request awaits clarification, before the event is Approved, and only an Approved event can have an arrangement (SCRUM-42).
-- **A replacement at the same venue for an overlapping period** is refused when it is approved, because the original's booking still holds the venue until the replacement is approved (ADR-0045). Moving a booking in place is SCRUM-59 AC2's reconfirmation; until then a time change at the same venue is replaced by another venue, or waits for SCRUM-59.
+- **A replacement at the same venue for an overlapping period** is refused when it is approved, because the original's booking still holds the venue until the replacement is approved (ADR-0045). Moving a booking in place is SCRUM-59 AC2's reconfirmation; until then a time change at the same venue is replaced by another venue, or by the same venue for a period that doesn't overlap the original ([ADR-0100](0100-on-hold-same-venue-and-available-again.md)), or waits for SCRUM-59.
 
 ## Questions for the customer
-1. Should a change to the event's times flag every venue arrangement, or only those whose booked period the new times no longer cover (a breakout room from 14:00 to 15:00 is unaffected when the event's end moves from 17:00 to 18:00)? (We flag every one.)
-2. When attendance rises but the venue can still hold everyone, should Venue Staff reconfirm the booking, or should it stand? (We ask them to reconfirm.)
-3. Should a change to the event's venue requirements flag every arrangement for reconfirmation? (We do, since the requirements can't be checked automatically.)
-4. Until Venue Staff can reconfirm a booking (SCRUM-59), is replacing it the right way for the coordinator to clear a flag?
-5. If the coordinator undoes a change, should the flags it raised clear by themselves? (They stay.)
+All five were answered by the Product Owner on 25 Oct, agreeing with what is built.
+1. Should a change to the event's times flag every venue arrangement, or only those whose booked period the new times no longer cover (a breakout room from 14:00 to 15:00 is unaffected when the event's end moves from 17:00 to 18:00)? (We flag every one.) **Answered (6.1): flag every arrangement on a time change.**
+2. When attendance rises but the venue can still hold everyone, should Venue Staff reconfirm the booking, or should it stand? (We ask them to reconfirm.) **Answered (6.2): Venue Staff reconfirm.**
+3. Should a change to the event's venue requirements flag every arrangement for reconfirmation? (We do, since the requirements can't be checked automatically.) **Answered (6.3): yes, every arrangement.**
+4. Until Venue Staff can reconfirm a booking (SCRUM-59), is replacing it the right way for the coordinator to clear a flag? **Answered (6.4): yes, clear a flag by raising a replacement request.** A replacement may stay at the arrangement's own venue for the event's new time ([ADR-0100](0100-on-hold-same-venue-and-available-again.md) decision 5).
+5. If the coordinator undoes a change, should the flags it raised clear by themselves? (They stay.) **Answered (6.5): the flags stay.**
 
 ## Consequences
 - An Approved event with a flagged arrangement can't go to Safety Review until the flag clears, and today only a replacement, a withdrawal or a rejection clears it; SCRUM-59 adds reconfirmation.
@@ -60,6 +61,6 @@ SCRUM-59 (Sprint 4) is where Venue Staff reconfirm or withdraw a flagged booking
 ## Revisit when
 - SCRUM-59 lands: reconfirming updates the booking to the new details and deletes the arrangement's flags; withdrawing releases it.
 - SCRUM-58 lands: an approved change request calls the same `flag_arrangements_after_change`.
-- PR #93's follow-up (SCRUM-75) flags On Hold arrangements.
-- The customer answers the questions above (decisions 3, 4, 5, 8).
+- PR #93's follow-up (SCRUM-75) flags On Hold arrangements after a change. A venue becoming unavailable already flags them ([ADR-0100](0100-on-hold-same-venue-and-available-again.md)), through its own `UNAVAILABILITY_FLAGGABLE_STATUSES`, so decision 2 still stands.
+- ~~The customer answers the questions above (decisions 3, 4, 5, 8).~~ Answered on 25 Oct, as built.
 - ~~SCRUM-33 AC8 is built: the Confirmed-event test in `test_reassess_arrangements.py` changes to an edit in Safety Review (decision 11).~~ Done by [ADR-0101](0101-direct-edits-stop-at-confirmed.md).
