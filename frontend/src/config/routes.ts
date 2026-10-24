@@ -21,6 +21,8 @@ export const ROUTES = {
   EVENT_EQUIPMENT: '/events/:reference/equipment',
   /** The assigned coordinator changes an event's details (SCRUM-33). */
   EDIT_EVENT: '/events/:reference/edit',
+  /** A route pattern: any submitted event's read-only record, for other staff (ADR-0095). */
+  STAFF_EVENT: '/staff/events/:reference',
   LEAD_QUEUE: '/staff/queue',
   /** Venue Staff's queue of booking requests waiting for a decision (SCRUM-43). */
   BOOKING_DECISIONS: '/staff/venue-requests',
@@ -73,6 +75,11 @@ export function organiserRequestPath(reference: string): string {
 /** An event's record, as its assigned coordinator opens it. */
 export function coordinatorEventPath(reference: string): string {
   return withReference(ROUTES.COORDINATOR_EVENT, reference)
+}
+
+/** An event's read-only record, as Venue Staff, Technical Support, the Safety Officer or the Lead open it. */
+export function staffEventPath(reference: string): string {
+  return withReference(ROUTES.STAFF_EVENT, reference)
 }
 
 /** The venue requests page for one event, by its EVR- reference. */

@@ -1,7 +1,12 @@
 import type { RouteObject } from 'react-router'
 
 import { SiteLayout } from '@/components/layout'
-import { EQUIPMENT_READER_ROLES, INTERNAL_ROLES, ROLE } from '@/config/roles'
+import {
+  EQUIPMENT_READER_ROLES,
+  INTERNAL_ROLES,
+  ROLE,
+  STAFF_RECORD_READER_ROLES,
+} from '@/config/roles'
 import type { Role } from '@/config/roles'
 import { ROUTES } from '@/config/routes'
 import { RequireRole } from '@/features/auth/components/RequireRole'
@@ -22,6 +27,7 @@ import { EditDraftPage } from '@/features/eventRequests/pages/EditDraftPage'
 import { EditEventPage } from '@/features/eventRequests/pages/EditEventPage'
 import { EventRequestPage } from '@/features/eventRequests/pages/EventRequestPage'
 import { NewEventRequestPage } from '@/features/eventRequests/pages/NewEventRequestPage'
+import { StaffEventPage } from '@/features/eventRequests/pages/StaffEventPage'
 import { LandingPage } from '@/features/landing/pages/LandingPage'
 import { NotificationsPage } from '@/features/notifications/pages/NotificationsPage'
 import { UnassignedQueuePage } from '@/features/lead/pages/UnassignedQueuePage'
@@ -169,6 +175,14 @@ export const appRoutes: RouteObject[] = [
         element: (
           <RequireRole allowedRoles={EQUIPMENT_READER_ROLES} loginRoute={ROUTES.STAFF_LOGIN}>
             <EventEquipmentPage />
+          </RequireRole>
+        ),
+      },
+      {
+        path: ROUTES.STAFF_EVENT,
+        element: (
+          <RequireRole allowedRoles={STAFF_RECORD_READER_ROLES} loginRoute={ROUTES.STAFF_LOGIN}>
+            <StaffEventPage />
           </RequireRole>
         ),
       },
