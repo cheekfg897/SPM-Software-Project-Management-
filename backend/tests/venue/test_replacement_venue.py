@@ -58,6 +58,7 @@ from tests.venue.conftest import (
 pytestmark = pytest.mark.scrum_92
 
 NOT_FLAGGED_MESSAGE = "This venue arrangement does not need an alternative venue."
+SAME_VENUE_MESSAGE = "A replacement must be at a different venue from the one it replaces."
 #: The ``saved_users`` organiser, of client organisation 3.
 ORGANISER_ID = 7
 #: AC6: the planning stage, and Safety Review, which a flag leaves an event in (AC3).
@@ -185,6 +186,44 @@ def test_a_replacement_for_an_arrangement_that_is_not_flagged_is_refused(
         raise_booking(other, event, db_session, replaces_request_id=unflagged.id)
 
     assert refusal.value.details == {"replaces_request_id": [NOT_FLAGGED_MESSAGE]}
+
+
+@pytest.mark.parametrize(
+    "period",
+    [
+        pytest.param({}, id="for the original period"),
+        pytest.param(
+            {"starts_at": at(13).isoformat(), "ends_at": at(16).isoformat()},
+            id="at another time",
+        ),
+    ],
+)
+def test_a_replacement_at_the_venue_it_replaces_is_refused_on_venue_id(
+    db_session: Session, flagged: Flagged, period: dict[str, str]
+) -> None:
+    """The Product Owner, 19 Oct: a replacement is always another venue (AC6, ADR-0100).
+
+    For an arrangement that needs an alternative venue because its venue became
+    unavailable; one flagged only after a change keeps the old rule (ADR-0100).
+
+    The same venue at another time is a change to the event (SCRUM-56, SCRUM-57).
+    """
+    auditorium = db_session.get(Venue, flagged.original.venue_id)
+    assert auditorium is not None
+    before = db_session.scalars(select(VenueBookingRequest.id)).all()
+
+    with pytest.raises(ValidationError) as refusal:
+        raise_booking(
+            auditorium,
+            flagged.event,
+            db_session,
+            replaces_request_id=flagged.original.id,
+            **period,
+        )
+
+    assert refusal.value.message == "Invalid request."
+    assert refusal.value.details == {"venue_id": [SAME_VENUE_MESSAGE]}
+    assert db_session.scalars(select(VenueBookingRequest.id)).all() == before
 
 
 def test_a_replacement_for_a_released_arrangement_is_refused(

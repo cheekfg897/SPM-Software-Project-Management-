@@ -997,6 +997,35 @@ describe('SCRUM-92 booking mock: raising a replacement for a flagged arrangement
     ])
   })
 
+  // As the backend since ADR-0100: a replacement for a venue that became unavailable is always
+  // another venue, whatever the period.
+  it.each([
+    ['for the original period', {}],
+    [
+      'at another time',
+      { starts_at: '2026-11-26T09:00:00+08:00', ends_at: '2026-11-26T11:00:00+08:00' },
+    ],
+  ])(
+    'refuses a replacement at the venue it replaces %s, on venue_id (400)',
+    async (_name, period) => {
+      const before = await apiRequest<unknown[]>(bookingUrl(BOOKED_EVENT.reference))
+
+      const error = await errorOf(
+        raise(BOOKED_EVENT.reference, {
+          ...replacementFor(bookedHall),
+          venue_id: bookedHall.venue_id,
+          ...period,
+        }),
+      )
+
+      expect([error.status, error.fieldErrors]).toEqual([
+        400,
+        { venue_id: ['A replacement must be at a different venue from the one it replaces.'] },
+      ])
+      expect(await apiRequest<unknown[]>(bookingUrl(BOOKED_EVENT.reference))).toEqual(before)
+    },
+  )
+
   it('refuses to replace an arrangement that does not need an alternative venue (400)', async () => {
     const error = await errorOf(raise(BOOKED_EVENT.reference, replacementFor(bookedSideRoom)))
 
@@ -1066,6 +1095,48 @@ describe('SCRUM-92 booking mock: raising a replacement for a flagged arrangement
     const created = await raise(BOOKED_EVENT.reference, replacementFor(flagged))
 
     expect(created).toMatchObject({ status: 'pending', replaces_request_id: flagged.id })
+  })
+
+  // A replacement clears a change flag (Product Owner 25 Oct, 6.4), so the different-venue rule
+  // is only for a venue that became unavailable (ADR-0100).
+  it('accepts a change-flagged arrangement’s own venue at a new time as its replacement', async () => {
+    const flagged = await changeFlaggedArrangement()
+
+    const created = await raise(BOOKED_EVENT.reference, {
+      ...replacementFor(flagged),
+      venue_id: ROOMY_VENUE.id,
+      starts_at: '2026-11-10T13:00:00+08:00',
+      ends_at: '2026-11-10T16:00:00+08:00',
+    })
+
+    expect(created).toMatchObject({
+      status: 'pending',
+      venue_id: ROOMY_VENUE.id,
+      replaces_request_id: flagged.id,
+    })
+  })
+
+  it('refuses to approve a change-flagged arrangement’s replacement that overlaps it (409)', async () => {
+    const flagged = await changeFlaggedArrangement()
+    const replacement = await raise(BOOKED_EVENT.reference, {
+      ...replacementFor(flagged),
+      venue_id: ROOMY_VENUE.id,
+      starts_at: '2026-11-10T10:00:00+08:00',
+      ends_at: '2026-11-10T13:00:00+08:00',
+    })
+    sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.venueStaff))
+
+    const error = await errorOf(
+      apiRequest(`/api/venues/booking-requests/${String(replacement.id)}/decision`, {
+        method: 'POST',
+        body: { outcome: 'approved' },
+      }),
+    )
+
+    expect([error.status, error.message]).toEqual([
+      409,
+      `Cannot approve: booking #${String(flagged.id)} already holds this venue during the requested period.`,
+    ])
   })
 
   it('stops counting the change flag once its replacement is approved, keeping why', async () => {
