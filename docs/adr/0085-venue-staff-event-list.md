@@ -1,6 +1,6 @@
 # ADR-0085: Venue Staff's event list is every event with an active venue arrangement, one list for all of them
 
-- **Status:** Accepted; leaving out events whose only request was withdrawn or released, and having no detail view to open from the list yet, are defaults to review
+- **Status:** Accepted; leaving out events whose only request was withdrawn or released is a default to review. The detail view this list lacked is [ADR-0095](0095-read-only-event-record-for-internal-staff.md)
 - **Date:** 2026-10-19
 - **Story:** SCRUM-24 See the events my role is involved in
 - **Builds:** the Venue Staff list that [ADR-0026](0026-role-event-lists.md) (its AC3, now AC4) and [ADR-0034](0034-coordinators-see-only-their-own-events.md) left blocked on SCRUM-42
@@ -32,12 +32,12 @@ The AC leaves open which requests count. A venue booking request can be in eight
 6. **The venue module answers, the events module lists.** `venue_services.list_event_ids_with_active_arrangements()` returns the ids, and `list_event_requests_with_venue_bookings` lists those events with the shared newest-first query. The events module never reads the venue module's models. Venue Staff's queue of requests still to decide stays SCRUM-43's `GET /api/venues/booking-requests`. This list answers a different question: every event they are involved in, not their next piece of work (as ADR-0026 decision 4 says of Technical Support's two lists).
 
 ## Consequences
-- AC4 is met. AC9 ("opening an event from the list shows the event detail view containing only the sections that role may see") is not, for Venue Staff: `GET /api/events/requests/<reference>` is for organisers and coordinators only, and the only event route Venue Staff can open is its history. A Venue Staff detail view needs its own ticket, with the team deciding which sections they see.
+- AC4 is met. AC9 ("opening an event from the list shows the event detail view containing only the sections that role may see") was not, for Venue Staff, when this was written: `GET /api/events/requests/<reference>` is for organisers and coordinators only. Since [ADR-0095](0095-read-only-event-record-for-internal-staff.md), Venue Staff open any submitted event's read-only record at `GET /api/events/requests/<reference>/staff-record`, with the sections the product owner set on 19 Oct.
 - Staff home shows this list to Venue Staff since ADR-0090. The mock backend answers it, and its integration tests check the refusals against the real backend. The list itself is checked against the backend only when the run has a Venue Staff account (`INTEGRATION_VENUE_STAFF_EMAIL`), like the decision queue.
 - No migration: `venue_booking_requests.event_id` is already indexed (SCRUM-42).
 - Tests: `tests/events/test_events_by_role.py` and `test_events_by_role_routes.py` (marker `scrum_24`).
 
 ## Revisit when
 - The team reads "has a booking request" as including withdrawn and released ones.
-- Venue Staff get a detail view of an event (SCRUM-24 AC9).
+- ~~Venue Staff get a detail view of an event (SCRUM-24 AC9).~~ Done in [ADR-0095](0095-read-only-event-record-for-internal-staff.md).
 - Venue Staff are ever assigned to venues: filter the list by those venues.
