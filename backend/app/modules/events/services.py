@@ -3689,7 +3689,7 @@ def record_equipment_outcome(
     """Record, or revise, how much of an equipment line Technical Support will provide.
 
     SCRUM-48 AC1-AC5, AC7-AC8. The status follows from the quantity provided; a
-    shortfall needs a note, and a line met in full keeps none. Every call adds a history
+    shortfall needs a note; otherwise one is optional (AC2). Every call adds a history
     entry, so a revision leaves the earlier outcome on record. A revision, a line that
     already had an outcome, also withdraws a safety approval (AC7, ADR-0087). Both are
     saved with the outcome; the event's coordinator is told afterwards (ADR-0015), with
@@ -3729,8 +3729,8 @@ def record_equipment_outcome(
 
     line.provided_quantity = outcome["provided_quantity"]
     line.status = outcome_status_for(line.quantity, line.provided_quantity)
-    # A line met in full carries no note, so a revision never keeps a stale reason.
-    line.outcome_note = None if line.status is EquipmentLineStatus.FULFILLED else outcome["note"]
+    # The note is replaced, not merged: a revision sent with no note clears the old one.
+    line.outcome_note = outcome["note"]
     line.reviewed_by = reviewer
     line.reviewed_at = now
     record_event_history(
