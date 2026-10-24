@@ -184,6 +184,22 @@ def test_providing_everything_fulfils_the_line_without_a_note(
     assert (line.reviewed_by, line.reviewed_at) == (REVIEWER_ID, RECORDED_AT)
 
 
+def test_providing_everything_keeps_a_note_given_with_it(
+    record_outcome: Callable[..., EventEquipmentLine],
+    ten_requested: EventEquipmentLine,
+    saved_event_request: EventRequest,
+    history_of: HistoryOf,
+) -> None:
+    """AC2: a note is optional for a fulfilled outcome, so one given is kept."""
+    line = record_outcome(ten_requested, provided_quantity=10, note="  Spare bulbs included  ")
+
+    assert line.status is EquipmentLineStatus.FULFILLED
+    assert line.outcome_note == "Spare bulbs included"
+    assert [details["note"] for _, _, details in history_of(saved_event_request.id)] == [
+        "Spare bulbs included"
+    ]
+
+
 def test_providing_some_is_a_partial_outcome_with_a_shortfall_and_its_note(
     record_outcome: Callable[..., EventEquipmentLine], ten_requested: EventEquipmentLine
 ) -> None:
@@ -333,7 +349,7 @@ def test_recording_writes_one_history_entry_with_the_outcome(
     ]
 
 
-def test_revising_unavailable_to_fulfilled_clears_the_note_and_keeps_both_entries(
+def test_revising_unavailable_to_fulfilled_with_no_note_clears_the_note_and_keeps_both_entries(
     record_outcome: Callable[..., EventEquipmentLine],
     ten_requested: EventEquipmentLine,
     saved_event_request: EventRequest,
@@ -422,8 +438,13 @@ def _outcome_details(session: Session) -> list[tuple[int, str | None]]:
             "Projector: partially fulfilled, 6 of 10 provided. Note: Only six in stock",
         ),
         (0, "All out on loan", "Projector: unavailable, 0 of 10 provided. Note: All out on loan"),
+        (
+            10,
+            "Spare bulbs included",
+            "Projector: fulfilled, 10 of 10 provided. Note: Spare bulbs included",
+        ),
     ],
-    ids=["fulfilled", "partial", "unavailable"],
+    ids=["fulfilled", "partial", "unavailable", "fulfilled-with-a-note"],
 )
 def test_the_notice_names_the_equipment_the_outcome_and_the_note(
     db_session: Session,
@@ -448,7 +469,7 @@ def test_a_revision_sends_one_more_notice_with_the_revised_outcome(
     record_outcome: Callable[..., EventEquipmentLine],
     ten_requested: EventEquipmentLine,
 ) -> None:
-    """The revision to "fulfilled" drops the note, as the line itself does."""
+    """A revision to "fulfilled" with no note drops the note, as the line does."""
     record_outcome(ten_requested, provided_quantity=0, note="All out on loan")
 
     record_outcome(ten_requested, provided_quantity=10)
