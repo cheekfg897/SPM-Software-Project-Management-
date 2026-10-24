@@ -2,11 +2,13 @@
 
 - **Status:** Accepted; never offering the venue being replaced follows the Product Owner's
   decision of 19 Oct; the wording, showing the reasons only while flagged, and the two-step
-  replacement (choose in the search, send from the form) are defaults to review with the team
+  replacement (choose in the search, send from the form) are defaults to review with the team;
+  an arrangement flagged after a change to the event (SCRUM-33 AC6) is offered the same way in
+  decision 8, a default until Venue Staff can reconfirm a booking (SCRUM-59)
 - **Date:** 2026-10-19
 - **Story:** SCRUM-92 Flag bookings affected when a venue becomes unavailable (AC1, AC4, AC6,
   AC7, AC8, AC9)
-- **Extends:** ADR-0053, ADR-0069, ADR-0073
+- **Extends:** ADR-0053, ADR-0069, ADR-0073, ADR-0094
 
 ## Context
 The backend has flagged arrangements since ADR-0053: each listed arrangement carries
@@ -69,6 +71,15 @@ be true, not how it reads.
    event neither Approved nor in Safety Review, and releasing the original when Venue Staff
    approve the replacement. One event in the mock is in Safety Review with an arrangement whose
    venue was deactivated.
+8. **An arrangement flagged after a change to the event is offered another venue too**
+   (SCRUM-33 AC6, ADR-0094; added 25 Oct when SCRUM-33's flags reached main). The backend's
+   `_check_replaceable` accepts either flag, and until Venue Staff can reconfirm a booking
+   (SCRUM-59), a replacement is the only way to clear a change flag. So while
+   `flagged_after_change` is set, the same notice lists each of `reassessment_flags` as
+   "Requires reconfirmation: …" or "No longer suitable: …" and offers "Find another venue". An
+   arrangement flagged both ways shows both lists under one heading ("Needs an alternative
+   venue") with one button. The mock accepts a replacement for either flag, and approving it
+   releases the original so its change flag stops counting, keeping the reasons.
 
 ## Consequences
 - The booking feature builds the search's URL with the venue search's own helpers
@@ -85,5 +96,7 @@ be true, not how it reads.
 - The backend refuses a same-venue replacement and flags On Hold arrangements (SCRUM-92's
   "Changed after review" note): mirror the refusal and the flag in the booking mock.
 - The team decides the defaults in the status line.
+- SCRUM-59 lets Venue Staff reconfirm a booking: decide whether a "Requires reconfirmation" flag
+  still offers "Find another venue", or only waits for Venue Staff.
 - SCRUM-90 gives events structured requirements: set the search's facilities and accessibility
   from them too.
