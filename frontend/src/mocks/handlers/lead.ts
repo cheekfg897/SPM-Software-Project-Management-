@@ -324,6 +324,7 @@ function queueBody() {
     end_time: event.end_time,
     expected_attendance: event.expected_attendance,
     submitted_at: event.created_at,
+    status: event.status,
   }))
   return listBody('event_requests', rows, EMPTY_QUEUE_MESSAGE)
 }

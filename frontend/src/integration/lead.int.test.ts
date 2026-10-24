@@ -1,20 +1,45 @@
 import {
   fetchActiveEvents,
   fetchCoordinatorWorkload,
+  fetchUnassignedQueue,
   reassignCoordinator,
 } from '@/features/lead/api'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
 
 import { refusal, signInAs, signInAsNewAttendee, staffAccount } from './backend'
+import { LEAD, required, submittedEvent } from './plannedEvent'
 
 /**
  * SCRUM-95: the Lead's queue against the real backend. Staff accounts can only be made with
- * `flask create-staff-user` (ADR-0023), and the queue needs submitted requests, so these checks
- * wait here as todos until the integration setup can seed both. Until then the mock handlers in
- * src/mocks/handlers/lead.ts stand in for the backend and these todos name what must be pinned.
+ * `flask create-staff-user` (ADR-0023). The queue's rows are checked when the run has a Lead
+ * account (INTEGRATION_LEAD_*, which CI makes); the other checks wait here as todos, and the mock
+ * handlers in src/mocks/handlers/lead.ts stand in for the backend.
  */
 describe('SCRUM-95 Lead queue contract (ADR-0036)', () => {
-  it.todo('lists each queued request with exactly reference and the six AC2 fields, oldest first')
+  afterEach(() => sendRequestsAs(null))
+
+  it.skipIf(LEAD === null)(
+    'lists each queued request with exactly its reference, the six AC2 fields and its status (SCRUM-24 AC8)',
+    async () => {
+      const event = await submittedEvent()
+      await signInAs(required(LEAD))
+
+      const { event_requests: rows } = await fetchUnassignedQueue()
+
+      const row = rows.find((queued) => queued.reference === event.reference)
+      expect(row === undefined ? [] : Object.keys(row).sort()).toEqual([
+        'end_time',
+        'expected_attendance',
+        'name',
+        'proposed_date',
+        'reference',
+        'start_time',
+        'status',
+        'submitted_at',
+      ])
+      expect(row).toMatchObject({ name: event.name, status: 'submitted', expected_attendance: 120 })
+    },
+  )
   it.todo('answers an empty queue with an empty list and the "waiting to be assigned" message')
   it.todo('refuses the queue to an Event Coordinator (403) and to a visitor (401)')
   it.todo(

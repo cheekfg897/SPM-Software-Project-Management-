@@ -32,6 +32,15 @@ describe('SCRUM-95 the Lead queue screen', () => {
     expect(launch.getByText('2 Oct 2026, 2:05 pm')).toBeInTheDocument()
   })
 
+  it("shows each queued request's status, as every list does (SCRUM-24 AC8)", async () => {
+    renderApp(ROUTES.LEAD_QUEUE, { session: mockSessionFor(MOCK_ACCOUNTS.lead) })
+
+    const summit = await findRequest('Annual Partner Summit')
+    expect(summit.getByText('Status').nextElementSibling).toHaveTextContent('Submitted')
+    const launch = await findRequest('Product Launch Evening')
+    expect(launch.getByText('Status').nextElementSibling).toHaveTextContent('Submitted')
+  })
+
   it('opens the read-only record of a request waiting in the queue (SCRUM-24 AC10)', async () => {
     const { user, router } = renderApp(ROUTES.LEAD_QUEUE, {
       session: mockSessionFor(MOCK_ACCOUNTS.lead),
