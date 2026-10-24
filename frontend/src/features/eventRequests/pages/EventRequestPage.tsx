@@ -1,13 +1,8 @@
 import { useParams } from 'react-router'
 
-import { PageContainer } from '@/components/layout'
-import { ErrorAlert, Spinner } from '@/components/ui'
-
 import { EventRecordView } from '../components/EventRecordView'
+import { RecordQueryStatus } from '../components/RecordQueryStatus'
 import { useEventRequest } from '../hooks'
-
-/** Before the record arrives, or when it can't be opened, the page has no event name yet. */
-const UNNAMED_TITLE = 'Event request'
 
 /**
  * One event's record, for an organiser of its organisation or its assigned coordinator, each
@@ -19,23 +14,8 @@ export function EventRequestPage() {
   const { reference = '' } = useParams()
   const record = useEventRequest(reference)
 
-  if (record.isPending) {
-    return (
-      <PageContainer title={UNNAMED_TITLE}>
-        <p role="status" className="text-ink-muted mt-10 flex items-center gap-2">
-          <Spinner /> Loading the event…
-        </p>
-      </PageContainer>
-    )
-  }
-  if (record.isError) {
-    return (
-      <PageContainer title={UNNAMED_TITLE}>
-        <div className="mt-10">
-          <ErrorAlert error={record.error} />
-        </div>
-      </PageContainer>
-    )
+  if (!record.isSuccess) {
+    return <RecordQueryStatus query={record} />
   }
   return <EventRecordView record={record.data} />
 }

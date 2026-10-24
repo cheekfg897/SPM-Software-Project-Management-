@@ -1,13 +1,13 @@
 import { useId } from 'react'
 
 import { PreparationForm } from '@/components/preparation/PreparationForm'
+import { PreparationSummary } from '@/components/preparation/PreparationSummary'
 
 import type { BookingRequest } from '../api'
 import { useApprovedBookingRequests, useUpdateBookingPreparation } from '../hooks'
 
 import { BookingQueryList } from './BookingQueryList'
 import { BookingRequestDetails } from './BookingRequestDetails'
-import { PreparationSummary } from './PreparationSummary'
 
 function ApprovedBooking({ booking }: { booking: BookingRequest }) {
   const headingId = useId()
