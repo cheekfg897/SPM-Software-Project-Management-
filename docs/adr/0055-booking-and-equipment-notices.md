@@ -56,7 +56,8 @@ built against.
    " Note: `<note>`" when the line has one, for example "Projector: partially fulfilled, 6 of
    10 provided. Note: Only six in stock". The outcome words are the status's, in plain
    English. A revision sends one more notice with the revised outcome, as it already did
-   (ADR-0040 decision 6); a revision to fulfilled drops the note, as the line does.
+   (ADR-0040 decision 6). A fulfilled outcome sent with a note carries it, and a revision
+   sent with no note drops the earlier one, as the line does (ADR-0040 decision 5).
 6. **Notices for a withdrawn, changed or cancelled arrangement are not built.** ADR-0039 named
    SCRUM-50 as their owner, but SCRUM-50's ACs no longer list them. *Default to review*;
    listed in the pull request as a ticket to open if the team still wants them.
