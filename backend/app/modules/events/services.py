@@ -1016,6 +1016,28 @@ SAFETY_CHECK_KINDS = (
 )
 
 
+def _current_safety_outcome_entry(event_id: int, session: Session) -> EventHistoryEntry | None:
+    """The outcome recorded on the event's current safety check, or ``None``.
+
+    The newest entry that opens, settles or withdraws a check decides (ADR-0047): once
+    the event is sent to Safety Review again, or its approval is withdrawn, the
+    earlier outcome no longer counts.
+    """
+    stmt = (
+        select(EventHistoryEntry)
+        .where(
+            EventHistoryEntry.event_request_id == event_id,
+            EventHistoryEntry.kind.in_(SAFETY_CHECK_KINDS),
+        )
+        .order_by(EventHistoryEntry.occurred_at.desc(), EventHistoryEntry.id.desc())
+        .limit(1)
+    )
+    latest = session.scalar(stmt)
+    if latest is None or latest.kind is not EventHistoryKind.SAFETY_OUTCOME_RECORDED:
+        return None
+    return latest
+
+
 def has_safety_approval(event_id: int, *, session: Session | None = None) -> bool:
     """Whether the Safety Officer has approved the event's current safety check.
 
@@ -1027,19 +1049,10 @@ def has_safety_approval(event_id: int, *, session: Session | None = None) -> boo
         event_id: The event request's id.
         session: Database session; defaults to ``db.session``.
     """
-    stmt = (
-        select(EventHistoryEntry)
-        .where(
-            EventHistoryEntry.event_request_id == event_id,
-            EventHistoryEntry.kind.in_(SAFETY_CHECK_KINDS),
-        )
-        .order_by(EventHistoryEntry.occurred_at.desc(), EventHistoryEntry.id.desc())
-        .limit(1)
-    )
-    latest = resolve_session(session).scalar(stmt)
-    if latest is None or latest.kind is not EventHistoryKind.SAFETY_OUTCOME_RECORDED:
+    outcome = _current_safety_outcome_entry(event_id, resolve_session(session))
+    if outcome is None:
         return False
-    return latest.details["outcome"] == SafetyOutcome.APPROVED.value
+    return outcome.details["outcome"] == SafetyOutcome.APPROVED.value
 
 
 #: Statuses an event leaves when its safety approval is withdrawn. It goes back to
