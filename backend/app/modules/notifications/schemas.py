@@ -68,6 +68,10 @@ MESSAGE_BY_KIND: dict[NotificationKind, str] = {
     NotificationKind.VENUE_BOOKING_CONFLICTING: (
         "A confirmed booking is now Conflicting after a venue's setup or turnaround time changed."
     ),
+    NotificationKind.VENUE_AVAILABLE_AGAIN: (
+        "A venue that was unavailable for your event is available again."
+        " Its original arrangement stands."
+    ),
 }
 
 #: Where a notification links to: the event's page, found by its reference

@@ -97,6 +97,11 @@ class NotificationKind(str, enum.Enum):
     #: marked a confirmed booking Conflicting, once per booking it newly marks; the
     #: ``detail`` names the venue (SCRUM-50 AC6, ADR-0055).
     VENUE_BOOKING_CONFLICTING = "venue_booking_conflicting"
+    #: Tells the event's assigned coordinator that a venue flagged as unavailable for
+    #: one of its arrangements is available again, so the arrangement stands; the venue,
+    #: the arrangement and its period are the notification's ``detail`` (SCRUM-92 AC8,
+    #: ADR-0100).
+    VENUE_AVAILABLE_AGAIN = "venue_available_again"
 
 
 class Notification(db.Model):  # type: ignore[name-defined]
