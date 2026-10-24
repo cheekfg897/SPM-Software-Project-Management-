@@ -10,8 +10,8 @@ import { renderApp } from '@/test/render'
 
 /**
  * SCRUM-24 AC5, AC8, AC11: Technical Support's Staff home lists every event with an equipment
- * request, each opening its Equipment page (ADR-0061). The rows come from the mock in
- * src/mocks/handlers/techSupport.ts.
+ * request, each opening the event's read-only record (ADR-0061, ADR-0095). The rows come from the
+ * mock in src/mocks/handlers/techSupport.ts.
  */
 
 const LIST_NAME = 'Events with equipment'
@@ -56,18 +56,31 @@ describe('SCRUM-24 AC5 Staff home: the events with equipment, for Technical Supp
     expect(row).not.toHaveTextContent('expected')
   })
 
-  it("opens each event's Equipment page, which Technical Support may open", async () => {
+  it("opens each event's read-only record (AC9)", async () => {
     openStaffHome(MOCK_ACCOUNTS.technicalSupport)
 
     const list = await equipmentList()
     expect(within(list).getAllByRole('link')[0]).toHaveAttribute(
       'href',
-      '/events/EVR-TECH0007/equipment',
+      '/staff/events/EVR-TECH0007',
     )
     expect(within(list).getByRole('link', { name: /Evening Product Showcase/ })).toHaveAttribute(
       'href',
-      '/events/EVR-MOCK0001/equipment',
+      '/staff/events/EVR-MOCK0001',
     )
+  })
+
+  it('shows the record of the event a row opens', async () => {
+    const { user, router } = openStaffHome(MOCK_ACCOUNTS.technicalSupport)
+
+    await user.click(
+      within(await equipmentList()).getByRole('link', { name: /Long-Service Awards/ }),
+    )
+
+    expect(router.state.location.pathname).toBe('/staff/events/EVR-TECH0007')
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Long-Service Awards' }),
+    ).toBeInTheDocument()
   })
 
   it("shows the backend's message when no event has equipment (AC11)", async () => {

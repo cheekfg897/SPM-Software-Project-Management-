@@ -1,11 +1,16 @@
 import { useId } from 'react'
+import { Link } from 'react-router'
 
 import { StatusChip } from '@/components/ui'
+import { staffEventPath } from '@/config/routes'
 
 import type { CoordinatorWorkload } from '../api'
 import { formatEventDates, formatProposedTimes } from '../formatRequest'
 
-/** One coordinator and the active events they hold, in the backend's order. */
+/**
+ * One coordinator and the active events they hold, in the backend's order, each opening its
+ * read-only record (SCRUM-24 AC10, ADR-0095).
+ */
 export function WorkloadCard({ workload }: { workload: CoordinatorWorkload }) {
   const headingId = useId()
   const { coordinator, event_requests: events } = workload
@@ -25,7 +30,12 @@ export function WorkloadCard({ workload }: { workload: CoordinatorWorkload }) {
           {events.map((event) => (
             <li key={event.reference} className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-ink truncate text-sm font-medium">{event.name}</p>
+                <Link
+                  to={staffEventPath(event.reference)}
+                  className="text-ink hover:text-flare block truncate text-sm font-medium hover:underline"
+                >
+                  {event.name}
+                </Link>
                 <p className="text-ink-muted text-xs">
                   {formatEventDates(event.proposed_date, event.end_date)} ·{' '}
                   {formatProposedTimes(event.start_time, event.end_time)}

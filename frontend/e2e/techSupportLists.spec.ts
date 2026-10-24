@@ -6,7 +6,9 @@ import { logIn } from './logIn'
 
 /**
  * SCRUM-38 and SCRUM-24 AC5: Technical Support find the equipment awaiting them and the events
- * with equipment on Staff home, and open an event's Equipment page from either (ADR-0061).
+ * with equipment on Staff home, and open an event's Equipment page from either: straight from the
+ * queue, or through the event's read-only record from the events with equipment (ADR-0061,
+ * ADR-0095).
  * Against the mock backend.
  */
 
@@ -47,6 +49,8 @@ test('SCRUM-24 AC5: Technical Support open a cancelled event from the events wit
   await expect(cancelled).toContainText('Cancelled')
 
   await cancelled.click()
+  await expect(page).toHaveURL('/staff/events/EVR-MOCK0002')
+  await page.getByRole('main').getByRole('link', { name: 'Equipment' }).click()
 
   await expect(page).toHaveURL('/events/EVR-MOCK0002/equipment')
   await expect(

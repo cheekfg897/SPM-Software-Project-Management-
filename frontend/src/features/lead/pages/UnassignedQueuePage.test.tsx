@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 
-import { ROUTES } from '@/config/routes'
+import { ROUTES, staffEventPath } from '@/config/routes'
 import { MOCK_ACCOUNTS, mockSessionFor } from '@/mocks/fixtures/accounts'
 import { EMPTY_QUEUE_MESSAGE, NOT_A_COORDINATOR_MESSAGE } from '@/mocks/handlers/lead'
 import { server } from '@/mocks/server'
@@ -30,6 +30,21 @@ describe('SCRUM-95 the Lead queue screen', () => {
     expect(launch.getByText('6:00 pm – 9:30 pm')).toBeInTheDocument()
     expect(launch.getByText('120')).toBeInTheDocument()
     expect(launch.getByText('2 Oct 2026, 2:05 pm')).toBeInTheDocument()
+  })
+
+  it('opens the read-only record of a request waiting in the queue (SCRUM-24 AC10)', async () => {
+    const { user, router } = renderApp(ROUTES.LEAD_QUEUE, {
+      session: mockSessionFor(MOCK_ACCOUNTS.lead),
+    })
+
+    const launch = await findRequest('Product Launch Evening')
+    await user.click(launch.getByRole('link', { name: 'Open the event record' }))
+
+    expect(router.state.location.pathname).toBe(staffEventPath('EVR-MOCK0002'))
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Product Launch Evening' }),
+    ).toBeInTheDocument()
+    expect(screen.getByText('No coordinator is assigned yet.')).toBeInTheDocument()
   })
 
   it('takes an assigned request out of the list because the queue is read again', async () => {

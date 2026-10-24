@@ -1,19 +1,22 @@
 import { ROLE } from '@/config/roles'
+import { staffEventPath } from '@/config/routes'
 import { selectSessionUser, useAppSelector } from '@/store'
 
+import type { EventListRow } from '../api'
 import { useEventRequestsWithVenueBookings } from '../hooks'
 
 import { RequestListSection } from './RequestListSection'
 
 const TITLE = 'Events with venue bookings'
 
-/**
- * The rows open nothing: Venue Staff can't open an event's record, and have no page for one
- * event's arrangements (ADR-0090).
- */
+/** Each row opens the event's read-only record, its venue preparation included (ADR-0095). */
+function pathFor(request: EventListRow): string {
+  return staffEventPath(request.reference)
+}
+
 function VenueBookingList() {
   const requests = useEventRequestsWithVenueBookings()
-  return <RequestListSection title={TITLE} requests={requests} />
+  return <RequestListSection title={TITLE} requests={requests} pathFor={pathFor} />
 }
 
 /**

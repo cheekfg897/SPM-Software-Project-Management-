@@ -6,7 +6,8 @@ import { logIn } from './logIn'
 
 /**
  * SCRUM-24 AC4: Venue Staff log in and find, on Staff home, every event with a venue booking
- * request or a booking (ADR-0085, ADR-0090). Against the mock backend.
+ * request or a booking (ADR-0085, ADR-0090), each opening its read-only record (AC9, ADR-0095).
+ * Against the mock backend.
  */
 
 test('SCRUM-24 AC4: Venue Staff log in and see the events with venue bookings', async ({
@@ -25,5 +26,5 @@ test('SCRUM-24 AC4: Venue Staff log in and see the events with venue bookings', 
   await expect(workshop).toContainText('Approved')
   // Every booking mock event with an active venue arrangement, EVR-BOOK0104 to EVR-BOOK0111.
   await expect(events.getByRole('listitem')).toHaveCount(8)
-  await expect(events.getByRole('link')).toHaveCount(0)
+  await expect(events.getByRole('link')).toHaveCount(8)
 })

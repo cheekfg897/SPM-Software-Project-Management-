@@ -3,7 +3,7 @@ import type { BoundFunctions, queries } from '@testing-library/react'
 import type { UserEvent } from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 
-import { ROUTES } from '@/config/routes'
+import { ROUTES, staffEventPath } from '@/config/routes'
 import { MOCK_ACCOUNTS, mockSessionFor } from '@/mocks/fixtures/accounts'
 import { MOCK_FAIR, MOCK_GALA } from '@/mocks/handlers/safetyFixtures'
 import { server } from '@/mocks/server'
@@ -102,6 +102,16 @@ describe('SCRUM-97 and SCRUM-24 AC6 the Safety Officer list', () => {
     expect(
       screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent),
     ).toEqual([FAIR, TOWN_HALL, GALA])
+  })
+
+  it("opens each event's whole read-only record from its card (SCRUM-24 AC9)", async () => {
+    const { user, router } = renderList()
+
+    const gala = await findEvent(GALA)
+    await user.click(gala.getByRole('link', { name: 'Open the event record' }))
+
+    expect(router.state.location.pathname).toBe(staffEventPath(MOCK_GALA.event.reference))
+    expect(await screen.findByRole('heading', { level: 1, name: GALA })).toBeInTheDocument()
   })
 
   it("shows each event's name, reference, date, time, status, attendance and accessibility needs", async () => {

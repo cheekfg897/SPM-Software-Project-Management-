@@ -1,8 +1,10 @@
 import { useId, useState } from 'react'
 import type { ReactNode } from 'react'
+import { Link } from 'react-router'
 
 import { Button, StatusChip } from '@/components/ui'
 import { LAYOUT_OPTIONS } from '@/config/roomLayouts'
+import { staffEventPath } from '@/config/routes'
 import { formatSchedule } from '@/features/eventRequests/formatSchedule'
 import { formatShortDate, formatTimeRange } from '@/lib/formatDate'
 
@@ -106,8 +108,9 @@ function EquipmentItem({ equipment }: { equipment: SafetyReviewEquipment }) {
 }
 
 /**
- * One event awaiting the safety check: what the system holds about it (SCRUM-97 AC6), and the
- * form to record the outcome (SCRUM-98), opened on demand so the list stays readable.
+ * One event awaiting the safety check: what the system holds about it (SCRUM-97 AC6), a link to
+ * its whole read-only record (SCRUM-24 AC9, ADR-0095), and the form to record the outcome
+ * (SCRUM-98), opened on demand so the list stays readable.
  */
 export function SafetyReviewCard({ awaiting }: { awaiting: AwaitingSafetyReview }) {
   const headingId = useId()
@@ -123,6 +126,12 @@ export function SafetyReviewCard({ awaiting }: { awaiting: AwaitingSafetyReview 
             {event.name}
           </h2>
           <p className="text-ink-faint mt-1 text-sm">{event.reference}</p>
+          <Link
+            to={staffEventPath(event.reference)}
+            className="text-flare mt-2 inline-block text-sm font-medium hover:underline"
+          >
+            Open the event record
+          </Link>
         </div>
         <StatusChip status={event.status} />
       </div>
