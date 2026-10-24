@@ -28,7 +28,13 @@ import {
 } from '@/features/eventRequests/api'
 import { assignCoordinator } from '@/features/lead/api'
 import { fetchNotifications } from '@/features/notifications/api'
-import { blockVenue, fetchVenueCalendar, removeVenueBlock } from '@/features/venues/api'
+import {
+  blockVenue,
+  deactivateVenue,
+  fetchVenueCalendar,
+  reactivateVenue,
+  removeVenueBlock,
+} from '@/features/venues/api'
 import type { CreatedBlock } from '@/features/venues/api'
 import { apiRequest } from '@/lib/api'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
@@ -893,6 +899,34 @@ describe('SCRUM-92 replacing a venue that became unavailable', () => {
     return arrangement
   }
 
+  /** The coordinator's newest notice of `kind` about the event, if there is one. */
+  async function noticeAbout(reference: string, kind: string) {
+    const notices = await fetchNotifications()
+    return notices.find(
+      (notification) => notification.kind === kind && notification.event_reference === reference,
+    )
+  }
+
+  /** What the coordinator is told once the morning arrangement's venue is free again (AC8). */
+  const AVAILABLE_AGAIN = {
+    message:
+      'A venue that was unavailable for your event is available again. ' +
+      'Its original arrangement stands.',
+    detail: `is available again for Integration planning (${EVENT_DATE} 09:00 to ${EVENT_DATE} 12:00).`,
+  }
+
+  /** Check the "available again" notice about the event, as the coordinator reads it (AC8). */
+  async function expectToldAvailableAgain(reference: string) {
+    const notice = await noticeAbout(reference, 'venue_available_again')
+    expect(notice).toMatchObject({
+      message: AVAILABLE_AGAIN.message,
+      link: `/events/${reference}`,
+    })
+    // The venue's name (newVenue's "Integration Hall <unique>"), then the arrangement.
+    expect(notice?.detail).toMatch(/^Integration Hall /)
+    expect(notice?.detail).toContain(AVAILABLE_AGAIN.detail)
+  }
+
   /**
    * As Venue Staff: block the arrangement's venue for the whole event day, then sign back in.
    * Returns the block.
@@ -1012,12 +1046,7 @@ describe('SCRUM-92 replacing a venue that became unavailable', () => {
       const block = await blockVenueOf(original)
 
       // --- The coordinator is told the venue, the reason and the period (AC5) ---
-      const notices = await fetchNotifications()
-      const notice = notices.find(
-        (notification) =>
-          notification.kind === 'alternative_venue_needed' &&
-          notification.event_reference === reference,
-      )
+      const notice = await noticeAbout(reference, 'alternative_venue_needed')
       // The venue's name (newVenue's "Integration Hall <unique>"), then the period and the reason.
       expect(notice?.detail).toMatch(/^Integration Hall /)
       expect(notice?.detail).toContain(
@@ -1033,6 +1062,30 @@ describe('SCRUM-92 replacing a venue that became unavailable', () => {
         needs_alternative_venue: false,
         unavailability: [],
       })
+      // --- ...and the coordinator is told the venue is available again (AC8) ---
+      await expectToldAvailableAgain(reference)
+    },
+  )
+
+  it.skipIf(!canApproveVenue)(
+    'tells the coordinator the venue is available again once Venue Staff reactivate it (AC8, AC9)',
+    async () => {
+      const { reference } = await settledEvent()
+      const original = await onlyArrangement(reference)
+      await signInAs(required(VENUE_STAFF))
+      await deactivateVenue(original.venue_id, { category: 'renovation', reason: 'Refit' })
+      await signInAs(staffAccount())
+      expect(await noticeAbout(reference, 'venue_available_again')).toBeUndefined()
+
+      await signInAs(required(VENUE_STAFF))
+      await reactivateVenue(original.venue_id)
+      await signInAs(staffAccount())
+
+      expect(await onlyArrangement(reference)).toMatchObject({
+        status: 'approved',
+        needs_alternative_venue: false,
+      })
+      await expectToldAvailableAgain(reference)
     },
   )
 
