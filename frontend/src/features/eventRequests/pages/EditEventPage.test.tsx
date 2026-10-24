@@ -10,13 +10,14 @@ import { renderApp } from '@/test/render'
  * changes were significant and that the arrangements will be reassessed, and sees the backend's
  * refusals under the fields they are about (ADR-0025, ADR-0079). The mock's Partner Summit
  * (EVR-7K2M9QXA) is Chloe's, under review: 12 Nov, 9:00 am to 5:00 pm, 250 expected. Her
- * Customer Roadshow (EVR-B6YF2K8V) awaits the organiser's answer, so it can't be edited. The
- * mock's "today" is 5 Oct 2026.
+ * Year-End Town Hall (EVR-BOOK0102) is Confirmed, so it changes only through a change request
+ * (AC8, ADR-0101). The mock's "today" is 5 Oct 2026.
  */
 
 const COORDINATOR = mockSessionFor(MOCK_ACCOUNTS.coordinator)
 const ORGANISER = mockSessionFor(MOCK_ACCOUNTS.organiser)
 const PARTNER_SUMMIT = 'EVR-7K2M9QXA'
+const TOWN_HALL = 'EVR-BOOK0102'
 
 type App = ReturnType<typeof renderApp>
 
@@ -170,15 +171,16 @@ describe("SCRUM-33 the backend's refusals", () => {
     expect(screen.queryByRole('region', { name: 'Saved' })).not.toBeInTheDocument()
   })
 
-  it("shows the backend's message for an event that can't be edited now", async () => {
-    const app = await openEditForm('EVR-B6YF2K8V')
+  it("shows the backend's message for a Confirmed event, which changes only through a change request (AC8)", async () => {
+    const app = await openEditForm(TOWN_HALL)
 
     await replace(app, 'Description', 'A short one.')
     await save(app)
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Only a submitted, under-review, approved or confirmed event request can be edited.',
+      'A confirmed event can only be changed through a change request.',
     )
+    expect(screen.queryByRole('region', { name: 'Saved' })).not.toBeInTheDocument()
   })
 
   it("can't open another coordinator's event, even by its link", async () => {
