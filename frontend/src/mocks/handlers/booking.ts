@@ -512,16 +512,17 @@ function findArrangement(event: MockBookingEvent, arrangementId: unknown) {
 }
 
 /**
- * The backend's refusal of a replacement that doesn't name one of the event's arrangements
- * needing an alternative venue, or null (SCRUM-92 AC6). Another event's is as missing as an
- * unknown one.
+ * The backend's refusal of a replacement that doesn't name one of the event's flagged
+ * arrangements, or null (SCRUM-92 AC6): flagged because its venue became unavailable, or by a
+ * significant change to the event (SCRUM-33 AC6, `_check_replaceable`). Another event's is as
+ * missing as an unknown one.
  */
 function replacementRefusal(event: MockBookingEvent, replacesId: unknown) {
   const replaced = findArrangement(event, replacesId)
   if (replaced === undefined) {
     return validationError({ replaces_request_id: [ARRANGEMENT_NOT_FOUND_MESSAGE] })
   }
-  if (!replaced.needs_alternative_venue) {
+  if (!replaced.needs_alternative_venue && !replaced.flagged_after_change) {
     return validationError({ replaces_request_id: [NOT_FLAGGED_MESSAGE] })
   }
   return null
@@ -529,16 +530,17 @@ function replacementRefusal(event: MockBookingEvent, replacesId: unknown) {
 
 /**
  * Approving a replacement releases the arrangement it replaces, which then no longer needs an
- * alternative venue (SCRUM-92 AC7). The backend leaves an arrangement that already stopped
- * holding its venue as it is; the mock's flagged arrangements are all approved, which nothing
- * but a replacement retires, so it needs no such check.
+ * alternative venue (SCRUM-92 AC7), and whose change flags stop counting (SCRUM-33 AC6). The
+ * backend leaves an arrangement that already stopped holding its venue as it is; the mock's
+ * flagged arrangements are all approved, which nothing but a replacement retires, so it needs no
+ * such check.
  */
 function releaseReplaced(approved: BookingRequest): void {
   const replaced = requests.find((existing) => existing.id === approved.replaces_request_id)
   if (replaced === undefined) {
     return
   }
-  replaced.status = 'released'
+  moveTo(replaced, 'released')
   replaced.needs_alternative_venue = false
 }
 
