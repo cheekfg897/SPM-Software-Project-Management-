@@ -103,6 +103,21 @@ export const MOCK_BOOKING_EVENTS = {
     status: 'safety_review',
     proposed_date: '2026-11-29',
   },
+  /**
+   * Confirmed, with two venues booked and one withdrawn, for what its organiser sees (SCRUM-49
+   * AC11). Marcus coordinates it (an id no mock account has), so no coordinator page lists it.
+   */
+  confirmedGala: {
+    ...APPROVED_EVENT,
+    id: 112,
+    reference: 'EVR-BOOK0112',
+    name: 'Harbour Gala',
+    coordinator_id: 99,
+    status: 'confirmed',
+    proposed_date: '2026-12-05',
+    start_time: '17:00:00',
+    end_time: '23:00:00',
+  },
 } as const satisfies Record<string, MockBookingEvent>
 
 /**
@@ -197,6 +212,7 @@ function arrangementOf(
         | 'unavailability'
         | 'preparation_status'
         | 'preparation_notes'
+        | 'required_layout'
       >
     >,
 ): BookingRequest {
@@ -206,10 +222,10 @@ function arrangementOf(
     unavailability: [],
     preparation_status: 'not_started',
     preparation_notes: null,
+    required_layout: null,
     ...arrangement,
     event_id: event.id,
     expected_occupancy: 10,
-    required_layout: null,
     justification: null,
     replaces_request_id: null,
     flagged_after_change: false,
@@ -243,6 +259,10 @@ function arrangementOf(
  *
  * The venue of the event in Safety Review was deactivated, so its approved auditorium is flagged
  * with no end to the unavailability (SCRUM-92).
+ *
+ * The confirmed gala's dinner hall and reception room are approved, saved out of period order,
+ * with Venue Staff's reasons and preparation its organiser must not see, and its overflow room
+ * was withdrawn (SCRUM-49 AC11).
  */
 export const MOCK_ARRANGEMENTS = {
   rejectedMain: arrangementOf(MOCK_BOOKING_EVENTS.multiVenue, {
@@ -374,5 +394,35 @@ export const MOCK_ARRANGEMENTS = {
         ends_at: null,
       },
     ],
+  }),
+  galaDinner: arrangementOf(MOCK_BOOKING_EVENTS.confirmedGala, {
+    id: 9111,
+    venue_id: MOCK_BOOKING_VENUES.roomy.id,
+    starts_at: '2026-12-05T18:00:00+08:00',
+    ends_at: '2026-12-05T23:00:00+08:00',
+    purpose: 'Gala dinner',
+    required_layout: 'banquet',
+    status: 'approved',
+    decision_reason: 'Booked for the dinner.',
+    preparation_status: 'ready',
+    preparation_notes: 'Tables set for 80.',
+  }),
+  galaReception: arrangementOf(MOCK_BOOKING_EVENTS.confirmedGala, {
+    id: 9112,
+    venue_id: MOCK_BOOKING_VENUES.tiny.id,
+    starts_at: '2026-12-05T17:00:00+08:00',
+    ends_at: '2026-12-05T18:00:00+08:00',
+    purpose: 'Drinks reception',
+    status: 'approved',
+    decision_reason: 'Booked',
+  }),
+  galaOverflow: arrangementOf(MOCK_BOOKING_EVENTS.confirmedGala, {
+    id: 9113,
+    venue_id: MOCK_BOOKING_VENUES.tiny.id,
+    starts_at: '2026-12-05T19:00:00+08:00',
+    ends_at: '2026-12-05T21:00:00+08:00',
+    purpose: 'Overflow room',
+    status: 'withdrawn',
+    decision_reason: null,
   }),
 } as const satisfies Record<string, BookingRequest>

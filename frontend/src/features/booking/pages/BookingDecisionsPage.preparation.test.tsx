@@ -51,7 +51,15 @@ describe("SCRUM-84 Venue Staff record a booking's preparation", () => {
       .map((entry) => entry.textContent)
 
     // The Auditorium is flagged as needing an alternative venue but still approved (SCRUM-92).
-    expect(purposes).toEqual(['Grand ballroom', 'Exhibition hall', 'Main hall', 'Auditorium'])
+    // The confirmed gala's two come last, by id, as they share its date and start.
+    expect(purposes).toEqual([
+      'Grand ballroom',
+      'Exhibition hall',
+      'Main hall',
+      'Auditorium',
+      'Gala dinner',
+      'Drinks reception',
+    ])
     const ballroom = await findBooking('Grand ballroom')
     expect(ballroom.getByText('Preparation: In progress')).toBeInTheDocument()
     expect(ballroom.getByText('Preparation notes: Stage half built.')).toBeInTheDocument()
