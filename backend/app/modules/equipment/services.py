@@ -379,6 +379,24 @@ def equipment_availability_for_event(
     return rows
 
 
+def list_reservations_of_event(
+    event_id: int, *, session: Session | None = None
+) -> list[ReservationAsShown]:
+    """The equipment reserved for the event with this id, oldest first (ADR-0095).
+
+    For the read-only record other internal users open (SCRUM-24 AC9, SCRUM-85 AC2):
+    the caller has already decided who may read it.
+    """
+    sess = resolve_session(session)
+    statement = (
+        select(EquipmentReservation)
+        .where(EquipmentReservation.event_id == event_id)
+        .options(joinedload(EquipmentReservation.equipment_type))
+        .order_by(EquipmentReservation.created_at, EquipmentReservation.id)
+    )
+    return _as_shown(list(sess.scalars(statement)), sess)
+
+
 def list_reservations_for_event(
     viewer_id: int | str, reference: str, *, viewer_role: Role, session: Session | None = None
 ) -> list[ReservationAsShown]:
@@ -401,13 +419,7 @@ def list_reservations_for_event(
     need = events_services.get_event_equipment_need_for_viewer(
         viewer_id, reference, viewer_role=viewer_role, session=sess
     )
-    statement = (
-        select(EquipmentReservation)
-        .where(EquipmentReservation.event_id == need.event_id)
-        .options(joinedload(EquipmentReservation.equipment_type))
-        .order_by(EquipmentReservation.created_at, EquipmentReservation.id)
-    )
-    return _as_shown(list(sess.scalars(statement)), sess)
+    return list_reservations_of_event(need.event_id, session=sess)
 
 
 def release_reservations(
