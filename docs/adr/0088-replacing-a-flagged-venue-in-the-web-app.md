@@ -56,7 +56,8 @@ be true, not how it reads.
    the venue being replaced." instead. The Product Owner decided on 19 Oct that a replacement is
    always another venue for the original period; the same venue at another time is a change
    request (SCRUM-56, SCRUM-57). The form doesn't check a venue ID typed by hand: the backend
-   will refuse the same venue in a later PR, and its message will show under the field.
+   refuses the same venue with a `400` on `venue_id` (ADR-0100), and its message shows under the
+   field.
 5. **The backend decides whether a replacement is allowed.** "Find another venue" is offered on
    every flagged arrangement, whatever the event's status. A refusal shows in the form: the
    message (e.g. "Only an approved event or one in Safety Review can replace a venue; this one is
@@ -93,8 +94,11 @@ be true, not how it reads.
   approved (ADR-0053 decision 13); its events are fixed data.
 
 ## Revisit when
-- The backend refuses a same-venue replacement and flags On Hold arrangements (SCRUM-92's
-  "Changed after review" note): mirror the refusal and the flag in the booking mock.
+- ~~The backend refuses a same-venue replacement and flags On Hold arrangements (SCRUM-92's
+  "Changed after review" note): mirror the refusal and the flag in the booking mock.~~ Done by
+  [ADR-0100](0100-on-hold-same-venue-and-available-again.md): the booking mock refuses a
+  same-venue replacement on `venue_id`, its held studio is flagged, and approving a replacement
+  releases a flagged hold.
 - The team decides the defaults in the status line.
 - SCRUM-59 lets Venue Staff reconfirm a booking: decide whether a "Requires reconfirmation" flag
   still offers "Find another venue", or only waits for Venue Staff.
