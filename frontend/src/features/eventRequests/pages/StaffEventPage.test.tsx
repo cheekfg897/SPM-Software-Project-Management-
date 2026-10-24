@@ -17,13 +17,15 @@ import { sendRequestsAs } from '@/test/sendRequestsAs'
  * equipment preparation (SCRUM-84 AC2, SCRUM-85 AC2) and its history (SCRUM-33 AC5). The records
  * come from the mock in src/mocks/handlers/staffEventRecord.ts: EVR-7K2M9QXA is Chloe's Partner
  * Summit, EVR-BOOK0110 the booking mock's event being prepared, EVR-MOCK0001 Chloe's event with
- * two equipment lines, and EVR-SAFE0004 an event the Safety Officer approved.
+ * two equipment lines, EVR-SAFE0004 an event the Safety Officer approved, and EVR-LEAD0003 the
+ * Lead's event with nothing arranged yet.
  */
 
 const PARTNER_SUMMIT = 'EVR-7K2M9QXA'
 const BEING_PREPARED = 'EVR-BOOK0110'
 const WITH_EQUIPMENT = 'EVR-MOCK0001'
 const SAFETY_APPROVED = 'EVR-SAFE0004'
+const NOTHING_ARRANGED = 'EVR-LEAD0003'
 const LOADING_TEXT = 'Loading the event…'
 
 /** One mock account of each reader role. */
@@ -143,7 +145,7 @@ describe('SCRUM-24 AC9, AC10 the read-only staff record', () => {
   })
 
   it('says when no venue is arranged and no equipment requested or reserved', async () => {
-    openAs(MOCK_ACCOUNTS.lead, PARTNER_SUMMIT)
+    openAs(MOCK_ACCOUNTS.lead, NOTHING_ARRANGED)
 
     expect(await section('Venue arrangements')).toHaveTextContent(
       'No venue is arranged for this event yet.',

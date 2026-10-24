@@ -14,6 +14,7 @@ import { errorResponse, notAllowed, notAuthenticated, validationError } from '..
 import { accountForRequest } from './auth'
 import { hasActiveArrangement } from './booking'
 import { MOCK_NOW } from './catalogueFixtures'
+import { recordLinesOf } from './equipmentLines'
 import {
   DETAIL_FIELDS,
   draftChangeErrors,
@@ -225,12 +226,21 @@ function ownDraftOrRefusal(organiser: MockAccount, organisationId: number, refer
   return { draft: stored.request }
 }
 
-/** A request's record as the backend shows it: the coordinator by name and email, no ids. */
-function recordOf(stored: MockEventRequest) {
+/**
+ * A request's record as the backend shows it to `viewerRole`: the coordinator by name and email,
+ * no ids, and the equipment lines as that role sees them (ADR-0098).
+ */
+function recordOf(stored: MockEventRequest, viewerRole: Role) {
   const { coordinator } = stored
   const contact =
     coordinator === null ? null : { full_name: coordinator.full_name, email: coordinator.email }
-  return { ...stored.request, ...stored.record, coordinator: contact, equipment_lines: [] }
+  const equipmentLines = recordLinesOf(stored.request.reference, viewerRole)
+  return {
+    ...stored.request,
+    ...stored.record,
+    coordinator: contact,
+    equipment_lines: equipmentLines,
+  }
 }
 
 /** One of the coordinator's own assigned requests; no other, by any link (SCRUM-24 AC10). */
@@ -439,7 +449,7 @@ export const eventRequestHandlers: RequestHandler[] = [
     if (stored === undefined) {
       return errorResponse(404, 'not_found', NOT_FOUND_MESSAGE)
     }
-    return HttpResponse.json(recordOf(stored))
+    return HttpResponse.json(recordOf(stored, found.caller.role))
   }),
 
   http.post(`${MY_REQUESTS_PATH}/:reference/review`, ({ request, params }) => {

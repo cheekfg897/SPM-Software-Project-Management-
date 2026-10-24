@@ -191,9 +191,42 @@ function linesOnStatusEvents(): MockEquipmentLine[] {
 }
 
 /**
+ * The Partner Summit's lines (EVR-7K2M9QXA, the mock organiser's event that Chloe coordinates),
+ * for what its organiser sees of them (SCRUM-37 AC5, SCRUM-48 AC5, ADR-0098): six of ten
+ * projectors, with technical notes, an outcome note and a reviewer the organiser must not see,
+ * and microphones not reviewed yet. That event isn't one the equipment pages open.
+ */
+const PARTNER_SUMMIT_LINES: readonly MockEquipmentLine[] = [
+  {
+    id: 61,
+    event_reference: 'EVR-7K2M9QXA',
+    equipment_type_id: 1,
+    quantity: 10,
+    notes: 'Two at the back of the hall.',
+    status: 'partially_fulfilled',
+    provided_quantity: 6,
+    outcome_note: 'Four are out for repair.',
+    reviewed_by: MOCK_ACCOUNTS.technicalSupport.full_name,
+    reviewed_at: '2026-10-05T11:00:00+08:00',
+  },
+  {
+    id: 62,
+    event_reference: 'EVR-7K2M9QXA',
+    equipment_type_id: 2,
+    quantity: 4,
+    notes: 'Lapel, not handheld.',
+    status: 'requested',
+    provided_quantity: null,
+    outcome_note: null,
+    reviewed_by: null,
+    reviewed_at: null,
+  },
+]
+
+/**
  * The open event's lines. Projectors first, though "Microphone" sorts before it: the backend
  * keeps the order the lines were added. The microphones have been reviewed and will all be
- * provided. Then one line on each event in another status.
+ * provided. Then one line on each event in another status, and the Partner Summit's.
  */
 export const MOCK_EQUIPMENT_LINES: readonly MockEquipmentLine[] = [
   {
@@ -221,4 +254,5 @@ export const MOCK_EQUIPMENT_LINES: readonly MockEquipmentLine[] = [
     reviewed_at: '2026-10-05T10:00:00+08:00',
   },
   ...linesOnStatusEvents(),
+  ...PARTNER_SUMMIT_LINES,
 ]
