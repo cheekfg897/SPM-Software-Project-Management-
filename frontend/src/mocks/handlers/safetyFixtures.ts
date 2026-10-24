@@ -1,3 +1,4 @@
+import type { SafetyCheckOutcome } from '@/features/eventRequests/api'
 import type { AwaitingSafetyReview } from '@/features/safety/api'
 
 /**
@@ -8,6 +9,19 @@ import type { AwaitingSafetyReview } from '@/features/safety/api'
 export interface MockSafetyEvent extends AwaitingSafetyReview {
   /** The Safety Officer has approved the current check: still in Safety Review, not listed. */
   safety_approved: boolean
+  /** What the Safety Officer recorded on the current check, for the staff record (ADR-0095). */
+  outcome: SafetyCheckOutcome | null
+}
+
+/** A note on each checklist item, as the Safety Officer recorded them on the seeded checks. */
+const SEEDED_CHECKLIST = {
+  attendance_vs_capacity: 'Within capacity.',
+  venue_layout: 'Layout agreed with Venue Staff.',
+  emergency_access: 'Exits kept clear.',
+  accessibility: 'Step-free entrance.',
+  equipment_placement: 'Cables taped down.',
+  crowd_movement: 'One-way flow at the doors.',
+  venue_restrictions: 'No open flames.',
 }
 
 /** On the list: a gala with two venues' worth of detail and equipment with outcomes. */
@@ -53,6 +67,7 @@ export const MOCK_GALA: MockSafetyEvent = {
     },
   ],
   safety_approved: false,
+  outcome: null,
 }
 
 /** On the list, soonest: a fair with no equipment and a venue with few details. */
@@ -81,6 +96,7 @@ export const MOCK_FAIR: MockSafetyEvent = {
   ],
   equipment: [],
   safety_approved: false,
+  outcome: null,
 }
 
 /** On the list between the other two: the gala's day but earlier, so the time decides. */
@@ -118,6 +134,7 @@ export const MOCK_TOWN_HALL: MockSafetyEvent = {
     },
   ],
   safety_approved: false,
+  outcome: null,
 }
 
 /** Already approved by the Safety Officer: in Safety Review, but never listed. */
@@ -136,6 +153,13 @@ export const MOCK_APPROVED_LAUNCH: MockSafetyEvent = {
   venues: [],
   equipment: [],
   safety_approved: true,
+  outcome: {
+    outcome: 'approved',
+    checklist: SEEDED_CHECKLIST,
+    reason: null,
+    recorded_by: 'Sana Iyer',
+    recorded_at: '2026-10-02T15:00:00+08:00',
+  },
 }
 
 /** Sent back to planning by an earlier check: Approved, so an outcome is refused. */
@@ -154,6 +178,13 @@ export const MOCK_RETURNED_SUMMIT: MockSafetyEvent = {
   venues: [],
   equipment: [],
   safety_approved: false,
+  outcome: {
+    outcome: 'changes_requested',
+    checklist: SEEDED_CHECKLIST,
+    reason: 'Add a second fire exit to the plan.',
+    recorded_by: 'Sana Iyer',
+    recorded_at: '2026-10-01T11:00:00+08:00',
+  },
 }
 
 /** Every event the mock starts with, neither in date order nor in time order. */

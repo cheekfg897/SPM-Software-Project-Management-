@@ -139,6 +139,25 @@ function asShown(reservation: MockReservation) {
   return { ...reservation, needs_attention: isTypeShort(reservation.equipment_type_id) }
 }
 
+/**
+ * The event's reservations, oldest first, as the read-only staff record shows them: no ids, and
+ * Technical Support's preparation on each (list_reservations_of_event, SCRUM-85 AC2, ADR-0095).
+ */
+export function reservationsForRecord(reference: string) {
+  const held = reservations.filter(
+    (reservation) => reservationEvents.get(reservation.id) === reference,
+  )
+  return held.map((reservation) => ({
+    equipment_type_name: reservation.equipment_type_name,
+    quantity: reservation.quantity,
+    starts_at: reservation.starts_at,
+    ends_at: reservation.ends_at,
+    reserved_by: reservation.reserved_by,
+    preparation_status: reservation.preparation_status,
+    preparation_notes: reservation.preparation_notes,
+  }))
+}
+
 /** One row per equipment type, by name, against what this event's lines ask for. */
 function availabilityRows(reference: string) {
   return equipmentTypesByName().map((type) => {

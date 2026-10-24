@@ -54,7 +54,7 @@ const ACTIVE_STATUSES: readonly EventRequestStatus[] = [
 ]
 
 /** An event as the backend stores it, with its coordinator as an id it never sends. */
-interface LeadMockEvent {
+export interface LeadMockEvent {
   reference: string
   name: string
   status: EventRequestStatus
@@ -259,8 +259,11 @@ async function coordinatorEmailOrRefusal(request: Request): Promise<string | Res
   return email.toLowerCase()
 }
 
-/** The event behind a reference, ignoring case and spaces. Staff never find a draft (ADR-0024). */
-function eventByReference(reference: string): LeadMockEvent | undefined {
+/**
+ * The event behind a reference, ignoring case and spaces. Staff never find a draft (ADR-0024).
+ * The staff record mock reads the Lead's events here too, as they stand (ADR-0095).
+ */
+export function eventByReference(reference: string): LeadMockEvent | undefined {
   const wanted = reference.trim().toUpperCase()
   return events.find(
     (event) => event.reference === wanted && event.status !== EVENT_REQUEST_STATUS.DRAFT,

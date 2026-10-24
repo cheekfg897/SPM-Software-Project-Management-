@@ -32,6 +32,17 @@ export const EQUIPMENT_READER_ROLES: readonly Role[] = [
   ROLE.TECHNICAL_SUPPORT_STAFF,
 ]
 
+/**
+ * Staff who open any submitted event's read-only record (SCRUM-24 AC9, AC10; ADR-0095). An Event
+ * Coordinator opens only their own events, on their own page.
+ */
+export const STAFF_RECORD_READER_ROLES: readonly Role[] = [
+  ROLE.VENUE_STAFF,
+  ROLE.TECHNICAL_SUPPORT_STAFF,
+  ROLE.SAFETY_OFFICER,
+  ROLE.EVENT_COORDINATOR_LEAD,
+]
+
 const ALL_ROLES: readonly string[] = Object.values(ROLE)
 
 export function isRole(value: unknown): value is Role {
