@@ -1082,4 +1082,38 @@ describe('SCRUM-92 booking mock: raising a replacement for a flagged arrangement
       ],
     })
   })
+
+  /** The held event's arrangement `id`, as the mock lists it. */
+  async function heldEventArrangement(id: unknown) {
+    const listed = await apiRequest<Record<string, unknown>[]>(bookingUrl(HELD_EVENT.reference))
+    return listed.find((arrangement) => arrangement.id === id)
+  }
+
+  // As the backend since ADR-0100: a hold is a booking too, so a block flags it and approving
+  // its replacement releases it and its hold.
+  it('releases a flagged arrangement On Hold, and its hold, once its replacement is approved', async () => {
+    expect(heldStudio).toMatchObject({ status: 'on_hold', needs_alternative_venue: true })
+    const replacement = await raise(HELD_EVENT.reference, replacementFor(heldStudio))
+
+    await decideAsVenueStaff(replacement.id, 'approved')
+
+    expect(await heldEventArrangement(heldStudio.id)).toMatchObject({
+      status: 'released',
+      needs_alternative_venue: false,
+      hold_expires_at: null,
+      unavailability: heldStudio.unavailability,
+    })
+  })
+
+  it('leaves a flagged original that stopped holding its venue as it is', async () => {
+    const replacement = await raise(HELD_EVENT.reference, replacementFor(heldStudio))
+    await decideAsVenueStaff(heldStudio.id, 'rejected')
+
+    await decideAsVenueStaff(replacement.id, 'approved')
+
+    expect(await heldEventArrangement(heldStudio.id)).toMatchObject({
+      status: 'rejected',
+      needs_alternative_venue: false,
+    })
+  })
 })

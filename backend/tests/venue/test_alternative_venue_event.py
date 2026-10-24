@@ -41,6 +41,8 @@ from tests.venue.conftest import (
     block,
     decide,
     history_entries,
+    hours_from_now,
+    place_hold,
     raise_booking,
     reload_event,
     reload_request,
@@ -358,6 +360,30 @@ def test_the_safety_review_gate_names_the_flagged_booking_too(
 
     assert refusal.value.details == {
         "venue_arrangements": [f"Venue arrangement {approved.id} needs an alternative venue."]
+    }
+
+
+def test_the_safety_review_gate_names_a_flagged_hold_as_needing_an_alternative_venue(
+    db_session: Session, multi_venue_event: EventRequest, multi_venue_request: VenueBookingRequest
+) -> None:
+    """A request On Hold is flagged too (ADR-0100), so the gate names both its gaps."""
+    held = place_hold(multi_venue_request.id, hours_from_now(24), db_session)
+    held_venue = db_session.get(Venue, held.venue_id)
+    assert held_venue is not None
+    block(held_venue, at(10), at(11), db_session)
+    [_, breakout] = services.list_active_arrangements(multi_venue_event.id, session=db_session)
+
+    with pytest.raises(event_services.SafetyReviewNotAllowedError) as refusal:
+        event_services.submit_for_safety_review(
+            COORDINATOR_ID, multi_venue_event.reference, session=db_session
+        )
+
+    assert refusal.value.details == {
+        "venue_arrangements": [
+            f"Venue arrangement {held.id} is on_hold.",
+            f"Venue arrangement {breakout.id} is pending.",
+            f"Venue arrangement {held.id} needs an alternative venue.",
+        ]
     }
 
 

@@ -115,6 +115,17 @@ const WITHDRAWABLE_STATUSES: readonly BookingRequestStatus[] = [
  * took over (SCRUM-92). Cancel all leaves them out.
  */
 const RETIRED_STATUSES: readonly BookingRequestStatus[] = ['withdrawn', 'released']
+/**
+ * As the backend's UNAVAILABILITY_FLAGGABLE_STATUSES: a venue becoming unavailable flags a
+ * confirmed booking, a request still waiting for a decision, and one On hold, whose hold is a
+ * booking too (SCRUM-92 AC1, ADR-0100). A change to the event flags all but On hold (ADR-0094).
+ */
+const UNAVAILABILITY_FLAGGABLE_STATUSES: readonly BookingRequestStatus[] = [
+  'pending',
+  'conflicting',
+  'on_hold',
+  'approved',
+]
 /** What ChangeArrangementSchema accepts; the venue and the period are not among them. */
 const CHANGEABLE_FIELDS = ['purpose', 'expected_occupancy', 'required_layout', 'justification']
 const LAYOUT_ERROR_MESSAGE = `Must be one of: ${LAYOUT_OPTIONS.map((option) => option.value).join(', ')}.`
@@ -179,12 +190,14 @@ function clashingApproval(waiting: BookingRequest): BookingRequest | undefined {
 }
 
 /**
- * Move a request to `status`. A change's flags count only while it still holds or asks for its
- * venue, as the backend's is_flagged_after_change says; once it doesn't, they stay as the record of
- * why (SCRUM-33 AC6, ADR-0094).
+ * Move a request to `status`. Its flags count only while it still holds or asks for its venue, as
+ * the backend's needs_alternative_venue and is_flagged_after_change say; once it doesn't, they stay
+ * as the record of why (SCRUM-92, SCRUM-33 AC6, ADR-0094, ADR-0100).
  */
 function moveTo(request: BookingRequest, status: BookingRequestStatus): void {
   request.status = status
+  request.needs_alternative_venue =
+    UNAVAILABILITY_FLAGGABLE_STATUSES.includes(status) && request.unavailability.length > 0
   request.flagged_after_change =
     FLAGGABLE_STATUSES.includes(status) && request.reassessment_flags.length > 0
 }
@@ -562,19 +575,19 @@ function replacementRefusal(event: MockBookingEvent, replacesId: unknown) {
 }
 
 /**
- * Approving a replacement releases the arrangement it replaces, which then no longer needs an
- * alternative venue (SCRUM-92 AC7), and whose change flags stop counting (SCRUM-33 AC6). The
- * backend leaves an arrangement that already stopped holding its venue as it is; the mock's
- * flagged arrangements are all approved, which nothing but a replacement retires, so it needs no
- * such check.
+ * Approving a replacement releases the arrangement it replaces, and its hold if it was On hold,
+ * so it no longer needs an alternative venue (SCRUM-92 AC7, ADR-0100) and its change flags stop
+ * counting (SCRUM-33 AC6). One that already stopped holding or asking for its venue, say rejected
+ * since the replacement was raised, is left as it is, as the backend leaves it.
  */
 function releaseReplaced(approved: BookingRequest): void {
   const replaced = requests.find((existing) => existing.id === approved.replaces_request_id)
-  if (replaced === undefined) {
+  if (replaced === undefined || !UNAVAILABILITY_FLAGGABLE_STATUSES.includes(replaced.status)) {
     return
   }
   moveTo(replaced, 'released')
-  replaced.needs_alternative_venue = false
+  // The hold is cancelled with it, and the backend shows an expiry only while On hold or Expired.
+  replaced.hold_expires_at = null
 }
 
 function withdrawRefusal(arrangement: BookingRequest) {

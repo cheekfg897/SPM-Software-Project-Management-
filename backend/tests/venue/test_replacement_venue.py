@@ -2,7 +2,8 @@
 
 AC6: the coordinator raises a replacement request linked to the flagged arrangement,
 for an approved event or one in Safety Review (ADR-0053). AC7: approving the replacement
-releases the flagged arrangement and cancels its booking. AC10: if the event had passed
+releases the flagged arrangement and cancels its booking, or its hold if it was On Hold
+(ADR-0100). AC10: if the event had passed
 its safety check, approving the replacement withdraws that approval, and an event in
 Safety Review goes back to Approved to be sent again.
 
@@ -46,6 +47,8 @@ from tests.venue.conftest import (
     bookings,
     decide,
     history_entries,
+    hours_from_now,
+    place_hold,
     raise_booking,
     reload_event,
     reload_request,
@@ -343,6 +346,31 @@ def test_a_flagged_pending_request_is_released_with_no_booking_to_cancel(
 
     assert reload_request(db_session, pending.id).status is BookingRequestStatus.RELEASED
     assert bookings(db_session) == [(breakout.id, BookingStatus.CONFIRMED)]
+
+
+def test_a_flagged_request_on_hold_is_released_and_its_hold_cancelled(
+    db_session: Session,
+    multi_venue_request: VenueBookingRequest,
+    make_venue: Callable[..., Venue],
+    save: Callable[..., None],
+) -> None:
+    """AC7: if the flagged booking was On Hold, its hold is released (ADR-0100)."""
+    held = place_hold(multi_venue_request.id, hours_from_now(24), db_session)
+    held_venue = db_session.get(Venue, held.venue_id)
+    assert held_venue is not None
+    block(held_venue, at(10), at(11), db_session)
+    annex = make_venue(name="Annex")
+    save(annex)
+    event = reload_event(db_session, held.event_id)
+    replacement = raise_booking(annex, event, db_session, replaces_request_id=held.id)
+
+    decide(replacement.id, "approved", db_session)
+
+    released = reload_request(db_session, held.id)
+    assert released.status is BookingRequestStatus.RELEASED
+    assert released.needs_alternative_venue is False
+    assert released.booking is not None
+    assert released.booking.status is BookingStatus.CANCELLED
 
 
 def test_only_the_replaced_arrangements_booking_is_cancelled(
