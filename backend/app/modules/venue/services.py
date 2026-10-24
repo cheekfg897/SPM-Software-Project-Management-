@@ -1948,6 +1948,27 @@ def _booking_made_by(arrangement: VenueBookingRequest, session: Session | None) 
     return resolve_session(session).scalars(stmt).first()
 
 
+def _booking_holding_venue(
+    arrangement: VenueBookingRequest, session: Session | None
+) -> Booking | None:
+    """The hold or booking through which the arrangement holds its venue, if any.
+
+    A hold, and the booking a hold becomes on approval, is linked to its request
+    (SCRUM-75); a booking an ordinary approval made is found by its period.
+    """
+    if arrangement.booking is not None:
+        return arrangement.booking
+    return _booking_made_by(arrangement, session)
+
+
+def _release_and_free_venue(arrangement: VenueBookingRequest, session: Session | None) -> None:
+    """Mark an approved or held arrangement Released and cancel its booking or hold."""
+    booking = _booking_holding_venue(arrangement, session)
+    if booking is not None:
+        booking.status = BookingStatus.CANCELLED
+    arrangement.status = BookingRequestStatus.RELEASED
+
+
 def _release_replaced(
     replacement: VenueBookingRequest, decided_by: int, session: Session | None
 ) -> None:
@@ -2431,27 +2452,6 @@ def send_hold_expiry_warnings(
 # --------------------------------------------------------------------------
 # SCRUM-49 AC10 — release an event's venues when it is rejected during planning
 # --------------------------------------------------------------------------
-
-
-def _booking_holding_venue(
-    arrangement: VenueBookingRequest, session: Session | None
-) -> Booking | None:
-    """The hold or booking through which the arrangement holds its venue, if any.
-
-    A hold, and the booking a hold becomes on approval, is linked to its request
-    (SCRUM-75); a booking an ordinary approval made is found by its period.
-    """
-    if arrangement.booking is not None:
-        return arrangement.booking
-    return _booking_made_by(arrangement, session)
-
-
-def _release_and_free_venue(arrangement: VenueBookingRequest, session: Session | None) -> None:
-    """Mark an approved or held arrangement Released and cancel its booking or hold."""
-    booking = _booking_holding_venue(arrangement, session)
-    if booking is not None:
-        booking.status = BookingStatus.CANCELLED
-    arrangement.status = BookingRequestStatus.RELEASED
 
 
 def release_event_arrangements(
