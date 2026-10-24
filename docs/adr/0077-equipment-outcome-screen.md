@@ -77,7 +77,8 @@ Also:
   the quantity provided, and organisers may not read the equipment types the lines are named
   from (`GET /api/equipment/types` is internal only). The organiser's request page shows no
   equipment. Needs the backend to send the organiser each line's type name and quantity
-  provided (ADR-0040 decision 9).
+  provided (ADR-0040 decision 9). *Delivered by
+  [ADR-0098](0098-organiser-sees-their-equipment-without-internal-notes.md).*
 - **AC5, "internal staff":** the Equipment page is open to the assigned coordinator and
   Technical Support, as its list route is. The Lead and Venue Staff do not see the note or the
   reviewer; the Safety Officer sees the outcome and the note on their own screen (SCRUM-97).

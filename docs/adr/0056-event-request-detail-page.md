@@ -67,7 +67,8 @@ Four things are left open:
 - **The event's history** (`GET …/<reference>/history`, SCRUM-33): it has 14 kinds of entry,
   each needing its own wording on screen. A page section of its own, in a later PR.
 - **Equipment lines**: the record names each line's equipment type only by id. Coordinators
-  already see the lines, by name, on the Equipment page.
+  already see the lines, by name, on the Equipment page. *The organiser's record now names
+  them, and their page shows them ([ADR-0098](0098-organiser-sees-their-equipment-without-internal-notes.md)).*
 - **The Lead opening an event** (SCRUM-24 AC3, AC10): `GET …/<reference>` allows only organisers
   and coordinators today, so the Lead's lists can't link to a record yet. A backend change first.
 - **Technical Support's list** (AC5, `GET …/requests/with-equipment`) and the Safety Officer's
