@@ -30,6 +30,7 @@ from app.modules.events.schemas import (
     EventRequestSchema,
     FieldChangeSchema,
     OrganiserEquipmentLineSchema,
+    OrganiserVenueArrangementSchema,
     RegistrationSettingsSchema,
     StaffEventRecordSectionsSchema,
     StaffEventRequestSchema,
@@ -86,6 +87,7 @@ _event_request_detail_schema = EventRequestDetailSchema()
 _equipment_line_schema = EquipmentLineSchema()
 _equipment_line_with_outcome_schema = EquipmentLineWithOutcomeSchema()
 _organiser_equipment_line_schema = OrganiserEquipmentLineSchema()
+_organiser_venue_arrangement_schema = OrganiserVenueArrangementSchema()
 _equipment_event_schema = EventRequestSchema(only=EQUIPMENT_EVENT_FIELDS)
 _equipment_awaiting_action_schema = EquipmentAwaitingActionSchema()
 _awaiting_safety_review_schema = EventAwaitingSafetyReviewSchema()
@@ -154,14 +156,18 @@ def _event_record_body(record: EventRecord) -> dict[str, Any]:
 
 
 def _organiser_event_record_body(record: OrganiserEventRecord) -> dict[str, Any]:
-    """The record as the event's organiser is shown it (ADR-0098).
+    """The record as the event's organiser is shown it (ADR-0098, ADR-0099).
 
     The sections every record shows, with the staff's equipment lines replaced by the
-    organiser's own view of them: no technical notes, outcome note or reviewer.
+    organiser's own view of them: no technical notes, outcome note or reviewer. Then
+    the confirmed event's venues, an empty list until it is confirmed.
     """
     body = _event_record_body(record)
     body["equipment_lines"] = _organiser_equipment_line_schema.dump(
         record.equipment_lines, many=True
+    )
+    body["venue_arrangements"] = _organiser_venue_arrangement_schema.dump(
+        record.venue_arrangements, many=True
     )
     return body
 
