@@ -38,6 +38,7 @@ from app.modules.venue.models import (
     BookingRequestStatus,
     BookingStatus,
     CalendarEntryKind,
+    PreparationStatus,
     ReassessmentFlag,
     ReassessmentFlagKind,
     RequirementKind,
@@ -1444,6 +1445,47 @@ def list_arranged_venues(event_id: int, *, session: Session | None = None) -> li
             )
         )
     return arranged
+
+
+@dataclass(frozen=True)
+class ArrangementForRecord:
+    """One of an event's venue arrangements as its read-only record shows it.
+
+    SCRUM-24 AC9 and SCRUM-84 AC2: internal users who are not the event's coordinator
+    see each venue, its period, where the request stands and Venue Staff's preparation
+    (ADR-0095). No ids: the reader has nothing to do with them.
+    """
+
+    venue_name: str
+    starts_at: datetime
+    ends_at: datetime
+    status: BookingRequestStatus
+    preparation_status: PreparationStatus
+    preparation_notes: str | None
+
+
+def list_arrangements_for_record(
+    event_id: int, *, session: Session | None = None
+) -> list[ArrangementForRecord]:
+    """The event's arrangements that still count, earliest period first (ADR-0095).
+
+    Withdrawn and released ones are left out, as :func:`list_active_arrangements`
+    does.
+    """
+    shown = []
+    for arrangement in list_active_arrangements(event_id, session=session):
+        venue = get_venue(arrangement.venue_id, session=session)
+        shown.append(
+            ArrangementForRecord(
+                venue_name=venue.name,
+                starts_at=arrangement.starts_at,
+                ends_at=arrangement.ends_at,
+                status=arrangement.status,
+                preparation_status=arrangement.preparation_status,
+                preparation_notes=arrangement.preparation_notes,
+            )
+        )
+    return shown
 
 
 def _arrangement_of_event(
