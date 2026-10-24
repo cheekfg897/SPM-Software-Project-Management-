@@ -3,6 +3,7 @@ import { register } from '@/features/auth/api'
 import {
   decideBookingRequest,
   fetchBookingRequests,
+  placeBookingHold,
   raiseBookingRequest,
   withdrawArrangement,
 } from '@/features/booking/api'
@@ -27,7 +28,7 @@ import {
 } from '@/features/eventRequests/api'
 import { assignCoordinator } from '@/features/lead/api'
 import { fetchNotifications } from '@/features/notifications/api'
-import { blockVenue, removeVenueBlock } from '@/features/venues/api'
+import { blockVenue, fetchVenueCalendar, removeVenueBlock } from '@/features/venues/api'
 import type { CreatedBlock } from '@/features/venues/api'
 import { apiRequest } from '@/lib/api'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
@@ -853,6 +854,16 @@ describe('SCRUM-92 replacing a venue that became unavailable', () => {
     return arrangement
   }
 
+  /** One of the event's arrangements, as the coordinator's list shows it. */
+  async function arrangementOf(reference: string, id: number): Promise<BookingRequest> {
+    const listed = await fetchBookingRequests(reference)
+    const arrangement = listed.find((each) => each.id === id)
+    if (arrangement === undefined) {
+      throw new Error(`The event should list its venue arrangement ${String(id)}.`)
+    }
+    return arrangement
+  }
+
   /**
    * As Venue Staff: block the arrangement's venue for the whole event day, then sign back in.
    * Returns the block.
@@ -954,6 +965,52 @@ describe('SCRUM-92 replacing a venue that became unavailable', () => {
         status: 'approved',
         needs_alternative_venue: false,
         unavailability: [],
+      })
+    },
+  )
+
+  it.skipIf(!canApproveVenue)(
+    'flags a request On Hold, and releases it and its hold once its replacement is approved (AC1, AC7)',
+    async () => {
+      const { reference } = await approvedEvent()
+      const heldId = await raiseVenueRequest(reference)
+      // A second venue makes the event multi-venue, so Venue Staff may hold the first (SCRUM-75).
+      await raiseVenueRequest(reference)
+      await signInAs(required(VENUE_STAFF))
+      await placeBookingHold(heldId, { expires_at: `${EVENT_DATE}T08:00:00+08:00` })
+      await signInAs(staffAccount())
+      const held = await arrangementOf(reference, heldId)
+
+      await blockVenueOf(held)
+
+      // --- A tentative hold is a booking too, so the block flags it (AC1, ADR-0100) ---
+      expect(await arrangementOf(reference, heldId)).toMatchObject({
+        status: 'on_hold',
+        needs_alternative_venue: true,
+      })
+      // --- Approving its replacement releases it and its hold (AC7) ---
+      const otherVenue = await newVenue()
+      await signInAs(staffAccount())
+      const replacement = await raiseBookingRequest(reference, {
+        venue_id: otherVenue,
+        starts_at: held.starts_at,
+        ends_at: held.ends_at,
+        purpose: 'Integration replacement for a hold',
+        replaces_request_id: heldId,
+      })
+      await signInAs(required(VENUE_STAFF))
+      await decideBookingRequest(replacement.id, { outcome: 'approved' })
+      const calendar = await fetchVenueCalendar(held.venue_id, {
+        range_start: `${EVENT_DATE}T00:00`,
+        range_end: `${EVENT_DATE}T23:59`,
+      })
+      // Only the block is left: the hold no longer holds the venue.
+      expect(calendar.map((entry) => entry.kind)).toEqual(['block'])
+      await signInAs(staffAccount())
+      expect(await arrangementOf(reference, heldId)).toMatchObject({
+        status: 'released',
+        needs_alternative_venue: false,
+        hold_expires_at: null,
       })
     },
   )

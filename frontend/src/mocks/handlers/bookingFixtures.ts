@@ -231,7 +231,8 @@ function arrangementOf(
  *
  * The replaced event's original hall was released when its replacement was approved (SCRUM-92),
  * and its gallery hold ran out (SCRUM-94). The held event's studio is On hold (SCRUM-75), so the
- * Venue Staff queue lists it, waiting for final approval.
+ * Venue Staff queue lists it, waiting for final approval; its venue has since been blocked, so it
+ * is flagged too, as the backend flags a hold (ADR-0100).
  *
  * The earlier workshop's exhibition hall is approved, which makes that event multi-venue, so its
  * Breakout room (9001, in the queue) can be held (SCRUM-75 AC1). It is at the other venue in the
@@ -326,6 +327,15 @@ export const MOCK_ARRANGEMENTS = {
     status: 'on_hold',
     decision_reason: null,
     hold_expires_at: '2026-11-21T09:00:00+08:00',
+    needs_alternative_venue: true,
+    unavailability: [
+      {
+        category: 'safety_concern',
+        reason: 'Ceiling leak',
+        starts_at: '2026-11-28T08:00:00+08:00',
+        ends_at: '2026-11-28T13:00:00+08:00',
+      },
+    ],
   }),
   exhibitionHall: arrangementOf(MOCK_BOOKING_EVENTS.earlierWorkshop, {
     id: 9003,

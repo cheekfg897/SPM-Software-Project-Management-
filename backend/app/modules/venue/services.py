@@ -32,6 +32,7 @@ from app.modules.venue.models import (
     HOLDABLE_REQUEST_STATUSES,
     HOLDING_BOOKING_STATUSES,
     RETIRED_REQUEST_STATUSES,
+    UNAVAILABILITY_FLAGGABLE_STATUSES,
     AlternativeVenueFlag,
     Booking,
     BookingDecision,
@@ -359,7 +360,7 @@ def _arrangements_held_during(
         select(VenueBookingRequest)
         .where(
             VenueBookingRequest.venue_id == venue.id,
-            VenueBookingRequest.status.in_(FLAGGABLE_REQUEST_STATUSES),
+            VenueBookingRequest.status.in_(UNAVAILABILITY_FLAGGABLE_STATUSES),
             VenueBookingRequest.starts_at < end + setup,
             VenueBookingRequest.ends_at > start - turnaround,
         )
@@ -376,7 +377,7 @@ def _arrangements_not_ended(
         select(VenueBookingRequest)
         .where(
             VenueBookingRequest.venue_id == venue.id,
-            VenueBookingRequest.status.in_(FLAGGABLE_REQUEST_STATUSES),
+            VenueBookingRequest.status.in_(UNAVAILABILITY_FLAGGABLE_STATUSES),
             VenueBookingRequest.ends_at > now,
         )
         .order_by(VenueBookingRequest.starts_at, VenueBookingRequest.id)
@@ -880,11 +881,12 @@ def block_venue(
     so Venue Staff can see what they're blocking (AC2, ADR-0016). Once saved, the
     calendar shows the block and search leaves the venue out for that period (AC3).
 
-    Every confirmed booking or Pending request the block cuts into is flagged "Needs
-    Alternative Venue" with the block's category, note and period (SCRUM-92 AC1); the
-    bookings themselves still hold the venue. The flags, their history entries and any
-    Confirmed event's return to Approved are saved with the block, and each event's
-    coordinator is told afterwards (AC3, AC5, ADR-0053).
+    Every confirmed booking, Pending request or request On Hold the block cuts into is
+    flagged "Needs Alternative Venue" with the block's category, note and period
+    (SCRUM-92 AC1, ADR-0100); the bookings and holds themselves still hold the venue.
+    The flags, their history entries and any Confirmed event's return to Approved are
+    saved with the block, and each event's coordinator is told afterwards (AC3, AC5,
+    ADR-0053).
 
     Args:
         venue_id: The venue to block.
@@ -1962,7 +1964,7 @@ def _booking_holding_venue(
 
 
 def _release_and_free_venue(arrangement: VenueBookingRequest, session: Session | None) -> None:
-    """Mark an approved or held arrangement Released and cancel its booking or hold."""
+    """Mark a live arrangement Released and cancel any booking or hold it has."""
     booking = _booking_holding_venue(arrangement, session)
     if booking is not None:
         booking.status = BookingStatus.CANCELLED
@@ -1974,21 +1976,19 @@ def _release_replaced(
 ) -> None:
     """Release what an approved replacement replaces, without committing (SCRUM-92).
 
-    The replaced arrangement is Released and its booking cancelled, unless it has
-    already stopped holding its venue, say to an earlier replacement (AC7). Whatever
-    it was, the event's venues changed, so a safety approval it had no longer counts
-    (AC10). An approval of an ordinary request does nothing here.
+    The replaced arrangement is Released and its booking, or its hold if it was On Hold,
+    cancelled, unless it has already stopped holding its venue, say to an earlier
+    replacement (AC7, ADR-0100). Whatever it was, the event's venues changed, so a
+    safety approval it had no longer counts (AC10). An approval of an ordinary request
+    does nothing here.
     """
     from app.modules.events import services as event_services  # circular at import time
 
     if replacement.replaces_request_id is None:
         return
     replaced = resolve_session(session).get(VenueBookingRequest, replacement.replaces_request_id)
-    if replaced.status in FLAGGABLE_REQUEST_STATUSES:
-        booking = _booking_made_by(replaced, session)
-        if booking is not None:
-            booking.status = BookingStatus.CANCELLED
-        replaced.status = BookingRequestStatus.RELEASED
+    if replaced.status in UNAVAILABILITY_FLAGGABLE_STATUSES:
+        _release_and_free_venue(replaced, session)
     event_services.withdraw_safety_approval(
         replacement.event_id,
         actor_id=decided_by,

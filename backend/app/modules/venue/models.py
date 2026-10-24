@@ -256,13 +256,26 @@ RETIRED_REQUEST_STATUSES = frozenset(
     {BookingRequestStatus.WITHDRAWN, BookingRequestStatus.RELEASED}
 )
 
-#: Arrangements a venue becoming unavailable can leave needing another venue: a
-#: confirmed booking, or a request Venue Staff can still decide (SCRUM-92 AC1). A
-#: decided, withdrawn or released one has nothing left to lose. SCRUM-75 adds On Hold.
+#: Arrangements a significant change to the event can flag: a confirmed booking, or a
+#: request Venue Staff can still decide (SCRUM-33 AC6, ADR-0094 decision 2). A
+#: decided, withdrawn or released one has nothing left to lose. On Hold waits for its
+#: own follow-up (ADR-0094), though a venue becoming unavailable flags it (ADR-0100).
 FLAGGABLE_REQUEST_STATUSES = frozenset(
     {
         BookingRequestStatus.PENDING,
         BookingRequestStatus.CONFLICTING,
+        BookingRequestStatus.APPROVED,
+    }
+)
+
+#: Arrangements a venue becoming unavailable can leave needing another venue (SCRUM-92
+#: AC1): a confirmed booking, a request Venue Staff can still decide, and a request On
+#: Hold, whose tentative hold is a booking too (Product Owner, 19 Oct; ADR-0100).
+UNAVAILABILITY_FLAGGABLE_STATUSES = frozenset(
+    {
+        BookingRequestStatus.PENDING,
+        BookingRequestStatus.CONFLICTING,
+        BookingRequestStatus.ON_HOLD,
         BookingRequestStatus.APPROVED,
     }
 )
@@ -556,10 +569,11 @@ class VenueBookingRequest(db.Model):  # type: ignore[name-defined]
     def needs_alternative_venue(self) -> bool:
         """Whether the arrangement is flagged "Needs Alternative Venue" (SCRUM-92 AC1).
 
-        Only while it still holds or asks for its venue: once it is released, withdrawn
-        or decided against, its flags stay as the record of why, but nothing is needed.
+        Only while it still holds or asks for its venue, On Hold included (ADR-0100):
+        once it is released, withdrawn or decided against, its flags stay as the record
+        of why, but nothing is needed.
         """
-        if self.status not in FLAGGABLE_REQUEST_STATUSES:
+        if self.status not in UNAVAILABILITY_FLAGGABLE_STATUSES:
             return False
         return len(self.flags) > 0
 
@@ -567,9 +581,10 @@ class VenueBookingRequest(db.Model):  # type: ignore[name-defined]
     def is_flagged_after_change(self) -> bool:
         """Whether a significant change to the event flagged the arrangement (ADR-0094).
 
-        SCRUM-33 AC6. Only while it still holds or asks for its venue, as for
-        :attr:`needs_alternative_venue`: once it is released, withdrawn or decided
-        against, its flags stay as the record of why, but nothing is needed.
+        SCRUM-33 AC6. Only while it is Pending, Conflicting or Approved; unlike
+        :attr:`needs_alternative_venue`, not while On Hold, which waits for its own
+        follow-up (ADR-0094 decision 2, ADR-0100). Once it is released, withdrawn or
+        decided against, its flags stay as the record of why, but nothing is needed.
         """
         if self.status not in FLAGGABLE_REQUEST_STATUSES:
             return False

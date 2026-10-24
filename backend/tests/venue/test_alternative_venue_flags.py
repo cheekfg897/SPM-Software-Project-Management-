@@ -1,9 +1,10 @@
 """Unit tests for SCRUM-92 — flag bookings affected when a venue becomes unavailable.
 
-AC1: a block over a confirmed booking or a Pending request marks it "Needs Alternative
-Venue", with the reason and the period. AC2: the reason is a category with a note. AC8:
-removing the block clears the flag and the booking stands. AC9: deactivating the venue
-flags its future arrangements the same way, until it is reactivated (ADR-0053).
+AC1: a block over a confirmed booking, a Pending request or a request On Hold marks it
+"Needs Alternative Venue", with the reason and the period (ADR-0100). AC2: the reason
+is a category with a note. AC8: removing the block clears the flag and the booking
+stands. AC9: deactivating the venue flags its future arrangements the same way, until
+it is reactivated (ADR-0053).
 
 The services run against ``db_session``. The default arrangement is the ``saved_event``
 fixture's, 09:00 to 12:00 on 1 November 2026 in Singapore, at a venue with no setup or
@@ -39,6 +40,8 @@ from tests.venue.conftest import (
     block,
     bookings,
     decide,
+    hours_from_now,
+    place_hold,
     raise_booking,
     reload_request,
     two_venues,
@@ -48,11 +51,13 @@ pytestmark = pytest.mark.scrum_92
 
 Flag = tuple[UnavailabilityCategory, str, datetime, datetime | None, int | None]
 
-#: AC1: a confirmed booking (an Approved arrangement) or a request Venue Staff can still
-#: decide. Typed out here, from the AC, so the code's own list is checked against it.
+#: AC1: a confirmed booking (an Approved arrangement), a request Venue Staff can still
+#: decide, or one On Hold, whose tentative hold is a booking too (Product Owner, 19 Oct,
+#: ADR-0100). Typed out here, from the AC, so the code's own list is checked against it.
 FLAGGED_STATUSES = {
     BookingRequestStatus.PENDING,
     BookingRequestStatus.CONFLICTING,
+    BookingRequestStatus.ON_HOLD,
     BookingRequestStatus.APPROVED,
 }
 NOT_FLAGGED_STATUSES = [status for status in BookingRequestStatus if status not in FLAGGED_STATUSES]
@@ -86,6 +91,17 @@ def _deactivate(venue: Venue, session: Session, **overrides: Any) -> Venue:
     return services.deactivate_venue(
         venue.id, {**DEACTIVATION, **overrides}, session=session, now=DEACTIVATED_AT
     )
+
+
+def _held(request: VenueBookingRequest, session: Session) -> VenueBookingRequest:
+    """Put a live tentative hold on a multi-venue event's request, as Venue Staff."""
+    return place_hold(request.id, hours_from_now(24), session)
+
+
+def _venue_of(request: VenueBookingRequest, session: Session) -> Venue:
+    venue = session.get(Venue, request.venue_id)
+    assert venue is not None
+    return venue
 
 
 # --------------------------------------------------------------------------
@@ -238,6 +254,21 @@ def test_two_blocks_over_one_booking_each_leave_a_flag(
     ]
 
 
+def test_a_block_over_a_held_request_flags_it_and_the_hold_still_holds_the_venue(
+    db_session: Session, multi_venue_request: VenueBookingRequest
+) -> None:
+    """A tentative hold is a booking too (Product Owner, 19 Oct, ADR-0100)."""
+    held = _held(multi_venue_request, db_session)
+
+    block(_venue_of(held, db_session), at(10), at(11), db_session)
+
+    flagged = reload_request(db_session, held.id)
+    assert flagged.needs_alternative_venue is True
+    assert flagged.status is BookingRequestStatus.ON_HOLD
+    assert flagged.booking is not None
+    assert flagged.booking.status is BookingStatus.TENTATIVE
+
+
 # --------------------------------------------------------------------------
 # AC2 — the reason is one of five categories, with a note
 # --------------------------------------------------------------------------
@@ -357,6 +388,16 @@ def test_deactivating_a_venue_flags_its_future_bookings_until_it_is_reactivated(
         (UnavailabilityCategory.RENOVATION, "Closed for a refit.", DEACTIVATED_AT, None, None)
     ]
     assert reload_request(db_session, approved.id).needs_alternative_venue is True
+
+
+def test_deactivating_a_venue_flags_a_held_request(
+    db_session: Session, multi_venue_request: VenueBookingRequest
+) -> None:
+    held = _held(multi_venue_request, db_session)
+
+    _deactivate(_venue_of(held, db_session), db_session)
+
+    assert reload_request(db_session, held.id).needs_alternative_venue is True
 
 
 @pytest.mark.parametrize(
