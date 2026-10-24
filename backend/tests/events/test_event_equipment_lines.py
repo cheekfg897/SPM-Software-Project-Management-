@@ -24,7 +24,6 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.common.errors import ConflictError, NotFoundError, ValidationError
-from app.modules.auth.models import User
 from app.modules.auth.permissions import Role
 from app.modules.equipment.models import EquipmentType
 from app.modules.events.models import (
@@ -33,12 +32,11 @@ from app.modules.events.models import (
     EventRequest,
     EventRequestStatus,
 )
-from app.modules.events.schemas import EquipmentLineSchema, EventRequestDetailSchema
+from app.modules.events.schemas import EquipmentLineSchema
 from app.modules.events.services import (
     DUPLICATE_LINE_MESSAGE,
     EquipmentNotEditableError,
     add_equipment_line,
-    get_event_request_for_organiser,
     list_equipment_lines,
     remove_equipment_line,
     update_equipment_line,
@@ -667,27 +665,6 @@ def test_listing_an_unknown_event_request_is_not_found(
 
     assert exc_info.value.status_code == 404
     assert exc_info.value.message == "Event request not found."
-
-
-def test_the_organisers_own_event_record_shows_its_equipment_lines(
-    saved_users: list[User],
-    saved_event_request: EventRequest,
-    equipment_type: EquipmentType,
-    valid_equipment_line_payload: dict[str, Any],
-) -> None:
-    line = add_equipment_line(COORDINATOR_ID, REFERENCE, valid_equipment_line_payload)
-
-    event_record = EventRequestDetailSchema().dump(get_event_request_for_organiser("7", REFERENCE))
-
-    assert event_record["equipment_lines"] == [
-        {
-            "id": line.id,
-            "equipment_type_id": equipment_type.id,
-            "quantity": 2,
-            "notes": "Needs HDMI",
-            "status": "requested",
-        }
-    ]
 
 
 # --------------------------------------------------------------------------

@@ -22,7 +22,7 @@ from app.modules.events import routes
 from app.modules.events.models import EventRequest
 from app.modules.events.services import (
     CoordinatorContact,
-    EventRecord,
+    OrganiserEventRecord,
     get_event_record_for_organiser,
 )
 
@@ -50,9 +50,9 @@ def open_record(
     organiser = make_user(role=Role.EVENT_ORGANISER, user_id=7)
 
     def _open(coordinator: CoordinatorContact | None) -> tuple[Response, int]:
-        def fake_get(organiser_id: Any, reference: Any) -> EventRecord:
+        def fake_get(organiser_id: Any, reference: Any) -> OrganiserEventRecord:
             event_request = make_event_request(reference=REFERENCE, coordinator_id=3)
-            return EventRecord(event_request=event_request, coordinator=coordinator)
+            return OrganiserEventRecord(event_request=event_request, coordinator=coordinator)
 
         monkeypatch.setattr(routes, "get_event_record_for_organiser", fake_get)
         headers = {"Authorization": f"Bearer {token_for(organiser)}"}

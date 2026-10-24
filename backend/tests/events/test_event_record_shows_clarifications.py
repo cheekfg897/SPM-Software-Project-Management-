@@ -21,13 +21,13 @@ from typing import Any
 import pytest
 
 from app.modules.events.models import EventHistoryKind, EventRequest
-from app.modules.events.services import ClarificationAsShown, EventRecord
+from app.modules.events.services import ClarificationAsShown, EventRecord, OrganiserEventRecord
 
 pytestmark = pytest.mark.scrum_32
 
 OpenRecord = Callable[[], EventRecord]
 RecordEntry = Callable[..., None]
-OpenRecordRoute = Callable[[EventRecord], dict[str, Any]]
+OpenRecordRoute = Callable[[OrganiserEventRecord], dict[str, Any]]
 
 #: The Event Organiser who owns ``saved_event_request``; ``saved_users`` names them.
 ORGANISER_ID = 7
@@ -230,7 +230,7 @@ def test_the_record_route_shows_the_exchange_in_business_time(
     outstanding = ClarificationAsShown(
         message=SECOND_QUESTION, requested_by=COORDINATOR_NAME, requested_at=SECOND_ASKED_AT
     )
-    record = EventRecord(
+    record = OrganiserEventRecord(
         event_request=make_event_request(),
         coordinator=None,
         clarifications=(answered, outstanding),

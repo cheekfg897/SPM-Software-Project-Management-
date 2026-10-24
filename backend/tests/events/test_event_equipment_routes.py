@@ -2,9 +2,11 @@
 
 Event Coordinators add, edit and remove an event's equipment lines (AC1, AC2);
 coordinators and Technical Support Staff read them, with the event's date and times
-so Technical Support know by when it is needed, and the organiser sees them on
-their own event record (AC4, ADR-0019). Each route passes the caller's id on, so the
-services can limit a coordinator to the events assigned to them (ADR-0019).
+so Technical Support know by when it is needed, and the coordinator sees them on
+the event record (AC4, ADR-0019). The organiser's own view of them is in
+``test_organiser_equipment_view.py`` (AC5, ADR-0098). Each route passes the caller's
+id on, so the services can limit a coordinator to the events assigned to them
+(ADR-0019).
 
 The *registered* view functions are called inside a request context, so the real
 decorators run. The services are replaced with mocks: a refused request must be
@@ -231,7 +233,7 @@ def test_the_list_route_shows_the_lines_and_when_the_event_is(
     mock_services["equipment_lines_as_shown"].assert_called_once_with([shown_line])
 
 
-def test_the_organisers_detail_route_shows_the_equipment_lines(
+def test_the_coordinators_detail_route_shows_the_equipment_lines_with_their_notes(
     call_route: CallRoute,
     token_for: TokenFor,
     make_user: Callable[..., User],
@@ -240,18 +242,19 @@ def test_the_organisers_detail_route_shows_the_equipment_lines(
     shown_line: EventEquipmentLine,
     line_as_shown: dict[str, Any],
 ) -> None:
+    """The organiser's record shows its own view instead (ADR-0098)."""
     event_request = make_event_request()
     event_request.equipment_lines = [shown_line]
     record = EventRecord(event_request=event_request, coordinator=None)
-    replace_services(routes, {"get_event_record_for_organiser": record})
-    organiser = make_user(role=Role.EVENT_ORGANISER, user_id=7)
+    replace_services(routes, {"get_event_record_for_coordinator": record})
+    coordinator = make_user(role=Role.EVENT_COORDINATOR, user_id=3)
 
     response, status = call_route(
         "events.get_my_request",
         "GET",
         f"/api/events/requests/{REFERENCE}",
         {"reference": REFERENCE},
-        token_for(organiser),
+        token_for(coordinator),
     )
 
     assert status == 200
