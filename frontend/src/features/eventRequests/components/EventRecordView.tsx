@@ -17,6 +17,7 @@ import { EditDetailsSection } from './EditDetailsSection'
 import { EventHistorySection } from './EventHistorySection'
 import { MessageForm } from './MessageForm'
 import { OrganiserEquipment } from './OrganiserEquipment'
+import { OrganiserVenues } from './OrganiserVenues'
 import { RecordActions } from './RecordActions'
 import { RecordHeading } from './RecordHeading'
 import { RecordSection } from './RecordSection'
@@ -57,7 +58,8 @@ function CoordinatorLinks({ reference }: { reference: string }) {
  * and its decision, clarifications and programme notes once there are any (SCRUM-24 AC9,
  * ADR-0056). Which record a viewer may open is the backend's call. Its assigned coordinator
  * also gets links on and the review actions, and an organiser answers an open question here
- * (SCRUM-31, SCRUM-32, ADR-0060) and sees their equipment (SCRUM-37 AC5, ADR-0098).
+ * (SCRUM-31, SCRUM-32, ADR-0060) and sees their equipment (SCRUM-37 AC5, ADR-0098) and, once
+ * the event is confirmed, its venues (SCRUM-49 AC11, ADR-0099).
  */
 export function EventRecordView({ record }: { record: EventRecord }) {
   const viewer = useAppSelector(selectSessionUser)
@@ -68,6 +70,8 @@ export function EventRecordView({ record }: { record: EventRecord }) {
   // Only the organiser's record names each line's equipment; the coordinator works on the
   // lines from the Equipment page instead.
   const organisersEquipment = record.equipment_lines.filter(isOrganiserEquipmentLine)
+  // Only the organiser's record lists the venues, and only once the event is confirmed.
+  const confirmedVenues = record.venue_arrangements ?? []
   return (
     <PageContainer title={record.name}>
       <RecordHeading request={record} />
@@ -90,6 +94,11 @@ export function EventRecordView({ record }: { record: EventRecord }) {
         <RecordSection title="Clarifications">
           <ClarificationList clarifications={record.clarifications} />
           {isAnswerNeeded && <AnswerClarification reference={record.reference} />}
+        </RecordSection>
+      )}
+      {confirmedVenues.length > 0 && (
+        <RecordSection title="Venues">
+          <OrganiserVenues arrangements={confirmedVenues} />
         </RecordSection>
       )}
       {organisersEquipment.length > 0 && (
