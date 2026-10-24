@@ -5,6 +5,7 @@ import { sendRequestsAs } from '@/test/sendRequestsAs'
 
 import { MOCK_ACCOUNTS, mockTokenFor } from '../fixtures/accounts'
 
+import { flagArrangementsAfterChange } from './booking'
 import { MOCK_ARRANGEMENTS, MOCK_BOOKING_EVENTS, MOCK_BOOKING_VENUES } from './bookingFixtures'
 
 /**
@@ -921,9 +922,30 @@ describe('SCRUM-92 booking mock: raising a replacement for a flagged arrangement
     sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.coordinator))
   }
 
-  async function bookedHallAsListed() {
+  /** The booked event's arrangement `id`, as the mock lists it. */
+  async function bookedEventArrangement(id: unknown) {
     const listed = await apiRequest<Record<string, unknown>[]>(bookingUrl(BOOKED_EVENT.reference))
-    return listed.find((arrangement) => arrangement.id === bookedHall.id)
+    return listed.find((arrangement) => arrangement.id === id)
+  }
+
+  /**
+   * A request on the booked event that Venue Staff approved and a change to the event's times
+   * then flagged (SCRUM-33 AC6), as the edit mock flags it.
+   */
+  async function changeFlaggedArrangement() {
+    const raised = await raise(BOOKED_EVENT.reference, validPayload())
+    await decideAsVenueStaff(raised.id, 'approved')
+    flagArrangementsAfterChange(BOOKED_EVENT.reference, {
+      timingChanged: true,
+      venueRequirementsChanged: false,
+      previousAttendance: 10,
+      newAttendance: 10,
+    })
+    return {
+      id: Number(raised.id),
+      starts_at: String(raised.starts_at),
+      ends_at: String(raised.ends_at),
+    }
   }
 
   it('saves a Pending replacement linked to the flagged arrangement', async () => {
@@ -1017,7 +1039,7 @@ describe('SCRUM-92 booking mock: raising a replacement for a flagged arrangement
 
     await decideAsVenueStaff(replacement.id, 'approved')
 
-    expect(await bookedHallAsListed()).toMatchObject({
+    expect(await bookedEventArrangement(bookedHall.id)).toMatchObject({
       status: 'released',
       needs_alternative_venue: false,
       // The backend keeps why it was flagged on the record (ADR-0053).
@@ -1030,9 +1052,34 @@ describe('SCRUM-92 booking mock: raising a replacement for a flagged arrangement
 
     await decideAsVenueStaff(replacement.id, 'rejected')
 
-    expect(await bookedHallAsListed()).toMatchObject({
+    expect(await bookedEventArrangement(bookedHall.id)).toMatchObject({
       status: 'approved',
       needs_alternative_venue: true,
+    })
+  })
+
+  // As the backend's _check_replaceable: a change flag lets a replacement through too, the only
+  // way to clear one until Venue Staff can reconfirm a booking (SCRUM-59, ADR-0094).
+  it('accepts a replacement for an arrangement flagged after a change to the event', async () => {
+    const flagged = await changeFlaggedArrangement()
+
+    const created = await raise(BOOKED_EVENT.reference, replacementFor(flagged))
+
+    expect(created).toMatchObject({ status: 'pending', replaces_request_id: flagged.id })
+  })
+
+  it('stops counting the change flag once its replacement is approved, keeping why', async () => {
+    const flagged = await changeFlaggedArrangement()
+    const replacement = await raise(BOOKED_EVENT.reference, replacementFor(flagged))
+
+    await decideAsVenueStaff(replacement.id, 'approved')
+
+    expect(await bookedEventArrangement(flagged.id)).toMatchObject({
+      status: 'released',
+      flagged_after_change: false,
+      reassessment_flags: [
+        { kind: 'requires_reconfirmation', reason: "The event's date or time changed." },
+      ],
     })
   })
 })
