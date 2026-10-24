@@ -19,6 +19,7 @@ import {
   eventNotFound,
   withdrawSafetyApproval,
 } from './equipmentAccess'
+import { mockCatalogueType } from './equipmentCatalogue'
 import {
   MOCK_EQUIPMENT_LINES,
   MOCK_EQUIPMENT_TYPES,
@@ -100,6 +101,34 @@ export function requestedQuantity(reference: string, equipmentTypeId: number): n
 function savedLine(line: MockEquipmentLine) {
   const { id, equipment_type_id, quantity, notes, status } = line
   return { id, equipment_type_id, quantity, notes, status }
+}
+
+/** The name the catalogue has now for the line's equipment type. */
+function equipmentTypeName(line: MockEquipmentLine): string {
+  const type = mockCatalogueType(line.equipment_type_id)
+  if (type === undefined) {
+    throw new Error(`Line ${String(line.id)} names an equipment type the catalogue lacks`)
+  }
+  return type.name
+}
+
+/** A line as its event's organiser sees it (OrganiserEquipmentLineSchema, ADR-0098). */
+function organisersLine(line: MockEquipmentLine) {
+  const { id, quantity, status, provided_quantity } = line
+  return { id, equipment_type_name: equipmentTypeName(line), quantity, status, provided_quantity }
+}
+
+/**
+ * The event's lines as its record shows them (SCRUM-37 AC5, SCRUM-48 AC5, ADR-0098): the
+ * organiser's own view of each, without the notes, outcome note or reviewer, and the line as
+ * staff save it for the coordinator.
+ */
+export function recordLinesOf(reference: string, viewerRole: Role) {
+  const eventLines = linesOfEvent(reference)
+  if (viewerRole === ROLE.EVENT_ORGANISER) {
+    return eventLines.map(organisersLine)
+  }
+  return eventLines.map(savedLine)
 }
 
 /** A line as the event's list shows it to staff, with its shortfall (EquipmentLineWithOutcomeSchema). */

@@ -1,5 +1,6 @@
 import { ROLE } from '@/config/roles'
 import type { Role } from '@/config/roles'
+import { recordEquipmentOutcome } from '@/features/equipment/api'
 import { fetchAssignedEventRequests, fetchEventRequest } from '@/features/eventRequests/api'
 import { refusal } from '@/test/refusal'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
@@ -97,7 +98,6 @@ describe('SCRUM-24 mock of an event record', () => {
       decision: null,
       clarifications: [],
       programme_notes: 'Keynote at 9:30, breakout rooms after lunch.',
-      equipment_lines: [],
     })
     expect(record.coordinator).not.toHaveProperty('id')
     expect(record).not.toHaveProperty('coordinator_id')
@@ -149,14 +149,18 @@ describe('SCRUM-24 mock of an event record', () => {
     ])
   })
 
-  it('shows a coordinator the same record for an event assigned to them', async () => {
+  it('shows a coordinator the same record for an event assigned to them, but for the equipment', async () => {
     signInAs(MOCK_ACCOUNTS.organiser)
     const organisersView = await fetchEventRequest(COORDINATORS_UNDER_REVIEW)
     signInAs(MOCK_ACCOUNTS.coordinator)
 
     const coordinatorsView = await fetchEventRequest(COORDINATORS_UNDER_REVIEW)
 
-    expect(coordinatorsView).toEqual(organisersView)
+    // Each sees the equipment their own way, checked below.
+    expect({ ...coordinatorsView, equipment_lines: [] }).toEqual({
+      ...organisersView,
+      equipment_lines: [],
+    })
   })
 
   it.each([
@@ -178,4 +182,82 @@ describe('SCRUM-24 mock of an event record', () => {
       )
     },
   )
+})
+
+describe('SCRUM-37 AC5, SCRUM-48 AC5 mock of the equipment on an event record', () => {
+  it("shows the organiser each line's type, quantity, status and quantity provided, and nothing internal", async () => {
+    signInAs(MOCK_ACCOUNTS.organiser)
+
+    const record = await fetchEventRequest(COORDINATORS_UNDER_REVIEW)
+
+    expect(record.equipment_lines).toEqual([
+      {
+        id: 61,
+        equipment_type_name: 'Projector',
+        quantity: 10,
+        status: 'partially_fulfilled',
+        provided_quantity: 6,
+      },
+      {
+        id: 62,
+        equipment_type_name: 'Microphone',
+        quantity: 4,
+        status: 'requested',
+        provided_quantity: null,
+      },
+    ])
+  })
+
+  it('shows the coordinator each line as staff save it, technical notes included', async () => {
+    signInAs(MOCK_ACCOUNTS.coordinator)
+
+    const record = await fetchEventRequest(COORDINATORS_UNDER_REVIEW)
+
+    expect(record.equipment_lines).toEqual([
+      {
+        id: 61,
+        equipment_type_id: 1,
+        quantity: 10,
+        notes: 'Two at the back of the hall.',
+        status: 'partially_fulfilled',
+      },
+      {
+        id: 62,
+        equipment_type_id: 2,
+        quantity: 4,
+        notes: 'Lapel, not handheld.',
+        status: 'requested',
+      },
+    ])
+  })
+
+  it("shows only the event's own lines, and none on an event with no equipment", async () => {
+    signInAs(MOCK_ACCOUNTS.otherOrganiser)
+    const withLines = await fetchEventRequest('EVR-MOCK0001')
+    signInAs(MOCK_ACCOUNTS.organiser)
+
+    const withoutLines = await fetchEventRequest(COORDINATORS_AWAITING_ANSWER)
+
+    expect(withLines.equipment_lines.map((line) => line.id)).toEqual([41, 42])
+    expect(withoutLines.equipment_lines).toEqual([])
+  })
+
+  it('shows the organiser an outcome as soon as Technical Support record it', async () => {
+    signInAs(MOCK_ACCOUNTS.technicalSupport)
+    await recordEquipmentOutcome('EVR-MOCK0001', {
+      lineId: 41,
+      body: { provided_quantity: 6, note: 'Two are being repaired.' },
+    })
+    signInAs(MOCK_ACCOUNTS.otherOrganiser)
+
+    const record = await fetchEventRequest('EVR-MOCK0001')
+
+    expect(record.equipment_lines[0]).toEqual({
+      id: 41,
+      equipment_type_name: 'Projector',
+      quantity: 8,
+      status: 'partially_fulfilled',
+      provided_quantity: 6,
+    })
+  })
 })

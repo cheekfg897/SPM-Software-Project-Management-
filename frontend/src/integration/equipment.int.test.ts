@@ -6,6 +6,7 @@ import {
   updateEquipmentLine,
 } from '@/features/equipment/api'
 import { fetchEquipmentTypes } from '@/features/equipmentCatalogue/api'
+import { fetchEventRequest } from '@/features/eventRequests/api'
 import { apiRequest } from '@/lib/api'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
 
@@ -376,6 +377,51 @@ describe('SCRUM-48 equipment outcomes against the backend', () => {
   )
   it.todo('records the whole line as fulfilled, keeping no note, and revises it')
   it.todo('answers 404 "Equipment line not found." for another event\'s line')
+
+  it.skipIf(!canReviewALine)(
+    "shows the organiser each line's type, quantity, status and quantity provided, but not the notes, outcome note or reviewer (AC5, SCRUM-37 AC5)",
+    async () => {
+      const equipmentTypeId = await newEquipmentType()
+      const { name: typeName } = await apiRequest<{ name: string }>(
+        `/api/equipment/types/${String(equipmentTypeId)}`,
+      )
+      const event = await approvedEvent()
+      const line = await addEquipmentLine(event.reference, {
+        equipment_type_id: equipmentTypeId,
+        quantity: 10,
+        notes: 'Two at the back of the hall.',
+      })
+      await signInAsTechSupport()
+      await recordEquipmentOutcome(event.reference, {
+        lineId: line.id,
+        body: { provided_quantity: 6, note: 'Four are out for repair.' },
+      })
+      await signInAs(event.organiser)
+
+      const organisersRecord = await fetchEventRequest(event.reference)
+      await signInAs(staffAccount())
+      const coordinatorsRecord = await fetchEventRequest(event.reference)
+
+      expect(organisersRecord.equipment_lines).toEqual([
+        {
+          id: line.id,
+          equipment_type_name: typeName,
+          quantity: 10,
+          status: 'partially_fulfilled',
+          provided_quantity: 6,
+        },
+      ])
+      expect(coordinatorsRecord.equipment_lines).toEqual([
+        {
+          id: line.id,
+          equipment_type_id: equipmentTypeId,
+          quantity: 10,
+          notes: 'Two at the back of the hall.',
+          status: 'partially_fulfilled',
+        },
+      ])
+    },
+  )
   // SCRUM-48 AC8 (an outcome on a closed event) is checked in planning.int.test.ts, on an
   // event the coordinator rejected: nothing can cancel an event yet (SCRUM-61).
 })

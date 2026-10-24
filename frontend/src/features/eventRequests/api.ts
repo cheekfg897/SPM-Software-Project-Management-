@@ -1,6 +1,7 @@
 import { apiRequest } from '@/lib/api'
 
 import type { EventRequestStatus } from '@/config/eventStatus'
+import type { EquipmentLineStatus, SavedEquipmentLine } from '@/features/equipment/api'
 
 const EVENT_REQUEST_PATHS = {
   MINE: '/api/events/requests',
@@ -74,16 +75,32 @@ export interface Clarification {
 }
 
 /**
+ * An equipment line as the event's organiser is sent it: the type by name, how many were asked
+ * for, the status and, once Technical Support have reviewed it, how many will be provided
+ * (SCRUM-37 AC5, SCRUM-48 AC5, ADR-0098). Never the technical notes, the outcome note or who
+ * reviewed it.
+ */
+export interface OrganiserEquipmentLine {
+  id: number
+  equipment_type_name: string
+  quantity: number
+  status: EquipmentLineStatus
+  provided_quantity: number | null
+}
+
+/**
  * An event request's record: the request, the coordinator's note the organiser may see, who
- * the coordinator is (null until one is assigned), the decision (null until one is made) and
- * the clarification exchange, oldest first (SCRUM-24 AC9, ADR-0026, ADR-0056). The record's
- * equipment lines aren't read here (ADR-0056).
+ * the coordinator is (null until one is assigned), the decision (null until one is made), the
+ * clarification exchange, oldest first (SCRUM-24 AC9, ADR-0026, ADR-0056), and the equipment
+ * lines. The organiser is sent their own view of each line; the coordinator is sent the line as
+ * staff save it, and works on it from the Equipment page (ADR-0098).
  */
 export interface EventRecord extends EventRequest {
   programme_notes: string | null
   coordinator: CoordinatorContact | null
   decision: Decision | null
   clarifications: Clarification[]
+  equipment_lines: (OrganiserEquipmentLine | SavedEquipmentLine)[]
 }
 
 export const eventRequestKeys = {
