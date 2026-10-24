@@ -2963,22 +2963,6 @@ def _notify_assigned_coordinator(
     )
 
 
-def notify_coordinator_equipment_reserved(event_id: int, *, session: Session | None = None) -> None:
-    """Tell the event's assigned coordinator that equipment was reserved (SCRUM-46 AC5).
-
-    For the equipment module, after the reservation's own commit (ADR-0015): only the
-    assigned coordinator hears, once for every reservation (ADR-0018). With nobody
-    assigned the reservation stands, nobody is told, and that is logged.
-
-    Args:
-        event_id: The event's id, from :class:`EventEquipmentNeed`.
-        session: Database session; defaults to ``db.session``.
-    """
-    sess = resolve_session(session)
-    event_request = sess.get(EventRequest, event_id)
-    _notify_assigned_coordinator(event_request, NotificationKind.EQUIPMENT_RESERVED, sess)
-
-
 EQUIPMENT_SHORT_DETAIL = (
     "Equipment reserved for this event is no longer all available: "
     "some units were taken out of service."

@@ -59,8 +59,10 @@ class NotificationKind(str, enum.Enum):
     #: (SCRUM-43 AC6, ADR-0042).
     VENUE_BOOKING_APPROVED = "venue_booking_approved"
     VENUE_BOOKING_REJECTED = "venue_booking_rejected"
-    #: Tells the event's coordinator that equipment was reserved for it (SCRUM-46 AC5,
-    #: ADR-0037).
+    #: Told the event's coordinator that equipment was reserved for it (ADR-0037). No
+    #: longer raised: the coordinator hears once, of the outcome (SCRUM-46 AC5,
+    #: ADR-0102). Kept because notifications already sent hold it, and dropping a
+    #: Postgres enum value needs a migration.
     EQUIPMENT_RESERVED = "equipment_reserved"
     #: Tells the Event Coordinator Lead that a submitted request has entered the
     #: unassigned queue (SCRUM-95 AC4, ADR-0036).
