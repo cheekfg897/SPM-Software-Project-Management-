@@ -1033,6 +1033,10 @@ MIDNIGHT = time(0)
 #: names (SCRUM-92 AC6).
 ARRANGEMENT_NOT_FOUND_MESSAGE = "Venue arrangement not found."
 NOT_FLAGGED_MESSAGE = "This venue arrangement does not need an alternative venue."
+#: A replacement for a venue that became unavailable is always another venue for the
+#: original period; the same venue at another time is a change to the event (SCRUM-92
+#: AC6, Product Owner 19 Oct, ADR-0100).
+SAME_VENUE_MESSAGE = "A replacement must be at a different venue from the one it replaces."
 
 PENDING_INDEX_NAME = "uq_venue_booking_requests_pending"
 DUPLICATE_REQUEST_MESSAGE = "A pending request for this event, venue and period already exists."
@@ -1189,19 +1193,29 @@ def _notify_venue_staff(event: EventForBooking, session: Session | None) -> None
     )
 
 
-def _check_replaceable(event_id: int, arrangement_id: int, session: Session | None) -> None:
+def _check_replaceable(event_id: int, data: Mapping[str, Any], session: Session | None) -> None:
     """Refuse a replacement unless it names a flagged arrangement of the event (AC6).
 
     Flagged either because its venue became unavailable (SCRUM-92) or by a significant
     change to the event (SCRUM-33 AC6, ADR-0094). An arrangement of another event is
     reported as missing, as ADR-0035 §6 does for the arrangement routes, so it is not
-    discoverable.
+    discoverable. A replacement for an arrangement that needs an alternative venue must
+    be at another venue, whatever the period (SCRUM-92 AC6). One flagged only after a
+    change may stay at its venue for a new period, as replacing is how a change flag
+    clears (Product Owner 25 Oct, 6.4); approving one that overlaps the original's
+    booking is refused as a clash (ADR-0045, ADR-0100).
+
+    Args:
+        event_id: The event the replacement is raised for.
+        data: The validated request: ``replaces_request_id`` and ``venue_id``.
+        session: Database session; defaults to ``db.session``.
 
     Raises:
         ValidationError: 400 — on ``replaces_request_id``: no such arrangement on the
-            event, or it is not flagged.
+            event, or it is not flagged; on ``venue_id``: the venue it replaces,
+            when that venue became unavailable.
     """
-    replaced = resolve_session(session).get(VenueBookingRequest, arrangement_id)
+    replaced = resolve_session(session).get(VenueBookingRequest, data["replaces_request_id"])
     if replaced is None or replaced.event_id != event_id:
         raise ValidationError(
             "Invalid request.", details={"replaces_request_id": [ARRANGEMENT_NOT_FOUND_MESSAGE]}
@@ -1210,6 +1224,9 @@ def _check_replaceable(event_id: int, arrangement_id: int, session: Session | No
         raise ValidationError(
             "Invalid request.", details={"replaces_request_id": [NOT_FLAGGED_MESSAGE]}
         )
+    same_venue = replaced.venue_id == data["venue_id"]
+    if same_venue and replaced.needs_alternative_venue:
+        raise ValidationError("Invalid request.", details={"venue_id": [SAME_VENUE_MESSAGE]})
 
 
 def _event_to_book_for(
@@ -1224,19 +1241,19 @@ def _event_to_book_for(
     Raises:
         NotFoundError: 404 — no such event, or ``requested_by`` doesn't coordinate it.
         ConflictError: 409 — the event isn't at a status that allows the request.
-        ValidationError: 400 — a replacement for an arrangement that isn't flagged.
+        ValidationError: 400 — a replacement for an arrangement that isn't flagged, or
+            at the unavailable venue it replaces.
     """
     from app.modules.events import services as event_services  # circular at import time
 
-    replaces = data.get("replaces_request_id")
-    if replaces is None:
+    if data.get("replaces_request_id") is None:
         return event_services.get_approved_event_for_coordinator(
             reference, requested_by, session=session
         )
     event = event_services.get_event_for_replacement_booking(
         reference, requested_by, session=session
     )
-    _check_replaceable(event.id, replaces, session)
+    _check_replaceable(event.id, data, session)
     return event
 
 
@@ -1266,7 +1283,8 @@ def raise_booking_request(
     Raises:
         ValidationError: 400 — invalid payload, unknown venue, a period outside the
             venue's operating hours, no justification, or a replacement for an
-            arrangement that isn't the event's or isn't flagged.
+            arrangement that isn't the event's or isn't flagged, or at the
+            unavailable venue it replaces.
         NotFoundError: 404 — no such event, or ``requested_by`` doesn't coordinate it.
         ConflictError: 409 — the event isn't approved (or, for a replacement, in
             Safety Review).

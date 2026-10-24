@@ -25,6 +25,7 @@ from typing import Any
 import pytest
 from sqlalchemy.orm import Session
 
+from app.common.errors import ConflictError
 from app.modules.auth.models import User
 from app.modules.events import services as event_services
 from app.modules.events.models import EventRequest, EventRequestStatus
@@ -493,6 +494,51 @@ def test_a_request_no_change_flagged_shows_no_flags(shown: BookingRequestAsShown
 # --------------------------------------------------------------------------
 # A replacement releases a flagged arrangement (SCRUM-92 AC6, AC7, ADR-0094)
 # --------------------------------------------------------------------------
+
+
+def test_a_change_flagged_arrangement_is_replaced_at_its_own_venue_at_a_new_time(
+    db_session: Session, auditorium: Venue, event: EventRequest, main_id: int
+) -> None:
+    """A replacement clears a change flag (Product Owner 25 Oct, 6.4; ADR-0100).
+
+    The different-venue rule is for a venue that became unavailable (SCRUM-92), so the
+    event's own venue at its new time is accepted, and approving it releases the
+    original.
+    """
+    _edit(db_session, event, {"end_time": "18:00"})
+
+    replacement = raise_booking(
+        auditorium, event, db_session, replaces_request_id=main_id, **SECOND_PERIOD
+    )
+    decide(replacement.id, "approved", db_session)
+
+    assert replacement.venue_id == auditorium.id
+    assert reload_request(db_session, main_id).status is BookingRequestStatus.RELEASED
+
+
+def test_a_change_flagged_replacement_overlapping_its_own_booking_is_refused_at_approval(
+    db_session: Session, auditorium: Venue, event: EventRequest, main_id: int
+) -> None:
+    """The original's booking still holds the venue until the replacement is approved.
+
+    So an overlapping replacement at the same venue clashes with it (ADR-0045,
+    ADR-0094 "Not covered here"), and the original stands, still flagged.
+    """
+    _edit(db_session, event, {"end_time": "18:00"})
+    overlapping = {
+        "starts_at": "2026-11-01T10:00:00+08:00",
+        "ends_at": "2026-11-01T13:00:00+08:00",
+    }
+    replacement = raise_booking(
+        auditorium, event, db_session, replaces_request_id=main_id, **overlapping
+    )
+
+    with pytest.raises(ConflictError):
+        decide(replacement.id, "approved", db_session)
+
+    original = reload_request(db_session, main_id)
+    assert original.status is BookingRequestStatus.APPROVED
+    assert original.is_flagged_after_change is True
 
 
 def test_a_replacement_releases_an_arrangement_flagged_after_a_change(

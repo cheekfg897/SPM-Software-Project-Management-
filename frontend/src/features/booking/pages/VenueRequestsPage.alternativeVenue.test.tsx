@@ -250,6 +250,20 @@ describe('SCRUM-92 raising a replacement for a flagged arrangement (AC6)', () =>
     ).toBeInTheDocument()
   })
 
+  it('shows the backend’s refusal of the venue being replaced under Venue ID', async () => {
+    const view = openReplacing(BOOKED_EVENT.reference, bookedHall.id)
+    await screen.findByText(REPLACEMENT_NOTE, { exact: false })
+
+    await typeInto(view, 'Venue ID', String(bookedHall.venue_id))
+    await view.user.click(requestButton(view))
+
+    await waitFor(() => {
+      expect(view.getByLabelText('Venue ID')).toHaveAccessibleDescription(
+        'A replacement must be at a different venue from the one it replaces.',
+      )
+    })
+  })
+
   it('shows the backend’s refusal once the event can no longer replace a venue', async () => {
     const view = openReplacing(MOCK_BOOKING_EVENTS.confirmed.reference, bookedHall.id)
     // The confirmed event has no such arrangement, so the form names it by its id.

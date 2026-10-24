@@ -92,6 +92,11 @@ const ARRANGEMENT_NOT_FOUND_MESSAGE = 'Venue arrangement not found.'
 /** The backend's NOT_FLAGGED_MESSAGE, for a replacement of an arrangement with no flag (SCRUM-92). */
 const NOT_FLAGGED_MESSAGE = 'This venue arrangement does not need an alternative venue.'
 /**
+ * The backend's SAME_VENUE_MESSAGE: a replacement for a venue that became unavailable is always
+ * another venue (SCRUM-92 AC6, ADR-0100).
+ */
+const SAME_VENUE_MESSAGE = 'A replacement must be at a different venue from the one it replaces.'
+/**
  * As the backend's REPLACEMENT_BOOKING_STATUSES (events/services.py): a flag leaves an event that
  * was not yet Confirmed in Safety Review, so a replacement may be raised there too (ADR-0053).
  */
@@ -561,15 +566,20 @@ function findArrangement(event: MockBookingEvent, arrangementId: unknown) {
  * The backend's refusal of a replacement that doesn't name one of the event's flagged
  * arrangements, or null (SCRUM-92 AC6): flagged because its venue became unavailable, or by a
  * significant change to the event (SCRUM-33 AC6, `_check_replaceable`). Another event's is as
- * missing as an unknown one.
+ * missing as an unknown one. A replacement for an arrangement that needs an alternative venue must
+ * be at another venue, whatever the period; one flagged only after a change may stay at its venue
+ * for a new period, and approving one that overlaps it clashes (ADR-0100).
  */
-function replacementRefusal(event: MockBookingEvent, replacesId: unknown) {
-  const replaced = findArrangement(event, replacesId)
+function replacementRefusal(event: MockBookingEvent, body: Record<string, unknown>) {
+  const replaced = findArrangement(event, body.replaces_request_id)
   if (replaced === undefined) {
     return validationError({ replaces_request_id: [ARRANGEMENT_NOT_FOUND_MESSAGE] })
   }
   if (!replaced.needs_alternative_venue && !replaced.flagged_after_change) {
     return validationError({ replaces_request_id: [NOT_FLAGGED_MESSAGE] })
+  }
+  if (replaced.needs_alternative_venue && replaced.venue_id === body.venue_id) {
+    return validationError({ venue_id: [SAME_VENUE_MESSAGE] })
   }
   return null
 }
@@ -684,7 +694,7 @@ export const bookingHandlers: RequestHandler[] = [
       return statusRefusal
     }
     if (isReplacement) {
-      const refusal = replacementRefusal(event, body.replaces_request_id)
+      const refusal = replacementRefusal(event, body)
       if (refusal !== null) {
         return refusal
       }

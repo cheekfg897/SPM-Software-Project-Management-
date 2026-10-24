@@ -842,6 +842,35 @@ describe('SCRUM-33 reassessing the venue arrangement after a significant edit, a
       })
     },
   )
+
+  it.skipIf(!canApproveVenue)(
+    'takes a replacement at the flagged arrangement’s own venue for a new time (ADR-0100)',
+    async () => {
+      const { reference, bookingId } = await settledEvent()
+      await editEventRequest(reference, { end_time: '18:00' })
+      const [original] = await fetchBookingRequests(reference)
+      if (original === undefined) {
+        throw new Error('The settled event should have its approved venue arrangement.')
+      }
+
+      // A replacement clears a change flag (Product Owner 25 Oct), and the different-venue
+      // rule is only for a venue that became unavailable (SCRUM-92).
+      const replacement = await raiseBookingRequest(reference, {
+        venue_id: original.venue_id,
+        starts_at: `${EVENT_DATE}T13:00:00+08:00`,
+        ends_at: `${EVENT_DATE}T16:00:00+08:00`,
+        purpose: 'Integration replacement after a change',
+        replaces_request_id: bookingId,
+      })
+
+      expect(original.flagged_after_change).toBe(true)
+      expect(replacement).toMatchObject({
+        status: 'pending',
+        venue_id: original.venue_id,
+        replaces_request_id: bookingId,
+      })
+    },
+  )
 })
 
 describe('SCRUM-92 replacing a venue that became unavailable', () => {
@@ -934,6 +963,44 @@ describe('SCRUM-92 replacing a venue that became unavailable', () => {
         [replacement.id, 'approved', false],
       ])
       expect(listed[0]?.unavailability).toHaveLength(1)
+    },
+  )
+
+  it.skipIf(!canApproveVenue)(
+    'refuses a replacement at the venue it replaces, on venue_id, whatever the period (AC6)',
+    async () => {
+      const { reference } = await settledEvent()
+      const original = await onlyArrangement(reference)
+      await blockVenueOf(original)
+      const sameVenue = { venue_id: original.venue_id, replaces_request_id: original.id }
+
+      const samePeriod = await refusal(
+        raiseBookingRequest(reference, {
+          ...sameVenue,
+          starts_at: original.starts_at,
+          ends_at: original.ends_at,
+          purpose: 'Integration same-venue replacement',
+        }),
+      )
+      const laterPeriod = await refusal(
+        raiseBookingRequest(reference, {
+          ...sameVenue,
+          starts_at: `${EVENT_DATE}T13:00:00+08:00`,
+          ends_at: `${EVENT_DATE}T15:00:00+08:00`,
+          purpose: 'Integration same-venue replacement, later',
+        }),
+      )
+
+      const sameVenueRefusal = {
+        status: 400,
+        code: 'validation_error',
+        fieldErrors: {
+          venue_id: ['A replacement must be at a different venue from the one it replaces.'],
+        },
+      }
+      expect([samePeriod, laterPeriod]).toMatchObject([sameVenueRefusal, sameVenueRefusal])
+      // Nothing was saved: the flagged arrangement is still the event's only one.
+      expect(await fetchBookingRequests(reference)).toHaveLength(1)
     },
   )
 
