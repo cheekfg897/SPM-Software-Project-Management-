@@ -763,6 +763,14 @@ def _clarifications_of(
     return tuple(shown)
 
 
+def _equipment_type_names(session: Session) -> dict[int, str]:
+    """Every equipment type's name, by id, for showing lines by name, not by id."""
+    type_names = {}
+    for equipment_type in equipment_services.list_equipment_types(session=session):
+        type_names[equipment_type.id] = equipment_type.name
+    return type_names
+
+
 def _event_record(event_request: EventRequest, session: Session) -> EventRecord:
     """The request with the sections its record shows.
 
@@ -4295,9 +4303,7 @@ def _equipment_for_safety_review(
     event_request: EventRequest, session: Session
 ) -> list[SafetyReviewEquipment]:
     """The event's equipment requests in the order added, each with its type's name."""
-    type_names = {}
-    for equipment_type in equipment_services.list_equipment_types(session=session):
-        type_names[equipment_type.id] = equipment_type.name
+    type_names = _equipment_type_names(session)
 
     equipment = []
     for line in event_request.equipment_lines:
