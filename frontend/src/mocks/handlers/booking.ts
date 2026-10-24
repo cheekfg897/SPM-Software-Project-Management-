@@ -406,9 +406,9 @@ export function releaseEventArrangements(reference: string): void {
   }
   for (const arrangement of requestsOf(event)) {
     if (WITHDRAWABLE_STATUSES.includes(arrangement.status)) {
-      arrangement.status = 'withdrawn'
+      moveTo(arrangement, 'withdrawn')
     } else if (!RETIRED_STATUSES.includes(arrangement.status)) {
-      arrangement.status = 'released'
+      moveTo(arrangement, 'released')
     }
   }
 }

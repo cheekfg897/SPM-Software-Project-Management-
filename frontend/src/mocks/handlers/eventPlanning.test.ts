@@ -2,6 +2,7 @@ import {
   completeEvent,
   confirmEvent,
   decideEventRequest,
+  editEventRequest,
   fetchEventHistory,
   fetchAssignedEventRequests,
   rejectEvent,
@@ -937,6 +938,30 @@ describe('SCRUM-49 mock: a rejection reaches the venue and equipment mocks (AC10
     expect(statuses).toEqual([
       [approvedId, 'released'],
       [pendingId, 'withdrawn'],
+    ])
+  })
+
+  // As the backend's is_flagged_after_change: a freed arrangement no longer holds or asks for its
+  // venue, so its change flag stops counting, and the reason stays on record (SCRUM-33 AC6).
+  it('stops counting the change flags of the arrangements it frees, keeping the reasons', async () => {
+    signInAs(CHLOE)
+    const approvedId = await raiseVenueRequest('2026-11-10T09:00:00+08:00')
+    const pendingId = await raiseVenueRequest('2026-11-10T13:00:00+08:00')
+    signInAs(MOCK_ACCOUNTS.venueStaff)
+    await decideBookingRequest(approvedId, { outcome: 'approved' })
+    signInAs(CHLOE)
+    await editEventRequest(BOOKABLE, { end_time: '18:00' })
+
+    await rejectEvent(BOOKABLE, { reason: REASON })
+
+    const flags = (await fetchBookingRequests(BOOKABLE)).map((arrangement) => [
+      arrangement.id,
+      arrangement.flagged_after_change,
+      arrangement.reassessment_flags.length,
+    ])
+    expect(flags).toEqual([
+      [approvedId, false, 1],
+      [pendingId, false, 1],
     ])
   })
 
