@@ -27,7 +27,17 @@ Left open: whether to widen the existing route or add one, what the record holds
    - Technical Support's "Events with equipment" on Staff home. These rows used to open the Equipment page (ADR-0061); they now open the record, which gives Technical Support (and only them) a link on to the event's Equipment page, where they reserve and prepare. SCRUM-38's queue still opens the Equipment page directly. *Default to review.*
    - Each card on the Safety Officer's list ("Open the event record").
    - Each card in the Lead's queue and among the active events ("Open the event record"), and each event named in a coordinator's workload.
-10. **The mock answers the route as the backend does** (`src/mocks/handlers/staffEventRecord.ts`), refusing the same roles. Each mock keeps its own events, so the handler takes the event from the first mock that holds it (the event-request mock's full records first, then the Lead's, the Safety Officer's, the booking and Technical Support's mocks), and each section from the mock that keeps it. The Safety Officer's mock now keeps the outcome it records, so the record shows it.
+10. **The Lead's queue shows each request's status** (AC8: "every list shows event name, date, time and status"). `GET /api/events/requests/unassigned` now sends `status` with each row, after the reference and AC2's six fields (ADR-0036), and each queue card shows it with the shared status chip, as the active events do. Every queued request is Submitted today, but the card shows what the backend sends rather than assuming it.
+11. **The mock answers the route as the backend does** (`src/mocks/handlers/staffEventRecord.ts`), refusing the same roles. Each mock keeps its own events, so the handler takes the event from the first mock that holds it (the event-request mock's full records first, then the Lead's, the Safety Officer's, the booking and Technical Support's mocks), and each section from the mock that keeps it. The Safety Officer's mock now keeps the outcome it records, so the record shows it.
+
+## Not built: the Attendee's view of one event (AC9)
+AC9 also covers the Attendee: opening an event from "My events" should show the event's detail view. The web app has no page an Attendee can open for one event, so "My events" cards (`MyEventCard`) still open nothing. This change doesn't build one. What's missing:
+
+- **Backend:** no route answers one event to an Attendee. The catalogue route (`GET /api/events/catalogue`, SCRUM-52) lists only confirmed events with registration open that haven't ended, so many of an Attendee's own events (past, cancelled, registration closed) aren't in it. `GET /api/events/registrations` lists the Attendee's registrations, with the event's id, name, times and status, but has no route for one of them.
+- **Frontend:** the catalogue (`/events`) is a list with no page per event, and `/events/<reference>` is the assigned coordinator's record. "My events" rows carry the event's id, not its reference.
+- **Decisions for the team and the product owner:** which sections an Attendee sees (the public details only, or also the venue and their registration with its withdraw action), at what address, and whether past and cancelled events open.
+
+Until then AC9 is met for every role but the Attendee.
 
 ## Consequences
 - SCRUM-24 AC9 and AC10 are met for these roles in the backend and the web app; SCRUM-33 AC5 has a screen for every internal user; SCRUM-84 AC2 and SCRUM-85 AC2 are met on screen for internal users other than the coordinator.
