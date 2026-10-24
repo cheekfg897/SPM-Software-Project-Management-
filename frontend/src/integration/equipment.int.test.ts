@@ -374,7 +374,34 @@ describe('SCRUM-48 equipment outcomes against the backend', () => {
   it.todo(
     'refuses part of a line with no note, on note, and more than was asked for, on provided_quantity',
   )
-  it.todo('records the whole line as fulfilled, keeping no note, and revises it')
+  it.skipIf(!canReviewALine)(
+    'records the whole line as fulfilled keeping the note given, and a revision with no note clears it (AC2)',
+    async () => {
+      const equipmentTypeId = await newEquipmentType()
+      const event = await approvedEvent()
+      const line = await addEquipmentLine(event.reference, {
+        equipment_type_id: equipmentTypeId,
+        quantity: 4,
+      })
+      await signInAsTechSupport()
+
+      const recorded = await recordEquipmentOutcome(event.reference, {
+        lineId: line.id,
+        body: { provided_quantity: 4, note: '  Two are spares from the hall store.  ' },
+      })
+      const revised = await recordEquipmentOutcome(event.reference, {
+        lineId: line.id,
+        body: { provided_quantity: 4 },
+      })
+
+      expect(recorded).toMatchObject({
+        status: 'fulfilled',
+        shortfall: 0,
+        outcome_note: 'Two are spares from the hall store.',
+      })
+      expect(revised).toMatchObject({ status: 'fulfilled', outcome_note: null })
+    },
+  )
   it.todo('answers 404 "Equipment line not found." for another event\'s line')
   // SCRUM-48 AC8 (an outcome on a closed event) is checked in planning.int.test.ts, on an
   // event the coordinator rejected: nothing can cancel an event yet (SCRUM-61).
