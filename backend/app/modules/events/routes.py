@@ -29,6 +29,7 @@ from app.modules.events.schemas import (
     EventRequestDetailSchema,
     EventRequestSchema,
     FieldChangeSchema,
+    OrganiserEquipmentLineSchema,
     RegistrationSettingsSchema,
     StaffEventRecordSectionsSchema,
     StaffEventRequestSchema,
@@ -36,6 +37,7 @@ from app.modules.events.schemas import (
 )
 from app.modules.events.services import (
     EventRecord,
+    OrganiserEventRecord,
     add_equipment_line,
     assign_coordinator_to_request,
     complete_event_request,
@@ -83,6 +85,7 @@ _clarification_schema = ClarificationSchema(many=True)
 _event_request_detail_schema = EventRequestDetailSchema()
 _equipment_line_schema = EquipmentLineSchema()
 _equipment_line_with_outcome_schema = EquipmentLineWithOutcomeSchema()
+_organiser_equipment_line_schema = OrganiserEquipmentLineSchema()
 _equipment_event_schema = EventRequestSchema(only=EQUIPMENT_EVENT_FIELDS)
 _equipment_awaiting_action_schema = EquipmentAwaitingActionSchema()
 _awaiting_safety_review_schema = EventAwaitingSafetyReviewSchema()
@@ -147,6 +150,19 @@ def _event_record_body(record: EventRecord) -> dict[str, Any]:
     body["coordinator"] = _shown_or_none(_coordinator_contact_schema, record.coordinator)
     body["decision"] = _shown_or_none(_decision_schema, record.decision)
     body["clarifications"] = _clarification_schema.dump(record.clarifications)
+    return body
+
+
+def _organiser_event_record_body(record: OrganiserEventRecord) -> dict[str, Any]:
+    """The record as the event's organiser is shown it (ADR-0098).
+
+    The sections every record shows, with the staff's equipment lines replaced by the
+    organiser's own view of them: no technical notes, outcome note or reviewer.
+    """
+    body = _event_record_body(record)
+    body["equipment_lines"] = _organiser_equipment_line_schema.dump(
+        record.equipment_lines, many=True
+    )
     return body
 
 
@@ -327,9 +343,9 @@ def get_my_request(reference: str) -> tuple[Response, int]:
     """
     if Role(g.current_user_role) is Role.EVENT_COORDINATOR:
         record = get_event_record_for_coordinator(g.current_user_id, reference)
-    else:
-        record = get_event_record_for_organiser(g.current_user_id, reference)
-    return jsonify(_event_record_body(record)), 200
+        return jsonify(_event_record_body(record)), 200
+    organiser_record = get_event_record_for_organiser(g.current_user_id, reference)
+    return jsonify(_organiser_event_record_body(organiser_record)), 200
 
 
 # --------------------------------------------------------------------------

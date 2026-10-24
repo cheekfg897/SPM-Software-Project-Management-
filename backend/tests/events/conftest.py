@@ -30,6 +30,7 @@ from app.modules.events.services import (
     EquipmentLineAsShown,
     EventEdit,
     EventRecord,
+    OrganiserEventRecord,
     assign_coordinator_to_request,
     decide_event_request,
     get_event_record_for_coordinator,
@@ -718,14 +719,14 @@ def open_record_route(
     replace_services: Callable[[ModuleType, dict[str, Any]], dict[str, MagicMock]],
     token_for: Callable[..., str],
     make_user: Callable[..., User],
-) -> Callable[[EventRecord], dict[str, Any]]:
+) -> Callable[[OrganiserEventRecord], dict[str, Any]]:
     """Call the record route for ``EVR-AAAAAAAA`` as organiser 7, returning ``record``.
 
     The service is replaced, so the test checks only how the route shows the record.
     """
     token = token_for(make_user(role=Role.EVENT_ORGANISER, user_id=7))
 
-    def _open(record: EventRecord) -> dict[str, Any]:
+    def _open(record: OrganiserEventRecord) -> dict[str, Any]:
         replace_services(routes, {"get_event_record_for_organiser": record})
         response, status = call_route(
             "events.get_my_request",
