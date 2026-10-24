@@ -1,7 +1,8 @@
 # ADR-0079: The assigned coordinator edits an event's details on a page of its own, which sends only what changed and says which changes were significant
 
-- **Status:** Accepted; the page's place, the link at the foot of the event page, the internal
-  notes field opening empty and offering the edit in every status are defaults to review
+- **Status:** Accepted; the page's place, the link at the foot of the event page and the internal
+  notes field opening empty are defaults to review; decision 7 (the edit offered in every
+  status) superseded by [ADR-0101](0101-direct-edits-stop-at-confirmed.md): it is offered only in the statuses the backend accepts
 - **Date:** 2026-10-18
 - **Story:** SCRUM-33 Update event information and flag significant changes (AC1 to AC4)
 - **Extends:** [ADR-0025](0025-event-edits-significant-changes-and-history.md),
@@ -48,7 +49,8 @@ which no read route returns (the record leaves them out for everyone, ADR-0025 d
    ones, then, if any was significant, "A significant change means the arrangements already
    made for this event will be reassessed." Nothing changed says so. A link goes back to the
    event, whose history shows the changes. The record, its history and the lists are read again.
-7. **The form is offered in every status**, and an event that can't be edited now shows the
+7. *Superseded by [ADR-0101](0101-direct-edits-stop-at-confirmed.md): the edit is offered only in the five statuses before
+   Confirmed, and the record is read again after a refused save.* **The form is offered in every status**, and an event that can't be edited now shows the
    backend's message when saved, as the venue arrangement actions do (ADR-0069): the page
    doesn't copy `EDITABLE_STATUSES`.
 

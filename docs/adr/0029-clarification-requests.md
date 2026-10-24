@@ -1,6 +1,6 @@
 # ADR-0029: The coordinator asks the organiser for clarification; `awaiting_clarification` is a ninth status; the exchange lives in the event history
 
-- **Status:** Accepted; `awaiting_clarification` as the ninth and last status superseded by [ADR-0048](0048-ten-event-statuses.md), which lists ten; decision 32-4 (equipment locked while awaiting clarification) superseded by [ADR-0092](0092-equipment-line-changes-reopen-the-review.md)
+- **Status:** Accepted; `awaiting_clarification` as the ninth and last status superseded by [ADR-0048](0048-ten-event-statuses.md), which lists ten; decision 32-4 (equipment locked while awaiting clarification) superseded by [ADR-0092](0092-equipment-line-changes-reopen-the-review.md); decision 32-6 (not editable by the coordinator) superseded by [ADR-0101](0101-direct-edits-stop-at-confirmed.md) (SCRUM-33 AC8): the coordinator may edit while the question is open
 - **Date:** 2026-09-27
 - **Story:** SCRUM-32 Ask the Organiser for clarification
 - **Supersedes:** part of [ADR-0028](0028-review-and-decide.md): `approved` as the eighth and last status added. There are now nine.
@@ -35,7 +35,7 @@ Four questions changed what the code would be. The user agreed the defaults for 
 2. **Where it counts:**
    * **Open (32-3):** it stays in its coordinator's load (`OPEN_STATUSES`, ADR-0018). The request comes back to them once the organiser answers.
    * **Reassignable (32-5):** it can still be reassigned (`REASSIGNABLE_STATUSES`, ADR-0021). `NOT_REASSIGNABLE_MESSAGE` names it.
-   * **Not editable by the coordinator (32-6):** `EDITABLE_STATUSES` is unchanged, because while the question is outstanding the request is the organiser's to change.
+   * **Not editable by the coordinator (32-6):** *superseded by [ADR-0101](0101-direct-edits-stop-at-confirmed.md): the coordinator may now edit, to record the organiser's answer and amendments.* `EDITABLE_STATUSES` is unchanged, because while the question is outstanding the request is the organiser's to change.
    * **Equipment locked (32-4):** `EQUIPMENT_EDITABLE_STATUSES` is unchanged, for the same reason.
    * **Unchanged elsewhere (32-7, 32-8, 32-9):**
      * Technical Support's lists still show the event while it may run.

@@ -62,4 +62,4 @@ SCRUM-59 (Sprint 4) is where Venue Staff reconfirm or withdraw a flagged booking
 - SCRUM-58 lands: an approved change request calls the same `flag_arrangements_after_change`.
 - PR #93's follow-up (SCRUM-75) flags On Hold arrangements.
 - The customer answers the questions above (decisions 3, 4, 5, 8).
-- SCRUM-33 AC8 is built: the Confirmed-event test in `test_reassess_arrangements.py` changes to an edit in Safety Review (decision 11).
+- ~~SCRUM-33 AC8 is built: the Confirmed-event test in `test_reassess_arrangements.py` changes to an edit in Safety Review (decision 11).~~ Done by [ADR-0101](0101-direct-edits-stop-at-confirmed.md).

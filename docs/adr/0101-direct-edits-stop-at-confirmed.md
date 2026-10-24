@@ -1,0 +1,45 @@
+# ADR-0101: The coordinator edits an event directly in every status before Confirmed; a Confirmed event changes only through a change request
+
+- **Status:** Accepted; the five editable statuses and the Confirmed refusal pointing to a change request are SCRUM-33 AC8 and its status clarification; one error code for both refusals, their wording, and an edit in Safety Review before the Safety Officer rules leaving the event in Safety Review are defaults to review
+- **Date:** 2026-10-25
+- **Story:** SCRUM-33 Update event information and flag significant changes (AC8; AC7 in Safety Review)
+- **Supersedes:**
+  - [ADR-0025](0025-event-edits-significant-changes-and-history.md) decision 7: the statuses an edit is allowed in (`submitted`, `under_review` and `confirmed`, with `approved` added by [ADR-0028](0028-review-and-decide.md));
+  - [ADR-0029](0029-clarification-requests.md) decision 32-6: a request awaiting clarification is not editable by the coordinator;
+  - [ADR-0079](0079-coordinator-edits-event-details-in-the-web-app.md) decision 7: the edit is offered in every status.
+- **Extends:** [ADR-0087](0087-withdrawn-safety-approval-returns-the-event-to-approved.md), [ADR-0092](0092-equipment-line-changes-reopen-the-review.md), [ADR-0094](0094-reassess-each-venue-arrangement-after-a-significant-change.md)
+
+## Context
+SCRUM-33 AC8: "Given the event is Confirmed, When the coordinator tries to edit its information directly, Then the edit is refused and the message says a Confirmed event changes only through a change request (SCRUM-56, SCRUM-57)." The story's status clarification lists where direct edits are allowed: Submitted, Under Review, Awaiting Clarification, Approved and Safety Review. Awaiting Clarification is there because the coordinator records the Organiser's response and any amendments (SCRUM-32); Safety Review because a significant change there withdraws the safety approval (AC7). Confirmed, Completed, Cancelled and Rejected events are refused. The customer's Week 9 answer behind it: "once an event is Confirmed, information fields cannot be changed directly."
+
+On `main`, `EDITABLE_STATUSES` was the reverse of this in two places: it let a Confirmed event be edited, and refused Awaiting Clarification and Safety Review. AC7's withdrawal (ADR-0025 decision 25, ADR-0087) and AC6's reassessment (ADR-0094) were built against an edit of a Confirmed event, and both ADRs said the edit that matters most would move to Safety Review once AC8 was built.
+
+Three other things share or sit next to this window:
+
+- the organiser's amendment while a request awaits clarification (ADR-0029), which shares the edit's timing rules and change recording but has its own status check (only `awaiting_clarification`);
+- equipment lines, whose window (`EQUIPMENT_EDITABLE_STATUSES`, ADR-0092) already runs until Confirmed, Awaiting Clarification and Safety Review included;
+- reassignment (`REASSIGNABLE_STATUSES`, ADR-0021, ADR-0041), which ADR-0025 noted happened to hold the same values.
+
+## Decision
+1. **`EDITABLE_STATUSES` is `submitted`, `under_review`, `awaiting_clarification`, `approved` and `safety_review`** (AC8 and its status clarification). Every other status is refused with `409 request_not_editable`, as before. A draft is still never found by staff, so editing one stays a `404` (ADR-0024). The check order is unchanged: reference `404`, ownership `404`, status `409`, payload `400` (ADR-0025 decision 8).
+2. **A Confirmed event's refusal points to a change request:** "A confirmed event can only be changed through a change request." (`CONFIRMED_NOT_EDITABLE_MESSAGE`, AC8). It is checked before the general window, so the message is the Confirmed one whatever else changes.
+3. **The other refusals share one message:** "An event request can only be edited before it is confirmed, and not once it is rejected or cancelled." It covers Completed too, which is after Confirmed. It replaces "Only a submitted, under-review, approved or confirmed event request can be edited.", which listed the old statuses. The wording follows the equipment window's (ADR-0092).
+4. **One error code for both refusals.** Default to review: both are `request_not_editable`, since the frontend shows the message and doesn't branch on codes (frontend `CLAUDE.md`). A distinct code (say `change_request_required`) can come with SCRUM-56/57 if a screen needs to send the coordinator to the change request.
+5. **Awaiting Clarification: the coordinator's edit sits beside the organiser's amendment.** The edit leaves the status alone, so the request still waits for the organiser's answer, and the organiser can still amend and resubmit (ADR-0029). Both write `field_changed` entries through `_record_field_changes`, by whoever made each change, so the history shows both. Two changes to one field at once: last write wins, both in the history (ADR-0025 decision 24). The organiser's amendment is unchanged, including its own status check and the timing rules it shares with the edit. No safety approval or venue arrangement can exist before Approved (SCRUM-42, SCRUM-97), so in this status a significant change only asks Technical Support to recheck any equipment lines, as it already did in Submitted and Under Review.
+6. **Safety Review: the edit that meets a safety approval** (AC7). A significant change withdraws the Safety Officer's approval in the edit's commit and sends the event back to Approved for a new check (`withdraw_safety_approval`, ADR-0087), and each venue arrangement it affects is flagged (ADR-0094 decision 11). This already worked on `main`, but was unreachable while Safety Review was refused; the AC7 tests and ADR-0094's Confirmed-event test now edit an event in Safety Review. A note, or a significant field sent with the value it already has, withdraws nothing.
+   - **Default to review:** if the Safety Officer hasn't ruled yet, there is no approval to withdraw, so the event stays in Safety Review and the officer checks it as it now stands. AC7 covers only an event that "has already passed" its check. Confirmation still waits for any flagged arrangement to be settled (ADR-0094 decision 9).
+7. **The equipment window is left as it is.** `EQUIPMENT_EDITABLE_STATUSES` already holds the same five statuses and refuses everything after with its own message (ADR-0092); AC8 is about the event's information, not its lines, so that message is left alone. The two sets stay separate constants because their stories (SCRUM-33, SCRUM-37) could still diverge. `REASSIGNABLE_STATUSES` is not part of AC8 and doesn't change.
+8. **ADR-0087 decision 2 stays, for Technical Support's causes.** An edit can no longer reach a Confirmed event, so the only withdrawals that send a Confirmed event back to Approved are units out of service (SCRUM-47 AC5) and a revised outcome (SCRUM-48 AC7).
+9. **The web app offers the edit only where the backend accepts it** (supersedes ADR-0079 decision 7). The event page's "Edit details" section, with its link to the form, shows for the assigned coordinator only in the five statuses, as the planning actions do (ADR-0075). The form still shows the backend's refusal in its own words if one comes back, for example on a Confirmed event opened by its link. After a save, refused or not, the record, its history and the lists are read again, so a refusal caused by the event moving on shows its new status.
+
+**The mock** (`src/mocks/handlers/eventEdits.ts`) refuses a Confirmed event with the change-request message and the other closed statuses with the general one, and lets the five statuses through. Hana's mock events gain a completed one (EVR-PLAN0007) and a cancelled one (EVR-PLAN0008), so its tests cover every status both ways. Its safety-approval check no longer treats a Confirmed event as approved, since a Confirmed event never reaches it.
+
+## Consequences
+- A coordinator can no longer correct even a note on a Confirmed event: every change waits for SCRUM-56/57's change request. Until those are built, a Confirmed event's details can't change at all. The other paths to a Confirmed event (registration settings, completion, Technical Support's changes) are unaffected.
+- The direct edit can now meet the organiser's amendment while a request awaits clarification. Neither blocks the other; the history shows both.
+- An edit in Safety Review before the Safety Officer rules changes what they are checking without telling them. Nothing notifies the officer today; the event's history shows the change.
+
+## Revisit when
+- SCRUM-56/57 are built: the Confirmed refusal could link to raising a change request, which may want its own error code (decision 4).
+- The customer wants a significant change in Safety Review, before the Safety Officer rules, to send the event back to Approved or to tell the officer (decision 6).
+- The customer wants the coordinator to correct a Confirmed event's notes without a change request.
