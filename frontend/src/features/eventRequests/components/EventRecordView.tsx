@@ -5,6 +5,7 @@ import { ROLE } from '@/config/roles'
 import { eventEquipmentPath, venueRequestsPath } from '@/config/routes'
 import { selectSessionUser, useAppSelector } from '@/store'
 
+import { isOrganiserEquipmentLine } from '../api'
 import type { EventRecord } from '../api'
 import { useAnswerClarification } from '../hooks'
 
@@ -15,6 +16,7 @@ import { DecisionDetails } from './DecisionDetails'
 import { EditDetailsSection } from './EditDetailsSection'
 import { EventHistorySection } from './EventHistorySection'
 import { MessageForm } from './MessageForm'
+import { OrganiserEquipment } from './OrganiserEquipment'
 import { RecordActions } from './RecordActions'
 import { RecordHeading } from './RecordHeading'
 import { RecordSection } from './RecordSection'
@@ -55,7 +57,7 @@ function CoordinatorLinks({ reference }: { reference: string }) {
  * and its decision, clarifications and programme notes once there are any (SCRUM-24 AC9,
  * ADR-0056). Which record a viewer may open is the backend's call. Its assigned coordinator
  * also gets links on and the review actions, and an organiser answers an open question here
- * (SCRUM-31, SCRUM-32, ADR-0060).
+ * (SCRUM-31, SCRUM-32, ADR-0060) and sees their equipment (SCRUM-37 AC5, ADR-0098).
  */
 export function EventRecordView({ record }: { record: EventRecord }) {
   const viewer = useAppSelector(selectSessionUser)
@@ -63,6 +65,9 @@ export function EventRecordView({ record }: { record: EventRecord }) {
   const isAnswerNeeded =
     viewer?.role === ROLE.EVENT_ORGANISER &&
     record.status === EVENT_REQUEST_STATUS.AWAITING_CLARIFICATION
+  // Only the organiser's record names each line's equipment; the coordinator works on the
+  // lines from the Equipment page instead.
+  const organisersEquipment = record.equipment_lines.filter(isOrganiserEquipmentLine)
   return (
     <PageContainer title={record.name}>
       <RecordHeading request={record} />
@@ -85,6 +90,11 @@ export function EventRecordView({ record }: { record: EventRecord }) {
         <RecordSection title="Clarifications">
           <ClarificationList clarifications={record.clarifications} />
           {isAnswerNeeded && <AnswerClarification reference={record.reference} />}
+        </RecordSection>
+      )}
+      {organisersEquipment.length > 0 && (
+        <RecordSection title="Equipment">
+          <OrganiserEquipment lines={organisersEquipment} />
         </RecordSection>
       )}
       {record.programme_notes !== null && (

@@ -107,6 +107,13 @@ export interface EventRecord extends EventRequest {
   equipment_lines: (OrganiserEquipmentLine | SavedEquipmentLine)[]
 }
 
+/** Whether the line is the organiser's view of it: only theirs names the equipment type. */
+export function isOrganiserEquipmentLine(
+  line: OrganiserEquipmentLine | SavedEquipmentLine,
+): line is OrganiserEquipmentLine {
+  return 'equipment_type_name' in line
+}
+
 export const eventRequestKeys = {
   all: ['eventRequests'] as const,
   /** The signed-in organiser's list: it depends on whose organisation it is. */
