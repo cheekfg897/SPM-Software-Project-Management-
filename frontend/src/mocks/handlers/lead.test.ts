@@ -210,6 +210,12 @@ describe('SCRUM-96 Lead mock: the active list and the workload', () => {
     expect(rows.map((row) => row.reference)).toEqual([EVENTS.queuedFirst, EVENTS.queuedSecond])
   })
 
+  it('sends each queued request with its status, as the backend does (SCRUM-24 AC8)', async () => {
+    const { event_requests: rows } = await fetchUnassignedQueue()
+
+    expect(rows.map((row) => row.status)).toEqual(['submitted', 'submitted'])
+  })
+
   it('moves a request assigned from the queue into its coordinator’s workload and the active list', async () => {
     await assignCoordinator({ reference: EVENTS.queuedSecond, coordinator_email: AISHA.email })
 

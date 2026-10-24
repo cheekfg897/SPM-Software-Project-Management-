@@ -133,6 +133,7 @@ describe('SCRUM-95 the Lead queue hooks', () => {
       'proposed_date',
       'reference',
       'start_time',
+      'status',
       'submitted_at',
     ])
   })

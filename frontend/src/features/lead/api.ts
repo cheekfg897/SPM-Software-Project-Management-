@@ -13,7 +13,10 @@ const LEAD_PATHS = {
   reassign: (reference: string) => `/api/events/requests/${reference}/reassign`,
 } as const
 
-/** One request waiting in the queue: the reference that names it, then the six fields AC2 lists. */
+/**
+ * One request waiting in the queue: the reference that names it, the six fields AC2 lists, and its
+ * status, which every list shows (SCRUM-24 AC8, ADR-0095).
+ */
 export interface UnassignedRequest {
   reference: string
   name: string
@@ -23,6 +26,7 @@ export interface UnassignedRequest {
   expected_attendance: number
   /** ISO date-time with an offset, in business time. */
   submitted_at: string
+  status: EventRequestStatus
 }
 
 export interface UnassignedQueue {

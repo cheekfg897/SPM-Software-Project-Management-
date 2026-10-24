@@ -1,6 +1,7 @@
 import { useId } from 'react'
 import { Link } from 'react-router'
 
+import { StatusChip } from '@/components/ui'
 import { staffEventPath } from '@/config/routes'
 
 import type { UnassignedRequest } from '../api'
@@ -15,8 +16,8 @@ interface QueuedRequestCardProps {
 }
 
 /**
- * One request waiting in the queue: what it is, when it is for, a link to its read-only record
- * (SCRUM-24 AC10, ADR-0095), and the form to assign it.
+ * One request waiting in the queue: what it is, when it is for, its status (SCRUM-24 AC8), a link
+ * to its read-only record (SCRUM-24 AC10, ADR-0095), and the form to assign it.
  */
 export function QueuedRequestCard({ request }: QueuedRequestCardProps) {
   const headingId = useId()
@@ -33,11 +34,14 @@ export function QueuedRequestCard({ request }: QueuedRequestCardProps) {
       >
         Open the event record
       </Link>
-      <dl className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <dl className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <Detail term="Date">{formatProposedDate(request.proposed_date)}</Detail>
         <Detail term="Time">{formatProposedTimes(request.start_time, request.end_time)}</Detail>
         <Detail term="Expected attendance">{request.expected_attendance}</Detail>
         <Detail term="Submitted">{formatSubmittedAt(request.submitted_at)}</Detail>
+        <Detail term="Status">
+          <StatusChip status={request.status} />
+        </Detail>
       </dl>
       <CoordinatorEmailForm
         reference={request.reference}
