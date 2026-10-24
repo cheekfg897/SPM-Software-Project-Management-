@@ -3095,6 +3095,22 @@ def notify_coordinator_alternative_venue_needed(
     )
 
 
+def notify_coordinator_venue_available_again(
+    event_id: int, *, detail: str, session: Session | None = None
+) -> None:
+    """Tell the event's assigned coordinator a venue is available again (SCRUM-92 AC8).
+
+    For the venue module, once a block's removal or a venue's reactivation is committed
+    (ADR-0015, ADR-0100). ``detail`` names the venue, the arrangement and its period.
+    With nobody assigned the arrangement stands, nobody is told, and that is logged.
+    """
+    sess = resolve_session(session)
+    event_request = sess.get(EventRequest, event_id)
+    _notify_assigned_coordinator(
+        event_request, NotificationKind.VENUE_AVAILABLE_AGAIN, sess, detail=detail
+    )
+
+
 # --------------------------------------------------------------------------
 # SCRUM-68 — mark an event as completed after it has taken place
 # --------------------------------------------------------------------------

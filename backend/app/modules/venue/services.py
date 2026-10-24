@@ -268,11 +268,14 @@ def _mark_conflicting(
 NOTICE_TIME_FORMAT = "%Y-%m-%d %H:%M"
 #: How a notice ends a deactivation's period, which has no end (AC9).
 UNTIL_REACTIVATED = "until it is reactivated"
+#: What the coordinator is told once an arrangement's venue is available again (AC8,
+#: ADR-0100): the venue, the arrangement's purpose and its period, in business time.
+AVAILABLE_AGAIN_DETAIL = "{venue} is available again for {purpose} ({starts} to {ends})."
 
 
 @dataclass(frozen=True)
 class AlternativeVenueNotice:
-    """What the coordinator of one flagged arrangement's event is to be told (AC5)."""
+    """What the coordinator of one arrangement's event is to be told (AC5, AC8)."""
 
     event_id: int
     detail: str
@@ -342,6 +345,64 @@ def _tell_coordinators(notices: list[AlternativeVenueNotice], session: Session |
 
     for notice in notices:
         event_services.notify_coordinator_alternative_venue_needed(
+            notice.event_id, detail=notice.detail, session=session
+        )
+
+
+def _flag_left_by(venue_block_id: int | None) -> ColumnElement[bool]:
+    """The condition for a flag the block left, or with ``None``, a deactivation."""
+    if venue_block_id is None:
+        return AlternativeVenueFlag.venue_block_id.is_(None)
+    return AlternativeVenueFlag.venue_block_id == venue_block_id
+
+
+def _flagged_only_by(arrangement: VenueBookingRequest, venue_block_id: int | None) -> bool:
+    """Whether the block, or the deactivation, left every flag the arrangement has."""
+    return all(flag.venue_block_id == venue_block_id for flag in arrangement.flags)
+
+
+def _available_again_notices(
+    venue: Venue, venue_block_id: int | None, session: Session
+) -> list[AlternativeVenueNotice]:
+    """What each coordinator is told once a block or a deactivation is lifted (AC8).
+
+    ``venue_block_id`` names the block being removed, or is ``None`` for the
+    deactivation a reactivation lifts. Each live arrangement at the venue it flagged is
+    available again, unless another block still flags it (ADR-0100). Worked out before
+    the flags are deleted; the notices are sent after the commit (ADR-0015). Earliest
+    arrangement first.
+    """
+    stmt = (
+        select(VenueBookingRequest)
+        .where(
+            VenueBookingRequest.venue_id == venue.id,
+            VenueBookingRequest.status.in_(UNAVAILABILITY_FLAGGABLE_STATUSES),
+            VenueBookingRequest.flags.any(_flag_left_by(venue_block_id)),
+        )
+        .order_by(VenueBookingRequest.starts_at, VenueBookingRequest.id)
+    )
+    notices = []
+    for arrangement in session.scalars(stmt):
+        if not _flagged_only_by(arrangement, venue_block_id):
+            continue
+        detail = AVAILABLE_AGAIN_DETAIL.format(
+            venue=venue.name,
+            purpose=arrangement.purpose,
+            starts=_notice_time(arrangement.starts_at),
+            ends=_notice_time(arrangement.ends_at),
+        )
+        notices.append(AlternativeVenueNotice(arrangement.event_id, detail))
+    return notices
+
+
+def _tell_coordinators_available_again(
+    notices: list[AlternativeVenueNotice], session: Session | None
+) -> None:
+    """Tell each coordinator the venue is available again, once the flags are gone."""
+    from app.modules.events import services as event_services  # circular at import time
+
+    for notice in notices:
+        event_services.notify_coordinator_venue_available_again(
             notice.event_id, detail=notice.detail, session=session
         )
 
@@ -544,21 +605,24 @@ def reactivate_venue(venue_id: int, *, session: Session | None = None) -> Venue:
     """Reactivate a previously deactivated venue (SCRUM-25 AC6, SCRUM-92 AC8).
 
     The flags its deactivation left are cleared, so those arrangements stand again;
-    flags from blocks stay until each block is removed.
+    flags from blocks stay until each block is removed. The coordinator of each
+    arrangement left with no flag is then told the venue is available again (ADR-0100).
     """
     sess = resolve_session(session)
     venue = get_venue(venue_id, session=sess)
     venue.is_active = True
+    notices = _available_again_notices(venue, None, sess)
     arrangements_here = select(VenueBookingRequest.id).where(
         VenueBookingRequest.venue_id == venue.id
     )
     sess.execute(
         delete(AlternativeVenueFlag).where(
-            AlternativeVenueFlag.venue_block_id.is_(None),
+            _flag_left_by(None),
             AlternativeVenueFlag.booking_request_id.in_(arrangements_here),
         )
     )
     sess.commit()
+    _tell_coordinators_available_again(notices, session)
     return venue
 
 
@@ -942,7 +1006,9 @@ def remove_venue_block(venue_id: int, block_id: int, *, session: Session | None 
     """Delete a venue's block, making the period available again (SCRUM-34 AC4).
 
     The block must belong to the venue in the request (ADR-0016). The flags it left
-    are deleted with it, so those arrangements stand again (SCRUM-92 AC8).
+    are deleted with it, so those arrangements stand again, and the coordinator of each
+    one left with no flag is then told the venue is available again (SCRUM-92 AC8,
+    ADR-0100).
 
     Raises:
         NotFoundError: 404 — no such venue, or no such block on that venue.
@@ -954,10 +1020,11 @@ def remove_venue_block(venue_id: int, block_id: int, *, session: Session | None 
     )
     if block is None:
         raise NotFoundError("Block not found.")
-    left_by_block = AlternativeVenueFlag.venue_block_id == block.id
-    sess.execute(delete(AlternativeVenueFlag).where(left_by_block))
+    notices = _available_again_notices(venue, block.id, sess)
+    sess.execute(delete(AlternativeVenueFlag).where(_flag_left_by(block.id)))
     sess.delete(block)
     sess.commit()
+    _tell_coordinators_available_again(notices, session)
 
 
 # --------------------------------------------------------------------------
