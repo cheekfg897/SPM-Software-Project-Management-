@@ -1075,6 +1075,13 @@ describe('SCRUM-92 replacing a venue that became unavailable', () => {
   const AVAILABLE_AGAIN_SENT_BACK =
     /^Integration Hall \S+ is available again for Integration Planning\. Your original booking stands\. It still needs Safety Review and confirmation\.$/
 
+  /**
+   * What the organiser is told when the venue sends their confirmed event back: the venue and the
+   * event, by name, and not Venue Staff's note (AC3, Product Owner 25 Oct).
+   */
+  const ORGANISER_TOLD =
+    /^Integration Hall \S+ became unavailable for Integration Planning, so the event has gone back from Confirmed to Approved for its venue to be reviewed\. It has not been cancelled\.$/
+
   /** Check the "available again" notice about the event, as the coordinator reads it (AC8). */
   async function expectToldAvailableAgain(reference: string, detail = AVAILABLE_AGAIN) {
     const notice = await noticeAbout(reference, 'venue_available_again')
@@ -1199,9 +1206,15 @@ describe('SCRUM-92 replacing a venue that became unavailable', () => {
   it.skipIf(!canApproveVenue)(
     'tells the coordinator why, and clears the flag once Venue Staff remove the block (AC5, AC8)',
     async () => {
-      const { reference } = await settledEvent()
+      const { reference, organiser } = await settledEvent()
       const original = await onlyArrangement(reference)
       const block = await blockVenueOf(original)
+
+      // --- The event was not Confirmed, so its status stays and its organiser hears nothing (AC3) ---
+      expect((await fetchEventRequest(reference)).status).toBe('approved')
+      await signInAs(organiser)
+      expect(await noticeAbout(reference, 'alternative_venue_needed')).toBeUndefined()
+      await signInAs(staffAccount())
 
       // --- The coordinator is told the venue, the reason and the period (AC5) ---
       const notice = await noticeAbout(reference, 'alternative_venue_needed')
@@ -1254,18 +1267,28 @@ describe('SCRUM-92 replacing a venue that became unavailable', () => {
   )
 
   it.skipIf(!canApproveSafety)(
-    'tells the coordinator a confirmed event sent back to Approved still needs Safety Review (AC3, AC8)',
+    'tells the organiser a confirmed event went back to Approved, and the coordinator it still needs Safety Review once the venue is free (AC3, AC8)',
     async () => {
-      const { reference } = await safetyApprovedEvent()
+      const { reference, organiser } = await safetyApprovedEvent()
       await confirmEvent(reference)
       const original = await onlyArrangement(reference)
       const block = await blockVenueOf(original)
       expect((await fetchEventRequest(reference)).status).toBe('approved')
 
+      // --- The organiser is told, naming the venue and the event (AC3) ---
+      await signInAs(organiser)
+      expect(await noticeAbout(reference, 'alternative_venue_needed')).toMatchObject({
+        message:
+          'A venue booked for your event is unavailable. The event needs an alternative venue.',
+        link: `/events/${reference}`,
+      })
+      expect((await noticeAbout(reference, 'alternative_venue_needed'))?.detail).toMatch(
+        ORGANISER_TOLD,
+      )
+      // --- Once the block goes, the coordinator is told it still needs Safety Review (AC8) ---
       await signInAs(required(VENUE_STAFF))
       await removeVenueBlock(original.venue_id, block.id)
       await signInAs(staffAccount())
-
       await expectToldAvailableAgain(reference, AVAILABLE_AGAIN_SENT_BACK)
       // Nothing is confirmed again automatically (AC8).
       expect((await fetchEventRequest(reference)).status).toBe('approved')

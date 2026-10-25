@@ -1,10 +1,12 @@
 """Unit tests for SCRUM-92 — what a flag does to the event, and who is told.
 
-AC3: a Confirmed event goes back to Approved, the planning stage; an event at any other
-status keeps it. AC4: the event and its original booking stay on the record. AC5: the
-event's assigned coordinator is notified with the venue, the reason and the period; a
-notice that can't be saved loses only itself (ADR-0015). SCRUM-49 AC6: an event with a
-flagged booking can't be confirmed, and the flagged booking is named (ADR-0053).
+AC3: a Confirmed event goes back to Approved, the planning stage, and its organiser is
+told, naming the event and the venue (Product Owner, 25 Oct); an event at any other
+status keeps it, and its organiser hears nothing. AC4: the event and its original
+booking stay on the record. AC5: the event's assigned coordinator is notified with the
+venue, the reason and the period; a notice that can't be saved loses only itself
+(ADR-0015). SCRUM-49 AC6: an event with a flagged booking can't be confirmed, and the
+flagged booking is named (ADR-0053).
 
 The services run against ``db_session``; the event is the ``saved_event`` fixture's,
 assigned to coordinator 3, with an arrangement from 09:00 to 12:00 on 1 November 2026.
@@ -60,6 +62,11 @@ BLOCK_DETAIL = (
 DEACTIVATION_DETAIL = (
     "Main Hall is unavailable from 2026-10-20 12:00 until it is reactivated"
     " (renovation): Closed for a refit."
+)
+#: What the organiser is told when the venue sends their Confirmed event back (AC3).
+ORGANISER_DETAIL = (
+    "Main Hall became unavailable for Partner Summit, so the event has gone back from"
+    " Confirmed to Approved for its venue to be reviewed. It has not been cancelled."
 )
 NOT_CONFIRMED = [
     status for status in EventRequestStatus if status is not EventRequestStatus.CONFIRMED
@@ -150,6 +157,75 @@ def test_an_event_that_is_not_confirmed_keeps_its_status(
     kind, _, details = _history(db_session, event.id)[-1]
     assert kind is EventHistoryKind.ALTERNATIVE_VENUE_NEEDED
     assert details["returned_to_planning"] is False
+
+
+@pytest.mark.parametrize(
+    "make_unavailable",
+    [
+        pytest.param(_block_with_lift_broken, id="a block"),
+        pytest.param(_deactivate, id="a deactivation"),
+    ],
+)
+def test_the_organiser_is_told_their_confirmed_event_went_back_to_approved(
+    db_session: Session,
+    venue: Venue,
+    saved_event: SavedEvent,
+    make_unavailable: Callable[[Venue, Session], None],
+) -> None:
+    """The Product Owner, 25 Oct: the notice names the event and the venue (AC3).
+
+    Venue Staff's note stays out of it, as it does of the organiser's history.
+    """
+    event, _ = _arranged(venue, saved_event, db_session, EventRequestStatus.CONFIRMED)
+
+    make_unavailable(venue, db_session)
+
+    assert _notices(ORGANISER_ID) == [
+        (event.id, NotificationKind.ALTERNATIVE_VENUE_NEEDED, ORGANISER_DETAIL)
+    ]
+
+
+def test_the_coordinator_is_told_the_reason_and_not_the_organisers_notice(
+    db_session: Session, venue: Venue, saved_event: SavedEvent
+) -> None:
+    event, _ = _arranged(venue, saved_event, db_session, EventRequestStatus.CONFIRMED)
+
+    _block_with_lift_broken(venue, db_session)
+
+    assert _notices(COORDINATOR_ID) == [
+        (event.id, NotificationKind.ALTERNATIVE_VENUE_NEEDED, BLOCK_DETAIL)
+    ]
+
+
+@pytest.mark.parametrize("status", NOT_CONFIRMED)
+def test_the_organiser_of_an_event_that_is_not_confirmed_is_not_told(
+    db_session: Session, venue: Venue, saved_event: SavedEvent, status: EventRequestStatus
+) -> None:
+    """Its status doesn't change, so there is nothing to tell them (AC3)."""
+    _arranged(venue, saved_event, db_session, status)
+
+    _block_with_lift_broken(venue, db_session)
+
+    assert _notices(ORGANISER_ID) == []
+
+
+def test_the_organiser_is_told_once_when_one_block_flags_two_of_its_arrangements(
+    db_session: Session, venue: Venue, saved_event: SavedEvent
+) -> None:
+    """The first flag sends the event back; the second finds it Approved already."""
+    event = saved_event()
+    raise_booking(venue, event, db_session)
+    raise_booking(
+        venue, event, db_session, starts_at=at(13).isoformat(), ends_at=at(15).isoformat()
+    )
+    event.status = EventRequestStatus.CONFIRMED
+    db_session.commit()
+
+    block(venue, at(8), at(16), db_session)
+
+    assert _notices(ORGANISER_ID) == [
+        (event.id, NotificationKind.ALTERNATIVE_VENUE_NEEDED, ORGANISER_DETAIL)
+    ]
 
 
 def test_a_deactivation_is_written_to_the_history_with_no_end(
