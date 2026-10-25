@@ -99,6 +99,22 @@ describe('SCRUM-24 AC9, AC10 the read-only staff record', () => {
     expect(await section('History')).toBeInTheDocument()
   })
 
+  it.each([
+    ['Venue Staff', MOCK_ACCOUNTS.venueStaff, BEING_PREPARED],
+    ['the Event Coordinator Lead', MOCK_ACCOUNTS.lead, 'EVR-LEAD0003'],
+  ])(
+    'shows %s the history of an event only another list holds (SCRUM-33 AC5)',
+    async (_reader, account, reference) => {
+      openAs(account, reference)
+
+      const history = await section('History')
+      expect(
+        await within(history).findByText('Nothing has been recorded for this event yet.'),
+      ).toBeInTheDocument()
+      expect(within(history).queryByRole('alert')).not.toBeInTheDocument()
+    },
+  )
+
   it('shows the internal planning notes the coordinator saved', async () => {
     sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.coordinator))
     await editEventRequest(PARTNER_SUMMIT, { internal_planning_notes: 'Client prefers mornings.' })

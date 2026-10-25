@@ -16,7 +16,7 @@ import {
   requestForStaff,
   visibleRequest,
 } from './eventRequests'
-import type { MockEventRequest } from './eventRequestFixtures'
+import { listedEventByReference } from './listedEvents'
 
 /**
  * The sections of an event's record that have routes of their own: its history (SCRUM-33,
@@ -57,9 +57,22 @@ function shownToOrganiser(entry: EventHistoryEntry): boolean {
 }
 
 /**
- * The event the caller, holding one of `roles`, may read, and whether they read it as an
- * organiser; or the refusal. Staff read any event but a draft, a coordinator only those assigned
- * to them, and an organiser their organisation's; anything else is "not found" (ADR-0012).
+ * The reference of an event staff other than a coordinator may read: any event but a draft,
+ * whether the event-request mock or another feature's mock keeps it (ADR-0024, ADR-0095).
+ */
+function staffEventReference(reference: unknown): string | undefined {
+  const stored = requestForStaff(reference)
+  if (stored !== undefined) {
+    return stored.request.reference
+  }
+  return listedEventByReference(String(reference))?.reference
+}
+
+/**
+ * The reference of the event the caller, holding one of `roles`, may read, and whether they read
+ * it as an organiser; or the refusal. Staff read any event but a draft, a coordinator only those
+ * assigned to them, and an organiser their organisation's; anything else is "not found"
+ * (ADR-0012).
  */
 function readerOrRefusal(request: Request, roles: readonly Role[], reference: unknown) {
   const found = callerOrRefusal(request, roles)
@@ -68,22 +81,23 @@ function readerOrRefusal(request: Request, roles: readonly Role[], reference: un
   }
   const { caller } = found
   const isOrganiser = caller.role === ROLE.EVENT_ORGANISER
-  let stored: MockEventRequest | undefined
+  let eventReference: string | undefined
   if (isOrganiser) {
     const organiser = organiserOrRefusal(request)
     if ('refusal' in organiser) {
       return { refusal: organiser.refusal }
     }
-    stored = visibleRequest(caller.id, organiser.organisationId, reference)
+    const visible = visibleRequest(caller.id, organiser.organisationId, reference)
+    eventReference = visible?.request.reference
   } else if (caller.role === ROLE.EVENT_COORDINATOR) {
-    stored = assignedRequest(caller.id, reference)
+    eventReference = assignedRequest(caller.id, reference)?.request.reference
   } else {
-    stored = requestForStaff(reference)
+    eventReference = staffEventReference(reference)
   }
-  if (stored === undefined) {
+  if (eventReference === undefined) {
     return { refusal: errorResponse(404, 'not_found', NOT_FOUND_MESSAGE) }
   }
-  return { stored, isOrganiser }
+  return { eventReference, isOrganiser }
 }
 
 /** Each event's history as it stands, edits included. Reset per test. */
@@ -123,7 +137,7 @@ export const eventRecordSectionHandlers: RequestHandler[] = [
       return found.refusal
     }
 
-    const history = storedHistory[found.stored.request.reference] ?? []
+    const history = storedHistory[found.eventReference] ?? []
     const shown = found.isOrganiser ? history.filter(shownToOrganiser) : history
     return HttpResponse.json({ history: shown })
   }),
@@ -134,7 +148,7 @@ export const eventRecordSectionHandlers: RequestHandler[] = [
       return found.refusal
     }
 
-    const kept = MOCK_REGISTRATIONS[found.stored.request.reference]
+    const kept = MOCK_REGISTRATIONS[found.eventReference]
     const capacity = kept?.capacity ?? null
     const items = [...(kept?.registrants ?? [])].sort(oldestFirst)
     const registeredCount = items.filter((item) => item.status === 'registered').length

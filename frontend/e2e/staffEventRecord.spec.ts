@@ -28,7 +28,10 @@ test('SCRUM-24 AC9: Venue Staff open an event from their list and see its venue 
   await expect(venues).toContainText('Marina Hall')
   await expect(venues).toContainText('Preparation: In progress')
   await expect(venues).toContainText('Preparation notes: Stage half built.')
-  await expect(page.getByRole('region', { name: 'History' })).toBeVisible()
+  // The booking mock alone holds this event: its history must answer, not say "not found".
+  await expect(page.getByRole('region', { name: 'History' })).toContainText(
+    'Nothing has been recorded for this event yet.',
+  )
   await expect(page.getByRole('main').getByRole('button')).toHaveCount(0)
   await expect(page.getByRole('heading', { name: 'Registrants' })).toHaveCount(0)
 })

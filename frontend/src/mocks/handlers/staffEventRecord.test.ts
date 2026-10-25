@@ -2,7 +2,11 @@ import { ROLE, STAFF_RECORD_READER_ROLES } from '@/config/roles'
 import type { Role } from '@/config/roles'
 import { updateBookingPreparation } from '@/features/booking/api'
 import { reserveEquipment, updateReservationPreparation } from '@/features/equipment/api'
-import { editEventRequest, fetchStaffEventRecord } from '@/features/eventRequests/api'
+import {
+  editEventRequest,
+  fetchEventHistory,
+  fetchStaffEventRecord,
+} from '@/features/eventRequests/api'
 import { reassignCoordinator } from '@/features/lead/api'
 import { recordSafetyOutcome } from '@/features/safety/api'
 import type { SafetyChecklist } from '@/features/safety/api'
@@ -34,6 +38,8 @@ const MULTI_VENUE = 'EVR-BOOK0106'
 const GALA = 'EVR-SAFE0002'
 /** The Lead's event held by Chloe, which only the Lead's mock knows. */
 const LEADS_EVENT = 'EVR-LEAD0003'
+/** An event only Technical Support's mock knows. */
+const EQUIPMENT_ONLY = 'EVR-TECH0001'
 const COLLEAGUES_DRAFT = 'EVR-H2PL8R6K'
 /** A note on each checklist item, as the Safety Officer sends them. */
 const CHECKLIST_NOTES: SafetyChecklist = {
@@ -258,5 +264,31 @@ describe('SCRUM-24 mock of the read-only staff record', () => {
       full_name: 'Aisha Karim',
       email: 'aisha@connectsphere.test',
     })
+  })
+})
+
+describe('SCRUM-33 AC5 mock of the history on the staff record', () => {
+  /** Events only another feature's mock holds: the booking, Lead's, Safety and equipment mocks. */
+  const HELD_ELSEWHERE = [BEING_PREPARED, LEADS_EVENT, GALA, EQUIPMENT_ONLY]
+
+  it.each(accountsWithRoles(STAFF_RECORD_READER_ROLES))(
+    'answers the history of every event the record opens elsewhere, as %s',
+    async (_role, account) => {
+      signInAs(account)
+
+      for (const reference of HELD_ELSEWHERE) {
+        await fetchStaffEventRecord(reference)
+        expect(await fetchEventHistory(reference)).toEqual({ history: [] })
+      }
+    },
+  )
+
+  it('still answers a coordinator not holding the event, and a draft, as not found', async () => {
+    // Chloe holds the Lead's event, so Aisha may not read its history (SCRUM-24 AC10).
+    signInAs(MOCK_ACCOUNTS.otherCoordinator)
+    expect(await refusal(fetchEventHistory(LEADS_EVENT))).toMatchObject(NOT_FOUND)
+
+    signInAs(MOCK_ACCOUNTS.lead)
+    expect(await refusal(fetchEventHistory(COLLEAGUES_DRAFT))).toMatchObject(NOT_FOUND)
   })
 })
