@@ -46,6 +46,7 @@ from tests.events.cases import (
     REJECTION_REASON,
     RETIRED_ARRANGEMENT_STATUSES,
     Arrange,
+    decisions_in,
 )
 
 pytestmark = pytest.mark.scrum_31
@@ -101,15 +102,6 @@ def _assert_decision_locked(decide: Decide) -> None:
     assert refused.message == DECISION_LOCKED_MESSAGE
 
 
-def _decisions_in(history: list[tuple[EventHistoryKind, int | None, Any]]) -> list[Any]:
-    """The details of each ``decision_recorded`` entry, oldest first."""
-    decisions = []
-    for kind, _, details in history:
-        if kind is EventHistoryKind.DECISION_RECORDED:
-            decisions.append(details)
-    return decisions
-
-
 # --------------------------------------------------------------------------
 # AC6 — a decided request can be decided again, with a reason
 # --------------------------------------------------------------------------
@@ -148,7 +140,7 @@ def test_a_new_decision_requires_a_reason(
     assert exc_info.value.status_code == 400
     assert exc_info.value.details == {"reason": [REASON_REQUIRED_MESSAGE]}
     assert reload_event_request(saved_event_request.id).status is status_after_first
-    assert len(_decisions_in(history_of(saved_event_request.id))) == 1
+    assert len(decisions_in(history_of(saved_event_request.id))) == 1
 
 
 # --------------------------------------------------------------------------
@@ -163,7 +155,7 @@ def test_the_most_recent_decision_is_the_current_one(
 
     decide(COORDINATOR_ID, "rejected", CHANGE_REASON)
 
-    assert _decisions_in(history_of(saved_event_request.id)) == [
+    assert decisions_in(history_of(saved_event_request.id)) == [
         {"outcome": "approved", "reason": APPROVAL_REASON},
         {"outcome": "rejected", "reason": CHANGE_REASON},
     ]
@@ -197,7 +189,7 @@ def test_a_new_decision_is_not_allowed_once_the_event_has_an_equipment_request(
     _assert_decision_locked(decide)
 
     assert reload_event_request(saved_event_request.id).status is status_after_first
-    assert len(_decisions_in(history_of(saved_event_request.id))) == 1
+    assert len(decisions_in(history_of(saved_event_request.id))) == 1
 
 
 @pytest.mark.parametrize("status", ACTIVE_ARRANGEMENT_STATUSES, ids=lambda status: status.value)
@@ -216,7 +208,7 @@ def test_a_new_decision_is_not_allowed_once_the_event_has_a_venue_booking_reques
     _assert_decision_locked(decide)
 
     assert reload_event_request(saved_event_request.id).status is EventRequestStatus.APPROVED
-    assert len(_decisions_in(history_of(saved_event_request.id))) == 1
+    assert len(decisions_in(history_of(saved_event_request.id))) == 1
 
 
 @pytest.mark.parametrize("status", RETIRED_ARRANGEMENT_STATUSES, ids=lambda status: status.value)
