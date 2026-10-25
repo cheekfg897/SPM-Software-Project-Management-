@@ -2,7 +2,7 @@ import { http, HttpResponse } from 'msw'
 import type { RequestHandler } from 'msw'
 
 import { ROLE } from '@/config/roles'
-import type { RegistrationStatus } from '@/features/catalogue/api'
+import type { BookedVenue, RegistrationStatus } from '@/features/catalogue/api'
 import { MY_EVENTS_WHEN, WHEN } from '@/features/catalogue/constants'
 import type { FieldErrors } from '@/lib/api'
 
@@ -18,19 +18,27 @@ import {
   MOCK_CATALOGUE_EVENTS,
   MOCK_NOW,
   MOCK_TODAY,
+  MOCK_VENUE_LOCATIONS,
   MOCK_WITHDRAWAL_CUT_OFFS,
 } from './catalogueFixtures'
 import type { MockCatalogueEvent, MockUnlistedEvent } from './catalogueFixtures'
 
 /**
  * The event catalogue endpoints as docs/adr/0032-event-catalogue-contract.md describes them,
- * and an Attendee's own events as docs/adr/0044-attendee-events-list.md does. This stands in
- * for SCRUM-52's and SCRUM-24's backend, so the searching, date windows, paging, counting and
- * the upcoming and past split happen here, never in the UI.
+ * an Attendee's own events as docs/adr/0044-attendee-events-list.md does, and one of them as
+ * docs/adr/0109 does. This stands in for SCRUM-52's and SCRUM-24's backend, so the searching,
+ * date windows, paging, counting, the upcoming and past split and whether Withdraw is offered
+ * happen here, never in the UI.
  */
 
 const CATALOGUE_PATH = '/api/events/catalogue'
 const MY_EVENTS_PATH = '/api/events/registrations'
+const MY_EVENT_PATH = `${MY_EVENTS_PATH}/:reference`
+/**
+ * The event statuses whose page offers Withdraw, as the backend's WITHDRAWABLE_EVENT_STATUSES:
+ * the event is still going ahead (docs/adr/0109).
+ */
+const WITHDRAWABLE_EVENT_STATUSES: readonly string[] = ['confirmed', 'approved', 'safety_review']
 const REGISTRATIONS_PATH = `${CATALOGUE_PATH}/:eventId/registrations`
 const KNOWN_MY_EVENTS_WHEN: readonly string[] = Object.values(MY_EVENTS_WHEN)
 /** What an empty half of an Attendee's events says, as the backend words it. */
@@ -305,6 +313,25 @@ function withdrawalClosesAt(event: KnownEvent['event']): string {
   return cutOffComesFirst ? cutOff : event.starts_at
 }
 
+/** The event's venue with where it is, as the backend's list_booked_venues gives it. */
+function bookedVenuesOf(event: KnownEvent['event']): BookedVenue[] {
+  if (event.venue === null) {
+    return []
+  }
+  return [{ name: event.venue.name, location: MOCK_VENUE_LOCATIONS.get(event.venue.id) ?? '' }]
+}
+
+/** Whether the event's page offers Withdraw, as the backend's `_may_withdraw` decides. */
+function mayWithdraw(registration: MockRegistration, known: KnownEvent): boolean {
+  if (registration.status !== 'registered') {
+    return false
+  }
+  if (!WITHDRAWABLE_EVENT_STATUSES.includes(known.status)) {
+    return false
+  }
+  return new Date(MOCK_NOW) < new Date(withdrawalClosesAt(known.event))
+}
+
 /** Every event `userId` registered for, held or withdrawn, in no particular order. */
 function myEventRows(userId: number): MyEventRow[] {
   const rows: MyEventRow[] = []
@@ -449,5 +476,41 @@ export const catalogueHandlers: RequestHandler[] = [
       return HttpResponse.json({ registrations, message: NO_MY_EVENTS_MESSAGE[when] })
     }
     return HttpResponse.json({ registrations })
+  }),
+
+  http.get(MY_EVENT_PATH, ({ request, params }) => {
+    const user = accountForRequest(request)
+    if (user === undefined) {
+      return notAuthenticated()
+    }
+    if (user.role !== ROLE.ATTENDEE) {
+      return notAllowed()
+    }
+
+    // The backend reads a reference in any case, with spaces around it (ADR-0004).
+    const reference = String(params.reference).trim().toUpperCase()
+    const known = knownEvents().find(({ event }) => event.reference === reference)
+    const registration = known === undefined ? undefined : registrationOf(known.event.id, user.id)
+    // Never registered and no such event are the same 404, so neither can be told apart.
+    if (known === undefined || registration === undefined) {
+      return errorResponse(404, 'not_found', 'Event not found.')
+    }
+
+    const { event, status } = known
+    return HttpResponse.json({
+      id: event.id,
+      reference: event.reference,
+      name: event.name,
+      description: event.description,
+      starts_at: event.starts_at,
+      ends_at: event.ends_at,
+      event_status: status,
+      venues: bookedVenuesOf(event),
+      status: registration.status,
+      registered_at: registration.registered_at,
+      withdrawn_at: registration.withdrawn_at,
+      withdrawals_close_at: withdrawalClosesAt(event),
+      can_withdraw: mayWithdraw(registration, known),
+    })
   }),
 ]

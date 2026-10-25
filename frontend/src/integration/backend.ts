@@ -45,11 +45,15 @@ export async function signInAs(credentials: Credentials): Promise<void> {
   sendRequestsAs(session.access_token)
 }
 
-/** Sign a brand-new attendee up and send every later request as them. */
-export async function signInAsNewAttendee(): Promise<void> {
+/**
+ * Sign a brand-new attendee up and send every later request as them. Answers their credentials,
+ * so a later step can sign in as them again.
+ */
+export async function signInAsNewAttendee(): Promise<Credentials> {
   const credentials = { email: uniqueEmail('attendee'), password: VALID_PASSWORD }
   await register({ full_name: 'Integration Attendee', ...credentials, role: ROLE.ATTENDEE })
   await signInAs(credentials)
+  return credentials
 }
 
 /** The ApiError a call was refused with. Fails the test if it succeeded or failed another way. */
