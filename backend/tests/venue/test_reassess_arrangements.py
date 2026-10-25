@@ -25,7 +25,7 @@ from typing import Any
 import pytest
 from sqlalchemy.orm import Session
 
-from app.common.errors import ConflictError
+from app.common.errors import ConflictError, ValidationError
 from app.modules.auth.models import User
 from app.modules.events import services as event_services
 from app.modules.events.models import EventRequest, EventRequestStatus
@@ -43,6 +43,8 @@ from tests.venue.conftest import (
     VENUE_STAFF_ID,
     SavedEvent,
     approve_safety,
+    at,
+    block,
     decide,
     raise_booking,
     reload_event,
@@ -514,6 +516,30 @@ def test_a_change_flagged_arrangement_is_replaced_at_its_own_venue_at_a_new_time
 
     assert replacement.venue_id == auditorium.id
     assert reload_request(db_session, main_id).status is BookingRequestStatus.RELEASED
+
+
+@pytest.mark.scrum_92
+def test_a_replacement_at_its_own_venue_is_refused_once_that_venue_is_unavailable_too(
+    db_session: Session, auditorium: Venue, event: EventRequest, main_id: int
+) -> None:
+    """Flagged both ways, the different-venue rule wins (SCRUM-92 AC6, ADR-0100).
+
+    The change flag alone would let the event's own venue be used at its new time, but
+    a block over the original leaves that venue unavailable, so it is refused on
+    ``venue_id`` and nothing is raised.
+    """
+    _edit(db_session, event, {"end_time": "18:00"})
+    block(auditorium, at(10), at(11), db_session)
+
+    with pytest.raises(ValidationError) as refusal:
+        raise_booking(auditorium, event, db_session, replaces_request_id=main_id, **SECOND_PERIOD)
+
+    assert refusal.value.details == {
+        "venue_id": ["A replacement must be at a different venue from the one it replaces."]
+    }
+    original = reload_request(db_session, main_id)
+    assert original.is_flagged_after_change is True
+    assert original.needs_alternative_venue is True
 
 
 def test_a_change_flagged_replacement_overlapping_its_own_booking_is_refused_at_approval(
