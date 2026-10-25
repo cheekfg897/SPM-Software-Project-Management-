@@ -72,11 +72,7 @@ from app.modules.notifications.services import EventSummary, NotificationKind, n
 if TYPE_CHECKING:
     # Type only: the venue module imports this one, so it is imported where it is used.
     from app.modules.equipment.services import ReservationAsShown
-    from app.modules.venue.services import (
-        ArrangedVenue,
-        ArrangementForRecord,
-        OrganiserVenueArrangement,
-    )
+    from app.modules.venue.services import ArrangedVenue, ArrangementForRecord
 
 logger = logging.getLogger("connectsphere.events")
 
@@ -206,52 +202,6 @@ class EventRecord:
     decision: DecisionAsShown | None = None
     #: Every clarification question in the order asked, each with its answer (SCRUM-32).
     clarifications: tuple[ClarificationAsShown, ...] = ()
-
-
-@dataclass(frozen=True)
-class EquipmentLineForOrganiser:
-    """An equipment line as its event's organiser sees it (SCRUM-37 AC5, SCRUM-48 AC5).
-
-    What was asked for and what will be provided, with the type by name, since
-    organisers can't read the equipment catalogue. The technical notes, the outcome
-    note and the reviewer are internal, so they aren't here (ADR-0098).
-    """
-
-    id: int
-    equipment_type_name: str
-    quantity: int
-    status: EquipmentLineStatus
-    #: How many units Technical Support will provide; ``None`` until they review it.
-    provided_quantity: int | None
-
-
-@dataclass(frozen=True)
-class OrganiserSafetyDecision:
-    """The Safety Officer's final decision as the event's organiser sees it (ADR-0099).
-
-    SCRUM-49 AC11, as the Product Owner extended it on 25 Oct: the outcome of the
-    current safety check and when it was made. Not the officer's name, the checklist
-    notes or the reason, which are internal review material.
-    """
-
-    outcome: SafetyOutcome
-    decided_at: datetime
-
-
-@dataclass(frozen=True)
-class OrganiserEventRecord(EventRecord):
-    """The record as the event's organiser sees it (ADR-0098, ADR-0099).
-
-    The sections every record shows, the organiser's own view of the equipment, and,
-    once the event is confirmed, its venues.
-    """
-
-    #: Each equipment line, in the order added.
-    equipment_lines: tuple[EquipmentLineForOrganiser, ...] = ()
-    #: Each approved venue arrangement, earliest first; none until it is confirmed.
-    venue_arrangements: tuple[OrganiserVenueArrangement, ...] = ()
-    #: The Safety Officer's final decision; ``None`` until the event is confirmed.
-    safety_decision: OrganiserSafetyDecision | None = None
 
 
 def generate_reference() -> str:
@@ -836,26 +786,6 @@ def _event_record(event_request: EventRequest, session: Session) -> EventRecord:
     )
 
 
-def _equipment_lines_for_organiser(
-    event_request: EventRequest, session: Session
-) -> tuple[EquipmentLineForOrganiser, ...]:
-    """The event's equipment lines in the order added, as its organiser sees them."""
-    type_names = _equipment_type_names(session)
-
-    shown = []
-    for line in event_request.equipment_lines:
-        shown.append(
-            EquipmentLineForOrganiser(
-                id=line.id,
-                equipment_type_name=type_names[line.equipment_type_id],
-                quantity=line.quantity,
-                status=line.status,
-                provided_quantity=line.provided_quantity,
-            )
-        )
-    return tuple(shown)
-
-
 # --------------------------------------------------------------------------
 # SCRUM-20 — save and resume a draft event request
 # --------------------------------------------------------------------------
@@ -1150,91 +1080,6 @@ def withdraw_safety_approval(
         actor_id=actor_id,
         details=details,
         session=sess,
-    )
-
-
-# --------------------------------------------------------------------------
-# The organiser's record (ADR-0098, ADR-0099)
-# --------------------------------------------------------------------------
-
-
-#: When the organiser sees the event's venues and the Safety Officer's final decision:
-#: once it is confirmed, and still once it has taken place (SCRUM-49 AC11). Before
-#: then, neither: the AC's literal reading, a default pending the Product Owner
-#: (ADR-0051 question 2, ADR-0099).
-CONFIRMED_DETAILS_STATUSES = frozenset({EventRequestStatus.CONFIRMED, EventRequestStatus.COMPLETED})
-
-
-def _venue_arrangements_for_organiser(
-    event_request: EventRequest, session: Session
-) -> tuple[OrganiserVenueArrangement, ...]:
-    """The event's approved venue arrangements, once it is confirmed (SCRUM-49 AC11)."""
-    from app.modules.venue import services as venue_services  # circular at import time
-
-    if event_request.status not in CONFIRMED_DETAILS_STATUSES:
-        return ()
-    arrangements = venue_services.list_organiser_venue_arrangements(
-        event_request.id, session=session
-    )
-    return tuple(arrangements)
-
-
-def _safety_decision_for_organiser(
-    event_request: EventRequest, session: Session
-) -> OrganiserSafetyDecision | None:
-    """The Safety Officer's final decision, once the event is confirmed (SCRUM-49 AC11).
-
-    The outcome of the current safety check (ADR-0047) and when it was made, or
-    ``None`` before the event is confirmed or while no check has an outcome.
-    """
-    if event_request.status not in CONFIRMED_DETAILS_STATUSES:
-        return None
-    entry = _current_safety_outcome_entry(event_request.id, session)
-    if entry is None:
-        return None
-    outcome = SafetyOutcome(entry.details["outcome"])
-    return OrganiserSafetyDecision(outcome=outcome, decided_at=entry.occurred_at)
-
-
-def get_event_record_for_organiser(
-    organiser_id: int | str, reference: str, *, session: Session | None = None
-) -> OrganiserEventRecord:
-    """One of the organisation's requests and its assigned coordinator (SCRUM-30 AC3).
-
-    Same lookup and scope as :func:`get_event_request_for_organiser`; the coordinator
-    is ``None`` until one is assigned (ADR-0018). The equipment lines are the
-    organiser's own view of them (SCRUM-37 AC5, SCRUM-48 AC5, ADR-0098). Once the
-    event is confirmed, its venue arrangements are listed and the Safety Officer's final
-    decision shown (SCRUM-49 AC11, ADR-0099).
-
-    Args:
-        organiser_id: The caller's user id, taken from their token.
-        reference: The ``EVR-…`` reference; case and surrounding spaces are ignored.
-        session: Database session; defaults to ``db.session``.
-
-    Returns:
-        The request's record: the request, its coordinator's name and email or
-        ``None``, each equipment line's type, quantity, status and quantity
-        provided, its confirmed venue arrangements, and the Safety Officer's final
-        decision.
-
-    Raises:
-        OrganiserWithoutOrganisationError: 403 — the organiser has no client
-            organisation (ADR-0020).
-        NotFoundError: 404 — no such request in the caller's organisation, or the
-            token names a user that no longer exists.
-    """
-    sess = resolve_session(session)
-    event_request = get_event_request_for_organiser(organiser_id, reference, session=sess)
-    record = _event_record(event_request, sess)
-    return OrganiserEventRecord(
-        event_request=record.event_request,
-        coordinator=record.coordinator,
-        decision=record.decision,
-        clarifications=record.clarifications,
-        equipment_lines=_equipment_lines_for_organiser(event_request, sess),
-        venue_arrangements=_venue_arrangements_for_organiser(event_request, sess),
-        safety_decision=_safety_decision_for_organiser(event_request, sess),
     )
 
 
@@ -4996,6 +4841,121 @@ def get_staff_event_record(reference: str, *, session: Session | None = None) ->
         equipment_reservations=equipment_services.list_reservations_of_event(
             event_request.id, session=sess
         ),
+        safety_outcome=_safety_outcome_of(event_request, sess),
+    )
+
+
+# --------------------------------------------------------------------------
+# SCRUM-24 AC10 — the organiser sees everything on their event's record
+# --------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class EquipmentLineOnRecord:
+    """An equipment line with Technical Support's outcome, as the record shows it.
+
+    SCRUM-37 AC5 and SCRUM-48 AC5: the type by name, the quantity asked for, the
+    coordinator's technical notes, the outcome with the quantity provided and the
+    shortfall, the outcome note, and who reviewed it and when (ADR-0104). No ids: the
+    reviewer is shown by name, ``None`` once their account is gone.
+    """
+
+    equipment_type_name: str
+    quantity: int
+    notes: str | None
+    status: EquipmentLineStatus
+    provided_quantity: int | None
+    shortfall: int | None
+    outcome_note: str | None
+    reviewed_by: str | None
+    reviewed_at: datetime | None
+
+
+@dataclass(frozen=True)
+class OrganiserEventRecord(EventRecord):
+    """The record as the event's organiser sees it: everything on it (ADR-0104).
+
+    SCRUM-24 AC10, at every stage of the event: the sections every record shows, then
+    every venue arrangement in full, the equipment lines with their outcome and
+    reviewer, the reservations with their preparation, and the current safety
+    check's outcome with its checklist and comments, as the staff record shows them
+    (ADR-0095). The planning notes ride on ``event_request``.
+    """
+
+    #: Every venue arrangement, in any status, earliest period first.
+    venue_arrangements: tuple[ArrangementForRecord, ...] = ()
+    #: Each equipment line, in the order added.
+    equipment_lines: tuple[EquipmentLineOnRecord, ...] = ()
+    equipment_reservations: tuple[ReservationAsShown, ...] = ()
+    #: The outcome of the event's current safety check, or ``None`` until there is one.
+    safety_outcome: SafetyOutcomeAsShown | None = None
+
+
+def _equipment_lines_on_record(
+    event_request: EventRequest, session: Session
+) -> tuple[EquipmentLineOnRecord, ...]:
+    """The event's equipment lines in the order added, each with its type's name."""
+    type_names = _equipment_type_names(session)
+
+    shown = []
+    for line in equipment_lines_as_shown(event_request.equipment_lines, session=session):
+        shown.append(
+            EquipmentLineOnRecord(
+                equipment_type_name=type_names[line.equipment_type_id],
+                quantity=line.quantity,
+                notes=line.notes,
+                status=line.status,
+                provided_quantity=line.provided_quantity,
+                shortfall=line.shortfall,
+                outcome_note=line.outcome_note,
+                reviewed_by=line.reviewed_by,
+                reviewed_at=line.reviewed_at,
+            )
+        )
+    return tuple(shown)
+
+
+def get_event_record_for_organiser(
+    organiser_id: int | str, reference: str, *, session: Session | None = None
+) -> OrganiserEventRecord:
+    """One of the organisation's requests with everything on its record (SCRUM-24 AC10).
+
+    Same lookup and scope as :func:`get_event_request_for_organiser` (SCRUM-7). The
+    Product Owner's decision of 25 Oct: the organiser sees everything on the record,
+    read-only, whatever the event's status (SCRUM-49 AC13, ADR-0104).
+
+    Args:
+        organiser_id: The caller's user id, taken from their token.
+        reference: The ``EVR-…`` reference; case and surrounding spaces are ignored.
+        session: Database session; defaults to ``db.session``.
+
+    Returns:
+        The request's record: the request and its notes, its coordinator's name and
+        email or ``None``, its decision and clarifications, every venue arrangement,
+        each equipment line with its outcome and reviewer, the reservations with
+        their preparation, and the current safety outcome.
+
+    Raises:
+        OrganiserWithoutOrganisationError: 403 — the organiser has no client
+            organisation (ADR-0020).
+        NotFoundError: 404 — no such request in the caller's organisation, or the
+            token names a user that no longer exists.
+    """
+    from app.modules.venue import services as venue_services  # circular at import time
+
+    sess = resolve_session(session)
+    event_request = get_event_request_for_organiser(organiser_id, reference, session=sess)
+    record = _event_record(event_request, sess)
+    arrangements = venue_services.list_every_arrangement_for_record(event_request.id, session=sess)
+    reservations = equipment_services.list_reservations_of_event(event_request.id, session=sess)
+    return OrganiserEventRecord(
+        event_request=record.event_request,
+        coordinator=record.coordinator,
+        decision=record.decision,
+        clarifications=record.clarifications,
+        venue_arrangements=tuple(arrangements),
+        equipment_lines=_equipment_lines_on_record(event_request, sess),
+        equipment_reservations=tuple(reservations),
         safety_outcome=_safety_outcome_of(event_request, sess),
     )
 

@@ -10,11 +10,12 @@ again and the Safety Officer approves it, which takes it off their list. Venue S
 and Technical Support can record the preparation of the booking and the reservation
 only once the Safety Officer has approved (SCRUM-84, SCRUM-85), and the coordinator
 then reads both. SCRUM-49: the coordinator can't confirm the event before that
-approval; once it is in, they confirm it and the event is confirmed. Its organiser then
-sees the venue, its date and times, the Safety Officer's final decision, and the
-equipment they will get, none of which they saw before (SCRUM-49 AC11, ADR-0099),
-without the internal notes (SCRUM-37 AC5, SCRUM-48 AC5, ADR-0098). Every call goes
-through the real routes with Flask's test client (ADR-0031).
+approval; once it is in, they confirm it and the event is confirmed. Its organiser
+sees everything on the record at every stage: the Safety Officer's request for changes
+and then the approval with its checklist, and the venue, the equipment with its notes
+and reviewer, and their preparation, both before and after it is confirmed (SCRUM-24
+AC10, SCRUM-49 AC13, ADR-0104). Every call goes through the real routes with Flask's
+test client (ADR-0031).
 
 Nothing here walks the request to approval: the event is saved as approved, with its
 coordinator, and that journey is test_request_to_approval_journey.py.
@@ -44,6 +45,7 @@ pytestmark = [
     pytest.mark.scrum_98,
     pytest.mark.scrum_49,
     pytest.mark.scrum_48,
+    pytest.mark.scrum_24,
     pytest.mark.e2e,
 ]
 
@@ -262,6 +264,11 @@ def test_a_settled_event_reaches_the_safety_officer(
     assert returned["status"] == "approved"
     assert _latest_notification_kind(coordinator) == "safety_changes_requested"
 
+    # --- Its organiser sees the request for changes and why (SCRUM-24 AC10) ---
+    record_path = f"/api/events/requests/{EVENT}"
+    sent_back = _body(organiser.get(record_path), 200)["safety_outcome"]
+    assert (sent_back["outcome"], sent_back["reason"]) == ("changes_requested", "Exit blocked.")
+
     # --- The coordinator sends it again; until the Safety Officer approves, it can't be
     # --- confirmed (SCRUM-49 AC8) ---
     confirm_path = f"/api/events/requests/{EVENT}/confirm"
@@ -297,12 +304,20 @@ def test_a_settled_event_reaches_the_safety_officer(
         "Projectors tested.",
     )
 
-    # --- Until it is confirmed, its organiser sees no venues or safety decision
-    # --- (SCRUM-49 AC11) ---
-    record_path = f"/api/events/requests/{EVENT}"
-    unconfirmed_record = _body(organiser.get(record_path), 200)
-    assert unconfirmed_record["venue_arrangements"] == []
-    assert unconfirmed_record["safety_decision"] is None
+    # --- Before it is confirmed, its organiser already sees all of it, preparation
+    # --- included (SCRUM-24 AC10, SCRUM-49 AC13, SCRUM-84 AC2, SCRUM-85 AC2) ---
+    before = _body(organiser.get(record_path), 200)
+    assert before["status"] == "safety_review"
+    [arranged] = before["venue_arrangements"]
+    assert (arranged["status"], arranged["preparation_notes"]) == ("approved", "Room set out.")
+    [reserved] = before["equipment_reservations"]
+    assert (reserved["reserved_by"], reserved["preparation_notes"]) == (
+        "Tina Technician",
+        "Projectors tested.",
+    )
+    assert before["safety_outcome"]["outcome"] == "approved"
+    assert before["safety_outcome"]["checklist"] == CHECKLIST
+    assert before["safety_outcome"]["recorded_by"] == "Sam Safety"
 
     # --- The coordinator confirms the event (SCRUM-49 AC1) ---
     confirmed = _body(coordinator.post(confirm_path), 200)
@@ -310,13 +325,10 @@ def test_a_settled_event_reaches_the_safety_officer(
     # Confirmed once is enough: it is no longer in Safety Review to confirm again.
     assert _body(coordinator.post(confirm_path), 409)["error"] == "confirmation_not_allowed"
 
-    # --- Its organiser now sees the venue, the Safety Officer's final decision and what
-    # --- equipment they will get, and nothing internal (SCRUM-49 AC11, SCRUM-37 AC5,
-    # --- SCRUM-48 AC5) ---
+    # --- Once it is confirmed its organiser still sees everything, in full (SCRUM-24
+    # --- AC10, SCRUM-37 AC5, SCRUM-48 AC5) ---
     record = _body(organiser.get(record_path), 200)
-    # Only the outcome and when: no officer, checklist or reason.
-    assert record["safety_decision"].keys() == {"outcome", "decided_at"}
-    assert record["safety_decision"]["outcome"] == "approved"
+    assert record["status"] == "confirmed"
     assert record["venue_arrangements"] == [
         {
             "venue_name": "Main Hall",
@@ -324,17 +336,30 @@ def test_a_settled_event_reaches_the_safety_officer(
             "starts_at": f"{event_day}T09:00:00+08:00",
             "ends_at": f"{event_day}T12:00:00+08:00",
             "purpose": "Partner summit",
-            "layout": None,
             # The request named no occupancy, so it took the event's attendance.
             "expected_occupancy": 250,
+            "required_layout": None,
+            "justification": None,
+            "status": "approved",
+            "decision_reason": None,
+            "hold_expires_at": None,
+            "needs_alternative_venue": False,
+            "unavailability": [],
+            "flagged_after_change": False,
+            "reassessment_flags": [],
+            "preparation_status": "ready",
+            "preparation_notes": "Room set out.",
         }
     ]
-    assert record["equipment_lines"] == [
-        {
-            "id": line["id"],
-            "equipment_type_name": "Projector",
-            "quantity": 2,
-            "status": "fulfilled",
-            "provided_quantity": 2,
-        }
-    ]
+    [shown_line] = record["equipment_lines"]
+    assert shown_line.pop("reviewed_at") is not None
+    assert shown_line == {
+        "equipment_type_name": "Projector",
+        "quantity": 2,
+        "notes": "Needs HDMI",
+        "status": "fulfilled",
+        "provided_quantity": 2,
+        "shortfall": 0,
+        "outcome_note": None,
+        "reviewed_by": "Tina Technician",
+    }

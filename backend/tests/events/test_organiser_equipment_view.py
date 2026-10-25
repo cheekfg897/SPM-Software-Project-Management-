@@ -1,10 +1,11 @@
 """Unit tests for what an Event Organiser sees of their event's equipment.
 
-SCRUM-37 AC5 and SCRUM-48 AC5 (ADR-0098): the organiser's own record shows each
-equipment line's type by name, the quantity requested, the status and, once Technical
-Support have recorded an outcome, the quantity provided. The line's technical notes,
-the outcome note and the reviewer stay internal, so the organiser's record leaves them
-out; the coordinator's record still shows the notes (SCRUM-37 AC5's internal staff).
+SCRUM-37 AC5 and SCRUM-48 AC5, as the Product Owner changed them on 25 Oct: the
+organiser sees everything on their event's record (SCRUM-24 AC10), so each equipment
+line shows its type by name, the quantity requested, the coordinator's technical notes,
+Technical Support's outcome, the quantity provided (whatever the outcome) and the
+shortfall, the outcome note, and who reviewed it and when (ADR-0104, superseding
+ADR-0098's hiding rules). The coordinator's own record is unchanged.
 """
 
 from __future__ import annotations
@@ -16,11 +17,12 @@ from typing import Any
 import pytest
 
 from app.modules.auth.models import User
+from app.modules.auth.permissions import Role
 from app.modules.equipment.models import EquipmentType
 from app.modules.events.models import EquipmentLineStatus, EventEquipmentLine, EventRequest
-from app.modules.events.schemas import EventRequestDetailSchema, OrganiserEquipmentLineSchema
+from app.modules.events.schemas import EventRequestDetailSchema
 from app.modules.events.services import (
-    EquipmentLineForOrganiser,
+    EquipmentLineOnRecord,
     OrganiserEventRecord,
     get_event_record_for_coordinator,
     get_event_record_for_organiser,
@@ -31,14 +33,19 @@ pytestmark = [pytest.mark.scrum_37, pytest.mark.scrum_48]
 ORGANISER_ID = 7
 #: The Event Coordinator ``saved_event_request`` is assigned to.
 COORDINATOR_ID = 3
-TECHNICAL_SUPPORT_ID = 5
+TECHNICAL_SUPPORT_ID = 12
 REFERENCE = "EVR-AAAAAAAA"
-SIX_OF_TEN = EquipmentLineForOrganiser(
-    id=7,
+REVIEWED_AT = datetime(2026, 10, 13, 9, 30, tzinfo=UTC)
+SIX_OF_TEN = EquipmentLineOnRecord(
     equipment_type_name="Projector",
     quantity=10,
+    notes="Needs HDMI",
     status=EquipmentLineStatus.PARTIALLY_FULFILLED,
     provided_quantity=6,
+    shortfall=4,
+    outcome_note="Only six in stock",
+    reviewed_by="Tess Tech",
+    reviewed_at=REVIEWED_AT,
 )
 
 
@@ -50,7 +57,7 @@ def _record_outcome(
     line.provided_quantity = provided_quantity
     line.outcome_note = note
     line.reviewed_by = TECHNICAL_SUPPORT_ID
-    line.reviewed_at = datetime(2026, 10, 13, 9, 30, tzinfo=UTC)
+    line.reviewed_at = REVIEWED_AT
 
 
 @pytest.fixture()
@@ -98,33 +105,46 @@ def another_events_line(
     return line
 
 
+@pytest.fixture()
+def reviewer(make_user: Callable[..., User], save: Callable[..., None]) -> User:
+    """Technical Support 12, Tess Tech, saved so the line can name its reviewer."""
+    tess = make_user(
+        email="tess@example.com",
+        full_name="Tess Tech",
+        role=Role.TECHNICAL_SUPPORT_STAFF,
+        user_id=TECHNICAL_SUPPORT_ID,
+    )
+    save(tess)
+    return tess
+
+
 # --------------------------------------------------------------------------
 # The organiser's record (SCRUM-37 AC5, SCRUM-48 AC5)
 # --------------------------------------------------------------------------
 
 
-def test_the_organisers_record_shows_each_line_by_name_with_what_will_be_provided(
+def test_the_organisers_record_shows_each_line_with_its_notes_outcome_and_reviewer(
     saved_users: list[User],
+    reviewer: User,
     six_of_ten_provided: EventEquipmentLine,
     microphones_requested: EventEquipmentLine,
     another_events_line: EventEquipmentLine,
 ) -> None:
+    """A line not reviewed yet has no outcome, quantity provided or reviewer."""
     record = get_event_record_for_organiser(ORGANISER_ID, REFERENCE)
 
     assert record.equipment_lines == (
-        EquipmentLineForOrganiser(
-            id=six_of_ten_provided.id,
-            equipment_type_name="Projector",
-            quantity=10,
-            status=EquipmentLineStatus.PARTIALLY_FULFILLED,
-            provided_quantity=6,
-        ),
-        EquipmentLineForOrganiser(
-            id=microphones_requested.id,
+        SIX_OF_TEN,
+        EquipmentLineOnRecord(
             equipment_type_name="Microphone",
             quantity=2,
+            notes="Lapel, not handheld",
             status=EquipmentLineStatus.REQUESTED,
             provided_quantity=None,
+            shortfall=None,
+            outcome_note=None,
+            reviewed_by=None,
+            reviewed_at=None,
         ),
     )
 
@@ -138,8 +158,9 @@ def test_the_organisers_record_shows_each_line_by_name_with_what_will_be_provide
     ],
     ids=["fulfilled", "partially_fulfilled", "unavailable"],
 )
-def test_the_organiser_is_sent_the_quantity_provided_for_every_outcome_but_never_the_note(
+def test_the_organiser_is_sent_the_quantity_provided_and_note_for_every_outcome(
     saved_users: list[User],
+    reviewer: User,
     saved_event_request: EventRequest,
     equipment_type: EquipmentType,
     make_equipment_line: Callable[..., EventEquipmentLine],
@@ -148,23 +169,26 @@ def test_the_organiser_is_sent_the_quantity_provided_for_every_outcome_but_never
     provided_quantity: int,
     note: str,
 ) -> None:
-    """ADR-0098 decision 4. A fulfilled line can carry a note too (SCRUM-48 AC2)."""
+    """A fulfilled line can carry a note too (SCRUM-48 AC2); nothing is left out."""
     line = make_equipment_line(saved_event_request, equipment_type, quantity=10)
     _record_outcome(line, status, provided_quantity, note)
     save(line)
 
     record = get_event_record_for_organiser(ORGANISER_ID, REFERENCE)
-    shown = OrganiserEquipmentLineSchema().dump(record.equipment_lines, many=True)
 
-    assert shown == [
-        {
-            "id": line.id,
-            "equipment_type_name": "Projector",
-            "quantity": 10,
-            "status": status.value,
-            "provided_quantity": provided_quantity,
-        }
-    ]
+    assert record.equipment_lines == (
+        EquipmentLineOnRecord(
+            equipment_type_name="Projector",
+            quantity=10,
+            notes="Needs HDMI",
+            status=status,
+            provided_quantity=provided_quantity,
+            shortfall=10 - provided_quantity,
+            outcome_note=note,
+            reviewed_by="Tess Tech",
+            reviewed_at=REVIEWED_AT,
+        ),
+    )
 
 
 def test_the_organisers_record_of_an_event_with_no_equipment_has_no_lines(
@@ -197,27 +221,27 @@ def test_the_organisers_record_keeps_the_sections_every_record_shows(
 # --------------------------------------------------------------------------
 
 
-def test_the_organisers_record_route_shows_no_notes_outcome_note_or_reviewer(
+def test_the_organisers_record_route_shows_each_line_in_full_in_business_time(
     open_record_route: Callable[[OrganiserEventRecord], dict[str, Any]],
     make_event_request: Callable[..., EventRequest],
-    shown_line: EventEquipmentLine,
 ) -> None:
-    """The event has a line noted "Needs HDMI"; the organiser gets their view of it."""
-    event_request = make_event_request()
-    event_request.equipment_lines = [shown_line]
     record = OrganiserEventRecord(
-        event_request=event_request, coordinator=None, equipment_lines=(SIX_OF_TEN,)
+        event_request=make_event_request(), coordinator=None, equipment_lines=(SIX_OF_TEN,)
     )
 
     body = open_record_route(record)
 
     assert body["equipment_lines"] == [
         {
-            "id": 7,
             "equipment_type_name": "Projector",
             "quantity": 10,
+            "notes": "Needs HDMI",
             "status": "partially_fulfilled",
             "provided_quantity": 6,
+            "shortfall": 4,
+            "outcome_note": "Only six in stock",
+            "reviewed_by": "Tess Tech",
+            "reviewed_at": "2026-10-13T17:30:00+08:00",
         }
     ]
 
