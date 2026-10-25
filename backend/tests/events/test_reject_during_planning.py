@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 
 from app.common.errors import ConflictError, NotFoundError, ValidationError
 from app.modules.auth.models import User
+from app.modules.auth.permissions import Role
 from app.modules.equipment import services as equipment_services
 from app.modules.equipment.models import EquipmentReservation
 from app.modules.events import services as events_services
@@ -39,7 +40,8 @@ from app.modules.events.services import (
     record_equipment_outcome,
     reject_event_during_planning,
 )
-from app.modules.notifications.services import NotificationKind
+from app.modules.notifications.services import NotificationKind, list_notifications_for_recipient
+from app.modules.venue import services as venue_services
 from app.modules.venue.models import BookingRequestStatus, VenueBookingRequest
 from tests.events.cases import LOST_CONNECTION, AddLine, Arrange
 
@@ -55,10 +57,15 @@ COORDINATOR_ID = 3
 OTHER_COORDINATOR_ID = 9
 ORGANISER_ID = 7
 TECHNICAL_SUPPORT_ID = 5
+VENUE_STAFF_ID = 4
 #: Everyone in ``saved_users`` but the organiser.
 NON_ORGANISER_IDS = [9, 3, 4, 5, 2]
 REASON = "No venue large enough is free that week."
 PLANNING_STATUSES = [EventRequestStatus.APPROVED, EventRequestStatus.SAFETY_REVIEW]
+#: The arrangements that hold their venue, so a rejection releases them and Venue Staff
+#: are told (ADR-0093, ADR-0103). Written out; the other statuses come from the enum.
+HOLDING_STATUSES = [BookingRequestStatus.APPROVED, BookingRequestStatus.ON_HOLD]
+NOT_HOLDING_STATUSES = [status for status in BookingRequestStatus if status not in HOLDING_STATUSES]
 #: Every status but planning, built from the enum so a status added later is refused
 #: too. A draft is left out: staff get a 404 for it, not a 409 (ADR-0024).
 NOT_IN_PLANNING = [
@@ -222,6 +229,125 @@ def test_a_lost_notification_does_not_lose_the_rejection(
     assert [record.getMessage() for record in caplog.records] == [
         f"event_request_notification_failed reference={REFERENCE} kind=event_request_rejected"
     ]
+
+
+# --------------------------------------------------------------------------
+# ADR-0103 — Venue Staff are told of each booking or hold the rejection released
+# --------------------------------------------------------------------------
+
+
+def _released_detail(arrangement: VenueBookingRequest) -> str:
+    """What Venue Staff are told about the first arrangement ``arrange`` saves.
+
+    It is at ``venue``'s Main Hall, from 17:00 to 17:30 on 1 November 2026 in business
+    time; each later one starts an hour after the last.
+    """
+    return (
+        f"Venue arrangement {arrangement.id} at Main Hall, 2026-11-01 17:00 to"
+        " 2026-11-01 17:30, was released."
+    )
+
+
+def _released_notices(user_id: int) -> list[tuple[str, str | None]]:
+    """The user's "booking released" notices as (reference, detail), newest first."""
+    rows = []
+    for notification in list_notifications_for_recipient(user_id):
+        if notification.kind is NotificationKind.VENUE_BOOKING_RELEASED:
+            rows.append((notification.event_reference, notification.detail))
+    return rows
+
+
+@pytest.fixture()
+def second_venue_staff(make_user: Callable[..., User], save: Callable[..., None]) -> User:
+    """Another Venue Staff user: every one of them is told (ADR-0103)."""
+    user = make_user(email="venue8@example.com", role=Role.VENUE_STAFF, user_id=8)
+    save(user)
+    return user
+
+
+@pytest.mark.parametrize("status", HOLDING_STATUSES, ids=lambda status: status.value)
+def test_every_venue_staff_user_is_told_of_each_booking_or_hold_released(
+    db_session: Session,
+    in_planning: EventRequest,
+    arrange: Arrange,
+    second_venue_staff: User,
+    status: BookingRequestStatus,
+) -> None:
+    held = arrange(status)
+
+    _reject(db_session)
+
+    told = [(REFERENCE, _released_detail(held))]
+    assert _released_notices(VENUE_STAFF_ID) == told
+    assert _released_notices(second_venue_staff.id) == told
+
+
+def test_each_released_arrangement_is_its_own_notice(
+    db_session: Session, approved: EventRequest, arrange: Arrange
+) -> None:
+    first = arrange(BookingRequestStatus.APPROVED)
+    second = arrange(BookingRequestStatus.ON_HOLD)
+
+    _reject(db_session)
+
+    # Newest first: the second arrangement's notice was sent last.
+    assert [detail for _, detail in _released_notices(VENUE_STAFF_ID)] == [
+        f"Venue arrangement {second.id} at Main Hall, 2026-11-01 18:00 to"
+        " 2026-11-01 18:30, was released.",
+        _released_detail(first),
+    ]
+
+
+@pytest.mark.parametrize("status", NOT_HOLDING_STATUSES, ids=lambda status: status.value)
+def test_an_arrangement_that_did_not_hold_its_venue_is_not_told_about(
+    db_session: Session, approved: EventRequest, arrange: Arrange, status: BookingRequestStatus
+) -> None:
+    """A withdrawn one never had a booking; a retired one was released already."""
+    arrange(status)
+
+    _reject(db_session)
+
+    assert _released_notices(VENUE_STAFF_ID) == []
+
+
+def test_nobody_but_venue_staff_is_told_of_the_release(
+    db_session: Session, approved: EventRequest, arrange: Arrange
+) -> None:
+    arrange(BookingRequestStatus.APPROVED)
+
+    _reject(db_session)
+
+    for user_id in [*NON_ORGANISER_IDS, ORGANISER_ID]:
+        if user_id != VENUE_STAFF_ID:
+            assert _released_notices(user_id) == []
+
+
+def test_a_lost_venue_staff_notice_does_not_lose_the_rejection_or_the_release(
+    db_session: Session,
+    approved: EventRequest,
+    arrange: Arrange,
+    reload_event_request: ReloadEventRequest,
+    detailed_notifications_of: NotificationsOf,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """ADR-0015: the rejection commits first, then the organiser and Venue Staff."""
+    booked = arrange(BookingRequestStatus.APPROVED)
+
+    def _fail(*_: Any, **__: Any) -> None:
+        raise LOST_CONNECTION
+
+    monkeypatch.setattr(venue_services, "notify_users", _fail)
+
+    with caplog.at_level(logging.WARNING, logger="connectsphere.venue"):
+        _reject(db_session)
+
+    assert reload_event_request(approved.id).status is EventRequestStatus.REJECTED
+    assert _status_of(db_session, booked) is BookingRequestStatus.RELEASED
+    assert detailed_notifications_of(ORGANISER_ID) == [
+        (REFERENCE, NotificationKind.EVENT_REQUEST_REJECTED, REASON)
+    ]
+    assert f"venue_booking_notification_failed reference={REFERENCE}" in caplog.text
 
 
 # --------------------------------------------------------------------------

@@ -471,6 +471,23 @@ def _notify_about_booking(
         logger.warning("venue_booking_notification_failed reference=%s", event.reference)
 
 
+def _tell_venue_staff(
+    event: EventForBooking,
+    details: list[str],
+    kind: NotificationKind,
+    session: Session | None,
+) -> None:
+    """Tell every Venue Staff user ``kind`` happened, once for each of ``details``.
+
+    Sent after the caller's commit; a notice that can't be saved loses only itself,
+    and is logged (ADR-0015). Venue Staff are not assigned to venues (SCRUM-93), so
+    every one of them is told.
+    """
+    staff_ids = list_user_ids_with_role(Role.VENUE_STAFF, session=session)
+    for detail in details:
+        _notify_about_booking(staff_ids, event, kind, detail=detail, session=session)
+
+
 #: What a Conflicting notice says about the booking (SCRUM-50 AC6, ADR-0055).
 CONFLICTING_BOOKING_DETAIL = (
     "{venue}: a change to its setup or turnaround time makes this event's booking"
@@ -2538,10 +2555,24 @@ def send_hold_expiry_warnings(
 # SCRUM-49 AC10 — release an event's venues when it is rejected during planning
 # --------------------------------------------------------------------------
 
+#: What Venue Staff are told about each booking or hold released (ADR-0103): the
+#: arrangement, its venue and its period, in business time. The notice's kind says why.
+RELEASED_DETAIL = "Venue arrangement {id} at {venue}, {starts} to {ends}, was released."
+
+
+def _released_detail(arrangement: VenueBookingRequest, session: Session | None) -> str:
+    venue = get_venue(arrangement.venue_id, session=session)
+    return RELEASED_DETAIL.format(
+        id=arrangement.id,
+        venue=venue.name,
+        starts=_notice_time(arrangement.starts_at),
+        ends=_notice_time(arrangement.ends_at),
+    )
+
 
 def release_event_arrangements(
     event_id: int, *, coordinator_id: int, session: Session | None = None
-) -> None:
+) -> list[str]:
     """Free every venue an event still has arranged, without committing (SCRUM-49 AC10).
 
     For an event rejected during planning, whose venues are released as a cancelled
@@ -2556,12 +2587,33 @@ def release_event_arrangements(
         event_id: The event request's id.
         coordinator_id: The coordinator rejecting the event, named in each withdrawal.
         session: Database session; defaults to ``db.session``.
+
+    Returns:
+        One notice detail for each booking or hold released, naming the arrangement, its
+        venue and its period, earliest first, for :func:`tell_venue_staff_of_releases`
+        once the caller has committed (ADR-0103). A withdrawn one is not named: it never
+        held the venue.
     """
+    released = []
     for arrangement in list_active_arrangements(event_id, session=session):
         if arrangement.status in WITHDRAWABLE_REQUEST_STATUSES:
             _withdraw_and_record(arrangement, coordinator_id, session)
-        else:
-            _release_and_free_venue(arrangement, session)
+            continue
+        _release_and_free_venue(arrangement, session)
+        released.append(_released_detail(arrangement, session))
+    return released
+
+
+def tell_venue_staff_of_releases(
+    event: EventForBooking, details: list[str], *, session: Session | None = None
+) -> None:
+    """Tell every Venue Staff user about each booking or hold a rejection released.
+
+    SCRUM-49 AC10, the Product Owner's answer of 25 Oct (ADR-0103). One
+    ``venue_booking_released`` notice per arrangement, with ``details`` from
+    :func:`release_event_arrangements`, sent once the rejection is saved.
+    """
+    _tell_venue_staff(event, details, NotificationKind.VENUE_BOOKING_RELEASED, session)
 
 
 # --------------------------------------------------------------------------
@@ -2708,11 +2760,7 @@ def tell_venue_staff_of_flags(
     :func:`flag_arrangements_after_change`, sent once the flags are saved. A notice that
     can't be saved loses only itself, and is logged (ADR-0015).
     """
-    staff_ids = list_user_ids_with_role(Role.VENUE_STAFF, session=session)
-    for detail in details:
-        _notify_about_booking(
-            staff_ids, event, NotificationKind.SIGNIFICANT_CHANGE, detail=detail, session=session
-        )
+    _tell_venue_staff(event, details, NotificationKind.SIGNIFICANT_CHANGE, session)
 
 
 def list_arrangements_flagged_after_change(

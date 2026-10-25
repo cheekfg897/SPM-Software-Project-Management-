@@ -5,7 +5,9 @@ holds are released, as for a cancelled event (SCRUM-61 AC3, AC8, ADR-0093).
 ``release_event_arrangements`` does the venue module's part without committing: an
 arrangement Venue Staff haven't approved is withdrawn as the coordinator would withdraw
 it (SCRUM-93), and one that holds the venue, Approved or On Hold, is Released with its
-booking or hold cancelled. Runs against ``db_session``, so the queries really run.
+booking or hold cancelled. Each one released is named, for Venue Staff to be told
+(the Product Owner's answer of 25 Oct, ADR-0103). Runs against ``db_session``, so the
+queries really run.
 """
 
 from __future__ import annotations
@@ -46,9 +48,12 @@ WITHDRAWN_STATUSES = [
 RETIRED_STATUSES = [BookingRequestStatus.WITHDRAWN, BookingRequestStatus.RELEASED]
 
 
-def _release(event: EventRequest, session: Session) -> None:
-    services.release_event_arrangements(event.id, coordinator_id=COORDINATOR_ID, session=session)
+def _release(event: EventRequest, session: Session) -> list[str]:
+    released = services.release_event_arrangements(
+        event.id, coordinator_id=COORDINATOR_ID, session=session
+    )
     session.commit()
+    return released
 
 
 def _arrangement_in(
@@ -175,6 +180,59 @@ def test_a_release_writes_no_withdrawal_to_the_history(
     _release(event, db_session)
 
     assert _history_kinds(db_session, event) == kinds_before
+
+
+# --------------------------------------------------------------------------
+# ADR-0103 — each booking or hold released is named for Venue Staff
+# --------------------------------------------------------------------------
+
+
+def test_a_released_booking_is_named_with_its_venue_and_period(
+    db_session: Session, event: EventRequest, venue: Venue
+) -> None:
+    arrangement = raise_booking(venue, event, db_session)
+    decide(arrangement.id, "approved", db_session)
+
+    released = _release(event, db_session)
+
+    assert released == [
+        f"Venue arrangement {arrangement.id} at Main Hall, 2026-11-01 09:00 to"
+        " 2026-11-01 12:00, was released."
+    ]
+
+
+def test_a_released_hold_is_named_and_the_withdrawn_request_beside_it_is_not(
+    db_session: Session, multi_venue_event: EventRequest, multi_venue_request: VenueBookingRequest
+) -> None:
+    """The multi-venue event's other request is only Pending, so it is withdrawn."""
+    place_hold(multi_venue_request.id, hours_from_now(24), db_session)
+
+    released = _release(multi_venue_event, db_session)
+
+    assert released == [
+        f"Venue arrangement {multi_venue_request.id} at Auditorium, 2026-11-01 09:00 to"
+        " 2026-11-01 12:00, was released."
+    ]
+
+
+@pytest.mark.parametrize(
+    "status", [*WITHDRAWN_STATUSES, *RETIRED_STATUSES], ids=lambda status: status.value
+)
+def test_an_arrangement_withdrawn_or_already_retired_is_not_named(
+    db_session: Session, event: EventRequest, venue: Venue, status: BookingRequestStatus
+) -> None:
+    _arrangement_in(status, venue, event, db_session)
+
+    assert _release(event, db_session) == []
+
+
+def test_another_events_booking_is_not_named(
+    db_session: Session, event: EventRequest, venue: Venue, saved_event: SavedEvent
+) -> None:
+    other_event = saved_event()
+    decide(raise_booking(venue, other_event, db_session).id, "approved", db_session)
+
+    assert _release(event, db_session) == []
 
 
 # --------------------------------------------------------------------------

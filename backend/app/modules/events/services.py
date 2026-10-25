@@ -4778,7 +4778,7 @@ class EventRejectionNotAllowedError(AppError):
     error_code = "rejection_not_allowed"
 
 
-def _release_arrangements(event_id: int, coordinator_id: int, session: Session) -> None:
+def _release_arrangements(event_id: int, coordinator_id: int, session: Session) -> list[str]:
     """Free the venues and equipment of an event that won't run, without committing.
 
     Its venue arrangements are withdrawn or released, bookings and holds included, and
@@ -4786,13 +4786,17 @@ def _release_arrangements(event_id: int, coordinator_id: int, session: Session) 
     during planning; SCRUM-61's cancellation releases the same things, "as for a
     cancelled event", so it is meant to share this. Open equipment requests close with
     the event's status (``EQUIPMENT_NOT_NEEDED_STATUSES``), not here.
+
+    Returns:
+        What Venue Staff are to be told about each booking or hold released (ADR-0103).
     """
     from app.modules.venue import services as venue_services  # circular at import time
 
-    venue_services.release_event_arrangements(
+    released = venue_services.release_event_arrangements(
         event_id, coordinator_id=coordinator_id, session=session
     )
     equipment_services.release_event_reservations(event_id, session=session)
+    return released
 
 
 def reject_event_during_planning(
@@ -4812,7 +4816,8 @@ def reject_event_during_planning(
     arrangements are released or withdrawn and its reserved equipment returned, as for
     a cancelled event (SCRUM-61, ADR-0093); its open equipment requests close with the
     status (SCRUM-48 AC8). The organiser who submitted the request is told afterwards,
-    with the reason (ADR-0015). The checks run in this order: the reference, the
+    with the reason, and every Venue Staff user about each booking or hold released
+    (ADR-0015, ADR-0103). The checks run in this order: the reference, the
     coordinator, the status, then the payload.
 
     Args:
@@ -4836,9 +4841,12 @@ def reject_event_during_planning(
         raise EventRejectionNotAllowedError(NOT_IN_PLANNING_FOR_REJECTION_MESSAGE)
     rejection = load_or_raise(RejectEventSchema(), payload)
 
+    from app.modules.venue import services as venue_services  # circular at import time
+
     decision = {"outcome": DecisionOutcome.REJECTED, "reason": rejection["reason"]}
     _apply_decision(coordinator_id, event_request, decision, sess)
-    _release_arrangements(event_request.id, int(coordinator_id), sess)
+    released = _release_arrangements(event_request.id, int(coordinator_id), sess)
     sess.commit()
     _notify_organiser_of_decision(event_request, decision, sess)
+    venue_services.tell_venue_staff_of_releases(_for_booking(event_request), released, session=sess)
     return event_request
