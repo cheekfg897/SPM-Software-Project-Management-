@@ -9,7 +9,12 @@ import { toDateTimeInputValue } from '@/lib/formatDate'
 
 import type { BookingRequest, RaiseBookingRequest } from '../api'
 import { useRaiseBookingRequest, useReplacementRequest } from '../hooks'
+import { keepsItsPeriod } from '../replacement'
 import type { ReplacementRequest } from '../replacement'
+
+const PERIOD_HINT = 'In Singapore time.'
+/** While a replacement keeps the flagged booking's date and times (SCRUM-92 AC6, ADR-0108). */
+const LOCKED_PERIOD_HINT = 'Fixed to the booking it replaces. In Singapore time.'
 
 /** What the form starts with: empty, or a replacement's venue and its flagged arrangement's needs. */
 type FormDefaults = Partial<
@@ -97,13 +102,16 @@ function ReplacementNote({ name, errors = [], onStop }: ReplacementNoteProps) {
 
 /**
  * Raise a venue request for the event, or a replacement for a flagged arrangement when the page
- * URL names one (SCRUM-92 AC6). The list beside it is read again once it succeeds.
+ * URL names one (SCRUM-92 AC6), which keeps the date and times of a booking whose venue is
+ * unavailable (ADR-0108). The list beside it is read again once the backend answers.
  */
 export function BookingRequestForm({ reference }: { reference: string }) {
   const raise = useRaiseBookingRequest(reference)
   const { replacement, replaced, stopReplacing } = useReplacementRequest(reference)
   const fieldErrors = fieldErrorsOf(raise.error)
   const defaults = defaultsFor(replacement, replaced)
+  const periodLocked = keepsItsPeriod(replaced)
+  const periodHint = periodLocked ? LOCKED_PERIOD_HINT : PERIOD_HINT
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -147,7 +155,8 @@ export function BookingRequestForm({ reference }: { reference: string }) {
         name="starts_at"
         type="datetime-local"
         required
-        hint="In Singapore time."
+        readOnly={periodLocked}
+        hint={periodHint}
         defaultValue={defaults.starts_at}
         errors={fieldErrors.starts_at}
       />
@@ -156,6 +165,8 @@ export function BookingRequestForm({ reference }: { reference: string }) {
         name="ends_at"
         type="datetime-local"
         required
+        readOnly={periodLocked}
+        hint={periodHint}
         defaultValue={defaults.ends_at}
         errors={fieldErrors.ends_at}
       />

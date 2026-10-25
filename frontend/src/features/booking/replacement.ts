@@ -18,6 +18,15 @@ export function needsAnotherVenue(arrangement: BookingRequest): boolean {
   return arrangement.needs_alternative_venue || arrangement.flagged_after_change
 }
 
+/**
+ * Whether a replacement for the arrangement keeps its date and times: it does while the
+ * arrangement's venue is unavailable (SCRUM-92 AC6, Product Owner 25 Oct, ADR-0108). One flagged
+ * only after a change to the event may move to a new period, as the backend allows (ADR-0100).
+ */
+export function keepsItsPeriod(replaced: BookingRequest | undefined): boolean {
+  return replaced?.needs_alternative_venue === true
+}
+
 /** Find a venue, set to the flagged arrangement's period, occupancy and layout. */
 export function findAnotherVenuePath(reference: string, arrangement: BookingRequest): string {
   const startDate = businessDate(arrangement.starts_at)
