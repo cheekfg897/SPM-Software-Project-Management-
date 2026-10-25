@@ -2,12 +2,18 @@ import { ROLE } from '@/config/roles'
 import type { Role } from '@/config/roles'
 import { decideBookingRequest, raiseBookingRequest } from '@/features/booking/api'
 import { recordEquipmentOutcome } from '@/features/equipment/api'
-import { fetchAssignedEventRequests, fetchEventRequest } from '@/features/eventRequests/api'
+import {
+  completeEvent,
+  fetchAssignedEventRequests,
+  fetchEventRequest,
+} from '@/features/eventRequests/api'
 import { refusal } from '@/test/refusal'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
 
 import { MOCK_ACCOUNTS, mockTokenFor } from '../fixtures/accounts'
 import type { MockAccount } from '../fixtures/accounts'
+
+import { addToHistory } from './eventHistoryStore'
 
 /**
  * The mock of a coordinator's assigned events (GET /api/events/requests/assigned) and of an
@@ -365,5 +371,28 @@ describe('SCRUM-49 AC11 mock of the Safety Officer final decision on a confirmed
     const record = await fetchEventRequest('EVR-BOOK0112')
 
     expect(record.safety_decision).toBeNull()
+  })
+
+  it('keeps showing it once the event is completed', async () => {
+    // Hana's Autumn Book Fair, confirmed and already ended, in Sara's organisation.
+    const ended = 'EVR-PLAN0005'
+    const approval = {
+      kind: 'safety_outcome_recorded',
+      occurred_at: '2026-10-01T10:00:00+08:00',
+      actor_name: MOCK_ACCOUNTS.safetyOfficer.full_name,
+      details: { outcome: 'approved' },
+    }
+    addToHistory(ended, [approval])
+    signInAs(MOCK_ACCOUNTS.planningCoordinator)
+    await completeEvent(ended)
+    signInAs(MOCK_ACCOUNTS.otherOrganiser)
+
+    const record = await fetchEventRequest(ended)
+
+    expect(record.status).toBe('completed')
+    expect(record.safety_decision).toEqual({
+      outcome: 'approved',
+      decided_at: '2026-10-01T10:00:00+08:00',
+    })
   })
 })
