@@ -106,6 +106,10 @@ class NotificationKind(str, enum.Enum):
     #: of its approved bookings or holds; the arrangement, the venue and its period are
     #: the notification's ``detail`` (SCRUM-49 AC10, ADR-0103).
     VENUE_BOOKING_RELEASED = "venue_booking_released"
+    #: Tells every Safety Officer that a significant change was made to an event in
+    #: Safety Review; the fields changed, and whether the event went back to planning,
+    #: are the notification's ``detail`` (SCRUM-33 AC9, ADR-0107).
+    SAFETY_REVIEW_EVENT_CHANGED = "safety_review_event_changed"
 
 
 class Notification(db.Model):  # type: ignore[name-defined]
