@@ -205,6 +205,13 @@ describe('SCRUM-37 AC5, SCRUM-48 AC5 mock of the equipment on an event record', 
         status: 'requested',
         provided_quantity: null,
       },
+      {
+        id: 63,
+        equipment_type_name: 'Lectern',
+        quantity: 1,
+        status: 'fulfilled',
+        provided_quantity: 1,
+      },
     ])
   })
 
@@ -227,6 +234,13 @@ describe('SCRUM-37 AC5, SCRUM-48 AC5 mock of the equipment on an event record', 
         quantity: 4,
         notes: 'Lapel, not handheld.',
         status: 'requested',
+      },
+      {
+        id: 63,
+        equipment_type_id: 3,
+        quantity: 1,
+        notes: 'At the front, stage left.',
+        status: 'fulfilled',
       },
     ])
   })
