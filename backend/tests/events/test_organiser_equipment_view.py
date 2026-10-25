@@ -18,7 +18,7 @@ import pytest
 from app.modules.auth.models import User
 from app.modules.equipment.models import EquipmentType
 from app.modules.events.models import EquipmentLineStatus, EventEquipmentLine, EventRequest
-from app.modules.events.schemas import EventRequestDetailSchema
+from app.modules.events.schemas import EventRequestDetailSchema, OrganiserEquipmentLineSchema
 from app.modules.events.services import (
     EquipmentLineForOrganiser,
     OrganiserEventRecord,
@@ -42,6 +42,17 @@ SIX_OF_TEN = EquipmentLineForOrganiser(
 )
 
 
+def _record_outcome(
+    line: EventEquipmentLine, status: EquipmentLineStatus, provided_quantity: int, note: str
+) -> None:
+    """Give ``line`` an outcome from Technical Support, with its note and reviewer."""
+    line.status = status
+    line.provided_quantity = provided_quantity
+    line.outcome_note = note
+    line.reviewed_by = TECHNICAL_SUPPORT_ID
+    line.reviewed_at = datetime(2026, 10, 13, 9, 30, tzinfo=UTC)
+
+
 @pytest.fixture()
 def six_of_ten_provided(
     saved_event_request: EventRequest,
@@ -51,11 +62,7 @@ def six_of_ten_provided(
 ) -> EventEquipmentLine:
     """Ten projectors noted "Needs HDMI", six to be provided, noted and reviewed."""
     line = make_equipment_line(saved_event_request, equipment_type, quantity=10)
-    line.status = EquipmentLineStatus.PARTIALLY_FULFILLED
-    line.provided_quantity = 6
-    line.outcome_note = "Only six in stock"
-    line.reviewed_by = TECHNICAL_SUPPORT_ID
-    line.reviewed_at = datetime(2026, 10, 13, 9, 30, tzinfo=UTC)
+    _record_outcome(line, EquipmentLineStatus.PARTIALLY_FULFILLED, 6, "Only six in stock")
     save(line)
     return line
 
@@ -120,6 +127,44 @@ def test_the_organisers_record_shows_each_line_by_name_with_what_will_be_provide
             provided_quantity=None,
         ),
     )
+
+
+@pytest.mark.parametrize(
+    ("status", "provided_quantity", "note"),
+    [
+        (EquipmentLineStatus.FULFILLED, 10, "Spare bulbs packed too."),
+        (EquipmentLineStatus.PARTIALLY_FULFILLED, 6, "Only six in stock"),
+        (EquipmentLineStatus.UNAVAILABLE, 0, "All ten are out for repair."),
+    ],
+    ids=["fulfilled", "partially_fulfilled", "unavailable"],
+)
+def test_the_organiser_is_sent_the_quantity_provided_for_every_outcome_but_never_the_note(
+    saved_users: list[User],
+    saved_event_request: EventRequest,
+    equipment_type: EquipmentType,
+    make_equipment_line: Callable[..., EventEquipmentLine],
+    save: Callable[..., None],
+    status: EquipmentLineStatus,
+    provided_quantity: int,
+    note: str,
+) -> None:
+    """ADR-0098 decision 4. A fulfilled line can carry a note too (SCRUM-48 AC2)."""
+    line = make_equipment_line(saved_event_request, equipment_type, quantity=10)
+    _record_outcome(line, status, provided_quantity, note)
+    save(line)
+
+    record = get_event_record_for_organiser(ORGANISER_ID, REFERENCE)
+    shown = OrganiserEquipmentLineSchema().dump(record.equipment_lines, many=True)
+
+    assert shown == [
+        {
+            "id": line.id,
+            "equipment_type_name": "Projector",
+            "quantity": 10,
+            "status": status.value,
+            "provided_quantity": provided_quantity,
+        }
+    ]
 
 
 def test_the_organisers_record_of_an_event_with_no_equipment_has_no_lines(
