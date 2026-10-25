@@ -28,6 +28,8 @@ export interface MockEventRequest {
   record: MockRecordSections
   /** The event has an equipment request, so its decision can't change (SCRUM-31 AC7). */
   hasEquipmentRequest?: true
+  /** The coordinator rejected the event during planning, so its decision is final (SCRUM-49 AC12). */
+  rejectedDuringPlanning?: true
   /** What its planning gates count (ADR-0075); left out, nothing is arranged. */
   planning?: MockPlanning
 }

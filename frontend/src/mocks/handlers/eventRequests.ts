@@ -55,6 +55,9 @@ const REASON_REQUIRED_MESSAGE = 'A reason is required to reject a request or to 
 const DECISION_LOCKED_MESSAGE =
   "The decision can't be changed once the event has an equipment request or a venue " +
   'booking request.'
+const PLANNING_REJECTION_FINAL_MESSAGE =
+  "The decision can't be changed once the event has been rejected during planning. " +
+  'To go ahead, the organiser submits a new event request.'
 const CLARIFICATION_OUTSTANDING_MESSAGE =
   "The request can't be approved until the organiser has answered the clarification request."
 const CLARIFICATION_NOT_ALLOWED_MESSAGE =
@@ -286,15 +289,19 @@ export async function objectBodyOrRefusal(request: Request) {
 
 /**
  * Whether a decision may be made in the request's state: not once the event is past its
- * decision, and not a new one once it has an equipment request (the fixture's flag) or a venue
- * booking request that hasn't been withdrawn or released (the booking mock's own store)
- * (SCRUM-31 AC7, ADR-0028, ADR-0084).
+ * decision, never again once it was rejected during planning (SCRUM-49 AC12, ADR-0106), and not
+ * a new one once it has an equipment request (the fixture's flag) or a venue booking request
+ * that hasn't been withdrawn or released (the booking mock's own store) (SCRUM-31 AC7,
+ * ADR-0028, ADR-0084).
  */
 function undecidableRefusal(stored: MockEventRequest) {
   const { status } = stored.request
   const isDecided = DECIDED_STATUSES.includes(status)
   if (!isDecided && !AWAITING_DECISION_STATUSES.includes(status)) {
     return errorResponse(409, 'request_not_decidable', NOT_DECIDABLE_MESSAGE)
+  }
+  if (stored.rejectedDuringPlanning === true) {
+    return errorResponse(409, 'decision_locked', PLANNING_REJECTION_FINAL_MESSAGE)
   }
   const hasArrangements =
     stored.hasEquipmentRequest === true || hasActiveArrangement(stored.request.reference)

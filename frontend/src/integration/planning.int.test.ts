@@ -18,6 +18,7 @@ import {
   confirmEvent,
   decideEventRequest,
   editEventRequest,
+  fetchEventHistory,
   fetchEventRequest,
   rejectEvent,
   requestClarification,
@@ -46,8 +47,8 @@ import type { Credentials } from './backend'
  * The coordinator's planning actions against the running backend: sending an event to safety
  * review (SCRUM-97, ADR-0047), confirming it (SCRUM-49, ADR-0051), its registration settings
  * (SCRUM-69, ADR-0043), marking it completed (SCRUM-68, ADR-0027) (ADR-0075) and rejecting it
- * during planning (SCRUM-49 AC9, AC10, ADR-0093), and what a closed event's equipment requests
- * then refuse (SCRUM-48 AC8). Also the decision a venue booking request locks (SCRUM-31 AC7,
+ * during planning (SCRUM-49 AC9, AC10, ADR-0093), after which SCRUM-31 records no new decision
+ * (AC12, ADR-0106), and what a closed event's equipment requests then refuse (SCRUM-48 AC8). Also the decision a venue booking request locks (SCRUM-31 AC7,
  * ADR-0084), and the statuses the coordinator's edit is allowed in (SCRUM-33 AC8, ADR-0101).
  *
  * The refusals that need no event of the coordinator's run with the staff account every run has
@@ -839,6 +840,51 @@ describe('SCRUM-49 rejecting an event during planning against the backend', () =
         `, ${EVENT_DATE} 09:00 to ${EVENT_DATE} 12:00, was released.`,
       )
       expect(notice?.detail).not.toContain(`Venue arrangement ${String(pendingId)} `)
+    },
+  )
+
+  it.skipIf(!canAssign)(
+    'refuses a new decision through SCRUM-31 afterwards, even with nothing ever arranged (AC12)',
+    async () => {
+      const { reference } = await approvedEvent()
+      await rejectEvent(reference, { reason: REASON })
+
+      for (const outcome of ['approved', 'rejected'] as const) {
+        const decided = decideEventRequest(reference, {
+          outcome,
+          reason: 'A larger hall came free.',
+        })
+        expect(await refusal(decided)).toMatchObject({
+          status: 409,
+          code: 'decision_locked',
+          message:
+            "The decision can't be changed once the event has been rejected during planning. " +
+            'To go ahead, the organiser submits a new event request.',
+        })
+      }
+      expect((await fetchEventRequest(reference)).status).toBe('rejected')
+      const decisions = (await fetchEventHistory(reference)).history.filter(
+        (entry) => entry.kind === 'decision_recorded',
+      )
+      expect(decisions.map((entry) => entry.details)).toEqual([
+        { outcome: 'approved', reason: null },
+        { outcome: 'rejected', reason: REASON, during_planning: true },
+      ])
+    },
+  )
+
+  it.skipIf(!canAssign)(
+    'still lets a rejection recorded through SCRUM-31 be changed (SCRUM-31 AC6)',
+    async () => {
+      const { reference } = await approvedEvent()
+      await decideEventRequest(reference, { outcome: 'rejected', reason: REASON })
+
+      await decideEventRequest(reference, {
+        outcome: 'approved',
+        reason: 'A larger hall came free.',
+      })
+
+      expect((await fetchEventRequest(reference)).status).toBe('approved')
     },
   )
 
