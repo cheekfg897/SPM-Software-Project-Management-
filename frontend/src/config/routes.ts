@@ -77,6 +77,11 @@ export function coordinatorEventPath(reference: string): string {
   return withReference(ROUTES.COORDINATOR_EVENT, reference)
 }
 
+/** An event an Attendee registered for, at the address its notifications link to (ADR-0109). */
+export function myEventPath(reference: string): string {
+  return withReference(ROUTES.COORDINATOR_EVENT, reference)
+}
+
 /** An event's read-only record, as Venue Staff, Technical Support, the Safety Officer or the Lead open it. */
 export function staffEventPath(reference: string): string {
   return withReference(ROUTES.STAFF_EVENT, reference)

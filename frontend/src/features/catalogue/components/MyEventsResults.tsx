@@ -52,7 +52,9 @@ export function MyEventsResults({ when }: { when: string }) {
       keyOf={(event) => event.event_id}
       renderEvent={(event) => (
         <MyEventCard event={event}>
-          {canOfferWithdrawal(event, when) && <WithdrawAction event={event} />}
+          {canOfferWithdrawal(event, when) && (
+            <WithdrawAction eventId={event.event_id} name={event.name} />
+          )}
         </MyEventCard>
       )}
     />

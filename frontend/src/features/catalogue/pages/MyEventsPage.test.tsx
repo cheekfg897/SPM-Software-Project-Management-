@@ -1,7 +1,7 @@
 import { screen, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 
-import { ROUTES } from '@/config/routes'
+import { myEventPath, ROUTES } from '@/config/routes'
 import { MOCK_ACCOUNTS, mockSessionFor } from '@/mocks/fixtures/accounts'
 import { MOCK_CATALOGUE_EVENTS } from '@/mocks/handlers/catalogueFixtures'
 import { server } from '@/mocks/server'
@@ -61,6 +61,14 @@ describe('SCRUM-24 my events page: upcoming and past', () => {
       within(eventCard('Orchid Show Opening Night')).getByText('Completed'),
     ).toBeInTheDocument()
     expect(router.state.location.search).toBe('?when=past')
+  })
+
+  it('opens an event’s own page from its name (SCRUM-24 AC11)', async () => {
+    const { user, router } = renderApp(ROUTES.MY_EVENTS, { session: ATTENDEE })
+
+    await user.click(await screen.findByRole('link', { name: 'Startup Pitch Night' }))
+
+    expect(router.state.location.pathname).toBe(myEventPath('EVR-MOCK0005'))
   })
 
   it('opens on the past events from a link to them', async () => {

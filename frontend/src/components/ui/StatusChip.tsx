@@ -9,8 +9,9 @@ interface ChipStyle {
 /**
  * Every status's label and colour. Typed over every status, so one the backend adds later is a
  * type error here until it gets its own. Each label is the status's own name, as Jira and the
- * backend call it, so organisers and staff read the same word; an Attendee only ever sees
- * confirmed, completed and cancelled (ADR-0044).
+ * backend call it, so organisers, staff and attendees read the same word. An Attendee mostly
+ * sees confirmed, completed and cancelled, and approved or safety review for an event a change
+ * sent back to planning (ADR-0044, ADR-0109).
  */
 const CHIP_BY_STATUS: Record<EventRequestStatus, ChipStyle> = {
   draft: { label: 'Draft', tone: 'border-dashed border-line text-ink-faint' },
