@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
 
@@ -15,7 +16,13 @@ from app.modules.events.models import (
     EventRequest,
     EventRequestStatus,
 )
-from app.modules.venue.models import BookingRequestStatus, Venue, VenueBookingRequest
+from app.modules.venue.models import (
+    BookingRequestStatus,
+    PreparationStatus,
+    Venue,
+    VenueBookingRequest,
+)
+from app.modules.venue.services import ArrangementForRecord
 
 #: The ``arrange``, ``save_arrangement`` and ``add_line`` fixtures' callables (SCRUM-97,
 #: SCRUM-49).
@@ -161,3 +168,32 @@ def decisions_in(history: list[tuple[EventHistoryKind, int | None, Any]]) -> lis
         if kind is EventHistoryKind.DECISION_RECORDED:
             decisions.append(details)
     return decisions
+
+
+def arrangement_for_record(**overrides: Any) -> ArrangementForRecord:
+    """An arrangement as the record shows it; ``overrides`` replace any of its fields.
+
+    By default it is the first one the ``arrange`` fixture saves: an approved, unflagged
+    arrangement at the default venue, Main Hall in Building A, from 09:00 UTC on 1
+    November 2026 for half an hour, with nothing prepared yet.
+    """
+    shown: dict[str, Any] = {
+        "venue_name": "Main Hall",
+        "venue_location": "Building A",
+        "starts_at": datetime(2026, 11, 1, 9, 0, tzinfo=UTC),
+        "ends_at": datetime(2026, 11, 1, 9, 30, tzinfo=UTC),
+        "purpose": "Main session",
+        "expected_occupancy": 80,
+        "required_layout": None,
+        "justification": None,
+        "status": BookingRequestStatus.APPROVED,
+        "decision_reason": None,
+        "hold_expires_at": None,
+        "needs_alternative_venue": False,
+        "unavailability": [],
+        "flagged_after_change": False,
+        "reassessment_flags": [],
+        "preparation_status": PreparationStatus.NOT_STARTED,
+        "preparation_notes": None,
+    }
+    return ArrangementForRecord(**{**shown, **overrides})
