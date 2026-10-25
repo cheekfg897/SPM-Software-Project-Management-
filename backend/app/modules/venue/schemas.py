@@ -31,7 +31,6 @@ from app.modules.venue.models import (
     LIST_ITEM_MAX_LENGTH,
     LIST_MAX_ITEMS,
     LIST_SEPARATOR,
-    REQUEST_STATUSES_WITH_A_HOLD,
     BookingDecision,
     BookingRequestStatus,
     CalendarEntryKind,
@@ -498,13 +497,8 @@ class BookingRequestAsShown:
 
     @property
     def hold_expires_at(self) -> datetime | None:
-        """When the request's hold expires; ``None`` for a request that has no hold.
-
-        An expired hold keeps showing when it expired (SCRUM-94 AC6).
-        """
-        if self.request.status not in REQUEST_STATUSES_WITH_A_HOLD:
-            return None
-        return self.request.booking.hold_expires_at
+        """When the request's hold expires; ``None`` for a request that has no hold."""
+        return self.request.hold_expires_at
 
 
 class DecideBookingRequestSchema(Schema):

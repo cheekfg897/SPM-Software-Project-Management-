@@ -590,6 +590,16 @@ class VenueBookingRequest(db.Model):  # type: ignore[name-defined]
             return False
         return len(self.reassessment_flags) > 0
 
+    @property
+    def hold_expires_at(self) -> datetime | None:
+        """When the request's hold expires; ``None`` for a request that has no hold.
+
+        An expired hold keeps showing when it expired (SCRUM-75 AC9, SCRUM-94 AC6).
+        """
+        if self.status not in REQUEST_STATUSES_WITH_A_HOLD:
+            return None
+        return self.booking.hold_expires_at
+
 
 class AlternativeVenueFlag(db.Model):  # type: ignore[name-defined]
     """One reason an arrangement needs an alternative venue (SCRUM-92 AC1, ADR-0053).
