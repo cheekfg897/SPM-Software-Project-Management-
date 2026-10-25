@@ -31,6 +31,8 @@ Left open: whether to widen the existing route or add one, what the record holds
 11. **The mock answers the route as the backend does** (`src/mocks/handlers/staffEventRecord.ts`), refusing the same roles. Each mock keeps its own events, so the handler takes the event from the first mock that holds it (the event-request mock's full records first, then the Lead's, the Safety Officer's, the booking and Technical Support's mocks), and each section from the mock that keeps it. The Safety Officer's mock now keeps the outcome it records, so the record shows it.
 
 ## Not built: the Attendee's view of one event (AC9)
+*Built since by [ADR-0109](0109-attendee-event-page.md), for SCRUM-24 AC11 (added 25 Oct): an Attendee opens an event they registered for at `/events/<reference>`, the address their notifications link to, from `GET /api/events/registrations/<reference>`; "My events" rows carry the reference and their cards open it. What follows is how it stood when this record was written.*
+
 AC9 also covers the Attendee: opening an event from "My events" should show the event's detail view. The web app has no page an Attendee can open for one event, so "My events" cards (`MyEventCard`) still open nothing. This change doesn't build one. What's missing:
 
 - **Backend:** no route answers one event to an Attendee. The catalogue route (`GET /api/events/catalogue`, SCRUM-52) lists only confirmed events with registration open that haven't ended, so many of an Attendee's own events (past, cancelled, registration closed) aren't in it. `GET /api/events/registrations` lists the Attendee's registrations, with the event's id, name, times and status, but has no route for one of them.
