@@ -1,21 +1,11 @@
 import { useId } from 'react'
 
 import { ButtonLink } from '@/components/ui'
-import { unavailabilityCategoryLabel } from '@/config/unavailabilityCategories'
-import { formatDateTime } from '@/lib/formatDate'
+import { unavailabilityText } from '@/config/unavailabilityCategories'
 
-import type { BookingRequest, Unavailability } from '../api'
+import type { BookingRequest } from '../api'
 import { REASSESSMENT_KIND_LABELS } from '../constants'
 import { findAnotherVenuePath } from '../replacement'
-
-/** e.g. "from 26 Nov, 8:00 am to 26 Nov, 6:00 pm"; a deactivation has no end yet. */
-function periodText(cause: Unavailability): string {
-  const from = `from ${formatDateTime(cause.starts_at)}`
-  if (cause.ends_at === null) {
-    return `${from} until the venue is reactivated`
-  }
-  return `${from} to ${formatDateTime(cause.ends_at)}`
-}
 
 interface AlternativeVenueNoticeProps {
   reference: string
@@ -48,10 +38,7 @@ export function AlternativeVenueNotice({ reference, arrangement }: AlternativeVe
         <ul aria-label="Why its venue is unavailable" className="text-ink space-y-1">
           {/* By place: two blocks may give the same reason for the same period. */}
           {arrangement.unavailability.map((cause, index) => (
-            <li key={index}>
-              {unavailabilityCategoryLabel(cause.category)}: {cause.reason}. Unavailable{' '}
-              {periodText(cause)}.
-            </li>
+            <li key={index}>{unavailabilityText(cause)}</li>
           ))}
         </ul>
       )}
