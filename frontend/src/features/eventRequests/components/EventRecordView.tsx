@@ -7,8 +7,15 @@ import { attributed } from '@/lib/attributed'
 import { selectSessionUser, useAppSelector } from '@/store'
 
 import { isOrganiserEquipmentLine } from '../api'
-import type { Clarification, CoordinatorContact, Decision, EventRecord } from '../api'
+import type {
+  Clarification,
+  CoordinatorContact,
+  Decision,
+  EventRecord,
+  OrganiserSafetyDecision,
+} from '../api'
 import { formatSchedule } from '../formatSchedule'
+import { humanise } from '../humanise'
 import { useAnswerClarification } from '../hooks'
 
 import { EditDetailsSection } from './EditDetailsSection'
@@ -98,6 +105,18 @@ function DecisionDetails({ decision }: { decision: Decision }) {
   )
 }
 
+/** The Safety Officer's final decision and when, never who or their notes (SCRUM-49 AC11). */
+function SafetyDecisionDetails({ decision }: { decision: OrganiserSafetyDecision }) {
+  return (
+    <div className="border-line/60 bg-surface/50 rounded-2xl border p-5">
+      <p className="text-ink font-semibold">{humanise(decision.outcome)}</p>
+      <p className="text-ink-faint mt-2 text-sm">
+        {attributed('Decided', null, decision.decided_at)}
+      </p>
+    </div>
+  )
+}
+
 /** One question, and the organiser's answer once they have given it. */
 function ClarificationExchange({ clarification }: { clarification: Clarification }) {
   const { answered_at: answeredAt } = clarification
@@ -156,7 +175,8 @@ function CoordinatorLinks({ reference }: { reference: string }) {
  * ADR-0056). Which record a viewer may open is the backend's call. Its assigned coordinator
  * also gets links on and the review actions, and an organiser answers an open question here
  * (SCRUM-31, SCRUM-32, ADR-0060) and sees their equipment (SCRUM-37 AC5, ADR-0098) and, once
- * the event is confirmed, its venues (SCRUM-49 AC11, ADR-0099).
+ * the event is confirmed, its venues and the Safety Officer's final decision (SCRUM-49 AC11,
+ * ADR-0099).
  */
 export function EventRecordView({ record }: { record: EventRecord }) {
   const viewer = useAppSelector(selectSessionUser)
@@ -167,8 +187,10 @@ export function EventRecordView({ record }: { record: EventRecord }) {
   // Only the organiser's record names each line's equipment; the coordinator works on the
   // lines from the Equipment page instead.
   const organisersEquipment = record.equipment_lines.filter(isOrganiserEquipmentLine)
-  // Only the organiser's record lists the venues, and only once the event is confirmed.
+  // Only the organiser's record lists the venues and the safety decision, and only once the
+  // event is confirmed.
   const confirmedVenues = record.venue_arrangements ?? []
+  const safetyDecision = record.safety_decision ?? null
   return (
     <PageContainer title={record.name}>
       <p className="text-flare mt-3 font-medium">{formatSchedule(record)}</p>
@@ -202,6 +224,11 @@ export function EventRecordView({ record }: { record: EventRecord }) {
             ))}
           </ol>
           {isAnswerNeeded && <AnswerClarification reference={record.reference} />}
+        </RecordSection>
+      )}
+      {safetyDecision !== null && (
+        <RecordSection title="Safety check">
+          <SafetyDecisionDetails decision={safetyDecision} />
         </RecordSection>
       )}
       {confirmedVenues.length > 0 && (
