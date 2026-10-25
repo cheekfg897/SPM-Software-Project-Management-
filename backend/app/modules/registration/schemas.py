@@ -118,6 +118,29 @@ class CataloguePageSchema(Schema):
     total_pages = fields.Integer(dump_only=True)
 
 
+class BookedVenueSchema(Schema):
+    """A venue the event is booked at: its name and where it is (SCRUM-24 AC11)."""
+
+    name = fields.String(dump_only=True)
+    location = fields.String(dump_only=True)
+
+
+class MyRegisteredEventSchema(PublicEventSchema):
+    """An event the attendee registered for, as its page shows it (ADR-0109).
+
+    The catalogue's public fields, the event's status and booked venues, the
+    registration, when withdrawals close and whether Withdraw is offered.
+    """
+
+    event_status = fields.String(dump_only=True)
+    venues = fields.List(fields.Nested(BookedVenueSchema), dump_only=True)
+    status = fields.Enum(RegistrationStatus, by_value=True, dump_only=True)
+    registered_at = BusinessDateTime(dump_only=True)
+    withdrawn_at = BusinessDateTime(dump_only=True)
+    withdrawals_close_at = BusinessDateTime(dump_only=True)
+    can_withdraw = fields.Boolean(dump_only=True)
+
+
 class RegistrationSchema(Schema):
     """A registration just made (ADR-0032)."""
 

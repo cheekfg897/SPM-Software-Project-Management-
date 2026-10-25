@@ -4455,6 +4455,19 @@ def get_registrable_event_for_update(
     return _as_registrable_event(event_request)
 
 
+def _heading_of(event_request: EventRequest) -> EventHeading:
+    """The event's name, times, status and withdrawal cut-off."""
+    return EventHeading(
+        id=event_request.id,
+        reference=event_request.reference,
+        name=event_request.name,
+        starts_at=_starts_at(event_request),
+        ends_at=_ends_at(event_request),
+        status=event_request.status.value,
+        withdrawal_cut_off=event_request.withdrawal_cut_off,
+    )
+
+
 def list_event_headings(
     event_ids: Iterable[int], *, session: Session | None = None
 ) -> list[EventHeading]:
@@ -4471,18 +4484,44 @@ def list_event_headings(
     stmt = select(EventRequest).where(EventRequest.id.in_(list(event_ids)))
     headings = []
     for row in sess.scalars(stmt):
-        headings.append(
-            EventHeading(
-                id=row.id,
-                reference=row.reference,
-                name=row.name,
-                starts_at=_starts_at(row),
-                ends_at=_ends_at(row),
-                status=row.status.value,
-                withdrawal_cut_off=row.withdrawal_cut_off,
-            )
-        )
+        headings.append(_heading_of(row))
     return headings
+
+
+@dataclass(frozen=True)
+class PublicEvent(EventHeading):
+    """An event as the people going to it may know it (SCRUM-24 AC11, ADR-0109).
+
+    Its heading and its description, as SCRUM-52 shows an event, whatever its status
+    now. ``description`` is empty rather than ``None``, as in :class:`RegistrableEvent`.
+    """
+
+    description: str
+
+
+def find_public_event(reference: str, *, session: Session | None = None) -> PublicEvent | None:
+    """An event by its reference, whatever its status, or ``None`` if there is none.
+
+    Case and surrounding spaces are ignored (ADR-0004). A draft is never found: it is
+    its author's alone (SCRUM-20, ADR-0024). Who may see the event is the caller's to
+    decide: the registration module shows it only to an Attendee who registered for it.
+
+    Args:
+        reference: The event's ``EVR-`` reference, as a link or a user gave it.
+        session: Database session; defaults to ``db.session``.
+
+    Returns:
+        The event's :class:`PublicEvent` facts, or ``None``.
+    """
+    sess = resolve_session(session)
+    stmt = select(EventRequest).where(
+        EventRequest.reference == _normalise_reference(reference), _not_a_draft()
+    )
+    event_request = sess.scalar(stmt)
+    if event_request is None:
+        return None
+    heading = _heading_of(event_request)
+    return PublicEvent(**asdict(heading), description=event_request.description or "")
 
 
 # --------------------------------------------------------------------------
