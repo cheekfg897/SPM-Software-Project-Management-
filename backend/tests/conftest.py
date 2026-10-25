@@ -40,7 +40,15 @@ from app.modules.events.models import (
     EventRequestStatus,
 )
 from app.modules.notifications.services import list_notifications_for_recipient
-from app.modules.venue.models import Venue, VenueOpeningPeriod, Weekday
+from app.modules.venue.models import (
+    Booking,
+    BookingRequestStatus,
+    BookingStatus,
+    Venue,
+    VenueBookingRequest,
+    VenueOpeningPeriod,
+    Weekday,
+)
 
 MIGRATIONS_DIR = Path(__file__).resolve().parents[1] / "migrations" / "versions"
 
@@ -56,6 +64,31 @@ def approve_safety(event: EventRequest, save: Callable[..., None]) -> None:
             occurred_at=datetime.now(timezone.utc),
         )
     )
+
+
+#: An arrangement in these statuses always has a hold, live or run out (SCRUM-75,
+#: SCRUM-94), so a test saving one gives it one with ``place_hold_on``.
+HOLD_STATUSES = [BookingRequestStatus.ON_HOLD, BookingRequestStatus.EXPIRED]
+
+
+def place_hold_on(
+    arrangement: VenueBookingRequest, expires_at: datetime, save: Callable[..., None]
+) -> None:
+    """Give ``arrangement`` the tentative hold Venue Staff put on its venue (SCRUM-75).
+
+    Written directly, for an arrangement saved On Hold or Expired, which always has one.
+    """
+    hold = Booking(
+        venue_id=arrangement.venue_id,
+        start_time=arrangement.starts_at,
+        end_time=arrangement.ends_at,
+        status=BookingStatus.TENTATIVE,
+        event_id=arrangement.event_id,
+        hold_expires_at=expires_at,
+    )
+    save(hold)
+    arrangement.booking_id = hold.id
+    save(arrangement)
 
 
 @pytest.fixture(scope="session")

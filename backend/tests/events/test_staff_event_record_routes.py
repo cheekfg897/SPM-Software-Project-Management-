@@ -35,10 +35,9 @@ from app.modules.events.services import (
     StaffEventRecord,
 )
 from app.modules.venue.models import (
-    BookingRequestStatus,
     PreparationStatus as VenuePreparationStatus,
 )
-from app.modules.venue.services import ArrangementForRecord
+from tests.events.cases import arrangement_for_record
 
 pytestmark = pytest.mark.scrum_24
 
@@ -90,11 +89,9 @@ def staff_record(
     return StaffEventRecord(
         record=record,
         venue_arrangements=[
-            ArrangementForRecord(
-                venue_name="Main Hall",
+            arrangement_for_record(
                 starts_at=datetime(2026, 11, 1, 1, 0, tzinfo=timezone.utc),
                 ends_at=datetime(2026, 11, 1, 9, 0, tzinfo=timezone.utc),
-                status=BookingRequestStatus.APPROVED,
                 preparation_status=VenuePreparationStatus.IN_PROGRESS,
                 preparation_notes="Chairs set out.",
             )

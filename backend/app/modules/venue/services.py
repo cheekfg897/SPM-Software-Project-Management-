@@ -1471,6 +1471,16 @@ def raise_booking_request(
     return show_booking_request(request, event)
 
 
+def _every_arrangement_of(event_id: int, session: Session | None) -> list[VenueBookingRequest]:
+    """Every arrangement of the event, in any status, earliest period first."""
+    query = (
+        select(VenueBookingRequest)
+        .where(VenueBookingRequest.event_id == event_id)
+        .order_by(VenueBookingRequest.starts_at, VenueBookingRequest.id)
+    )
+    return list(resolve_session(session).scalars(query))
+
+
 def list_booking_requests_for_event(
     reference: str, *, coordinator_id: int, session: Session | None = None
 ) -> list[BookingRequestAsShown]:
@@ -1484,12 +1494,7 @@ def list_booking_requests_for_event(
     from app.modules.events import services as event_services  # circular at import time
 
     event = event_services.get_event_for_coordinator(reference, coordinator_id, session=session)
-    query = (
-        select(VenueBookingRequest)
-        .where(VenueBookingRequest.event_id == event.id)
-        .order_by(VenueBookingRequest.starts_at, VenueBookingRequest.id)
-    )
-    requests = resolve_session(session).scalars(query).all()
+    requests = _every_arrangement_of(event.id, session)
     return [show_booking_request(request, event) for request in requests]
 
 
@@ -1628,20 +1633,101 @@ def list_arranged_venues(event_id: int, *, session: Session | None = None) -> li
 
 
 @dataclass(frozen=True)
-class ArrangementForRecord:
-    """One of an event's venue arrangements as its read-only record shows it.
+class UnavailabilityForRecord:
+    """A block or deactivation that flagged an arrangement, as the record shows it.
 
-    SCRUM-24 AC9 and SCRUM-84 AC2: internal users who are not the event's coordinator
-    see each venue, its period, where the request stands and Venue Staff's preparation
-    (ADR-0095). No ids: the reader has nothing to do with them.
+    SCRUM-92 AC1: its category, Venue Staff's note and the period the venue is
+    unavailable; ``ends_at`` is ``None`` for a deactivation (AC9).
+    """
+
+    category: UnavailabilityCategory
+    reason: str
+    starts_at: datetime
+    ends_at: datetime | None
+
+
+@dataclass(frozen=True)
+class ReassessmentForRecord:
+    """A reason a significant change flagged an arrangement (SCRUM-33 AC6, ADR-0094)."""
+
+    kind: ReassessmentFlagKind
+    reason: str
+
+
+@dataclass(frozen=True)
+class ArrangementForRecord:
+    """One of an event's venue arrangements as its record shows it.
+
+    SCRUM-24 AC9, AC10 and SCRUM-84 AC2: the venue and where it is, the period, what
+    the coordinator asked for, where the request stands and why, any hold's expiry, any
+    flag with its reason, and Venue Staff's preparation (ADR-0095, ADR-0104). No ids:
+    the reader has nothing to do with them.
     """
 
     venue_name: str
+    venue_location: str
     starts_at: datetime
     ends_at: datetime
+    purpose: str
+    expected_occupancy: int
+    required_layout: str | None
+    justification: str | None
     status: BookingRequestStatus
+    #: Venue Staff's reason for their decision, if they gave one (SCRUM-43).
+    decision_reason: str | None
+    #: When an On Hold arrangement's hold expires, or an Expired one's did (SCRUM-93).
+    hold_expires_at: datetime | None
+    #: Flagged "Needs Alternative Venue": its venue became unavailable (SCRUM-92).
+    needs_alternative_venue: bool
+    #: Every block or deactivation that flagged it, oldest first.
+    unavailability: list[UnavailabilityForRecord]
+    #: Flagged by a significant change to the event (SCRUM-33 AC6).
+    flagged_after_change: bool
+    #: Each reason a change flagged it, oldest first.
+    reassessment_flags: list[ReassessmentForRecord]
     preparation_status: PreparationStatus
     preparation_notes: str | None
+
+
+def _arrangement_for_record(
+    arrangement: VenueBookingRequest, session: Session | None
+) -> ArrangementForRecord:
+    """The arrangement as the event's record shows it, with its venue by name."""
+    venue = get_venue(arrangement.venue_id, session=session)
+    unavailability = []
+    for flag in arrangement.flags:
+        unavailability.append(
+            UnavailabilityForRecord(
+                category=flag.category,
+                reason=flag.reason,
+                starts_at=flag.starts_at,
+                ends_at=flag.ends_at,
+            )
+        )
+    reassessment_flags = []
+    for reassessment in arrangement.reassessment_flags:
+        reassessment_flags.append(
+            ReassessmentForRecord(kind=reassessment.kind, reason=reassessment.reason)
+        )
+    return ArrangementForRecord(
+        venue_name=venue.name,
+        venue_location=venue.location,
+        starts_at=arrangement.starts_at,
+        ends_at=arrangement.ends_at,
+        purpose=arrangement.purpose,
+        expected_occupancy=arrangement.expected_occupancy,
+        required_layout=arrangement.required_layout,
+        justification=arrangement.justification,
+        status=arrangement.status,
+        decision_reason=arrangement.decision_reason,
+        hold_expires_at=arrangement.hold_expires_at,
+        needs_alternative_venue=arrangement.needs_alternative_venue,
+        unavailability=unavailability,
+        flagged_after_change=arrangement.is_flagged_after_change,
+        reassessment_flags=reassessment_flags,
+        preparation_status=arrangement.preparation_status,
+        preparation_notes=arrangement.preparation_notes,
+    )
 
 
 def list_arrangements_for_record(
@@ -1654,17 +1740,21 @@ def list_arrangements_for_record(
     """
     shown = []
     for arrangement in list_active_arrangements(event_id, session=session):
-        venue = get_venue(arrangement.venue_id, session=session)
-        shown.append(
-            ArrangementForRecord(
-                venue_name=venue.name,
-                starts_at=arrangement.starts_at,
-                ends_at=arrangement.ends_at,
-                status=arrangement.status,
-                preparation_status=arrangement.preparation_status,
-                preparation_notes=arrangement.preparation_notes,
-            )
-        )
+        shown.append(_arrangement_for_record(arrangement, session))
+    return shown
+
+
+def list_every_arrangement_for_record(
+    event_id: int, *, session: Session | None = None
+) -> list[ArrangementForRecord]:
+    """Every one of the event's arrangements, in any status, earliest period first.
+
+    SCRUM-24 AC10 and SCRUM-93 AC5 (ADR-0104): withdrawn, released, rejected and
+    expired ones too, each with its status, so the record hides none of them.
+    """
+    shown = []
+    for arrangement in _every_arrangement_of(event_id, session):
+        shown.append(_arrangement_for_record(arrangement, session))
     return shown
 
 

@@ -43,13 +43,13 @@ from app.modules.venue.models import (
     PreparationStatus as VenuePreparationStatus,
     Venue,
 )
-from app.modules.venue.services import ArrangementForRecord
 from tests.events.cases import (
     DRAFT_REFERENCE,
     NON_DRAFT_STATUSES,
     AddLine,
     Arrange,
     SaveArrangement,
+    arrangement_for_record,
 )
 
 pytestmark = pytest.mark.scrum_24
@@ -196,13 +196,8 @@ def test_the_record_holds_each_venue_arrangement_with_its_preparation(
     staff_record = get_staff_event_record(REFERENCE, session=db_session)
 
     assert staff_record.venue_arrangements == [
-        ArrangementForRecord(
-            venue_name="Main Hall",
-            starts_at=datetime(2026, 11, 1, 9, 0, tzinfo=timezone.utc),
-            ends_at=datetime(2026, 11, 1, 9, 30, tzinfo=timezone.utc),
-            status=BookingRequestStatus.APPROVED,
-            preparation_status=VenuePreparationStatus.READY,
-            preparation_notes="Stage built.",
+        arrangement_for_record(
+            preparation_status=VenuePreparationStatus.READY, preparation_notes="Stage built."
         )
     ]
 
