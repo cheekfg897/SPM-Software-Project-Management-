@@ -221,6 +221,7 @@ describe('SCRUM-37 AC5, SCRUM-48 AC5 event record: the equipment an organiser se
     expect(rowsOf('Equipment requested')).toEqual([
       ['Projector', '10', 'Partially fulfilled', '6'],
       ['Microphone', '4', 'Awaiting Technical Support', 'Not reviewed yet'],
+      ['Lectern', '1', 'Fulfilled', '1'],
     ])
   })
 
@@ -228,7 +229,14 @@ describe('SCRUM-37 AC5, SCRUM-48 AC5 event record: the equipment an organiser se
     openAsOrganiser('EVR-7K2M9QXA')
 
     const equipment = await section('Equipment')
-    for (const internal of ['Two at the back of the hall.', 'Four are out for repair.', 'Tariq']) {
+    const internals = [
+      'Two at the back of the hall.',
+      'Four are out for repair.',
+      'At the front, stage left.',
+      'The spare one, with a reading light.',
+      'Tariq',
+    ]
+    for (const internal of internals) {
       expect(within(equipment).queryByText(internal, { exact: false })).not.toBeInTheDocument()
     }
   })
