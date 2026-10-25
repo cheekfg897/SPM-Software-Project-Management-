@@ -7,7 +7,7 @@ import { MOCK_ACCOUNTS, mockSessionFor } from '@/mocks/fixtures/accounts'
 import { recordRequests } from '@/test/recordRequests'
 import { renderApp } from '@/test/render'
 
-import { serveRecordInStatus } from '../test/recordPage'
+import { serveRecordInStatus, statusShownFor } from '../test/recordPage'
 
 /**
  * SCRUM-33 AC1 to AC3: the assigned coordinator changes an event's details, is told which
@@ -171,6 +171,23 @@ describe('SCRUM-33 AC2 a significant change', () => {
     expect(app.router.state.location.pathname).toBe(coordinatorEventPath(PARTNER_SUMMIT))
     const history = await screen.findByRole('region', { name: 'History' })
     expect(await within(history).findByText('5 Oct, 12:00 pm · Chloe Lim')).toBeInTheDocument()
+  })
+})
+
+describe('SCRUM-33 AC9 a significant change in Safety Review', () => {
+  it('shows the event back in Approved once the change unsettles its venue', async () => {
+    const app = renderApp(editEventPath('EVR-PLAN0004'), {
+      session: mockSessionFor(MOCK_ACCOUNTS.planningCoordinator),
+    })
+    await screen.findByRole('button', { name: 'Save changes' })
+
+    await replace(app, 'Venue requirements', 'Step-free stage.')
+    await save(app)
+    const saved = await screen.findByRole('region', { name: 'Saved' })
+    await app.user.click(within(saved).getByRole('link', { name: 'Back to the event' }))
+
+    await screen.findByRole('region', { name: 'About the event' })
+    expect(statusShownFor('EVR-PLAN0004')).toBe('Approved')
   })
 })
 

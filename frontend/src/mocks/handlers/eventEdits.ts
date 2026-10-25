@@ -24,7 +24,9 @@ import type { SignificantChange } from './reassessmentRules'
  * only the fields sent change, each checked as the backend checks it, and each change is
  * answered and written to the history, significant or not; a significant change withdraws a
  * safety approval (AC7), and each venue arrangement it affects is flagged, in the booking mock and
- * in the planning the gates count (AC6, ADR-0094). Checks run in the backend's order:
+ * in the planning the gates count (AC6, ADR-0094); in Safety Review, a flag sends the event back
+ * to Approved (AC9, ADR-0107). The Safety Officers' notice isn't raised: the notifications mock
+ * serves only its seeded notices. Checks run in the backend's order:
  * the coordinator's own event (404), a status that can be edited (409: every status before
  * Confirmed, and a Confirmed event is pointed to a change request; AC8, ADR-0101), then the
  * fields (400). The internal planning notes are kept here: the record never shows them.
@@ -306,20 +308,37 @@ function significantChangeOf(
 
 /**
  * Flag each live arrangement the gates count that `change` affects (SCRUM-33 AC6); a withdrawn or
- * rejected one has nothing to lose, and an event with nothing planned has none.
+ * rejected one has nothing to lose, and an event with nothing planned has none. Says whether it
+ * flagged any.
  */
-function flagPlannedArrangements(stored: MockEventRequest, change: SignificantChange): void {
+function flagPlannedArrangements(stored: MockEventRequest, change: SignificantChange): boolean {
   if (stored.planning === undefined) {
-    return
+    return false
   }
+  let flaggedAny = false
   const arrangements = stored.planning.arrangements.map((arrangement) => {
     if (!FLAGGABLE_STATUSES.includes(arrangement.status)) {
       return arrangement
     }
     const flags = reassessmentFlagsFor(arrangement, change)
+    if (flags.length > 0) {
+      flaggedAny = true
+    }
     return { ...arrangement, reassessmentFlags: [...arrangement.reassessmentFlags, ...flags] }
   })
   stored.planning = { ...stored.planning, arrangements }
+  return flaggedAny
+}
+
+/**
+ * An event in Safety Review whose change flagged an arrangement no longer meets the Safety Review
+ * rules, so it goes back to Approved (SCRUM-33 AC9, `_return_to_approved`, ADR-0107). One a
+ * withdrawn approval already sent back stays where it is.
+ */
+function returnToApproved(stored: MockEventRequest): void {
+  if (stored.request.status === EVENT_REQUEST_STATUS.SAFETY_REVIEW) {
+    stored.request = { ...stored.request, status: EVENT_REQUEST_STATUS.APPROVED }
+  }
 }
 
 export const eventEditHandlers: RequestHandler[] = [
@@ -353,12 +372,15 @@ export const eventEditHandlers: RequestHandler[] = [
       attendanceBefore,
       Number(stored.request.expected_attendance),
     )
-    flagPlannedArrangements(stored, change)
+    const flaggedAny = flagPlannedArrangements(stored, change)
     flagArrangementsAfterChange(stored.request.reference, change)
     addToHistory(stored.request.reference, [
       ...historyOf(changes, coordinator.full_name),
       ...withdrawnSafetyApproval(stored, changes, coordinator.full_name),
     ])
+    if (flaggedAny) {
+      returnToApproved(stored)
+    }
     return HttpResponse.json({
       ...stored.request,
       programme_notes: stored.record.programme_notes,

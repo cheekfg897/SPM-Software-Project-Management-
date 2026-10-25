@@ -48,7 +48,9 @@ import type { Credentials } from './backend'
  * review (SCRUM-97, ADR-0047), confirming it (SCRUM-49, ADR-0051), its registration settings
  * (SCRUM-69, ADR-0043), marking it completed (SCRUM-68, ADR-0027) (ADR-0075) and rejecting it
  * during planning (SCRUM-49 AC9, AC10, ADR-0093), after which SCRUM-31 records no new decision
- * (AC12, ADR-0106), and what a closed event's equipment requests then refuse (SCRUM-48 AC8). Also the decision a venue booking request locks (SCRUM-31 AC7,
+ * (AC12, ADR-0106), and what a closed event's equipment requests then refuse (SCRUM-48 AC8). A
+ * significant change in Safety Review tells the Safety Officer and, when it unsettles an
+ * arrangement, sends the event back to Approved (SCRUM-33 AC9, ADR-0107). Also the decision a venue booking request locks (SCRUM-31 AC7,
  * ADR-0084), and the statuses the coordinator's edit is allowed in (SCRUM-33 AC8, ADR-0101).
  *
  * The refusals that need no event of the coordinator's run with the staff account every run has
@@ -695,6 +697,86 @@ describe('SCRUM-33 AC7 a significant edit after the safety check, against the ba
       expect(error.fieldErrors).toEqual({
         safety_check: ['The Safety Officer has not approved the event.'],
       })
+    },
+  )
+})
+
+describe('SCRUM-33 AC9 a significant change in Safety Review, against the backend', () => {
+  const BACK_IN_PLANNING = 'It is back in planning until it can be sent to Safety Review again.'
+  const canChangeLines = canApproveSafety && TECH_SUPPORT !== null
+
+  /** The Safety Officer's "changed in Safety Review" notices about `reference`. */
+  async function safetyOfficerNoticesOf(reference: string) {
+    await signInAs(required(SAFETY_OFFICER))
+    const notices = await fetchNotifications()
+    return notices.filter(
+      (notice) =>
+        notice.kind === 'safety_review_event_changed' && notice.event_reference === reference,
+    )
+  }
+
+  it.skipIf(!canApproveSafety)(
+    'sends the event back to Approved when the change flags its venue, and tells the Safety Officer which fields changed',
+    async () => {
+      const { reference } = await eventInSafetyReview()
+
+      const edited = await editEventRequest(reference, { end_time: '13:00' })
+
+      expect(edited.status).toBe('approved')
+      // --- It re-enters Safety Review only once its venue is settled again (SCRUM-97) ---
+      const error = await refusal(sendToSafetyReview(reference))
+      expect(error.fieldErrors.venue_arrangements).toEqual([
+        expect.stringContaining("is flagged (requires reconfirmation): The event's date or time"),
+      ])
+      const notices = await safetyOfficerNoticesOf(reference)
+      expect(notices).toHaveLength(1)
+      expect(notices[0]).toMatchObject({
+        message: 'An event in Safety Review changed significantly.',
+        detail: `Changed: end time. ${BACK_IN_PLANNING}`,
+        link: `/events/${reference}`,
+      })
+    },
+  )
+
+  it.skipIf(!canApproveSafety)(
+    'keeps the event in Safety Review when the change flags nothing, and still tells the officer',
+    async () => {
+      const { reference } = await eventInSafetyReview()
+
+      // Fewer people: the hall booked for all 120 still holds them (SCRUM-33 AC6, ADR-0094).
+      const edited = await editEventRequest(reference, {
+        description: 'Doors at 9.',
+        expected_attendance: 100,
+      })
+
+      expect(edited.status).toBe('safety_review')
+      const notices = await safetyOfficerNoticesOf(reference)
+      expect(notices.map((notice) => notice.detail)).toEqual([
+        'Changed: description, expected attendance.',
+      ])
+    },
+  )
+
+  it.skipIf(!canApproveSafety)('tells the officer nothing about a note', async () => {
+    const { reference } = await eventInSafetyReview()
+
+    await editEventRequest(reference, { description: 'Doors at 9.' })
+
+    expect(await safetyOfficerNoticesOf(reference)).toEqual([])
+  })
+
+  it.skipIf(!canChangeLines)(
+    'sends the event back to Approved when a line is added, which has no outcome yet (SCRUM-37 AC4)',
+    async () => {
+      const { reference } = await eventInSafetyReview()
+
+      await addEquipmentRequest(reference)
+
+      expect((await fetchEventRequest(reference)).status).toBe('approved')
+      const notices = await safetyOfficerNoticesOf(reference)
+      expect(notices.map((notice) => notice.detail)).toEqual([
+        `Changed: equipment line. ${BACK_IN_PLANNING}`,
+      ])
     },
   )
 })
