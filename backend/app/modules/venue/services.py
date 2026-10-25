@@ -272,10 +272,13 @@ UNTIL_REACTIVATED = "until it is reactivated"
 
 @dataclass(frozen=True)
 class AlternativeVenueNotice:
-    """What the coordinator of one arrangement's event is to be told (AC5)."""
+    """Who is told about one flagged arrangement, and what (AC3, AC5)."""
 
     event_id: int
     detail: str
+    #: The flag sent the event back from Confirmed to Approved, so its organiser is
+    #: told too (AC3).
+    returned_to_planning: bool
 
 
 def _notice_time(moment: datetime) -> str:
@@ -329,10 +332,13 @@ def _flag_arrangements(
     for arrangement in arrangements:
         flag = AlternativeVenueFlag(**unavailability)
         arrangement.flags.append(flag)
-        event_services.record_alternative_venue_needed(
+        returned_to_planning = event_services.record_alternative_venue_needed(
             arrangement.event_id, details=_flag_details(arrangement, flag), session=session
         )
-        notices.append(AlternativeVenueNotice(arrangement.event_id, _notice_detail(venue, flag)))
+        notice = AlternativeVenueNotice(
+            arrangement.event_id, _notice_detail(venue, flag), returned_to_planning
+        )
+        notices.append(notice)
     return notices
 
 
@@ -344,6 +350,19 @@ def _tell_coordinators(notices: list[AlternativeVenueNotice], session: Session |
         event_services.notify_coordinator_alternative_venue_needed(
             notice.event_id, detail=notice.detail, session=session
         )
+
+
+def _tell_organisers(
+    venue: Venue, notices: list[AlternativeVenueNotice], session: Session | None
+) -> None:
+    """Tell the organiser of each event a flag sent back to Approved (AC3, ADR-0108)."""
+    from app.modules.events import services as event_services  # circular at import time
+
+    for notice in notices:
+        if notice.returned_to_planning:
+            event_services.notify_organiser_venue_unavailable(
+                notice.event_id, venue_name=venue.name, session=session
+            )
 
 
 def _flag_left_by(venue_block_id: int | None) -> ColumnElement[bool]:
@@ -581,8 +600,9 @@ def deactivate_venue(
     It drops out of listing and search. Every arrangement at it that has not ended is
     flagged "Needs Alternative Venue" with the category and note, from ``now`` with no
     end, as a block would flag it. The flags, their history entries and any Confirmed
-    event's return to Approved are saved with the deactivation, and each coordinator is
-    told afterwards (ADR-0053). Deactivating a venue that is already inactive changes
+    event's return to Approved are saved with the deactivation. Each coordinator, and
+    the organiser of each event sent back to Approved, are told afterwards (ADR-0053,
+    ADR-0108). Deactivating a venue that is already inactive changes
     nothing, so its arrangements are not flagged twice.
 
     Args:
@@ -609,6 +629,7 @@ def deactivate_venue(
     notices = _flag_arrangements(arrangements, venue, unavailability, session)
     sess.commit()
     _tell_coordinators(notices, session)
+    _tell_organisers(venue, notices, session)
     return venue
 
 
@@ -960,8 +981,8 @@ def block_venue(
     flagged "Needs Alternative Venue" with the block's category, note and period
     (SCRUM-92 AC1, ADR-0100); the bookings and holds themselves still hold the venue.
     The flags, their history entries and any Confirmed event's return to Approved are
-    saved with the block, and each event's coordinator is told afterwards (AC3, AC5,
-    ADR-0053).
+    saved with the block. Each event's coordinator, and the organiser of each event sent
+    back to Approved, are told afterwards (AC3, AC5, ADR-0053, ADR-0108).
 
     Args:
         venue_id: The venue to block.
@@ -996,6 +1017,7 @@ def block_venue(
     notices = _flag_arrangements(arrangements, venue, unavailability, session)
     sess.commit()
     _tell_coordinators(notices, session)
+    _tell_organisers(venue, notices, session)
     return block, _bookings_cut_by(venue, block, sess)
 
 

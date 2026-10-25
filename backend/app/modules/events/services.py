@@ -1410,7 +1410,7 @@ def get_event_for_replacement_booking(
 
 def record_alternative_venue_needed(
     event_id: int, *, details: dict[str, Any], session: Session | None = None
-) -> None:
+) -> bool:
     """Record that one of the event's venues became unavailable, without committing.
 
     SCRUM-92 AC3: a Confirmed event goes back to Approved, the planning stage, for the
@@ -1418,6 +1418,9 @@ def record_alternative_venue_needed(
     it. The history entry says which, beside the venue module's ``details``. The system
     did it, so the entry has no actor. It rides in the caller's transaction, with the
     flag it records (ADR-0018).
+
+    Returns:
+        Whether the event went back to Approved, so its organiser is to be told.
     """
     event_request = resolve_session(session).get(EventRequest, event_id)
     returned_to_planning = event_request.status is EventRequestStatus.CONFIRMED
@@ -1430,6 +1433,7 @@ def record_alternative_venue_needed(
         details={**details, "returned_to_planning": returned_to_planning},
         session=session,
     )
+    return returned_to_planning
 
 
 def record_venue_booking_requested(
@@ -3179,6 +3183,37 @@ def notify_coordinator_alternative_venue_needed(
     event_request = sess.get(EventRequest, event_id)
     _notify_assigned_coordinator(
         event_request, NotificationKind.ALTERNATIVE_VENUE_NEEDED, sess, detail=detail
+    )
+
+
+#: What the organiser is told when a venue becoming unavailable sends their Confirmed
+#: event back to Approved (SCRUM-92 AC3, Product Owner 25 Oct). Venue Staff's note is
+#: left out, as it is of the organiser's history (ADR-0053 decision 7).
+VENUE_UNAVAILABLE_ORGANISER_DETAIL = (
+    "{venue} became unavailable for {event}, so the event has gone back from Confirmed"
+    " to Approved for its venue to be reviewed. It has not been cancelled."
+)
+
+
+def notify_organiser_venue_unavailable(
+    event_id: int, *, venue_name: str, session: Session | None = None
+) -> None:
+    """Tell the organiser their Confirmed event went back to Approved (SCRUM-92 AC3).
+
+    For the venue module, after the flag's own commit (ADR-0015), and only for an event
+    the flag sent back. Only the organiser who submitted the request, as for the
+    other decisions on it (ADR-0028), with the kind the coordinator's notice uses: a
+    venue booked for the event is unavailable (ADR-0108).
+    """
+    sess = resolve_session(session)
+    event_request = sess.get(EventRequest, event_id)
+    detail = VENUE_UNAVAILABLE_ORGANISER_DETAIL.format(venue=venue_name, event=event_request.name)
+    _raise_notifications(
+        [event_request.organiser_id],
+        event_request,
+        NotificationKind.ALTERNATIVE_VENUE_NEEDED,
+        sess,
+        detail=detail,
     )
 
 
