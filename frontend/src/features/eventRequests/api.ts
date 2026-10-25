@@ -110,6 +110,17 @@ export interface OrganiserVenueArrangement {
 }
 
 /**
+ * The Safety Officer's final decision as the event's organiser is sent it (SCRUM-49 AC11,
+ * ADR-0099): the outcome of the current check and when it was made. Not the officer's name, the
+ * checklist notes or the reason.
+ */
+export interface OrganiserSafetyDecision {
+  outcome: SafetyOutcome
+  /** ISO date-time with an offset. */
+  decided_at: string
+}
+
+/**
  * An event request's record: the request, the coordinator's note the organiser may see, who
  * the coordinator is (null until one is assigned), the decision (null until one is made), the
  * clarification exchange, oldest first (SCRUM-24 AC9, ADR-0026, ADR-0056), and the equipment
@@ -124,6 +135,8 @@ export interface EventRecord extends EventRequest {
   equipment_lines: (OrganiserEquipmentLine | SavedEquipmentLine)[]
   /** Only on the organiser's record, and empty until the event is confirmed (ADR-0099). */
   venue_arrangements?: OrganiserVenueArrangement[]
+  /** Only on the organiser's record, and null until the event is confirmed (ADR-0099). */
+  safety_decision?: OrganiserSafetyDecision | null
 }
 
 /** Whether the line is the organiser's view of it: only theirs names the equipment type. */
