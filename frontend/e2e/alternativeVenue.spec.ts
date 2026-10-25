@@ -7,7 +7,7 @@ import { signInAs } from './signInAs'
 
 /**
  * SCRUM-92: a coordinator sees why a booked venue needs replacing, finds another venue for the
- * same period and raises a replacement linked to the original booking.
+ * same period and raises a replacement linked to the original booking, which keeps its period.
  */
 
 // From src/mocks/handlers/bookingFixtures.ts, which Playwright can't import: it uses the `@/`
@@ -35,6 +35,9 @@ test('a coordinator replaces a booked venue that became unavailable', async ({ p
   await expect(page.getByText(`Replacing ${FLAGGED_PURPOSE},`)).toBeVisible()
   await expect(page.getByLabel('Venue ID')).toHaveValue('2')
   await expect(page.getByLabel('Starts')).toHaveValue('2026-11-26T13:00')
+  // The replacement keeps the flagged booking's date and times (Product Owner 25 Oct).
+  await expect(page.getByLabel('Starts')).not.toBeEditable()
+  await expect(page.getByLabel('Ends')).not.toBeEditable()
   await page.getByLabel('Purpose').fill('Main hall, moved')
   await page.getByRole('button', { name: 'Request venue' }).click()
 

@@ -76,12 +76,15 @@ export function useReplacementRequest(reference: string) {
   }
 }
 
-/** Raise a request for the event. */
+/**
+ * Raise a request for the event. The list is read again even after a refusal, which may come from
+ * a change the page hasn't seen, such as a replaced arrangement's flag clearing (SCRUM-92).
+ */
 export function useRaiseBookingRequest(reference: string) {
   const reread = useRereadEventRequests(reference)
   return useMutation({
     mutationFn: (payload: RaiseBookingRequest) => raiseBookingRequest(reference, payload),
-    onSuccess: reread,
+    onSettled: reread,
   })
 }
 

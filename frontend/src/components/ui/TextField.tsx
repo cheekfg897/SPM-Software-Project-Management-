@@ -18,7 +18,7 @@ export function TextField({ label, name, errors, hint, className, ...rest }: Tex
         <input
           {...control}
           name={name}
-          className="border-line bg-surface text-ink placeholder:text-ink-faint focus:border-flare/70 aria-invalid:border-danger w-full rounded-xl border px-4 py-2.5 focus:outline-none"
+          className="border-line bg-surface text-ink placeholder:text-ink-faint focus:border-flare/70 aria-invalid:border-danger read-only:bg-surface-raised read-only:text-ink-muted w-full rounded-xl border px-4 py-2.5 focus:outline-none"
           {...rest}
         />
       )}

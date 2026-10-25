@@ -19,7 +19,8 @@ import { fillRequest, typeInto } from '../test/requestForm'
 /**
  * SCRUM-92: an arrangement whose venue became unavailable is flagged by the backend. The
  * coordinator sees why under it, with the original booking still shown, finds another venue
- * for its period and raises a replacement linked to it.
+ * for its period and raises a replacement linked to it, which keeps that period (Product Owner
+ * 25 Oct, ADR-0108).
  */
 
 const SESSION = { session: mockSessionFor(MOCK_ACCOUNTS.coordinator) }
@@ -27,6 +28,8 @@ const BOOKING_URL = '/api/venues/events/:reference/booking-requests'
 const { bookedHall, bookedSideRoom, reviewedAuditorium } = MOCK_ARRANGEMENTS
 const BOOKED_EVENT = MOCK_BOOKING_EVENTS.booked
 const CAUSES_LABEL = 'Why its venue is unavailable'
+/** Under Starts and Ends while a replacement keeps the flagged booking's period (AC6). */
+const LOCKED_PERIOD_HINT = 'Fixed to the booking it replaces. In Singapore time.'
 
 function openEvent(reference: string) {
   return renderApp(venueRequestsPath(reference), SESSION)
@@ -239,6 +242,54 @@ describe('SCRUM-92 raising a replacement for a flagged arrangement (AC6)', () =>
     expect(view.getByLabelText('Purpose')).toHaveValue('')
   })
 
+  it('locks the date and times to the flagged booking’s, which the coordinator can’t change', async () => {
+    const view = openReplacing(BOOKED_EVENT.reference, bookedHall.id)
+    await screen.findByText(REPLACEMENT_NOTE, { exact: false })
+    const starts = view.getByLabelText('Starts')
+    const ends = view.getByLabelText('Ends')
+
+    await view.user.type(starts, '2026-11-27T09:00')
+    await view.user.type(ends, '2026-11-27T12:00')
+
+    expect([starts, ends]).toEqual([
+      expect.objectContaining({ readOnly: true, value: '2026-11-26T13:00' }),
+      expect.objectContaining({ readOnly: true, value: '2026-11-26T17:00' }),
+    ])
+    expect(starts).toHaveAccessibleDescription(LOCKED_PERIOD_HINT)
+    expect(ends).toHaveAccessibleDescription(LOCKED_PERIOD_HINT)
+  })
+
+  it('leaves the period open while the arrangement replaced is not yet listed', async () => {
+    const view = openReplacing(MOCK_BOOKING_EVENTS.approved.reference, bookedHall.id)
+    await screen.findByText(`Replacing arrangement ${bookedHall.id}`, { exact: false })
+
+    expect(view.getByLabelText('Starts')).not.toHaveAttribute('readonly')
+    expect(view.getByLabelText('Starts')).toHaveAccessibleDescription('In Singapore time.')
+  })
+
+  it('shows the backend’s refusal of another period under Starts and Ends, and reads the list again', async () => {
+    const locked =
+      'A replacement keeps the date and times of the booking it replaces: 2026-11-26 13:00 to 2026-11-26 17:00.'
+    server.use(
+      http.post(BOOKING_URL, () => validationError({ starts_at: [locked], ends_at: [locked] })),
+    )
+    const requests = recordRequests()
+    const view = openReplacing(BOOKED_EVENT.reference, bookedHall.id)
+    await screen.findByText(REPLACEMENT_NOTE, { exact: false })
+    const listReads = () => requests.filter((request) => request.method === 'GET').length
+    const readsBefore = listReads()
+
+    await view.user.click(requestButton(view))
+
+    await waitFor(() => {
+      expect(view.getByLabelText('Starts')).toHaveAccessibleDescription(locked)
+    })
+    expect(view.getByLabelText('Ends')).toHaveAccessibleDescription(locked)
+    await waitFor(() => {
+      expect(listReads()).toBeGreaterThan(readsBefore)
+    })
+  })
+
   it('shows the backend’s refusal of an arrangement that needs no alternative venue', async () => {
     const view = openReplacing(BOOKED_EVENT.reference, bookedSideRoom.id)
     await screen.findByText(`Replacing ${bookedSideRoom.purpose}`, { exact: false })
@@ -385,6 +436,20 @@ describe('SCRUM-33 an arrangement flagged after a change to the event', () => {
       "Requires reconfirmation: The event's date or time changed.",
     ])
     expect(findAnotherVenueLinks(await item(bookedHall.purpose))).toHaveLength(1)
+  })
+
+  it('leaves the replacement’s period open, as the backend does for a change flag (ADR-0100)', async () => {
+    listBookedEventAs([changeFlaggedHall])
+
+    const view = renderApp(
+      replacementRequestPath(BOOKED_EVENT.reference, bookedHall.id, bookedHall.venue_id),
+      SESSION,
+    )
+    await screen.findByText(`Replacing ${bookedHall.purpose}`, { exact: false })
+
+    expect(view.getByLabelText('Starts')).toHaveValue('2026-11-26T13:00')
+    expect(view.getByLabelText('Starts')).not.toHaveAttribute('readonly')
+    expect(view.getByLabelText('Ends')).not.toHaveAttribute('readonly')
   })
 
   it('shows no flag once it stops counting, though the backend keeps the reasons', async () => {
