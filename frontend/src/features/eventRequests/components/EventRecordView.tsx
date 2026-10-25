@@ -23,6 +23,7 @@ import { RecordHeading } from './RecordHeading'
 import { RecordSection } from './RecordSection'
 import { RegistrantsSection } from './RegistrantsSection'
 import { ReviewActions } from './ReviewActions'
+import { SafetyDecisionDetails } from './SafetyDecisionDetails'
 
 /** The organiser's answer to the open question (SCRUM-32 AC2, ADR-0060). */
 function AnswerClarification({ reference }: { reference: string }) {
@@ -59,7 +60,8 @@ function CoordinatorLinks({ reference }: { reference: string }) {
  * ADR-0056). Which record a viewer may open is the backend's call. Its assigned coordinator
  * also gets links on and the review actions, and an organiser answers an open question here
  * (SCRUM-31, SCRUM-32, ADR-0060) and sees their equipment (SCRUM-37 AC5, ADR-0098) and, once
- * the event is confirmed, its venues (SCRUM-49 AC11, ADR-0099).
+ * the event is confirmed, its venues and the Safety Officer's final decision (SCRUM-49 AC11,
+ * ADR-0099).
  */
 export function EventRecordView({ record }: { record: EventRecord }) {
   const viewer = useAppSelector(selectSessionUser)
@@ -70,8 +72,10 @@ export function EventRecordView({ record }: { record: EventRecord }) {
   // Only the organiser's record names each line's equipment; the coordinator works on the
   // lines from the Equipment page instead.
   const organisersEquipment = record.equipment_lines.filter(isOrganiserEquipmentLine)
-  // Only the organiser's record lists the venues, and only once the event is confirmed.
+  // Only the organiser's record lists the venues and the safety decision, and only once the
+  // event is confirmed.
   const confirmedVenues = record.venue_arrangements ?? []
+  const safetyDecision = record.safety_decision ?? null
   return (
     <PageContainer title={record.name}>
       <RecordHeading request={record} />
@@ -94,6 +98,11 @@ export function EventRecordView({ record }: { record: EventRecord }) {
         <RecordSection title="Clarifications">
           <ClarificationList clarifications={record.clarifications} />
           {isAnswerNeeded && <AnswerClarification reference={record.reference} />}
+        </RecordSection>
+      )}
+      {safetyDecision !== null && (
+        <RecordSection title="Safety check">
+          <SafetyDecisionDetails decision={safetyDecision} />
         </RecordSection>
       )}
       {confirmedVenues.length > 0 && (

@@ -298,6 +298,36 @@ describe('SCRUM-49 AC11 event record: the venues an organiser sees once it is co
   })
 })
 
+describe("SCRUM-49 AC11 event record: the Safety Officer's final decision, once confirmed", () => {
+  const SARA = mockSessionFor(MOCK_ACCOUNTS.otherOrganiser)
+
+  it('shows the outcome and when it was made', async () => {
+    renderApp(organiserRequestPath('EVR-BOOK0102'), { session: SARA })
+
+    const safety = await section('Safety check')
+    expect(within(safety).getByText('Approved')).toBeInTheDocument()
+    expect(within(safety).getByText('Decided 4 Oct, 2:00 pm')).toBeInTheDocument()
+  })
+
+  it("shows none of the Safety Officer's name or checklist notes", async () => {
+    renderApp(organiserRequestPath('EVR-BOOK0102'), { session: SARA })
+
+    const safety = await section('Safety check')
+    for (const internal of ['Sana Iyer', 'Both fire exits are clear.']) {
+      expect(within(safety).queryByText(internal, { exact: false })).not.toBeInTheDocument()
+    }
+  })
+
+  it('leaves the section out before the event is confirmed', async () => {
+    openAsOrganiser('EVR-W9CR5E7M')
+
+    await section('About the event')
+    expect(
+      screen.queryByRole('heading', { level: 2, name: 'Safety check' }),
+    ).not.toBeInTheDocument()
+  })
+})
+
 describe('SCRUM-24 AC9, AC10 event record: what a coordinator sees', () => {
   it('opens an event assigned to them, with links on to its venue requests and equipment', async () => {
     openAsCoordinator('EVR-BOOK0101')
