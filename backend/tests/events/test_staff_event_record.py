@@ -316,6 +316,26 @@ def test_the_record_shows_the_latest_safety_outcome_with_its_checklist(
     )
 
 
+def test_the_record_shows_the_reason_the_officer_gave_for_a_current_refusal(
+    db_session: Session,
+    saved_users: list[User],
+    saved_event_request: EventRequest,
+    record_outcome: Callable[..., None],
+) -> None:
+    """The current outcome's own reason, not an earlier one's (ADR-0095 decision 5)."""
+    record_outcome("rejected", FIRST_CHECK_AT, "No second fire exit.")
+
+    staff_record = get_staff_event_record(REFERENCE, session=db_session)
+
+    assert staff_record.safety_outcome == SafetyOutcomeAsShown(
+        outcome="rejected",
+        checklist=CHECKLIST,
+        reason="No second fire exit.",
+        recorded_by="Sam Safety",
+        recorded_at=FIRST_CHECK_AT,
+    )
+
+
 @pytest.mark.parametrize(
     "later_kind",
     [EventHistoryKind.SAFETY_APPROVAL_WITHDRAWN, EventHistoryKind.SAFETY_REVIEW_REQUESTED],
