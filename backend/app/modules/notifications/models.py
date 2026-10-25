@@ -102,6 +102,10 @@ class NotificationKind(str, enum.Enum):
     #: the arrangement and its period are the notification's ``detail`` (SCRUM-92 AC8,
     #: ADR-0100).
     VENUE_AVAILABLE_AGAIN = "venue_available_again"
+    #: Tells every Venue Staff user that rejecting an event during planning released one
+    #: of its approved bookings or holds; the arrangement, the venue and its period are
+    #: the notification's ``detail`` (SCRUM-49 AC10, ADR-0103).
+    VENUE_BOOKING_RELEASED = "venue_booking_released"
 
 
 class Notification(db.Model):  # type: ignore[name-defined]
