@@ -37,6 +37,7 @@ import {
 import { FLAGGABLE_STATUSES, reassessmentFlagsFor } from './reassessmentRules'
 import { MOCK_VENUES } from './venueFixtures'
 import type { SignificantChange } from './reassessmentRules'
+import { instantOf } from './venueBlockRules'
 import { unknownFieldErrors } from './venueRules'
 
 /**
@@ -96,6 +97,24 @@ const NOT_FLAGGED_MESSAGE = 'This venue arrangement does not need an alternative
  * another venue (SCRUM-92 AC6, ADR-0100).
  */
 const SAME_VENUE_MESSAGE = 'A replacement must be at a different venue from the one it replaces.'
+/** Business time is UTC+8 all year (BUSINESS_UTC_OFFSET), as milliseconds. */
+const BUSINESS_OFFSET_MS = 8 * 60 * 60_000
+
+/** An instant as the backend's notices and messages write it, in business time: "2026-11-26 13:00". */
+function noticeTime(value: string): string {
+  return new Date(Date.parse(value) + BUSINESS_OFFSET_MS)
+    .toISOString()
+    .slice(0, 16)
+    .replace('T', ' ')
+}
+
+/**
+ * The backend's LOCKED_PERIOD_MESSAGE: a replacement for a venue that became unavailable keeps the
+ * flagged arrangement's date and times (SCRUM-92 AC6, Product Owner 25 Oct, ADR-0108).
+ */
+function lockedPeriodMessage(replaced: BookingRequest): string {
+  return `A replacement keeps the date and times of the booking it replaces: ${noticeTime(replaced.starts_at)} to ${noticeTime(replaced.ends_at)}.`
+}
 /**
  * As the backend's REPLACEMENT_BOOKING_STATUSES (events/services.py): a flag leaves an event that
  * was not yet Confirmed in Safety Review, so a replacement may be raised there too (ADR-0053).
@@ -563,12 +582,29 @@ function findArrangement(event: MockBookingEvent, arrangementId: unknown) {
 }
 
 /**
+ * The time fields that move a replacement off the flagged arrangement's period, compared as
+ * instants as the backend's `_period_changes` does, so the same time written in UTC is no change.
+ */
+function periodChanges(replaced: BookingRequest, body: Record<string, unknown>): FieldErrors {
+  const message = lockedPeriodMessage(replaced)
+  const changes: FieldErrors = {}
+  if (instantOf(body.starts_at) !== Date.parse(replaced.starts_at)) {
+    changes.starts_at = [message]
+  }
+  if (instantOf(body.ends_at) !== Date.parse(replaced.ends_at)) {
+    changes.ends_at = [message]
+  }
+  return changes
+}
+
+/**
  * The backend's refusal of a replacement that doesn't name one of the event's flagged
  * arrangements, or null (SCRUM-92 AC6): flagged because its venue became unavailable, or by a
  * significant change to the event (SCRUM-33 AC6, `_check_replaceable`). Another event's is as
  * missing as an unknown one. A replacement for an arrangement that needs an alternative venue must
- * be at another venue, whatever the period; one flagged only after a change may stay at its venue
- * for a new period, and approving one that overlaps it clashes (ADR-0100).
+ * be at another venue, and then for the arrangement's own date and times (ADR-0108); one flagged
+ * only after a change may stay at its venue for a new period, and approving one that overlaps it
+ * clashes (ADR-0100).
  */
 function replacementRefusal(event: MockBookingEvent, body: Record<string, unknown>) {
   const replaced = findArrangement(event, body.replaces_request_id)
@@ -578,10 +614,14 @@ function replacementRefusal(event: MockBookingEvent, body: Record<string, unknow
   if (!replaced.needs_alternative_venue && !replaced.flagged_after_change) {
     return validationError({ replaces_request_id: [NOT_FLAGGED_MESSAGE] })
   }
-  if (replaced.needs_alternative_venue && replaced.venue_id === body.venue_id) {
+  if (!replaced.needs_alternative_venue) {
+    return null
+  }
+  if (replaced.venue_id === body.venue_id) {
     return validationError({ venue_id: [SAME_VENUE_MESSAGE] })
   }
-  return null
+  const changes = periodChanges(replaced, body)
+  return Object.keys(changes).length > 0 ? validationError(changes) : null
 }
 
 /**

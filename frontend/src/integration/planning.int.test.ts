@@ -1204,6 +1204,40 @@ describe('SCRUM-92 replacing a venue that became unavailable', () => {
   )
 
   it.skipIf(!canApproveVenue)(
+    'refuses a replacement for another period, on the time fields it moves (AC6)',
+    async () => {
+      const { reference } = await settledEvent()
+      const original = await onlyArrangement(reference)
+      await blockVenueOf(original)
+      const otherVenue = await newVenue()
+      await signInAs(staffAccount())
+
+      const error = await refusal(
+        raiseBookingRequest(reference, {
+          venue_id: otherVenue,
+          starts_at: `${EVENT_DATE}T13:00:00+08:00`,
+          ends_at: `${EVENT_DATE}T15:00:00+08:00`,
+          purpose: 'Integration replacement, later',
+          replaces_request_id: original.id,
+        }),
+      )
+
+      // The flagged booking's own date and times, in business time (Product Owner 25 Oct).
+      const locked =
+        'A replacement keeps the date and times of the booking it replaces: ' +
+        `${EVENT_DATE} 09:00 to ${EVENT_DATE} 12:00.`
+      expect(error).toMatchObject({
+        status: 400,
+        code: 'validation_error',
+        message: 'Invalid request.',
+      })
+      expect(error.fieldErrors).toEqual({ starts_at: [locked], ends_at: [locked] })
+      // Nothing was saved: the flagged arrangement is still the event's only one.
+      expect(await fetchBookingRequests(reference)).toHaveLength(1)
+    },
+  )
+
+  it.skipIf(!canApproveVenue)(
     'tells the coordinator why, and clears the flag once Venue Staff remove the block (AC5, AC8)',
     async () => {
       const { reference, organiser } = await settledEvent()
