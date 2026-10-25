@@ -813,6 +813,36 @@ describe('SCRUM-49 rejecting an event during planning against the backend', () =
   )
 
   it.skipIf(!canApproveVenue)(
+    'tells Venue Staff about the booking it released, and not the request it withdrew (ADR-0103)',
+    async () => {
+      const { reference, bookingId } = await settledEvent()
+      const pendingId = await raiseVenueRequest(reference)
+
+      await rejectEvent(reference, { reason: REASON })
+
+      await signInAs(required(VENUE_STAFF))
+      const notices = (await fetchNotifications()).filter(
+        (notification) =>
+          notification.kind === 'venue_booking_released' &&
+          notification.event_reference === reference,
+      )
+      expect(notices).toHaveLength(1)
+      const [notice] = notices
+      expect(notice).toMatchObject({
+        message:
+          'A venue booking or hold was released because its event was rejected during planning.',
+        link: `/events/${reference}`,
+      })
+      // The arrangement, then its venue (newVenue's "Integration Hall <unique>") and period.
+      expect(notice?.detail).toMatch(new RegExp(`^Venue arrangement ${String(bookingId)} at `))
+      expect(notice?.detail).toContain(
+        `, ${EVENT_DATE} 09:00 to ${EVENT_DATE} 12:00, was released.`,
+      )
+      expect(notice?.detail).not.toContain(`Venue arrangement ${String(pendingId)} `)
+    },
+  )
+
+  it.skipIf(!canApproveVenue)(
     'rejects an event in Safety Review, releasing its venue',
     async () => {
       const { reference } = await eventInSafetyReview()
