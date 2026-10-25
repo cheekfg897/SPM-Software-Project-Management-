@@ -1026,6 +1026,51 @@ describe('SCRUM-92 booking mock: raising a replacement for a flagged arrangement
     },
   )
 
+  // As the backend since ADR-0108: the replacement keeps the flagged booking's date and times
+  // (Product Owner 25 Oct), named in business time.
+  const LOCKED_PERIOD_MESSAGE =
+    'A replacement keeps the date and times of the booking it replaces: 2026-11-26 13:00 to 2026-11-26 17:00.'
+
+  it.each([
+    ['a later start', { starts_at: '2026-11-26T14:00:00+08:00' }, ['starts_at']],
+    ['a later end', { ends_at: '2026-11-26T18:00:00+08:00' }, ['ends_at']],
+    [
+      'the same times on another day',
+      { starts_at: '2026-11-27T13:00:00+08:00', ends_at: '2026-11-27T17:00:00+08:00' },
+      ['starts_at', 'ends_at'],
+    ],
+  ])(
+    'refuses a replacement with %s on the time fields it moves (400)',
+    async (_name, period, refusedFields) => {
+      const before = await apiRequest<unknown[]>(bookingUrl(BOOKED_EVENT.reference))
+
+      const error = await errorOf(
+        raise(BOOKED_EVENT.reference, { ...replacementFor(bookedHall), ...period }),
+      )
+
+      const expected = Object.fromEntries(
+        refusedFields.map((field) => [field, [LOCKED_PERIOD_MESSAGE]]),
+      )
+      expect([error.status, error.fieldErrors]).toEqual([400, expected])
+      expect(await apiRequest<unknown[]>(bookingUrl(BOOKED_EVENT.reference))).toEqual(before)
+    },
+  )
+
+  it.each([
+    ['in UTC', { starts_at: '2026-11-26T05:00:00Z', ends_at: '2026-11-26T09:00:00Z' }],
+    [
+      'in business time with no offset',
+      { starts_at: '2026-11-26T13:00:00', ends_at: '2026-11-26T17:00:00' },
+    ],
+  ])('accepts the flagged period written %s, as the same instants', async (_name, period) => {
+    const created = await raise(BOOKED_EVENT.reference, {
+      ...replacementFor(bookedHall),
+      ...period,
+    })
+
+    expect(created).toMatchObject({ status: 'pending', replaces_request_id: bookedHall.id })
+  })
+
   it('refuses to replace an arrangement that does not need an alternative venue (400)', async () => {
     const error = await errorOf(raise(BOOKED_EVENT.reference, replacementFor(bookedSideRoom)))
 

@@ -542,6 +542,35 @@ def test_a_replacement_at_its_own_venue_is_refused_once_that_venue_is_unavailabl
     assert original.needs_alternative_venue is True
 
 
+@pytest.mark.scrum_92
+def test_a_replacement_at_another_venue_keeps_the_period_once_the_venue_is_unavailable_too(
+    db_session: Session,
+    make_venue: Callable[..., Venue],
+    save: Callable[..., None],
+    auditorium: Venue,
+    event: EventRequest,
+    main_id: int,
+) -> None:
+    """Flagged both ways, the period is locked too (SCRUM-92 AC6, ADR-0108).
+
+    The change flag alone would let the replacement take the new time, but a block
+    over the original makes it a replacement for a venue that became unavailable.
+    """
+    _edit(db_session, event, {"end_time": "18:00"})
+    block(auditorium, at(10), at(11), db_session)
+    great_hall = make_venue(name="Great Hall", capacity=200)
+    save(great_hall)
+
+    with pytest.raises(ValidationError) as refusal:
+        raise_booking(great_hall, event, db_session, replaces_request_id=main_id, **SECOND_PERIOD)
+
+    locked = (
+        "A replacement keeps the date and times of the booking it replaces:"
+        " 2026-11-01 09:00 to 2026-11-01 12:00."
+    )
+    assert refusal.value.details == {"starts_at": [locked], "ends_at": [locked]}
+
+
 def test_a_change_flagged_replacement_overlapping_its_own_booking_is_refused_at_approval(
     db_session: Session, auditorium: Venue, event: EventRequest, main_id: int
 ) -> None:

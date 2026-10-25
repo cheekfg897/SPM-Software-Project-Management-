@@ -1,7 +1,9 @@
 """Unit tests for SCRUM-92 — replacing a venue that became unavailable.
 
 AC6: the coordinator raises a replacement request linked to the flagged arrangement,
-for an approved event or one in Safety Review (ADR-0053). AC7: approving the replacement
+for an approved event or one in Safety Review (ADR-0053), at another venue and for the
+flagged arrangement's own date and times, which can't be changed (Product Owner, 25 Oct,
+ADR-0108). AC7: approving the replacement
 releases the flagged arrangement and cancels its booking, or its hold if it was On Hold
 (ADR-0100). AC10: if the event had passed
 its safety check, approving the replacement withdraws that approval, and an event in
@@ -59,6 +61,11 @@ pytestmark = pytest.mark.scrum_92
 
 NOT_FLAGGED_MESSAGE = "This venue arrangement does not need an alternative venue."
 SAME_VENUE_MESSAGE = "A replacement must be at a different venue from the one it replaces."
+#: The flagged arrangement's period, 09:00 to 12:00 on 1 November 2026 (business time).
+LOCKED_PERIOD_MESSAGE = (
+    "A replacement keeps the date and times of the booking it replaces:"
+    " 2026-11-01 09:00 to 2026-11-01 12:00."
+)
 #: The ``saved_users`` organiser, of client organisation 3.
 ORGANISER_ID = 7
 #: AC6: the planning stage, and Safety Review, which a flag leaves an event in (AC3).
@@ -224,6 +231,57 @@ def test_a_replacement_at_the_venue_it_replaces_is_refused_on_venue_id(
     assert refusal.value.message == "Invalid request."
     assert refusal.value.details == {"venue_id": [SAME_VENUE_MESSAGE]}
     assert db_session.scalars(select(VenueBookingRequest.id)).all() == before
+
+
+@pytest.mark.parametrize(
+    ("period", "refused_fields"),
+    [
+        pytest.param({"starts_at": at(10).isoformat()}, ["starts_at"], id="a later start"),
+        pytest.param({"ends_at": at(13).isoformat()}, ["ends_at"], id="a later end"),
+        pytest.param(
+            {"starts_at": at(9, day=2).isoformat(), "ends_at": at(12, day=2).isoformat()},
+            ["starts_at", "ends_at"],
+            id="the same times on another day",
+        ),
+    ],
+)
+def test_a_replacement_for_another_period_is_refused_on_the_time_fields(
+    db_session: Session, flagged: Flagged, period: dict[str, str], refused_fields: list[str]
+) -> None:
+    """The Product Owner, 25 Oct: a replacement can't move the event (AC6)."""
+    before = db_session.scalars(select(VenueBookingRequest.id)).all()
+
+    with pytest.raises(ValidationError) as refusal:
+        _replace(flagged, db_session, **period)
+
+    assert refusal.value.message == "Invalid request."
+    assert refusal.value.details == {field: [LOCKED_PERIOD_MESSAGE] for field in refused_fields}
+    assert db_session.scalars(select(VenueBookingRequest.id)).all() == before
+
+
+@pytest.mark.parametrize(
+    "period",
+    [
+        pytest.param(
+            {"starts_at": "2026-11-01T01:00:00Z", "ends_at": "2026-11-01T04:00:00Z"},
+            id="in UTC",
+        ),
+        pytest.param(
+            {"starts_at": "2026-11-01T09:00:00", "ends_at": "2026-11-01T12:00:00"},
+            id="in business time with no offset",
+        ),
+    ],
+)
+def test_the_flagged_period_written_another_way_is_the_same_period(
+    db_session: Session, flagged: Flagged, period: dict[str, str]
+) -> None:
+    """The times are compared as instants, as every period is (ADR-0009)."""
+    replacement = _replace(flagged, db_session, **period)
+
+    assert (replacement.starts_at, replacement.ends_at) == (
+        flagged.original.starts_at,
+        flagged.original.ends_at,
+    )
 
 
 def test_a_replacement_for_a_released_arrangement_is_refused(
