@@ -1,7 +1,6 @@
 import { http, HttpResponse } from 'msw'
 import type { RequestHandler } from 'msw'
 
-import type { EventRequestStatus } from '@/config/eventStatus'
 import { ROLE, STAFF_RECORD_READER_ROLES } from '@/config/roles'
 import type {
   CoordinatorContact,
@@ -13,17 +12,17 @@ import type {
 import { MOCK_ACCOUNTS } from '../fixtures/accounts'
 import { errorResponse } from '../responses'
 
-import { arrangementsForRecord, bookingEventByReference } from './booking'
+import { arrangementsForRecord } from './booking'
 import { reservationsForRecord } from './equipment'
 import { equipmentLinesForRecord } from './equipmentLines'
 import { internalNotesOf } from './eventEdits'
 import { NOTHING_RECORDED } from './eventRequestFixtures'
 import type { MockCoordinator, MockRecordSections } from './eventRequestFixtures'
 import { callerOrRefusal, requestForStaff } from './eventRequests'
-import { eventByReference as leadEventByReference } from './lead'
+import { listedEventByReference } from './listedEvents'
+import type { ListedEvent } from './listedEvents'
 import { safetyEventByReference } from './safety'
 import type { MockSafetyEvent } from './safetyFixtures'
-import { MOCK_EQUIPMENT_EVENTS } from './techSupportFixtures'
 
 /**
  * Any submitted event's read-only record (GET /api/events/requests/<reference>/staff-record), as
@@ -40,21 +39,6 @@ import { MOCK_EQUIPMENT_EVENTS } from './techSupportFixtures'
  */
 
 const NOT_FOUND_MESSAGE = 'Event request not found.'
-
-/** What another feature's mock knows of an event: enough for the record's details. */
-interface ListedEvent {
-  reference: string
-  name: string
-  status: EventRequestStatus
-  proposed_date: string | null
-  end_date: string | null
-  start_time: string | null
-  end_time: string | null
-  expected_attendance?: number | null
-  accessibility_needs?: string | null
-  created_at?: string
-  coordinator_id?: number | null
-}
 
 /** The event and the sections every record shows, before this record's own sections. */
 interface StaffRecordBase {
@@ -101,11 +85,6 @@ function listedAsBase(event: ListedEvent): StaffRecordBase {
   }
 }
 
-/** Technical Support's mock's event, which only its lists hold. */
-function equipmentEventByReference(reference: string): ListedEvent | undefined {
-  return MOCK_EQUIPMENT_EVENTS.find((stored) => stored.event.reference === reference)?.event
-}
-
 /**
  * The event behind a reference, from the first mock that holds it, or undefined. None of them
  * finds a draft, which staff never see (ADR-0024).
@@ -116,11 +95,7 @@ function baseOf(reference: string): StaffRecordBase | undefined {
     const coordinator = stored.coordinator === null ? null : contactOf(stored.coordinator)
     return { request: stored.request, coordinator, sections: stored.record }
   }
-  const listed =
-    leadEventByReference(reference) ??
-    safetyEventByReference(reference)?.event ??
-    bookingEventByReference(reference) ??
-    equipmentEventByReference(reference)
+  const listed = listedEventByReference(reference)
   return listed === undefined ? undefined : listedAsBase(listed)
 }
 
