@@ -59,6 +59,7 @@ describe('SCRUM-24 my events mock: upcoming and past', () => {
 
     expect(list.registrations[0]).toEqual({
       event_id: expect.any(Number) as number,
+      reference: 'EVR-MOCK0005',
       name: 'Startup Pitch Night',
       starts_at: '2026-10-07T19:00:00+08:00',
       ends_at: '2026-10-07T21:30:00+08:00',

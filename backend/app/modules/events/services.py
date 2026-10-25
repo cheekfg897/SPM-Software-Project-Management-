@@ -4336,10 +4336,12 @@ class EventHeading:
 
     ``status`` is the status's plain value (``"confirmed"``), so a module reading it
     never needs the events module's models. ``withdrawal_cut_off`` is the one the
-    coordinator recorded, or ``None`` (SCRUM-69 AC6, ADR-0086).
+    coordinator recorded, or ``None`` (SCRUM-69 AC6, ADR-0086). ``reference`` is what
+    a link to the event's page carries (SCRUM-24 AC11).
     """
 
     id: int
+    reference: str
     name: str
     starts_at: datetime
     ends_at: datetime
@@ -4472,6 +4474,7 @@ def list_event_headings(
         headings.append(
             EventHeading(
                 id=row.id,
+                reference=row.reference,
                 name=row.name,
                 starts_at=_starts_at(row),
                 ends_at=_ends_at(row),

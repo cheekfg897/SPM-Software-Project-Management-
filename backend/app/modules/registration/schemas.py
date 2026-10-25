@@ -160,9 +160,13 @@ class MyRegistrationsQuerySchema(Schema):
 
 
 class MyRegistrationSchema(Schema):
-    """One of the attendee's own registrations, with the event it is for."""
+    """One of the attendee's own registrations, with the event it is for.
+
+    ``reference`` opens the event's page (SCRUM-24 AC11, ADR-0109).
+    """
 
     event_id = fields.Integer(dump_only=True)
+    reference = fields.String(dump_only=True)
     name = fields.String(dump_only=True)
     starts_at = BusinessDateTime(dump_only=True)
     ends_at = BusinessDateTime(dump_only=True)

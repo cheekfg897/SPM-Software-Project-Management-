@@ -54,6 +54,8 @@ export interface Registration {
 /** An event the signed-in Attendee registered for, with the event's own status (ADR-0044). */
 export interface MyEvent {
   event_id: number
+  /** The event's EVR- reference: its page's address (SCRUM-24 AC11, docs/adr/0109). */
+  reference: string
   name: string
   /** ISO date-time with an offset, in business time. */
   starts_at: string
