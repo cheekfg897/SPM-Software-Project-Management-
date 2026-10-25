@@ -1,6 +1,6 @@
 # ADR-0092: Equipment lines change until the event is Confirmed, and a change reopens the line for Technical Support
 
-- **Status:** Accepted; the edit window until Confirmed (awaiting clarification and Safety Review included), reopening a changed line by clearing its outcome, releasing a removed line's reservations and closing its request, and telling Technical Support are SCRUM-37 AC2 and AC4 and SCRUM-38 AC5; counting a type change like a quantity change is a default pending the Product Owner, following their "safe reading" (the Product Owner's Sprint 3 open-decisions list (19 Oct), §1.7); releasing a reservation when a line moves to another type, the history wording and the one notice per change are defaults to review
+- **Status:** Accepted; the edit window until Confirmed (awaiting clarification and Safety Review included), reopening a changed line by clearing its outcome, releasing a removed line's reservations and closing its request, and telling Technical Support are SCRUM-37 AC2 and AC4 and SCRUM-38 AC5; counting a type change like a quantity change is decided (the Product Owner's answers of 25 Oct, answer 5), as is a lower quantity keeping the full reservation until Technical Support act (answer 7); releasing a reservation when a line moves to another type, the history wording and the one notice per change are defaults to review
 - **Date:** 2026-10-19
 - **Stories:** SCRUM-37 AC2, AC4 (reworked); SCRUM-38 AC4, AC5
 - **Extends:** [ADR-0019](0019-event-equipment-lines.md): equipment lines; [ADR-0025](0025-event-edits-significant-changes-and-history.md): significant changes and the history; [ADR-0040](0040-equipment-review-outcome.md): the outcome on a line; [ADR-0087](0087-withdrawn-safety-approval-returns-the-event-to-approved.md): the withdrawn safety approval
@@ -25,7 +25,7 @@ The safety part of AC4 is already built ([ADR-0019](0019-event-equipment-lines.m
 1. **Lines change until the event is Confirmed (AC2).** `EQUIPMENT_EDITABLE_STATUSES` is submitted, under review, awaiting clarification, approved and Safety Review. Confirmed, completed, cancelled and rejected stay locked, with `409 equipment_not_editable` and the message "Equipment can only be changed before the event is confirmed, and not once it is rejected or cancelled." A draft is still a `404` to staff (ADR-0024).
    - **Awaiting clarification and Safety Review are included,** as SCRUM-37 AC2 says ("at any time before the event is Confirmed"). SCRUM-33's status clarification of 19 Oct lists the same statuses for direct edits (Submitted, Under Review, Awaiting Clarification, Approved, Safety Review). ADR-0029 had locked equipment while awaiting clarification because the request is the organiser's to amend; the organiser never edits equipment lines, so the two don't clash.
    - **In Safety Review,** a change before the Safety Officer's outcome leaves the event in Safety Review: confirmation then waits for the new outcome (decision 5). A change after the Safety Officer approved withdraws the approval and sends the event back to Approved (ADR-0087), so it needs a new check.
-2. **What counts as a change** is unchanged from ADR-0019 decision 11. **Default pending the Product Owner:** a new type counts like a new quantity, the "safe reading" the Product Owner names while the question waits for them (the Product Owner's Sprint 3 open-decisions list (19 Oct), §1.7): adding a line, removing one, or a new `quantity` or `equipment_type_id`. New technical notes alone, or the values the line already has, are not a change and touch nothing below.
+2. **What counts as a change** is unchanged from ADR-0019 decision 11. **Decided by the Product Owner (25 Oct, answer 5):** a new type counts like a new quantity and reopens the line for review, the "safe reading" built while the question was open (the Product Owner's Sprint 3 open-decisions list (19 Oct), §1.7): adding a line, removing one, or a new `quantity` or `equipment_type_id`. New technical notes alone, or the values the line already has, are not a change and touch nothing below.
 3. **A change is written to the event's history as a significant change (AC4).** It reuses SCRUM-33's `field_changed` entry, so no new history kind and no migration. `details` is `{"field": "equipment_line", "previous_value", "new_value", "significant": true}`, and the actor is the coordinator.
    - Each value is the line as text, e.g. `"Projector, quantity 2"`. It is `null` before an added line and after a removed one.
    - The type's name is copied in when the change is made, like an outcome's entry (ADR-0040), so the entry reads the same if the catalogue is renamed.
@@ -42,7 +42,7 @@ The safety part of AC4 is already built ([ADR-0019](0019-event-equipment-lines.m
    - Reservations hold no line id, only the event and type (ADR-0040 decision 1), and one line per type is the rule (ADR-0019 decision 4), so "the line's reservation" is the event's reservations of its type.
    - The line itself is still deleted (ADR-0019), which closes its request: it can't be on Technical Support's list (SCRUM-38 AC4). The `equipment_reserved` history entries stay.
    - **Default to review:** a line moved to another equipment type releases the old type's reservations the same way, since the event no longer asks for that type.
-   - A new quantity keeps the reservations: Technical Support re-review the line and decide.
+   - A new quantity keeps the reservations: Technical Support re-review the line and decide. **Decided by the Product Owner (25 Oct, answer 7):** a lower quantity keeps the full reservation until Technical Support act by hand; nothing shrinks it automatically.
 7. **Technical Support Staff are told (AC4, SCRUM-60).** After the line's own commit, each one gets a `significant_change` notice for a changed or removed line ("An event you have arrangements for has changed significantly. Please check they still fit.", ADR-0025 decision 13).
    - An added line keeps its one `equipment_requested` notice (AC6) rather than a second one.
    - A notice that fails to save is logged and doesn't undo the change (ADR-0015). Nobody else is told.
@@ -51,7 +51,8 @@ The safety part of AC4 is already built ([ADR-0019](0019-event-equipment-lines.m
 9. **Everything rides in one commit.** The history entries, the cleared outcome, the released reservations and any safety withdrawal are saved with the line or not at all. A change refused as a duplicate type (`409`) leaves the outcome, the reservations and the history as they were.
 
 ## Questions for the Product Owner
-1. Does changing a line's equipment type reopen it like a quantity change? We built the "safe reading", yes, which also withdraws a safety approval and releases the old type's reservations.
+1. ~~Does changing a line's equipment type reopen it like a quantity change? We built the "safe reading", yes, which also withdraws a safety approval and releases the old type's reservations.~~ Answered on 25 Oct (answer 5): yes, as built.
+2. ~~Does a lower quantity shrink the reservation?~~ Answered on 25 Oct (answer 7): no; the full reservation stays until Technical Support act by hand, as built.
 
 ## Consequences
 - The frontend's mock (`frontend/src/mocks/handlers/equipmentLines.ts`) accepts the same statuses, answers with the new message, clears a changed line's outcome and no longer refuses a lower quantity. Its integration tests for the line routes are still `it.todo`, waiting for an assigned event to test against. The mock keeps one list of reservations shared by every event, so it does not release any when a line is removed; that waits for the mock to track reservations per event.
@@ -59,7 +60,7 @@ The safety part of AC4 is already built ([ADR-0019](0019-event-equipment-lines.m
 - A line moved to another type loses its reservations at once. If the coordinator moves it back, Technical Support reserve again.
 
 ## Revisit when
-- The Product Owner answers the question above: if a type change does not count, `_changes_the_equipment` stops counting `equipment_type_id`.
+- ~~The Product Owner answers the question above: if a type change does not count, `_changes_the_equipment` stops counting `equipment_type_id`.~~ Answered on 25 Oct: a type change counts.
 - Change requests for Confirmed events (SCRUM-56, SCRUM-57) are built: they decide how a Confirmed event's lines change.
-- Technical Support want a lower quantity to shrink a reservation, rather than keep it until they act.
+- Technical Support want a lower quantity to shrink a reservation, rather than keep it until they act. The Product Owner said no on 25 Oct (answer 7), so only a new request reopens this.
 - The customer says the coordinator shouldn't change equipment while the organiser is answering a clarification.

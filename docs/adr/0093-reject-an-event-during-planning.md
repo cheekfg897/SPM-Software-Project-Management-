@@ -1,6 +1,6 @@
 # ADR-0093: The assigned coordinator rejects an event during planning with a reason, which releases its venues and returns its equipment in the same commit
 
-- **Status:** Accepted; decision 5 (rejecting at any point in planning and releasing as for a cancelled event) is decided by the Product Owner (SCRUM-49 AC9, AC10, 19 Oct); decisions 2, 4, 8 and 10 are defaults to review with the team
+- **Status:** Accepted; decision 5 (rejecting at any point in planning and releasing as for a cancelled event) is decided by the Product Owner (SCRUM-49 AC9, AC10, 19 Oct); decisions 2, 4 and 10 are defaults to review with the team; for decision 8 the Product Owner answered on 25 Oct (answer 3) that a planning rejection is final as a decision, and that a rejected event comes back by being resubmitted after changes through the Coordinator and reviewed again; that is not built yet, so re-deciding through SCRUM-31 stays the code's behaviour until it is
 - **Date:** 2026-10-19
 - **Story:** SCRUM-49 Confirm an event once its arrangements are in place (AC9, AC10)
 - **Extends:** [ADR-0028](0028-review-and-decide.md), [ADR-0040](0040-equipment-review-outcome.md) (decision 15), [ADR-0047](0047-safety-officer-and-safety-review.md), [ADR-0051](0051-confirm-an-event.md) (decision 9), [ADR-0053](0053-flag-bookings-when-a-venue-becomes-unavailable.md), [ADR-0075](0075-planning-actions-on-the-event-page.md)
@@ -25,7 +25,7 @@ SCRUM-61 (cancelling an event) is not built yet, so there is no cancellation rel
    - **Open equipment requests are closed by the status** (SCRUM-61 AC9). A rejected event is in `EQUIPMENT_NOT_NEEDED_STATUSES`, so its lines leave Technical Support's list of requests awaiting action, no more can be reserved, and no outcome can be recorded or revised on them (SCRUM-48 AC8, ADR-0040 decision 15: `409 conflict` naming the status). The lines keep their status and last outcome: no `closed` line status was added, as it would need a migration and mean the same as the event's status.
 6. **Closing the equipment requests is SCRUM-48 AC8's refusal, not new code here.** The reading of "closed" that SCRUM-61's equipment clarification gives ("so that Technical Support cannot record an outcome against an event that is no longer happening") is what ADR-0040 decision 15 already builds for every completed, cancelled or rejected event, so a rejection closes them simply by setting the status.
 7. **No migration.** `rejected`, `released`, `decision_recorded`, `venue_arrangement_withdrawn` and `event_request_rejected` all exist on `main`.
-8. **Default: a rejected event's decision may still be changed through SCRUM-31,** as for any rejected request. SCRUM-31 AC7's lock counts an equipment request or a venue booking request that hasn't been withdrawn or released (ADR-0084). A rejection withdraws or releases every venue request, so an event rejected during planning with no equipment request could be approved again through `/decide`, back into planning with nothing arranged; one with an equipment request stays locked. Listed under Still owed.
+8. **Default: a rejected event's decision may still be changed through SCRUM-31,** as for any rejected request. SCRUM-31 AC7's lock counts an equipment request or a venue booking request that hasn't been withdrawn or released (ADR-0084). A rejection withdraws or releases every venue request, so an event rejected during planning with no equipment request could be approved again through `/decide`, back into planning with nothing arranged; one with an equipment request stays locked. **Product Owner, 25 Oct (answer 3):** a planning rejection is final as a decision, but not the end of the event: a rejected event can be resubmitted after changes, through the Coordinator, and goes through review again. That resubmission flow is not built and needs its own story; until it is, this default stays, and it is the only way back for an event rejected during planning. Once the flow exists, re-deciding a planning rejection through `/decide` should be closed off.
 
 **The frontend contract (CONVENTIONS §14):** the new route's mock and contract tests come with the screen that uses it. SCRUM-48 AC8's integration check, an `it.todo` until now, runs in `planning.int.test.ts` on an event the coordinator rejected (nothing can cancel one yet).
 
@@ -44,12 +44,13 @@ SCRUM-61 (cancelling an event) is not built yet, so there is no cancellation rel
 
 ## Still owed
 - **Venue Staff aren't told** when an approved booking or a hold is released; the ACs don't ask for it. A ticket to raise if they should be.
-- **Should a planning rejection be final?** After it, ADR-0084's lock no longer counts the released venues, so an event with no equipment request can be re-decided through SCRUM-31 (decision 8). A question for the team: keep that, or lock the decision once an event has been rejected during planning.
+- **Should a planning rejection be final?** After it, ADR-0084's lock no longer counts the released venues, so an event with no equipment request can be re-decided through SCRUM-31 (decision 8). *Answered by the Product Owner on 25 Oct (answer 3):* final as a decision; the event comes back by resubmission after changes, through the Coordinator, and a fresh review. The resubmission flow is still owed (see Revisit when).
 - **The organiser's history shows the rejection as a decision.** If the team wants the page to word a planning rejection differently, the entry needs a marker, which is a small change here.
 
 ## Questions for the customer
 - None open here. ADR-0051's question 1 (release at once?) was answered by the Product Owner on 19 Oct (decision 5). Whether the organiser sees the Safety Officer's decision on a Confirmed event is still open (ADR-0051 decision 10) and nothing here depends on it.
 
 ## Revisit when
+- A story builds resubmitting a rejected event after changes, through the Coordinator, with a fresh review (the Product Owner's answer 3, 25 Oct). It needs its own story; nothing builds it yet. When it lands, refuse re-deciding a planning rejection through SCRUM-31 (decision 8).
 - SCRUM-61 lands: check that cancelling calls `_release_arrangements` and that this route still differs only in its status and wording.
 - A cancelled-arrangement status or a released flag on reservations lands: use it instead of Released or deleting rows.
