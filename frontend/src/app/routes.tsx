@@ -48,6 +48,7 @@ import { NewVenuePage } from '@/features/venues/pages/NewVenuePage'
 import { VenuePage } from '@/features/venues/pages/VenuePage'
 import { VenuesPage } from '@/features/venues/pages/VenuesPage'
 
+import { AttendeeEventOr } from './AttendeeEventOr'
 import { NotFoundPage } from './NotFoundPage'
 
 const ORGANISER_ROLES: readonly Role[] = [ROLE.EVENT_ORGANISER]
@@ -149,9 +150,11 @@ export const appRoutes: RouteObject[] = [
       {
         path: ROUTES.COORDINATOR_EVENT,
         element: (
-          <RequireRole allowedRoles={COORDINATOR_ROLES} loginRoute={ROUTES.STAFF_LOGIN}>
-            <EventRequestPage />
-          </RequireRole>
+          <AttendeeEventOr>
+            <RequireRole allowedRoles={COORDINATOR_ROLES} loginRoute={ROUTES.STAFF_LOGIN}>
+              <EventRequestPage />
+            </RequireRole>
+          </AttendeeEventOr>
         ),
       },
       {

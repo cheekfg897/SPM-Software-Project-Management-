@@ -1,4 +1,10 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  keepPreviousData,
+  useMutation,
+  useMutationState,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 import { useSearchParams } from 'react-router'
 
 import { selectSessionUser, useAppSelector } from '@/store'
@@ -7,6 +13,7 @@ import {
   catalogueKeys,
   fetchCatalogue,
   fetchMyEvents,
+  fetchMyRegisteredEvent,
   registerForEvent,
   withdrawFromEvent,
 } from './api'
@@ -77,6 +84,16 @@ export function useMyEvents(when: string) {
   })
 }
 
+/** One event the signed-in Attendee registered for, as its page shows it (SCRUM-24 AC11). */
+export function useMyRegisteredEvent(reference: string) {
+  const viewer = useAppSelector(selectSessionUser)
+  return useQuery({
+    /* v8 ignore next -- the page is for signed-in Attendees only, so a viewer is always there */
+    queryKey: catalogueKeys.myEvent(reference, viewer?.id ?? null),
+    queryFn: () => fetchMyRegisteredEvent(reference),
+  })
+}
+
 /**
  * Register for an event. Afterwards every catalogue page and the Attendee's own events are read
  * again, so places left, "registered" and the list come from the backend, not guessed here.
@@ -90,13 +107,31 @@ export function useRegisterForEvent() {
 }
 
 /**
- * Withdraw from an event (SCRUM-53). Afterwards the Attendee's own events and every catalogue
- * page are read again, so the registration's status and the places left come from the backend.
+ * Withdraw from an event (SCRUM-53). Afterwards, refused or not, the Attendee's own events, the
+ * event's page and every catalogue page are read again, so the registration's status, whether
+ * Withdraw is still offered and the places left come from the backend.
  */
 export function useWithdrawFromEvent() {
   const queryClient = useQueryClient()
   return useMutation({
+    mutationKey: catalogueKeys.withdrawals(),
     mutationFn: withdrawFromEvent,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: catalogueKeys.all }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: catalogueKeys.all }),
   })
+}
+
+/**
+ * Why the last withdrawal from this event was refused, or null if it wasn't. Read from
+ * TanStack's own record of the withdrawals, so the event's page can still show the refusal
+ * after reading the event again has taken its Withdraw button away (SCRUM-53 AC4).
+ */
+export function useWithdrawalRefusal(eventId: number): Error | null {
+  const errors = useMutationState({
+    filters: {
+      mutationKey: catalogueKeys.withdrawals(),
+      predicate: (mutation) => mutation.state.variables === eventId,
+    },
+    select: (mutation) => mutation.state.error,
+  })
+  return errors.at(-1) ?? null
 }
