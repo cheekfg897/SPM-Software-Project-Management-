@@ -17,7 +17,7 @@ import { RecordSection } from './RecordSection'
 import { SafetyOutcomeDetails } from './SafetyOutcomeDetails'
 import { VenueArrangementList } from './VenueArrangementList'
 
-const NO_INTERNAL_NOTES = 'No internal planning notes yet.'
+const NO_PLANNING_NOTES = 'No planning notes yet.'
 
 /**
  * Any submitted event's record, read-only, for Venue Staff, Technical Support, the Safety Officer
@@ -62,9 +62,9 @@ export function StaffEventRecordView({ record }: { record: StaffEventRecord }) {
           <p className="text-ink whitespace-pre-line">{record.programme_notes}</p>
         </RecordSection>
       )}
-      <RecordSection title="Internal planning notes">
+      <RecordSection title="Planning notes">
         {record.internal_planning_notes === null ? (
-          <p className="text-ink-muted">{NO_INTERNAL_NOTES}</p>
+          <p className="text-ink-muted">{NO_PLANNING_NOTES}</p>
         ) : (
           <p className="text-ink whitespace-pre-line">{record.internal_planning_notes}</p>
         )}

@@ -88,9 +88,9 @@ export function EditEventForm({ record }: { record: EventRecord }) {
             errors={errors.accessibility_needs}
           />
           <TextAreaField
-            label="Internal planning notes"
+            label="Planning notes"
             name="internal_planning_notes"
-            hint="Only staff see these. The event page doesn't show the current notes, so this opens empty: what you type replaces them, and leaving it empty keeps them."
+            hint="Staff and the organiser see these. Your event page doesn't show the current notes, so this opens empty: what you type replaces them, and leaving it empty keeps them."
             errors={errors.internal_planning_notes}
           />
         </div>

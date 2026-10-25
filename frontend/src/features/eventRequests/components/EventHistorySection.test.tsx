@@ -41,7 +41,7 @@ describe('SCRUM-33 AC5 the history on an event record', () => {
     expect(entries.map((entry) => within(entry).getByRole('heading').textContent)).toEqual([
       'Coordinator assigned',
       'Review started',
-      'Internal planning notes changed',
+      'Planning notes changed',
       'Expected attendance changed',
     ])
     const [assigned] = entries as [HTMLElement]
@@ -75,7 +75,7 @@ describe('SCRUM-33 AC5 the history on an event record', () => {
 
     expect(entries).toHaveLength(4)
     const history = await findRegion('History')
-    expect(within(history).getByText('Internal planning notes changed')).toBeInTheDocument()
+    expect(within(history).getByText('Planning notes changed')).toBeInTheDocument()
   })
 
   it('says only when for an entry made by the system', async () => {

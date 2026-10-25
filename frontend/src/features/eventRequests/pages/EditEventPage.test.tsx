@@ -79,7 +79,7 @@ describe('SCRUM-33 AC1 the edit form', () => {
       'A main hall for 250 and four breakout rooms.',
     )
     expect(screen.getByLabelText('Description')).toHaveValue('')
-    expect(screen.getByLabelText('Internal planning notes')).toHaveValue('')
+    expect(screen.getByLabelText('Planning notes')).toHaveValue('')
   })
 
   it('offers no field for what is not the coordinator to change (AC3)', async () => {
