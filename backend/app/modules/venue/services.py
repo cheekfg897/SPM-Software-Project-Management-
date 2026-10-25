@@ -2657,8 +2657,9 @@ def _reassessment_flags_for(
 def _live_arrangements_of(event_id: int, session: Session | None) -> list[VenueBookingRequest]:
     """The event's arrangements that still hold or ask for their venue, earliest first.
 
-    The statuses a venue becoming unavailable flags (SCRUM-92 AC1), for the same
-    reason: a decided-against, withdrawn or released arrangement has nothing to lose.
+    The statuses a significant change flags (ADR-0094 decision 2): a decided-against,
+    withdrawn or released arrangement has nothing to lose, and On Hold waits for its own
+    follow-up, though a venue becoming unavailable flags it (ADR-0100).
     """
     stmt = (
         select(VenueBookingRequest)
