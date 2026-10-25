@@ -796,6 +796,18 @@ class OrganiserVenueArrangementSchema(Schema):
     expected_occupancy = fields.Integer(dump_only=True)
 
 
+class OrganiserSafetyDecisionSchema(Schema):
+    """The Safety Officer's final decision on its organiser's record (SCRUM-49 AC11).
+
+    Dumped from ``OrganiserSafetyDecision``: the outcome and when it was made, in
+    business time (ADR-0009). Not the officer, the checklist notes or the reason
+    (ADR-0099).
+    """
+
+    outcome = fields.Enum(SafetyOutcome, by_value=True, dump_only=True)
+    decided_at = BusinessDateTime(dump_only=True)
+
+
 class EquipmentAwaitingActionSchema(Schema):
     """One event's equipment still awaiting Technical Support (SCRUM-38 AC2, ADR-0022).
 

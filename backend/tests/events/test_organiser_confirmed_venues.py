@@ -119,14 +119,14 @@ def test_the_organisers_record_route_shows_each_venue_in_business_time(
     ]
 
 
-def test_the_coordinators_record_route_has_no_venue_list(
+def test_the_coordinators_record_route_has_no_venue_list_or_safety_decision(
     call_route: Callable[..., Any],
     replace_services: Callable[..., Any],
     token_for: Callable[..., str],
     make_user: Callable[..., User],
     make_event_request: Callable[..., EventRequest],
 ) -> None:
-    """The coordinator reads every arrangement from the venue requests page instead."""
+    """The coordinator follows the arrangements and the check on their own pages."""
     record = EventRecord(
         event_request=make_event_request(status=EventRequestStatus.CONFIRMED), coordinator=None
     )
@@ -142,4 +142,6 @@ def test_the_coordinators_record_route_has_no_venue_list(
     )
 
     assert status == 200
-    assert "venue_arrangements" not in response.get_json()
+    body = response.get_json()
+    assert "venue_arrangements" not in body
+    assert "safety_decision" not in body
