@@ -175,7 +175,7 @@ def test_the_rejection_is_recorded_as_a_decision_with_who_and_why(
         (
             EventHistoryKind.DECISION_RECORDED,
             COORDINATOR_ID,
-            {"outcome": "rejected", "reason": REASON},
+            {"outcome": "rejected", "reason": REASON, "during_planning": True},
         )
     ]
 

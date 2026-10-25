@@ -4,11 +4,17 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from sqlalchemy.exc import OperationalError
 
-from app.modules.events.models import EventEquipmentLine, EventRequest, EventRequestStatus
+from app.modules.events.models import (
+    EventEquipmentLine,
+    EventHistoryKind,
+    EventRequest,
+    EventRequestStatus,
+)
 from app.modules.venue.models import BookingRequestStatus, Venue, VenueBookingRequest
 
 #: The ``arrange``, ``save_arrangement`` and ``add_line`` fixtures' callables (SCRUM-97,
@@ -143,3 +149,15 @@ RETIRED_ARRANGEMENT_STATUSES = [BookingRequestStatus.WITHDRAWN, BookingRequestSt
 ACTIVE_ARRANGEMENT_STATUSES = [
     status for status in BookingRequestStatus if status not in RETIRED_ARRANGEMENT_STATUSES
 ]
+
+
+def decisions_in(history: list[tuple[EventHistoryKind, int | None, Any]]) -> list[Any]:
+    """The details of each ``decision_recorded`` entry in ``history``, oldest first.
+
+    ``history`` is what the ``history_of`` fixture gives (SCRUM-31, SCRUM-49).
+    """
+    decisions = []
+    for kind, _, details in history:
+        if kind is EventHistoryKind.DECISION_RECORDED:
+            decisions.append(details)
+    return decisions

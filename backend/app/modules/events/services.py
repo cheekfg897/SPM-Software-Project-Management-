@@ -3240,6 +3240,14 @@ DECISION_LOCKED_MESSAGE = (
     "The decision can't be changed once the event has an equipment request or a venue "
     "booking request."
 )
+#: SCRUM-49 AC12: a rejection during planning is final; the way back is a new request.
+PLANNING_REJECTION_FINAL_MESSAGE = (
+    "The decision can't be changed once the event has been rejected during planning. "
+    "To go ahead, the organiser submits a new event request."
+)
+#: The key that marks a decision entry as a rejection during planning (SCRUM-49 AC12,
+#: ADR-0106), so it can be told apart from a rejection recorded through SCRUM-31.
+DURING_PLANNING_KEY = "during_planning"
 #: SCRUM-32 AC3: an approval waits for the organiser's answer (ADR-0029).
 CLARIFICATION_OUTSTANDING_MESSAGE = (
     "The request can't be approved until the organiser has answered the clarification request."
@@ -3326,23 +3334,45 @@ def _has_arrangements(event_request: EventRequest, session: Session) -> bool:
     return venue_services.count_active_arrangements(event_request.id, session=session) > 0
 
 
+def _was_rejected_during_planning(event_request: EventRequest, session: Session) -> bool:
+    """Whether the coordinator rejected the event during planning (SCRUM-49 AC12).
+
+    Such a rejection's ``decision_recorded`` entry carries :data:`DURING_PLANNING_KEY`
+    (ADR-0106); one recorded through SCRUM-31 doesn't.
+    """
+    stmt = select(EventHistoryEntry).where(
+        EventHistoryEntry.event_request_id == event_request.id,
+        EventHistoryEntry.kind == EventHistoryKind.DECISION_RECORDED,
+    )
+    for entry in session.scalars(stmt):
+        details = entry.details or {}
+        if details.get(DURING_PLANNING_KEY) is True:
+            return True
+    return False
+
+
 def _event_request_decidable_by(
     coordinator_id: int | str, reference: str, session: Session
 ) -> EventRequest:
     """The coordinator's request, if it may be decided now (AC5, AC7, ADR-0028).
 
     A decided request may be decided again only until arrangements exist for it; its
-    first decision is never blocked.
+    first decision is never blocked. One rejected during planning may never be decided
+    again (SCRUM-49 AC12, ADR-0106).
 
     Raises:
         NotFoundError: 404 — no such request among the coordinator's own; a draft is
             never found (ADR-0024).
         RequestNotDecidableError: 409 — the request's status doesn't allow a decision.
-        DecisionLockedError: 409 — it is decided and has arrangements.
+        DecisionLockedError: 409 — it was rejected during planning, or it is decided
+            and has arrangements.
     """
     event_request = _event_request_assigned_to(coordinator_id, reference, session)
     if event_request.status not in DECIDABLE_STATUSES:
         raise RequestNotDecidableError(NOT_DECIDABLE_MESSAGE)
+    is_rejected = event_request.status is EventRequestStatus.REJECTED
+    if is_rejected and _was_rejected_during_planning(event_request, session):
+        raise DecisionLockedError(PLANNING_REJECTION_FINAL_MESSAGE)
     if event_request.status in DECIDED_STATUSES and _has_arrangements(event_request, session):
         raise DecisionLockedError(DECISION_LOCKED_MESSAGE)
     return event_request
@@ -3373,8 +3403,10 @@ def _apply_decision(
 ) -> None:
     """Move the request to the outcome's status and record the decision (AC4, AC8).
 
-    The ``decision_recorded`` entry names the coordinator and keeps the outcome and
-    reason, so every decision stays in the history. Nothing is committed here.
+    The ``decision_recorded`` entry names the coordinator and keeps everything in
+    ``decision``, the outcome by its value: the outcome and reason, so every decision
+    stays in the history, and a rejection during planning's marker (ADR-0106).
+    Nothing is committed here.
     """
     outcome = decision["outcome"]
     event_request.status = STATUS_BY_OUTCOME[outcome]
@@ -3382,7 +3414,7 @@ def _apply_decision(
         event_request,
         EventHistoryKind.DECISION_RECORDED,
         actor_id=int(coordinator_id),
-        details={"outcome": outcome.value, "reason": decision["reason"]},
+        details={**decision, "outcome": outcome.value},
         session=session,
     )
 
@@ -3458,7 +3490,8 @@ def decide_event_request(
         RequestNotDecidableError: 409 — the request is confirmed, completed or
             cancelled.
         DecisionLockedError: 409 — a new decision once the event has an equipment
-            request.
+            request or a venue booking request, or once it was rejected during
+            planning (SCRUM-49 AC12).
         ValidationError: 400 — payload invalid, or no reason for a rejection or a new
             decision.
         ClarificationOutstandingError: 409 — an approval while a clarification
@@ -4812,7 +4845,9 @@ def reject_event_during_planning(
     event on its own. The event must be in planning, Approved or in Safety Review, and
     a reason is required. The rejection is a decision, like SCRUM-31's: the
     ``rejected`` status and a ``decision_recorded`` entry with the coordinator and the
-    reason, so it is the event's current decision. In the same commit its venue
+    reason, so it is the event's current decision. The entry is marked as made during
+    planning, so SCRUM-31 never records a new decision on the event (AC12, ADR-0106).
+    In the same commit its venue
     arrangements are released or withdrawn and its reserved equipment returned, as for
     a cancelled event (SCRUM-61, ADR-0093); its open equipment requests close with the
     status (SCRUM-48 AC8). The organiser who submitted the request is told afterwards,
@@ -4843,7 +4878,11 @@ def reject_event_during_planning(
 
     from app.modules.venue import services as venue_services  # circular at import time
 
-    decision = {"outcome": DecisionOutcome.REJECTED, "reason": rejection["reason"]}
+    decision = {
+        "outcome": DecisionOutcome.REJECTED,
+        "reason": rejection["reason"],
+        DURING_PLANNING_KEY: True,
+    }
     _apply_decision(coordinator_id, event_request, decision, sess)
     released = _release_arrangements(event_request.id, int(coordinator_id), sess)
     sess.commit()
