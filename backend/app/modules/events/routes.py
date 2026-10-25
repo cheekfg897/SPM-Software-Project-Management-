@@ -29,9 +29,7 @@ from app.modules.events.schemas import (
     EventRequestDetailSchema,
     EventRequestSchema,
     FieldChangeSchema,
-    OrganiserEquipmentLineSchema,
-    OrganiserSafetyDecisionSchema,
-    OrganiserVenueArrangementSchema,
+    OrganiserRecordSectionsSchema,
     RegistrationSettingsSchema,
     StaffEventRecordSectionsSchema,
     StaffEventRequestSchema,
@@ -87,9 +85,7 @@ _clarification_schema = ClarificationSchema(many=True)
 _event_request_detail_schema = EventRequestDetailSchema()
 _equipment_line_schema = EquipmentLineSchema()
 _equipment_line_with_outcome_schema = EquipmentLineWithOutcomeSchema()
-_organiser_equipment_line_schema = OrganiserEquipmentLineSchema()
-_organiser_venue_arrangement_schema = OrganiserVenueArrangementSchema()
-_organiser_safety_decision_schema = OrganiserSafetyDecisionSchema()
+_organiser_record_sections_schema = OrganiserRecordSectionsSchema()
 _equipment_event_schema = EventRequestSchema(only=EQUIPMENT_EVENT_FIELDS)
 _equipment_awaiting_action_schema = EquipmentAwaitingActionSchema()
 _awaiting_safety_review_schema = EventAwaitingSafetyReviewSchema()
@@ -158,23 +154,14 @@ def _event_record_body(record: EventRecord) -> dict[str, Any]:
 
 
 def _organiser_event_record_body(record: OrganiserEventRecord) -> dict[str, Any]:
-    """The record as the event's organiser is shown it (ADR-0098, ADR-0099).
+    """The record as the event's organiser is shown it: everything on it (ADR-0104).
 
-    The sections every record shows, with the staff's equipment lines replaced by the
-    organiser's own view of them: no technical notes, outcome note or reviewer. Then
-    the confirmed event's venues, an empty list until it is confirmed, and the Safety
-    Officer's final decision, ``null`` until then.
+    The sections every record shows, with the planning notes, every venue arrangement
+    in full, the equipment lines with their outcome and reviewer in place of the
+    staff's lines, the reservations and the current safety outcome (SCRUM-24 AC10).
     """
     body = _event_record_body(record)
-    body["equipment_lines"] = _organiser_equipment_line_schema.dump(
-        record.equipment_lines, many=True
-    )
-    body["venue_arrangements"] = _organiser_venue_arrangement_schema.dump(
-        record.venue_arrangements, many=True
-    )
-    body["safety_decision"] = _shown_or_none(
-        _organiser_safety_decision_schema, record.safety_decision
-    )
+    body.update(_organiser_record_sections_schema.dump(record))
     return body
 
 

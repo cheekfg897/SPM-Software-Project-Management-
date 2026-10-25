@@ -39,11 +39,11 @@ from app.modules.events.models import (
     EventRequest,
     EventRequestStatus,
 )
-from app.modules.events.schemas import EventRequestDetailSchema
 from app.modules.events.services import (
     EVENT_REQUEST_NOT_FOUND_MESSAGE,
     EventEdit,
     RequestNotEditableError,
+    get_event_record_for_organiser,
     update_event_request,
 )
 
@@ -496,15 +496,15 @@ def test_ownership_is_checked_before_status(edit_event: EditEvent, set_status: S
 
 
 # --------------------------------------------------------------------------
-# ADR-0025 — the organiser's record shows the programme notes, never the internal ones
+# ADR-0025, ADR-0104 — the organiser's record shows both notes as last saved
 # --------------------------------------------------------------------------
 
 
-def test_the_organiser_sees_the_programme_notes_but_not_the_internal_planning_notes(
+def test_the_organiser_sees_the_programme_notes_and_the_planning_notes(
     edit_event: EditEvent,
-    reload_event_request: ReloadEventRequest,
     saved_event_request: EventRequest,
 ) -> None:
+    """Nothing on the record is hidden from them (SCRUM-24 AC10, SCRUM-33 AC1)."""
     edit_event(
         COORDINATOR_ID,
         {
@@ -513,7 +513,7 @@ def test_the_organiser_sees_the_programme_notes_but_not_the_internal_planning_no
         },
     )
 
-    shown = EventRequestDetailSchema().dump(reload_event_request(saved_event_request.id))
+    record = get_event_record_for_organiser(7, saved_event_request.reference)
 
-    assert shown["programme_notes"] == "Doors open at 08:30."
-    assert "internal_planning_notes" not in shown
+    assert record.event_request.programme_notes == "Doors open at 08:30."
+    assert record.event_request.internal_planning_notes == "Reserve the loading dock."

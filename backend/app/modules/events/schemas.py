@@ -766,50 +766,6 @@ class EquipmentLineWithOutcomeSchema(EquipmentLineSchema):
     reviewed_at = BusinessDateTime(dump_only=True, allow_none=True)
 
 
-class OrganiserEquipmentLineSchema(Schema):
-    """An equipment line on its organiser's record (SCRUM-37 AC5, SCRUM-48 AC5).
-
-    Dumped from ``EquipmentLineForOrganiser``: the type by name, the quantity asked
-    for, the status and the quantity provided. Never the technical notes, the outcome
-    note or the reviewer, which are internal (ADR-0098).
-    """
-
-    id = fields.Integer(dump_only=True)
-    equipment_type_name = fields.String(dump_only=True)
-    quantity = fields.Integer(dump_only=True)
-    status = fields.Enum(EquipmentLineStatus, by_value=True, dump_only=True)
-    provided_quantity = fields.Integer(dump_only=True, allow_none=True)
-
-
-class OrganiserVenueArrangementSchema(Schema):
-    """A confirmed venue arrangement on its organiser's record (SCRUM-49 AC11).
-
-    Dumped from the venue module's ``OrganiserVenueArrangement``: the venue's name and
-    location, the period in business time (ADR-0009), and what was arranged. Nothing
-    internal (ADR-0099).
-    """
-
-    venue_name = fields.String(dump_only=True)
-    venue_location = fields.String(dump_only=True)
-    starts_at = BusinessDateTime(dump_only=True)
-    ends_at = BusinessDateTime(dump_only=True)
-    purpose = fields.String(dump_only=True)
-    layout = fields.String(dump_only=True, allow_none=True)
-    expected_occupancy = fields.Integer(dump_only=True)
-
-
-class OrganiserSafetyDecisionSchema(Schema):
-    """The Safety Officer's final decision on its organiser's record (SCRUM-49 AC11).
-
-    Dumped from ``OrganiserSafetyDecision``: the outcome and when it was made, in
-    business time (ADR-0009). Not the officer, the checklist notes or the reason
-    (ADR-0099).
-    """
-
-    outcome = fields.Enum(SafetyOutcome, by_value=True, dump_only=True)
-    decided_at = BusinessDateTime(dump_only=True)
-
-
 class EquipmentAwaitingActionSchema(Schema):
     """One event's equipment still awaiting Technical Support (SCRUM-38 AC2, ADR-0022).
 
@@ -922,9 +878,9 @@ class EventHistoryEntrySchema(Schema):
 class StaffEventRequestSchema(EventRequestSchema):
     """An event request as the read-only staff record shows it (SCRUM-24 AC9, ADR-0095).
 
-    The request's own fields and both notes: the programme notes the organiser sees too,
-    and the internal planning notes they never do (ADR-0025). Its equipment comes in its
-    own sections of the record.
+    The request's own fields and both notes, the programme notes and the planning notes,
+    which the organiser's record sends too (ADR-0104). Its equipment comes in its own
+    sections of the record.
     """
 
     programme_notes = fields.String(dump_only=True, allow_none=True)
@@ -996,5 +952,85 @@ class StaffEventRecordSectionsSchema(Schema):
     )
     venue_arrangements = fields.Nested(StaffVenueArrangementSchema, many=True, dump_only=True)
     equipment_lines = fields.Nested(SafetyReviewEquipmentSchema, many=True, dump_only=True)
+    equipment_reservations = fields.Nested(StaffReservationSchema, many=True, dump_only=True)
+    safety_outcome = fields.Nested(SafetyOutcomeSchema, allow_none=True, dump_only=True)
+
+
+class RecordUnavailabilitySchema(Schema):
+    """A block or deactivation that flagged an arrangement, in business time.
+
+    Dumped from the venue module's ``UnavailabilityForRecord`` (SCRUM-92 AC1); the
+    category is the venue module's enum, shown by its value. ``ends_at`` is ``null``
+    for a deactivation.
+    """
+
+    category = fields.String(attribute="category.value", dump_only=True)
+    reason = fields.String(dump_only=True)
+    starts_at = BusinessDateTime(dump_only=True)
+    ends_at = BusinessDateTime(dump_only=True, allow_none=True)
+
+
+class RecordReassessmentSchema(Schema):
+    """A reason a significant change flagged an arrangement (SCRUM-33 AC6, ADR-0094)."""
+
+    kind = fields.String(attribute="kind.value", dump_only=True)
+    reason = fields.String(dump_only=True)
+
+
+class RecordVenueArrangementSchema(Schema):
+    """A venue arrangement in full, as the organiser's record shows it (ADR-0104).
+
+    Dumped from the venue module's ``ArrangementForRecord``: everything on it but its
+    ids, under the names the coordinator's own list uses (SCRUM-24 AC10, SCRUM-93 AC5).
+    Statuses are the venue module's enums, shown by their values; times are in
+    business time (ADR-0009). ``hold_expires_at`` is ``null`` unless it is On Hold or
+    its hold expired.
+    """
+
+    venue_name = fields.String(dump_only=True)
+    venue_location = fields.String(dump_only=True)
+    starts_at = BusinessDateTime(dump_only=True)
+    ends_at = BusinessDateTime(dump_only=True)
+    purpose = fields.String(dump_only=True)
+    expected_occupancy = fields.Integer(dump_only=True)
+    required_layout = fields.String(dump_only=True, allow_none=True)
+    justification = fields.String(dump_only=True, allow_none=True)
+    status = fields.String(attribute="status.value", dump_only=True)
+    decision_reason = fields.String(dump_only=True, allow_none=True)
+    hold_expires_at = BusinessDateTime(dump_only=True, allow_none=True)
+    needs_alternative_venue = fields.Boolean(dump_only=True)
+    unavailability = fields.Nested(RecordUnavailabilitySchema, many=True, dump_only=True)
+    flagged_after_change = fields.Boolean(dump_only=True)
+    reassessment_flags = fields.Nested(RecordReassessmentSchema, many=True, dump_only=True)
+    preparation_status = fields.String(attribute="preparation_status.value", dump_only=True)
+    preparation_notes = fields.String(dump_only=True, allow_none=True)
+
+
+class RecordEquipmentLineSchema(SafetyReviewEquipmentSchema):
+    """An equipment line with its outcome and reviewer (SCRUM-48 AC5, ADR-0104).
+
+    Dumped from ``EquipmentLineOnRecord``: the Safety Officer's view of a line, plus
+    the shortfall and who reviewed it when, by name and in business time.
+    """
+
+    shortfall = fields.Integer(dump_only=True, allow_none=True)
+    reviewed_by = fields.String(dump_only=True, allow_none=True)
+    reviewed_at = BusinessDateTime(dump_only=True, allow_none=True)
+
+
+class OrganiserRecordSectionsSchema(Schema):
+    """What the organiser's record holds beyond the sections every record shows.
+
+    SCRUM-24 AC10 (ADR-0104): the planning notes, every venue arrangement in full, the
+    equipment lines with their outcome and reviewer, and, as the staff record shows
+    them, the reservations with their preparation and the current safety outcome.
+    Dumped from ``OrganiserEventRecord``.
+    """
+
+    internal_planning_notes = fields.String(
+        attribute="event_request.internal_planning_notes", allow_none=True, dump_only=True
+    )
+    venue_arrangements = fields.Nested(RecordVenueArrangementSchema, many=True, dump_only=True)
+    equipment_lines = fields.Nested(RecordEquipmentLineSchema, many=True, dump_only=True)
     equipment_reservations = fields.Nested(StaffReservationSchema, many=True, dump_only=True)
     safety_outcome = fields.Nested(SafetyOutcomeSchema, allow_none=True, dump_only=True)
