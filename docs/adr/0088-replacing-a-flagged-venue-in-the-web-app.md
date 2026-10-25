@@ -4,7 +4,9 @@
   decision of 19 Oct; the wording, showing the reasons only while flagged, and the two-step
   replacement (choose in the search, send from the form) are defaults to review with the team;
   an arrangement flagged after a change to the event (SCRUM-33 AC6) is offered the same way in
-  decision 8, a default until Venue Staff can reconfirm a booking (SCRUM-59)
+  decision 8, a default until Venue Staff can reconfirm a booking (SCRUM-59); since
+  [ADR-0108](0108-organiser-notice-locked-replacement-period-and-available-again-wording.md) the
+  form locks a replacement's date and times to the flagged booking's (Product Owner, 25 Oct)
 - **Date:** 2026-10-19
 - **Story:** SCRUM-92 Flag bookings affected when a venue becomes unavailable (AC1, AC4, AC6,
   AC7, AC8, AC9)
@@ -48,7 +50,11 @@ be true, not how it reads.
    the event's Venue requests page with the request form filled in from the flagged arrangement
    (the venue chosen, its period, purpose, occupancy and layout) and marked "Replacing <purpose>",
    carried in the URL (`replaces`, `venue`). The coordinator checks it, changes what they need to,
-   and sends it with `replaces_request_id`. The form rather than a one-click request on the search
+   and sends it with `replaces_request_id`. Since
+   [ADR-0108](0108-organiser-notice-locked-replacement-period-and-available-again-wording.md) the
+   period can't be changed while the arrangement needs an alternative venue: Starts and Ends are
+   read-only, "Fixed to the booking it replaces", and the backend refuses another period under
+   them (Product Owner, 25 Oct). The form rather than a one-click request on the search
    page, because the backend's per-field refusals (opening hours, a justification for an
    unsuitable venue) then show under their own fields, and the coordinator can add a
    justification. "Stop replacing" drops the replacement and leaves an ordinary form.
@@ -100,6 +106,10 @@ be true, not how it reads.
   same-venue replacement on `venue_id`, its held studio is flagged, and approving a replacement
   releases a flagged hold.
 - The team decides the defaults in the status line.
+- ~~The replacement's period is locked to the flagged booking's (SCRUM-92 AC6 as changed on 25
+  Oct).~~ Done by [ADR-0108](0108-organiser-notice-locked-replacement-period-and-available-again-wording.md):
+  the form's period is read-only for an arrangement that needs an alternative venue, and the
+  booking mock refuses another period on the time fields.
 - SCRUM-59 lets Venue Staff reconfirm a booking: decide whether a "Requires reconfirmation" flag
   still offers "Find another venue", or only waits for Venue Staff.
 - SCRUM-90 gives events structured requirements: set the search's facilities and accessibility
