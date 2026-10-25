@@ -107,9 +107,18 @@ function shownValue(field: string, value: unknown): string {
   return JSON.stringify(value)
 }
 
+/**
+ * Fields whose name on screen isn't their key in words: the planning notes were once called
+ * internal (SCRUM-33 AC1, ADR-0104).
+ */
+const FIELD_LABELS: Partial<Record<string, string>> = {
+  internal_planning_notes: 'Planning notes',
+}
+
 function fieldChanged(details: Details): DescribedEntry {
   const field = textIn(details, 'field')
-  const title = field === null ? 'A detail changed' : `${humanise(field)} changed`
+  const label = field === null ? null : (FIELD_LABELS[field] ?? humanise(field))
+  const title = label === null ? 'A detail changed' : `${label} changed`
   const name = field ?? ''
   return {
     ...entry(title, [

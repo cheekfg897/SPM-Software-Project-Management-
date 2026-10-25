@@ -117,21 +117,19 @@ describe('SCRUM-24 AC9, AC10 the read-only staff record', () => {
     },
   )
 
-  it('shows the internal planning notes the coordinator saved', async () => {
+  it('shows the planning notes the coordinator saved (SCRUM-33 AC1)', async () => {
     sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.coordinator))
     await editEventRequest(PARTNER_SUMMIT, { internal_planning_notes: 'Client prefers mornings.' })
     sendRequestsAs(null)
     openAs(MOCK_ACCOUNTS.venueStaff, PARTNER_SUMMIT)
 
-    expect(await section('Internal planning notes')).toHaveTextContent('Client prefers mornings.')
+    expect(await section('Planning notes')).toHaveTextContent('Client prefers mornings.')
   })
 
-  it('says when there are no internal planning notes yet', async () => {
+  it('says when there are no planning notes yet', async () => {
     openAs(MOCK_ACCOUNTS.venueStaff, PARTNER_SUMMIT)
 
-    expect(await section('Internal planning notes')).toHaveTextContent(
-      'No internal planning notes yet.',
-    )
+    expect(await section('Planning notes')).toHaveTextContent('No planning notes yet.')
   })
 
   it("shows each venue arrangement with Venue Staff's preparation (SCRUM-84 AC2)", async () => {

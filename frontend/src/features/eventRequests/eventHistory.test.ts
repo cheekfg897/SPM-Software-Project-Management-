@@ -150,7 +150,7 @@ describe('SCRUM-33 AC4 describing a changed field', () => {
     const setting = { field: 'registration_enabled', previous_value: false, new_value: true }
 
     expect(described('field_changed', notes)).toEqual(
-      plain('Internal planning notes changed', [
+      plain('Planning notes changed', [
         ['Before', 'Not set'],
         ['After', 'Call AV.'],
       ]),
