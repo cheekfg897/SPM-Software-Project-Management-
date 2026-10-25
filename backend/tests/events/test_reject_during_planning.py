@@ -40,6 +40,8 @@ from app.modules.events.services import (
     record_equipment_outcome,
     reject_event_during_planning,
 )
+from app.modules.notifications.models import Notification
+from app.modules.notifications.schemas import NotificationSchema
 from app.modules.notifications.services import NotificationKind, list_notifications_for_recipient
 from app.modules.venue import services as venue_services
 from app.modules.venue.models import BookingRequestStatus, VenueBookingRequest
@@ -248,12 +250,20 @@ def _released_detail(arrangement: VenueBookingRequest) -> str:
     )
 
 
+def _released_notifications(user_id: int) -> list[Notification]:
+    """The user's "booking released" notifications, newest first."""
+    notices = []
+    for notification in list_notifications_for_recipient(user_id):
+        if notification.kind is NotificationKind.VENUE_BOOKING_RELEASED:
+            notices.append(notification)
+    return notices
+
+
 def _released_notices(user_id: int) -> list[tuple[str, str | None]]:
     """The user's "booking released" notices as (reference, detail), newest first."""
     rows = []
-    for notification in list_notifications_for_recipient(user_id):
-        if notification.kind is NotificationKind.VENUE_BOOKING_RELEASED:
-            rows.append((notification.event_reference, notification.detail))
+    for notification in _released_notifications(user_id):
+        rows.append((notification.event_reference, notification.detail))
     return rows
 
 
@@ -311,15 +321,42 @@ def test_an_arrangement_that_did_not_hold_its_venue_is_not_told_about(
 
 
 def test_nobody_but_venue_staff_is_told_of_the_release(
+    db_session: Session,
+    approved: EventRequest,
+    arrange: Arrange,
+    make_user: Callable[..., User],
+    save: Callable[..., None],
+) -> None:
+    """One user of every other role, from the enum, so a role added later is checked."""
+    others = []
+    for offset, role in enumerate(Role):
+        if role is not Role.VENUE_STAFF:
+            others.append(
+                make_user(email=f"{role.value}@example.com", role=role, user_id=100 + offset)
+            )
+    save(*others)
+    arrange(BookingRequestStatus.APPROVED)
+
+    _reject(db_session)
+
+    assert _released_notices(VENUE_STAFF_ID) != []
+    for user in others:
+        assert _released_notices(user.id) == [], user.role
+
+
+def test_the_release_notice_says_why_and_links_to_the_event(
     db_session: Session, approved: EventRequest, arrange: Arrange
 ) -> None:
     arrange(BookingRequestStatus.APPROVED)
 
     _reject(db_session)
 
-    for user_id in [*NON_ORGANISER_IDS, ORGANISER_ID]:
-        if user_id != VENUE_STAFF_ID:
-            assert _released_notices(user_id) == []
+    [notice] = _released_notifications(VENUE_STAFF_ID)
+    shown = NotificationSchema().dump(notice)
+    assert shown["message"] == (
+        "A venue booking or hold was released because its event was rejected during planning."
+    )
+    assert shown["link"] == f"/events/{REFERENCE}"
 
 
 def test_a_lost_venue_staff_notice_does_not_lose_the_rejection_or_the_release(
