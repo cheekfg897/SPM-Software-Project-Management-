@@ -81,8 +81,12 @@ class CatalogueQuerySchema(Schema):
         return data
 
 
-class CatalogueEventSchema(Schema):
-    """One event in the catalogue (ADR-0032)."""
+class PublicEventSchema(Schema):
+    """What anyone may know of an event: its name, description and times (SCRUM-52).
+
+    Nothing from the event's internal planning (SCRUM-21). The catalogue and an
+    Attendee's own event page both start from it.
+    """
 
     id = fields.Integer(dump_only=True)
     reference = fields.String(dump_only=True)
@@ -90,6 +94,11 @@ class CatalogueEventSchema(Schema):
     description = fields.String(dump_only=True)
     starts_at = BusinessDateTime(dump_only=True)
     ends_at = BusinessDateTime(dump_only=True)
+
+
+class CatalogueEventSchema(PublicEventSchema):
+    """One event in the catalogue (ADR-0032)."""
+
     # TODO: the booked venue's id and name, once the venue stack lets the events
     # module find it (SCRUM-42, SCRUM-43; ADR-0032).
     venue = fields.Constant(None, dump_only=True)
