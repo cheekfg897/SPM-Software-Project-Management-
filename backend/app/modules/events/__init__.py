@@ -25,6 +25,7 @@ Public surface for other modules (import from here, not from sub-files):
 * :func:`app.modules.events.services.list_registrable_events`
 * :func:`app.modules.events.services.get_registrable_event_for_update`
 * :func:`app.modules.events.services.list_event_headings`
+* :func:`app.modules.events.services.find_public_event`
 """
 
 from __future__ import annotations

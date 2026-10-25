@@ -19,11 +19,13 @@ from app.modules.auth.permissions import Role
 from app.modules.registration.schemas import (
     CataloguePageSchema,
     MyEventsWindow,
+    MyRegisteredEventSchema,
     MyRegistrationSchema,
     RegistrantListSchema,
     RegistrationSchema,
 )
 from app.modules.registration.services import (
+    get_my_registered_event,
     list_catalogue,
     list_my_registrations,
     list_registrants,
@@ -42,6 +44,7 @@ NO_EVENTS_MESSAGES = {
 _catalogue_page_schema = CataloguePageSchema()
 _registration_schema = RegistrationSchema()
 _my_registration_schema = MyRegistrationSchema(many=True)
+_my_registered_event_schema = MyRegisteredEventSchema()
 _registrant_list_schema = RegistrantListSchema()
 
 
@@ -91,6 +94,18 @@ def view_my_registrations() -> Response:
     if not listing.registrations:
         body["message"] = NO_EVENTS_MESSAGES[listing.when]
     return jsonify(body)
+
+
+@bp.get("/registrations/<reference>")
+@requires_role(Role.ATTENDEE)
+def view_my_registered_event(reference: str) -> Response:
+    """Show an event the caller registered for, with their registration (SCRUM-24 AC11).
+
+    The page an Attendee's "My events" cards and notification links open (ADR-0109).
+    An event they never registered for is ``404``; every other role is ``403``.
+    """
+    event = get_my_registered_event(g.current_user_id, reference)
+    return jsonify(_my_registered_event_schema.dump(event))
 
 
 @bp.get("/requests/<reference>/registrations")

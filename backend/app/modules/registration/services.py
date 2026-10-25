@@ -29,6 +29,7 @@ from app.modules.auth.services import get_user_contacts
 from app.modules.events.services import (
     EventHeading,
     RegistrableEvent,
+    find_public_event,
     get_event_capacity_for_viewer,
     get_registrable_event_for_update,
     list_event_headings,
@@ -41,12 +42,20 @@ from app.modules.registration.schemas import (
     MyEventsWindow,
     MyRegistrationsQuerySchema,
 )
+from app.modules.venue.services import BookedVenue, list_booked_venues
 
 ALREADY_REGISTERED_MESSAGE = "You are already registered for this event."
 EVENT_FULL_MESSAGE = "This event is full."
 REGISTRATION_NOT_FOUND_MESSAGE = "Registration not found."
 ALREADY_WITHDRAWN_MESSAGE = "You have already withdrawn from this event."
 WITHDRAWAL_CLOSED_MESSAGE = "Withdrawals for this event have closed."
+MY_EVENT_NOT_FOUND_MESSAGE = "Event not found."
+
+#: The event statuses whose page offers Withdraw: the event is still going ahead,
+#: confirmed or sent back to planning after a change, where places stay held
+#: (SCRUM-24 AC11, ADR-0087, ADR-0109). Plain values: the events module's models are
+#: not imported (module boundary).
+WITHDRAWABLE_EVENT_STATUSES = frozenset({"confirmed", "approved", "safety_review"})
 
 #: Monday is 0 and Sunday is 6, as :meth:`datetime.date.weekday` counts.
 SATURDAY = 5
@@ -129,6 +138,30 @@ class MyRegistrationList:
 
     when: MyEventsWindow
     registrations: list[MyRegistration]
+
+
+@dataclass(frozen=True)
+class MyRegisteredEvent:
+    """An event an attendee registered for, as its page shows it (SCRUM-24 AC11).
+
+    What SCRUM-52 shows of any event, its booked venues, the attendee's own
+    registration, when withdrawals close and whether the page offers Withdraw
+    (ADR-0109). Nothing from the event's internal planning.
+    """
+
+    id: int
+    reference: str
+    name: str
+    description: str
+    starts_at: datetime
+    ends_at: datetime
+    event_status: str
+    venues: list[BookedVenue]
+    status: RegistrationStatus
+    registered_at: datetime
+    withdrawn_at: datetime | None
+    withdrawals_close_at: datetime
+    can_withdraw: bool
 
 
 @dataclass(frozen=True)
@@ -561,6 +594,78 @@ def list_my_registrations(
         )
     window = query["when"]
     return MyRegistrationList(when=window, registrations=_in_window(rows, window, now))
+
+
+# --------------------------------------------------------------------------
+# One event an attendee registered for (SCRUM-24 AC11)
+# --------------------------------------------------------------------------
+
+
+def _may_withdraw(registration: Registration, event: EventHeading, now: datetime) -> bool:
+    """Whether the page offers Withdraw, as SCRUM-53 allows it (ADR-0109).
+
+    The place is still held, the event is still going ahead, and its withdrawals
+    haven't closed: the cut-off, or the start when there is none. A Completed or
+    Cancelled event is read-only (AC11).
+    """
+    if registration.status is not RegistrationStatus.REGISTERED:
+        return False
+    if event.status not in WITHDRAWABLE_EVENT_STATUSES:
+        return False
+    return now < _withdrawal_closes_at(event)
+
+
+def get_my_registered_event(
+    attendee_id: int | str,
+    reference: str,
+    *,
+    session: Session | None = None,
+    now: datetime | None = None,
+) -> MyRegisteredEvent:
+    """One event the attendee registered for, whatever its status (SCRUM-24 AC11).
+
+    Someone who withdrew still opens it, read-only (ADR-0109). An event they never
+    registered for is not found, in the same words as one that doesn't exist, so
+    whether it exists can't be told (ADR-0012).
+
+    Args:
+        attendee_id: The caller's user id, taken from their token.
+        reference: The event's ``EVR-`` reference; case and spaces are ignored.
+        session: Database session; defaults to ``db.session``.
+        now: The current instant, timezone-aware; defaults to the real clock.
+
+    Returns:
+        The event as its page shows it.
+
+    Raises:
+        NotFoundError: 404 — no such event, or the attendee never registered for it.
+    """
+    sess = resolve_session(session)
+    if now is None:
+        now = datetime.now(timezone.utc)
+
+    event = find_public_event(reference, session=sess)
+    if event is None:
+        raise NotFoundError(MY_EVENT_NOT_FOUND_MESSAGE)
+    registration = _registration_of(int(attendee_id), event.id, sess)
+    if registration is None:
+        raise NotFoundError(MY_EVENT_NOT_FOUND_MESSAGE)
+
+    return MyRegisteredEvent(
+        id=event.id,
+        reference=event.reference,
+        name=event.name,
+        description=event.description,
+        starts_at=event.starts_at,
+        ends_at=event.ends_at,
+        event_status=event.status,
+        venues=list_booked_venues(event.id, session=sess),
+        status=registration.status,
+        registered_at=registration.registered_at,
+        withdrawn_at=registration.withdrawn_at,
+        withdrawals_close_at=_withdrawal_closes_at(event),
+        can_withdraw=_may_withdraw(registration, event, now),
+    )
 
 
 # --------------------------------------------------------------------------
