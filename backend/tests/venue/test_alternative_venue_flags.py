@@ -269,6 +269,25 @@ def test_a_block_over_a_held_request_flags_it_and_the_hold_still_holds_the_venue
     assert flagged.booking.status is BookingStatus.TENTATIVE
 
 
+def test_a_hold_past_its_expiry_but_not_yet_marked_expired_is_flagged(
+    db_session: Session, multi_venue_request: VenueBookingRequest
+) -> None:
+    """Flagged by status, not by expiry (ADR-0100 decision 3).
+
+    SCRUM-94's job marks it Expired later, and from then on it needs nothing.
+    """
+    held = _held(multi_venue_request, db_session)
+    assert held.booking is not None
+    held.booking.hold_expires_at = hours_from_now(-1)
+    db_session.commit()
+
+    block(_venue_of(held, db_session), at(10), at(11), db_session)
+
+    flagged = reload_request(db_session, held.id)
+    assert flagged.status is BookingRequestStatus.ON_HOLD
+    assert flagged.needs_alternative_venue is True
+
+
 # --------------------------------------------------------------------------
 # AC2 — the reason is one of five categories, with a note
 # --------------------------------------------------------------------------
