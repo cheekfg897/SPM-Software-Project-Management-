@@ -38,13 +38,13 @@ SCRUM-61 (cancelling an event) is not built yet, so there is no cancellation rel
 
 ## Consequences
 - An event that can't go ahead no longer sits in planning holding venues and equipment: one action rejects it, frees what it held and tells the organiser why.
-- Venue Staff see a released arrangement as Released (or a withdrawn one as Withdrawn) on the event's list; an approved booking they made is cancelled without a notice to them (Still owed).
+- Venue Staff see a released arrangement as Released (or a withdrawn one as Withdrawn) on the event's list; since [ADR-0103](0103-tell-venue-staff-of-released-bookings.md) they are also told about each approved booking or hold a rejection releases.
 - Technical Support can't record or revise an outcome on a rejected event (ADR-0040 decision 15), so its equipment record stays as it was when it was rejected.
 - SCRUM-61 can reuse both release functions as they are: they don't commit, and neither knows why the event stopped.
 - The coordinator can reject an event from its page; the other pages that show its venues or equipment (the venue requests and equipment pages) are read again when opened, not at the moment of the rejection.
 
 ## Still owed
-- **Venue Staff aren't told** when an approved booking or a hold is released; the ACs don't ask for it. A ticket to raise if they should be.
+- ~~**Venue Staff aren't told** when an approved booking or a hold is released; the ACs don't ask for it. A ticket to raise if they should be.~~ Done by [ADR-0103](0103-tell-venue-staff-of-released-bookings.md), following the Product Owner's answer of 25 Oct.
 - **Should a planning rejection be final?** After it, ADR-0084's lock no longer counts the released venues, so an event with no equipment request can be re-decided through SCRUM-31 (decision 8). *Answered by the Product Owner on 25 Oct (answer 3):* final as a decision; the event comes back by resubmission after changes, through the Coordinator, and a fresh review. The resubmission flow is still owed (see Revisit when).
 - **The organiser's history shows the rejection as a decision.** If the team wants the page to word a planning rejection differently, the entry needs a marker, which is a small change here.
 
