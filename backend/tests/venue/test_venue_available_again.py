@@ -208,6 +208,35 @@ def test_an_arrangement_another_block_still_covers_is_told_only_once_the_last_on
     assert _told_again(COORDINATOR_ID) == [(event.id, MAIN_HALL_AGAIN)]
 
 
+def test_an_arrangement_two_overlapping_blocks_cover_is_told_only_once_both_are_gone(
+    db_session: Session, venue: Venue, saved_event: SavedEvent
+) -> None:
+    """The Product Owner, 25 Oct: "available again" only once nothing else covers it."""
+    event, _ = _approved(venue, saved_event, db_session)
+    first = block(venue, at(9), at(11), db_session)
+    second = block(venue, at(10), at(12), db_session, category="other", reason="Filming.")
+
+    _remove(venue, first, db_session)
+    told_after_first = _told_again(COORDINATOR_ID)
+    _remove(venue, second, db_session)
+
+    assert told_after_first == []
+    assert _told_again(COORDINATOR_ID) == [(event.id, MAIN_HALL_AGAIN)]
+
+
+def test_removing_a_block_from_a_venue_still_deactivated_tells_nobody(
+    db_session: Session, venue: Venue, saved_event: SavedEvent
+) -> None:
+    """The deactivation still covers the arrangement, so its venue is not available."""
+    _approved(venue, saved_event, db_session)
+    venue_block = block(venue, at(10), at(11), db_session)
+    _deactivate(venue, db_session)
+
+    _remove(venue, venue_block, db_session)
+
+    assert _told_again(COORDINATOR_ID) == []
+
+
 def test_reactivating_a_venue_a_block_still_covers_tells_nobody(
     db_session: Session, venue: Venue, saved_event: SavedEvent
 ) -> None:
