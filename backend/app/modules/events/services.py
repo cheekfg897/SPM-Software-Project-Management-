@@ -841,67 +841,6 @@ def _equipment_lines_for_organiser(
     return tuple(shown)
 
 
-#: When the organiser sees the event's venues: once it is confirmed, and still once it
-#: has taken place (SCRUM-49 AC11). Before then, none: the AC's literal reading, a
-#: default pending the Product Owner (ADR-0051 question 2, ADR-0099).
-VENUES_SHOWN_TO_ORGANISER_STATUSES = frozenset(
-    {EventRequestStatus.CONFIRMED, EventRequestStatus.COMPLETED}
-)
-
-
-def _venue_arrangements_for_organiser(
-    event_request: EventRequest, session: Session
-) -> tuple[OrganiserVenueArrangement, ...]:
-    """The event's approved venue arrangements, once it is confirmed (SCRUM-49 AC11)."""
-    from app.modules.venue import services as venue_services  # circular at import time
-
-    if event_request.status not in VENUES_SHOWN_TO_ORGANISER_STATUSES:
-        return ()
-    arrangements = venue_services.list_organiser_venue_arrangements(
-        event_request.id, session=session
-    )
-    return tuple(arrangements)
-
-
-def get_event_record_for_organiser(
-    organiser_id: int | str, reference: str, *, session: Session | None = None
-) -> OrganiserEventRecord:
-    """One of the organisation's requests and its assigned coordinator (SCRUM-30 AC3).
-
-    Same lookup and scope as :func:`get_event_request_for_organiser`; the coordinator
-    is ``None`` until one is assigned (ADR-0018). The equipment lines are the
-    organiser's own view of them (SCRUM-37 AC5, SCRUM-48 AC5, ADR-0098), and the venue
-    arrangements are listed once the event is confirmed (SCRUM-49 AC11, ADR-0099).
-
-    Args:
-        organiser_id: The caller's user id, taken from their token.
-        reference: The ``EVR-…`` reference; case and surrounding spaces are ignored.
-        session: Database session; defaults to ``db.session``.
-
-    Returns:
-        The request's record: the request, its coordinator's name and email or
-        ``None``, each equipment line's type, quantity, status and quantity
-        provided, and its confirmed venue arrangements.
-
-    Raises:
-        OrganiserWithoutOrganisationError: 403 — the organiser has no client
-            organisation (ADR-0020).
-        NotFoundError: 404 — no such request in the caller's organisation, or the
-            token names a user that no longer exists.
-    """
-    sess = resolve_session(session)
-    event_request = get_event_request_for_organiser(organiser_id, reference, session=sess)
-    record = _event_record(event_request, sess)
-    return OrganiserEventRecord(
-        event_request=record.event_request,
-        coordinator=record.coordinator,
-        decision=record.decision,
-        clarifications=record.clarifications,
-        equipment_lines=_equipment_lines_for_organiser(event_request, sess),
-        venue_arrangements=_venue_arrangements_for_organiser(event_request, sess),
-    )
-
-
 # --------------------------------------------------------------------------
 # SCRUM-20 — save and resume a draft event request
 # --------------------------------------------------------------------------
@@ -1196,6 +1135,72 @@ def withdraw_safety_approval(
         actor_id=actor_id,
         details=details,
         session=sess,
+    )
+
+
+# --------------------------------------------------------------------------
+# The organiser's record (ADR-0098, ADR-0099)
+# --------------------------------------------------------------------------
+
+
+#: When the organiser sees the event's venues: once it is confirmed, and still once it
+#: has taken place (SCRUM-49 AC11). Before then, none: the AC's literal reading, a
+#: default pending the Product Owner (ADR-0051 question 2, ADR-0099).
+VENUES_SHOWN_TO_ORGANISER_STATUSES = frozenset(
+    {EventRequestStatus.CONFIRMED, EventRequestStatus.COMPLETED}
+)
+
+
+def _venue_arrangements_for_organiser(
+    event_request: EventRequest, session: Session
+) -> tuple[OrganiserVenueArrangement, ...]:
+    """The event's approved venue arrangements, once it is confirmed (SCRUM-49 AC11)."""
+    from app.modules.venue import services as venue_services  # circular at import time
+
+    if event_request.status not in VENUES_SHOWN_TO_ORGANISER_STATUSES:
+        return ()
+    arrangements = venue_services.list_organiser_venue_arrangements(
+        event_request.id, session=session
+    )
+    return tuple(arrangements)
+
+
+def get_event_record_for_organiser(
+    organiser_id: int | str, reference: str, *, session: Session | None = None
+) -> OrganiserEventRecord:
+    """One of the organisation's requests and its assigned coordinator (SCRUM-30 AC3).
+
+    Same lookup and scope as :func:`get_event_request_for_organiser`; the coordinator
+    is ``None`` until one is assigned (ADR-0018). The equipment lines are the
+    organiser's own view of them (SCRUM-37 AC5, SCRUM-48 AC5, ADR-0098), and the venue
+    arrangements are listed once the event is confirmed (SCRUM-49 AC11, ADR-0099).
+
+    Args:
+        organiser_id: The caller's user id, taken from their token.
+        reference: The ``EVR-…`` reference; case and surrounding spaces are ignored.
+        session: Database session; defaults to ``db.session``.
+
+    Returns:
+        The request's record: the request, its coordinator's name and email or
+        ``None``, each equipment line's type, quantity, status and quantity
+        provided, and its confirmed venue arrangements.
+
+    Raises:
+        OrganiserWithoutOrganisationError: 403 — the organiser has no client
+            organisation (ADR-0020).
+        NotFoundError: 404 — no such request in the caller's organisation, or the
+            token names a user that no longer exists.
+    """
+    sess = resolve_session(session)
+    event_request = get_event_request_for_organiser(organiser_id, reference, session=sess)
+    record = _event_record(event_request, sess)
+    return OrganiserEventRecord(
+        event_request=record.event_request,
+        coordinator=record.coordinator,
+        decision=record.decision,
+        clarifications=record.clarifications,
+        equipment_lines=_equipment_lines_for_organiser(event_request, sess),
+        venue_arrangements=_venue_arrangements_for_organiser(event_request, sess),
     )
 
 
