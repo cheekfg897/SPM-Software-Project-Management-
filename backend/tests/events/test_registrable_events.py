@@ -224,6 +224,7 @@ def test_event_headings_give_each_event_its_name_times_status_and_cut_off(
     assert sorted(headings, key=lambda heading: heading.id) == [
         EventHeading(
             id=jazz.id,
+            reference="EVR-OPEN0001",
             name="Jazz",
             starts_at=STARTS_AT,
             ends_at=ENDS_AT,
@@ -232,6 +233,7 @@ def test_event_headings_give_each_event_its_name_times_status_and_cut_off(
         ),
         EventHeading(
             id=poetry.id,
+            reference="EVR-OPEN0002",
             name="Poetry",
             starts_at=datetime(2026, 10, 21, 11, 30, tzinfo=timezone.utc),
             ends_at=datetime(2026, 10, 21, 14, 0, tzinfo=timezone.utc),

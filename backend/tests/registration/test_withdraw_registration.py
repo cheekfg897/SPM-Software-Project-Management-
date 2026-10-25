@@ -541,6 +541,7 @@ def test_my_list_sends_when_a_registration_was_withdrawn_in_business_time(
 ) -> None:
     row = MyRegistration(
         event_id=41,
+        reference="EVR-7K2M9Q4A",
         name="Jazz by the Bay",
         starts_at=EVENT_STARTS,
         ends_at=EVENT_ENDS,

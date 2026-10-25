@@ -42,6 +42,7 @@ def test_a_registration_shows_the_event_and_when_it_was_made(
     assert my_registrations(ATTENDEE) == [
         MyRegistration(
             event_id=open_event.id,
+            reference="EVR-OPEN0001",
             name="Jazz by the Bay",
             starts_at=datetime(2026, 10, 20, 11, 30, tzinfo=timezone.utc),
             ends_at=datetime(2026, 10, 20, 14, 0, tzinfo=timezone.utc),

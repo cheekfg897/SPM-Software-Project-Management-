@@ -113,6 +113,7 @@ class MyRegistration:
     """One of an attendee's registrations, with the event it is for."""
 
     event_id: int
+    reference: str
     name: str
     starts_at: datetime
     ends_at: datetime
@@ -548,6 +549,7 @@ def list_my_registrations(
         rows.append(
             MyRegistration(
                 event_id=heading.id,
+                reference=heading.reference,
                 name=heading.name,
                 starts_at=heading.starts_at,
                 ends_at=heading.ends_at,

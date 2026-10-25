@@ -94,6 +94,7 @@ def my_registrations_service(replace_services: ReplaceServices, now: datetime) -
     """Replace ``list_my_registrations`` with a mock returning one registration."""
     row = MyRegistration(
         event_id=41,
+        reference="EVR-7K2M9Q4A",
         name="Jazz by the Bay",
         starts_at=STARTS_AT,
         ends_at=ENDS_AT,
@@ -257,6 +258,7 @@ def test_my_registrations_are_listed_with_the_event_and_status(
         "registrations": [
             {
                 "event_id": 41,
+                "reference": "EVR-7K2M9Q4A",
                 "name": "Jazz by the Bay",
                 "starts_at": "2026-10-20T19:30:00+08:00",
                 "ends_at": "2026-10-20T22:00:00+08:00",

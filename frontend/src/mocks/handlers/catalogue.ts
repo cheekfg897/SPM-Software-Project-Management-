@@ -264,6 +264,7 @@ function toItem(event: MockCatalogueEvent, userId: number | null) {
 /** One row of an Attendee's events, as the backend sends it. */
 interface MyEventRow {
   event_id: number
+  reference: string
   name: string
   starts_at: string
   ends_at: string
@@ -312,6 +313,7 @@ function myEventRows(userId: number): MyEventRow[] {
     if (registration !== undefined) {
       rows.push({
         event_id: event.id,
+        reference: event.reference,
         name: event.name,
         starts_at: event.starts_at,
         ends_at: event.ends_at,

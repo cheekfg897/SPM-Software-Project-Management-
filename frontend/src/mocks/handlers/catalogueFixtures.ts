@@ -412,6 +412,7 @@ export const MOCK_WITHDRAWAL_CUT_OFFS: ReadonlyMap<number, string> = new Map([
 /** An event the mock attendee registered for that the catalogue no longer lists. */
 export interface MockUnlistedEvent {
   id: number
+  reference: string
   name: string
   starts_at: string
   ends_at: string
@@ -425,6 +426,7 @@ export interface MockUnlistedEvent {
 export const MOCK_ATTENDEE_UNLISTED_EVENTS: MockUnlistedEvent[] = [
   {
     id: 901,
+    reference: 'EVR-MOCK0901',
     name: 'Orchid Show Opening Night',
     starts_at: '2026-09-28T18:00:00+08:00',
     ends_at: '2026-09-28T20:00:00+08:00',
@@ -432,6 +434,7 @@ export const MOCK_ATTENDEE_UNLISTED_EVENTS: MockUnlistedEvent[] = [
   },
   {
     id: 902,
+    reference: 'EVR-MOCK0902',
     name: 'Harbour Lights Run',
     starts_at: '2026-10-10T07:00:00+08:00',
     ends_at: '2026-10-10T09:00:00+08:00',
