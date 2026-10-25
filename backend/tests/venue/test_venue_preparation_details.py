@@ -147,10 +147,10 @@ def test_other_internal_users_read_the_details_in_the_events_history(
     assert entry.details["notes"] == "Chairs set out, stage to do."
 
 
-def test_the_organiser_never_sees_the_preparation_in_the_history(
+def test_the_organiser_sees_the_preparation_in_the_history(
     db_session: Session, saved_users: list[User], venue: Venue, saved_event: SavedEvent
 ) -> None:
-    """ADR-0049 decision 6: the entry is internal-only, but the booking's are not."""
+    """SCRUM-84 AC2: the organiser sees the preparation details (ADR-0104)."""
     event = saved_event()
     event.organisation_id = ORGANISER_ORGANISATION_ID
     booking = _approved_booking(venue, event, db_session)
@@ -163,6 +163,8 @@ def test_the_organiser_never_sees_the_preparation_in_the_history(
     assert [shown.kind for shown in history] == [
         EventHistoryKind.VENUE_BOOKING_REQUESTED,
         EventHistoryKind.VENUE_BOOKING_APPROVED,
+        EventHistoryKind.SAFETY_OUTCOME_RECORDED,
+        EventHistoryKind.VENUE_PREPARATION_UPDATED,
     ]
 
 

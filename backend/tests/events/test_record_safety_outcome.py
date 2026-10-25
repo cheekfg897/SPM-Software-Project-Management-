@@ -404,10 +404,10 @@ def test_the_outcome_is_kept_in_the_history_with_the_officer_checklist_and_reaso
     assert entry.occurred_at.astimezone(timezone.utc) == RECORDED_AT
 
 
-def test_only_internal_staff_see_the_outcome_in_the_history(
+def test_the_coordinator_and_the_organiser_see_the_outcome_in_the_history(
     db_session: Session, in_review: EventRequest
 ) -> None:
-    """The checklist is the Safety Officer's working: internal-only (ADR-0047 #19)."""
+    """The organiser sees the checklist and comments too (SCRUM-24 AC10, ADR-0104)."""
     _record(db_session, "changes_requested")
 
     seen_by_coordinator = list_event_history(
@@ -420,7 +420,7 @@ def test_only_internal_staff_see_the_outcome_in_the_history(
     assert [entry.kind for entry in seen_by_coordinator] == [
         EventHistoryKind.SAFETY_OUTCOME_RECORDED
     ]
-    assert seen_by_organiser == []
+    assert seen_by_organiser == seen_by_coordinator
 
 
 # --------------------------------------------------------------------------

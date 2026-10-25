@@ -96,10 +96,10 @@ def test_an_event_with_no_equipment_has_no_lines_awaiting_an_outcome(
     assert services.all_outcomes_recorded(saved_event_request.id, session=db_session) is True
 
 
-def test_the_organiser_never_sees_an_outcome_in_the_history(
+def test_the_organiser_sees_an_outcome_in_the_history(
     db_session: Session, saved_users: list[User], saved_event_request: EventRequest
 ) -> None:
-    """The outcome is Technical Support's working until a later story shares it."""
+    """Nothing on the record is hidden from the organiser (SCRUM-24 AC10, ADR-0104)."""
     entry = EventHistoryEntry(
         event_request_id=saved_event_request.id,
         kind=EventHistoryKind.EQUIPMENT_OUTCOME_RECORDED,
@@ -116,7 +116,7 @@ def test_the_organiser_never_sees_an_outcome_in_the_history(
         viewer_role=Role.EVENT_ORGANISER,
     )
 
-    assert shown == []
+    assert [entry.kind for entry in shown] == [EventHistoryKind.EQUIPMENT_OUTCOME_RECORDED]
 
 
 # --------------------------------------------------------------------------

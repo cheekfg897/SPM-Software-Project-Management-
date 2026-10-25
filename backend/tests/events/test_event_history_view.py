@@ -4,8 +4,8 @@
 history, and an Event Coordinator only their own events' (SCRUM-96 AC6), oldest first,
 with every actor and coordinator name resolved and no user ids anywhere in the reply
 (ADR-0025). An Event Organiser sees the same event's history for their own client
-organisation only, minus any ``field_changed`` entry about
-``internal_planning_notes``. A removed user's name comes back ``null``.
+organisation only, every entry of it: nothing on the record is hidden from them
+(SCRUM-24 AC10, ADR-0104). A removed user's name comes back ``null``.
 
 Runs against ``db_session`` with ``saved_users``; history entries are written
 directly with ``record_event_history`` so their ``occurred_at`` values can be pinned
@@ -57,7 +57,7 @@ def recorded_history(
     """Four history entries on ``saved_event_request``, written out of time order.
 
     Oldest first they should read: assigned (02:00), reassigned (03:00), the
-    attendance change (04:00), then the internal-only note change (04:00, same
+    attendance change (04:00), then the planning notes change (04:00, same
     instant, so insertion order settles the tie).
     """
     record_event_history(
@@ -97,7 +97,7 @@ def recorded_history(
 
 
 # --------------------------------------------------------------------------
-# ADR-0025 — internal staff see everything, oldest first, names resolved
+# ADR-0025, ADR-0104 — every reader sees everything, oldest first, names resolved
 # --------------------------------------------------------------------------
 
 
@@ -108,15 +108,14 @@ INTERNAL_VIEWERS = [
     (5, Role.TECHNICAL_SUPPORT_STAFF),
 ]
 INTERNAL_VIEWER_IDS = ["assigned-coordinator", "lead", "venue-staff", "technical-support"]
+#: Internal staff and the event's organiser, from whom nothing is hidden (ADR-0104).
+EVERY_READER = [*INTERNAL_VIEWERS, (7, Role.EVENT_ORGANISER)]
+EVERY_READER_IDS = [*INTERNAL_VIEWER_IDS, "organiser"]
 
 
 @pytest.mark.scrum_96
-@pytest.mark.parametrize(
-    ("viewer_id", "role"),
-    INTERNAL_VIEWERS,
-    ids=INTERNAL_VIEWER_IDS,
-)
-def test_internal_staff_see_every_entry_oldest_first_with_names_resolved(
+@pytest.mark.parametrize(("viewer_id", "role"), EVERY_READER, ids=EVERY_READER_IDS)
+def test_every_reader_sees_every_entry_oldest_first_with_names_resolved(
     recorded_history: EventRequest, viewer_id: int, role: Role
 ) -> None:
     entries = list_event_history(viewer_id, REFERENCE, viewer_role=role)
@@ -142,21 +141,29 @@ def test_internal_staff_see_every_entry_oldest_first_with_names_resolved(
 
 
 # --------------------------------------------------------------------------
-# ADR-0025 — the organiser never sees a field_changed entry about internal notes
+# SCRUM-24 AC10 — nothing in the history is hidden from the organiser (ADR-0104)
 # --------------------------------------------------------------------------
 
 
-def test_the_organiser_does_not_see_the_internal_planning_notes_change(
-    recorded_history: EventRequest,
+@pytest.mark.scrum_24
+def test_the_organiser_sees_every_kind_of_entry(
+    saved_users: list[User], saved_event_request: EventRequest, db_session: Session
 ) -> None:
+    """Built from the enum, so a kind added later is shown to the organiser too."""
+    for minute, kind in enumerate(EventHistoryKind):
+        record_event_history(
+            saved_event_request,
+            kind,
+            actor_id=4,
+            details={},
+            session=db_session,
+            now=datetime(2026, 9, 15, 2, minute, tzinfo=timezone.utc),
+        )
+    db_session.commit()
+
     entries = list_event_history(7, REFERENCE, viewer_role=Role.EVENT_ORGANISER)
 
-    assert [entry.kind for entry in entries] == [
-        EventHistoryKind.COORDINATOR_ASSIGNED,
-        EventHistoryKind.COORDINATOR_REASSIGNED,
-        EventHistoryKind.FIELD_CHANGED,
-    ]
-    assert entries[-1].details == ATTENDANCE_CHANGED_DETAILS
+    assert [entry.kind for entry in entries] == list(EventHistoryKind)
 
 
 def test_an_organiser_cannot_see_another_organisations_history(

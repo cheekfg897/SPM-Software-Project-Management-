@@ -2445,26 +2445,6 @@ def update_event_request(
     return EventEdit(event_request, changes)
 
 
-#: A field_changed entry about one of these is for internal eyes only (ADR-0025).
-INTERNAL_ONLY_FIELDS: frozenset[str] = frozenset({"internal_planning_notes"})
-#: Entries of these kinds are for internal eyes only: which equipment Technical
-#: Support set aside, and what they ruled on a request, is their working, not the
-#: organiser's (SCRUM-46, ADR-0037, SCRUM-48).
-INTERNAL_ONLY_KINDS: frozenset[EventHistoryKind] = frozenset(
-    {
-        EventHistoryKind.EQUIPMENT_RESERVED,
-        EventHistoryKind.EQUIPMENT_OUTCOME_RECORDED,
-        EventHistoryKind.SAFETY_OUTCOME_RECORDED,
-        EventHistoryKind.VENUE_PREPARATION_UPDATED,
-        EventHistoryKind.EQUIPMENT_PREPARATION_UPDATED,
-        # Venue Staff's note on why a venue is unavailable, which the calendar shows
-        # only to them, and the safety check it unsettles (SCRUM-92, ADR-0053).
-        EventHistoryKind.ALTERNATIVE_VENUE_NEEDED,
-        EventHistoryKind.SAFETY_APPROVAL_WITHDRAWN,
-    }
-)
-
-
 @dataclass(frozen=True)
 class HistoryEntryAsShown:
     """One event history entry as the API shows it (ADR-0025): no user ids."""
@@ -2483,20 +2463,6 @@ def _history_entries(event_request: EventRequest, session: Session) -> list[Even
         .order_by(EventHistoryEntry.occurred_at, EventHistoryEntry.id)
     )
     return list(session.scalars(stmt))
-
-
-def _shown_to_organiser(entry: EventHistoryEntry) -> bool:
-    """Whether the organiser may see ``entry`` (ADR-0025).
-
-    Every kind but an internal-only kind and a ``field_changed`` entry about an
-    internal-only field.
-    """
-    if entry.kind in INTERNAL_ONLY_KINDS:
-        return False
-    if entry.kind is not EventHistoryKind.FIELD_CHANGED:
-        return True
-    details = entry.details or {}
-    return details.get("field") not in INTERNAL_ONLY_FIELDS
 
 
 def _details_as_shown(entry: EventHistoryEntry, names: dict[int, str]) -> dict[str, Any]:
@@ -2529,9 +2495,8 @@ def list_event_history(
 
     Internal staff may see any event's history, except an Event Coordinator, who may
     see only the events assigned to them (SCRUM-96 AC6, SCRUM-24 AC2/AC9, ADR-0034 and
-    ADR-0041). An Event Organiser sees only their client organisation's, and never a
-    ``field_changed`` entry about ``internal_planning_notes`` (ADR-0025) or an
-    ``equipment_reserved`` entry (SCRUM-46).
+    ADR-0041). An Event Organiser sees only their client organisation's, every entry
+    of it: nothing on the record is hidden from them (SCRUM-24 AC10, ADR-0104).
 
     Args:
         viewer_id: The caller's user id, taken from their token.
@@ -2550,17 +2515,14 @@ def list_event_history(
             their organisation, or for a coordinator, none assigned to them.
     """
     sess = resolve_session(session)
-    is_internal_viewer = viewer_role in INTERNAL_ROLES
     if viewer_role is Role.EVENT_COORDINATOR:
         event_request = _event_request_assigned_to(viewer_id, reference, sess)
-    elif is_internal_viewer:
+    elif viewer_role in INTERNAL_ROLES:
         event_request = _event_request_for_staff(reference, sess)
     else:
         event_request = get_event_request_for_organiser(viewer_id, reference, session=sess)
 
     entries = _history_entries(event_request, sess)
-    if not is_internal_viewer:
-        entries = [entry for entry in entries if _shown_to_organiser(entry)]
 
     names = get_user_full_names(_user_ids_named_in(entries), session=sess)
     shown = []
@@ -2982,7 +2944,6 @@ def record_equipment_reserved(
 
     The audit trail of a reservation (SCRUM-46, ADR-0037): the entry rides in the
     reservation's transaction, so it is saved with the reservation or not at all.
-    Organisers never see it (:func:`_shown_to_organiser`).
 
     Args:
         event_id: The event's id, from :class:`EventEquipmentNeed`.
@@ -3015,7 +2976,6 @@ def record_equipment_preparation_updated(
 
     The audit trail of an update (SCRUM-85 AC4, ADR-0050), uncommitted: the entry rides
     in the update's transaction, so it is saved with the update or not at all.
-    Organisers never see it (:func:`_shown_to_organiser`).
 
     Args:
         event_id: The event's id, from the reservation.

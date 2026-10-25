@@ -127,13 +127,18 @@ def test_internal_staff_see_the_reservation_in_the_history(
     ]
 
 
-def test_the_organiser_never_sees_the_reservation_in_the_history(
+def test_the_organiser_sees_the_reservation_in_the_history(
     db_session: Session, saved_users: list[User], saved_event_request: EventRequest
 ) -> None:
+    """Nothing on the record is hidden from the organiser (SCRUM-24 AC10, ADR-0104)."""
     _record_reservation(db_session, saved_event_request)
     db_session.commit()
 
-    assert list_event_history(7, REFERENCE, viewer_role=Role.EVENT_ORGANISER) == []
+    entries = list_event_history(7, REFERENCE, viewer_role=Role.EVENT_ORGANISER)
+
+    assert [(entry.kind, entry.actor_name, entry.details) for entry in entries] == [
+        (EventHistoryKind.EQUIPMENT_RESERVED, "Alice Example", RESERVED_DETAILS)
+    ]
 
 
 def test_the_closed_message_names_every_status_that_closes_reservations() -> None:

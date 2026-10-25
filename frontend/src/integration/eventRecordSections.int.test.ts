@@ -253,7 +253,7 @@ describe('SCRUM-33 AC1 to AC4 the coordinator edit against the backend', () => {
   })
 
   it.skipIf(!hasLead)(
-    'keeps the internal planning notes out of the organiser history (ADR-0025)',
+    'shows the organiser the planning notes change in the history (SCRUM-24 AC10, ADR-0104)',
     async () => {
       const { organiser, reference } = await submittedByNewOrganiser()
       await assignToStaffCoordinator(reference)
@@ -265,7 +265,7 @@ describe('SCRUM-33 AC1 to AC4 the coordinator edit against the backend', () => {
 
       expect(edited.internal_planning_notes).toBe('Call AV.')
       expect(coordinatorsEdits).toHaveLength(1)
-      expect(organisersEdits).toEqual([])
+      expect(organisersEdits).toEqual(coordinatorsEdits)
     },
   )
 

@@ -258,13 +258,13 @@ def test_a_deactivation_is_written_to_the_history_with_no_end(
     }
 
 
-def test_the_history_entry_is_for_internal_eyes_only(
+def test_the_history_entry_is_shown_to_the_coordinator_and_the_organiser(
     db_session: Session,
     venue: Venue,
     saved_event: SavedEvent,
     saved_users: list[User],
 ) -> None:
-    """The note is Venue Staff's; the calendar hides it from others too (ADR-0053)."""
+    """Nothing on the record is hidden from the organiser (SCRUM-24 AC10, ADR-0104)."""
     event, _ = _arranged(venue, saved_event, db_session, EventRequestStatus.CONFIRMED)
     event.organisation_id = 3
     db_session.commit()
@@ -278,7 +278,7 @@ def test_the_history_entry_is_for_internal_eyes_only(
         COORDINATOR_ID, event.reference, viewer_role=Role.EVENT_COORDINATOR, session=db_session
     )
     alternative = EventHistoryKind.ALTERNATIVE_VENUE_NEEDED
-    assert alternative not in [entry.kind for entry in organiser_sees]
+    assert alternative in [entry.kind for entry in organiser_sees]
     assert alternative in [entry.kind for entry in coordinator_sees]
 
 
