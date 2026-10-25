@@ -11,10 +11,10 @@ and Technical Support can record the preparation of the booking and the reservat
 only once the Safety Officer has approved (SCRUM-84, SCRUM-85), and the coordinator
 then reads both. SCRUM-49: the coordinator can't confirm the event before that
 approval; once it is in, they confirm it and the event is confirmed. Its organiser then
-sees the venue, its date and times, and the equipment they will get, which they didn't
-see before (SCRUM-49 AC11, ADR-0099), without the internal notes (SCRUM-37 AC5,
-SCRUM-48 AC5, ADR-0098). Every call goes through the real routes with Flask's test
-client (ADR-0031).
+sees the venue, its date and times, the Safety Officer's final decision, and the
+equipment they will get, none of which they saw before (SCRUM-49 AC11, ADR-0099),
+without the internal notes (SCRUM-37 AC5, SCRUM-48 AC5, ADR-0098). Every call goes
+through the real routes with Flask's test client (ADR-0031).
 
 Nothing here walks the request to approval: the event is saved as approved, with its
 coordinator, and that journey is test_request_to_approval_journey.py.
@@ -297,9 +297,12 @@ def test_a_settled_event_reaches_the_safety_officer(
         "Projectors tested.",
     )
 
-    # --- Until it is confirmed, its organiser sees no venues (SCRUM-49 AC11) ---
+    # --- Until it is confirmed, its organiser sees no venues or safety decision
+    # --- (SCRUM-49 AC11) ---
     record_path = f"/api/events/requests/{EVENT}"
-    assert _body(organiser.get(record_path), 200)["venue_arrangements"] == []
+    unconfirmed_record = _body(organiser.get(record_path), 200)
+    assert unconfirmed_record["venue_arrangements"] == []
+    assert unconfirmed_record["safety_decision"] is None
 
     # --- The coordinator confirms the event (SCRUM-49 AC1) ---
     confirmed = _body(coordinator.post(confirm_path), 200)
@@ -307,9 +310,13 @@ def test_a_settled_event_reaches_the_safety_officer(
     # Confirmed once is enough: it is no longer in Safety Review to confirm again.
     assert _body(coordinator.post(confirm_path), 409)["error"] == "confirmation_not_allowed"
 
-    # --- Its organiser now sees the venue and what equipment they will get, and nothing
-    # --- internal (SCRUM-49 AC11, SCRUM-37 AC5, SCRUM-48 AC5) ---
+    # --- Its organiser now sees the venue, the Safety Officer's final decision and what
+    # --- equipment they will get, and nothing internal (SCRUM-49 AC11, SCRUM-37 AC5,
+    # --- SCRUM-48 AC5) ---
     record = _body(organiser.get(record_path), 200)
+    # Only the outcome and when: no officer, checklist or reason.
+    assert record["safety_decision"].keys() == {"outcome", "decided_at"}
+    assert record["safety_decision"]["outcome"] == "approved"
     assert record["venue_arrangements"] == [
         {
             "venue_name": "Main Hall",
