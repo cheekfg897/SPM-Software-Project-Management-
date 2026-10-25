@@ -131,6 +131,37 @@ describe('SCRUM-24 my registered event page: what it shows', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Your event' })).toBeInTheDocument()
   })
 
+  it('is where the event link in the attendee’s notification opens (SCRUM-28)', async () => {
+    // The backend's link is /events/<reference> (notifications/schemas.py, EVENT_LINK_TEMPLATE).
+    server.use(
+      http.get('/api/notifications', () =>
+        HttpResponse.json({
+          notifications: [
+            {
+              id: 1,
+              kind: 'event_confirmed',
+              message: 'Your event has been confirmed.',
+              event_reference: PITCH_NIGHT.reference,
+              event_name: PITCH_NIGHT.name,
+              link: `/events/${PITCH_NIGHT.reference}`,
+              created_at: '2026-10-05T09:00:00+08:00',
+              read_at: null,
+              detail: null,
+            },
+          ],
+        }),
+      ),
+    )
+    const { user, router } = renderApp(ROUTES.NOTIFICATIONS, { session: ATTENDEE })
+
+    await user.click(await screen.findByRole('link', { name: PITCH_NIGHT.name }))
+
+    expect(router.state.location.pathname).toBe(myEventPath(PITCH_NIGHT.reference))
+    expect(
+      await screen.findByRole('heading', { level: 1, name: PITCH_NIGHT.name }),
+    ).toBeInTheDocument()
+  })
+
   it('links back to My events', async () => {
     const { user, router } = await openAsAttendee(PITCH_NIGHT.reference, PITCH_NIGHT.name)
 
