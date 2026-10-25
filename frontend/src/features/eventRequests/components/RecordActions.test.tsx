@@ -519,6 +519,34 @@ describe('SCRUM-49 rejecting an event during planning (AC9, AC10)', () => {
     expect(alert).toHaveTextContent('Not now, says the backend.')
   })
 
+  it("refuses a new decision afterwards in the backend's words, and reads the event again (AC12)", async () => {
+    const { user } = openAsHana(READY_TO_CONFIRM)
+    await user.type(await screen.findByLabelText('Reason for rejecting'), REASON)
+    await user.click(screen.getByRole('button', { name: 'Reject event' }))
+    await user.click(screen.getByRole('button', { name: 'Yes, reject the event' }))
+    await waitFor(() => expect(statusShownFor(READY_TO_CONFIRM)).toBe('Rejected'))
+    const requests = recordRequests()
+
+    await user.type(await screen.findByLabelText('Reason'), 'A larger hall came free.')
+    await user.click(screen.getByRole('button', { name: 'Approve' }))
+
+    const alert = await within(await findRegion('Decide')).findByRole('alert')
+    expect(alert).toHaveTextContent(
+      "The decision can't be changed once the event has been rejected during planning. " +
+        'To go ahead, the organiser submits a new event request.',
+    )
+    expect(statusShownFor(READY_TO_CONFIRM)).toBe('Rejected')
+    await waitFor(() =>
+      expect(
+        requests.some(
+          (request) =>
+            request.method === 'GET' &&
+            request.url.endsWith(`/api/events/requests/${READY_TO_CONFIRM}`),
+        ),
+      ).toBe(true),
+    )
+  })
+
   it('says it is busy while the event is being rejected', async () => {
     server.use(
       http.post(`/api/events/requests/${APPROVED_AND_SETTLED}/reject`, () => delay('infinite')),

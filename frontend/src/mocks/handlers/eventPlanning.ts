@@ -27,7 +27,8 @@ import { loadRejectionReason } from './eventReviewRules'
  * ADR-0047), marking it completed once it has ended, at the mock's "now", MOCK_NOW (SCRUM-68,
  * ADR-0027), its registration settings and withdrawal cut-off (SCRUM-69, ADR-0043, ADR-0086),
  * confirming it once every approval is in (SCRUM-49, ADR-0051) and rejecting it during planning
- * (SCRUM-49 AC9, AC10, ADR-0093). Only the event's assigned coordinator may; the checks, their
+ * (SCRUM-49 AC9, AC10, ADR-0093), a rejection SCRUM-31's decision can't then change (AC12,
+ * ADR-0106). Only the event's assigned coordinator may; the checks, their
  * order, the codes, messages and the gaps named are the backend's (ADR-0075). Each action that
  * changes something is written to the event's history as the backend writes it (SCRUM-33 AC4).
  * No notification is raised.
@@ -379,10 +380,11 @@ export const eventPlanningHandlers: RequestHandler[] = [
       decision: { ...decision, decided_by: coordinator.full_name, decided_at: MOCK_NOW },
     }
     addToHistory(stored.request.reference, [
-      entryBy(coordinator.full_name, 'decision_recorded', decision),
+      entryBy(coordinator.full_name, 'decision_recorded', { ...decision, during_planning: true }),
       ...withdrawals,
     ])
     stored.planning = { ...planning, arrangements }
+    stored.rejectedDuringPlanning = true
     // The venues and equipment the backend frees live in the venue and equipment mocks' stores.
     releaseEventArrangements(stored.request.reference)
     rejectEventEquipment(stored.request.reference)

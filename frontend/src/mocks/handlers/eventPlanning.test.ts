@@ -792,7 +792,7 @@ describe('SCRUM-49 mock: rejecting an event during planning', () => {
     await rejectEvent(APPROVED_WITH_GAPS, { reason: REASON })
 
     expect((await fetchEventHistory(APPROVED_WITH_GAPS)).history).toEqual([
-      byHana('decision_recorded', { outcome: 'rejected', reason: REASON }),
+      byHana('decision_recorded', { outcome: 'rejected', reason: REASON, during_planning: true }),
       byHana('venue_arrangement_withdrawn', { venue_booking_request_id: 42, venue_id: 3 }),
     ])
   })
@@ -806,7 +806,7 @@ describe('SCRUM-49 mock: rejecting an event during planning', () => {
       (entry) => entry.details,
     )
     expect(details).toEqual([
-      { outcome: 'rejected', reason: REASON },
+      { outcome: 'rejected', reason: REASON, during_planning: true },
       { venue_booking_request_id: 48, venue_id: 3 },
     ])
   })
@@ -895,6 +895,62 @@ describe('SCRUM-49 mock: rejecting an event during planning', () => {
     expect(await refusal(rejectEvent(APPROVED_WITH_GAPS, { reason: REASON }))).toMatchObject(
       NOT_PERMITTED,
     )
+  })
+
+  describe('AC12: no new decision through SCRUM-31 afterwards (ADR-0106)', () => {
+    const CHANGE = 'A larger hall came free.'
+    /** Priya's request, rejected through SCRUM-31's decision, with nothing arranged. */
+    const REJECTED_THROUGH_REVIEW = 'EVR-RV9H6C1W'
+    /** Approved with nothing arranged here, and in Safety Review with no equipment request. */
+    const NOTHING_LEFT_TO_LOCK: [string, MockAccount][] = [
+      [APPROVED_WITH_NOTHING_ARRANGED, CHLOE],
+      [READY_TO_CONFIRM, HANA],
+    ]
+
+    it.each(NOTHING_LEFT_TO_LOCK)(
+      'refuses to approve %s or reject it again, and keeps the rejection',
+      async (reference, account) => {
+        signInAs(account)
+        await rejectEvent(reference, { reason: REASON })
+
+        for (const outcome of ['approved', 'rejected'] as const) {
+          const error = await refusal(decideEventRequest(reference, { outcome, reason: CHANGE }))
+          expect(error).toMatchObject({
+            status: 409,
+            code: 'decision_locked',
+            message:
+              "The decision can't be changed once the event has been rejected during planning. " +
+              'To go ahead, the organiser submits a new event request.',
+          })
+        }
+        expect(await statusOf(reference)).toBe('rejected')
+        const decisions = (await fetchEventHistory(reference)).history.filter(
+          (entry) => entry.kind === 'decision_recorded',
+        )
+        expect(decisions).toHaveLength(1)
+      },
+    )
+
+    it('refuses before reading the body', async () => {
+      signInAs(HANA)
+      await rejectEvent(READY_TO_CONFIRM, { reason: REASON })
+
+      const error = await refusal(
+        apiRequest(`/api/events/requests/${READY_TO_CONFIRM}/decide`, { method: 'POST', body: [] }),
+      )
+
+      expect(error).toMatchObject({ status: 409, code: 'decision_locked' })
+    })
+
+    it('leaves a rejection recorded through SCRUM-31 free to change, on another event', async () => {
+      signInAs(HANA)
+      await rejectEvent(READY_TO_CONFIRM, { reason: REASON })
+      signInAs(MOCK_ACCOUNTS.reviewingCoordinator)
+
+      await decideEventRequest(REJECTED_THROUGH_REVIEW, { outcome: 'approved', reason: CHANGE })
+
+      expect(await statusOf(REJECTED_THROUGH_REVIEW)).toBe('approved')
+    })
   })
 })
 

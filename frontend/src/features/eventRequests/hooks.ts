@@ -119,12 +119,16 @@ export function useStartReview(reference: string) {
   return useMutation({ mutationFn: () => startEventRequestReview(reference), onSuccess: refresh })
 }
 
-/** Approve or reject a request assigned to the coordinator, or change its decision (SCRUM-31). */
+/**
+ * Approve or reject a request assigned to the coordinator, or change its decision (SCRUM-31).
+ * Afterwards, decided or refused, the record and the lists are read again: a refusal may mean
+ * the event has moved on, such as rejected during planning (SCRUM-49 AC12).
+ */
 export function useDecideEventRequest(reference: string) {
   const refresh = useRefreshEventRequests()
   return useMutation({
     mutationFn: (decision: DecisionChoice) => decideEventRequest(reference, decision),
-    onSuccess: refresh,
+    onSettled: refresh,
   })
 }
 
