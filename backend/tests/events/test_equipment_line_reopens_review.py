@@ -288,18 +288,21 @@ def test_a_changed_line_holds_back_the_safety_review(
     }
 
 
-def test_a_line_changed_during_safety_review_holds_back_confirmation(
+def test_a_reopened_line_holds_back_confirmation(
     saved_event_request: EventRequest,
     reviewed_line: EventEquipmentLine,
     arrange: Arrange,
     save: Save,
 ) -> None:
-    """The Safety Officer approves after the change; the line still has no outcome."""
+    """The line still has no outcome when the Safety Officer approves.
+
+    The event is put in Safety Review after the change: a change made there sends it
+    back to Approved (SCRUM-33 AC9, ADR-0107).
+    """
+    arrange(BookingRequestStatus.APPROVED)
+    update_equipment_line(COORDINATOR_ID, REFERENCE, reviewed_line.id, {"quantity": 8})
     saved_event_request.status = EventRequestStatus.SAFETY_REVIEW
     save(saved_event_request)
-    arrange(BookingRequestStatus.APPROVED)
-
-    update_equipment_line(COORDINATOR_ID, REFERENCE, reviewed_line.id, {"quantity": 8})
     approve_safety(saved_event_request, save)
 
     with pytest.raises(EventConfirmationNotAllowedError) as exc_info:
