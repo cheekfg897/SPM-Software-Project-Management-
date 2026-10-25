@@ -1169,6 +1169,65 @@ def withdraw_safety_approval(
 
 
 # --------------------------------------------------------------------------
+# SCRUM-33 AC9 — a significant change while the event is in Safety Review
+# --------------------------------------------------------------------------
+
+#: Said when the change sent the event back to planning (SCRUM-33 AC9, ADR-0107).
+BACK_IN_PLANNING_DETAIL = "It is back in planning until it can be sent to Safety Review again."
+
+
+def _notify_safety_officers(
+    event_request: EventRequest,
+    kind: NotificationKind,
+    session: Session,
+    *,
+    detail: str | None = None,
+) -> None:
+    """Tell every Safety Officer that ``kind`` happened to the event.
+
+    When it enters Safety Review (SCRUM-97 AC4) and when a significant change is made
+    to it there (SCRUM-33 AC9). Called once the change is saved. Each Safety Officer
+    hears it once, as a single write.
+    """
+    officer_ids = list_user_ids_with_role(Role.SAFETY_OFFICER, session=session)
+    _raise_notifications(officer_ids, event_request, kind, session, detail=detail)
+
+
+def _return_to_approved(event_request: EventRequest) -> None:
+    """Send an event in Safety Review back to Approved, without committing (AC9).
+
+    For a change that leaves an equipment line without a current outcome or a venue
+    arrangement no longer settled, so the event no longer meets SCRUM-97's entry rules
+    and must be sent again once it does (ADR-0107). An event in any other status is
+    left alone: one a withdrawn safety approval already sent back (ADR-0087) moves
+    only once.
+    """
+    if event_request.status is EventRequestStatus.SAFETY_REVIEW:
+        event_request.status = EventRequestStatus.APPROVED
+
+
+def _tell_safety_officers_of_change(
+    event_request: EventRequest, changed_fields: list[str], session: Session
+) -> None:
+    """Tell every Safety Officer of a significant change made in Safety Review (AC9).
+
+    Called once the change is saved, for an event that was in Safety Review when it
+    was made. The notice names the event, and its ``detail`` the fields that changed,
+    e.g. "Changed: start time, expected attendance."; if the change sent the event
+    back to Approved, it says so (ADR-0107).
+    """
+    field_words = []
+    for field in changed_fields:
+        field_words.append(field.replace("_", " "))
+    detail = f"Changed: {', '.join(field_words)}."
+    if event_request.status is EventRequestStatus.APPROVED:
+        detail = f"{detail} {BACK_IN_PLANNING_DETAIL}"
+    _notify_safety_officers(
+        event_request, NotificationKind.SAFETY_REVIEW_EVENT_CHANGED, session, detail=detail
+    )
+
+
+# --------------------------------------------------------------------------
 # SCRUM-37 — record what equipment an event needs
 # --------------------------------------------------------------------------
 
@@ -1684,9 +1743,10 @@ def _reopen_changed_line(
     Called before ``data`` is applied to the line, and without committing: withdraws
     any safety approval, records the line before and after the change, releases the
     old type's reservations if the line moves to another type (ADR-0092), and clears
-    its outcome.
+    its outcome, which sends an event in Safety Review back to Approved (SCRUM-33 AC9).
     """
     _withdraw_safety_approval_for_line(coordinator_id, line, "changed", session)
+    _return_to_approved(event_request)
     new_equipment_type_id = data.get("equipment_type_id", line.equipment_type_id)
     new_quantity = data.get("quantity", line.quantity)
     _record_line_change(
@@ -1732,7 +1792,9 @@ def add_equipment_line(
     Only the event's assigned coordinator may (ADR-0019). The line is saved with
     status ``requested``, as a significant change in the event's history and with any
     safety approval withdrawn (AC4); once it is saved, every Technical Support Staff
-    member is notified that equipment was requested (AC6).
+    member is notified that equipment was requested (AC6). In Safety Review the new
+    line, having no outcome, sends the event back to Approved, and every Safety Officer
+    is told (SCRUM-33 AC9, ADR-0107).
 
     Args:
         coordinator_id: The caller's user id, taken from their token.
@@ -1755,11 +1817,13 @@ def add_equipment_line(
     sess = resolve_session(session)
     event_request = _event_request_with_editable_equipment(coordinator_id, reference, sess)
     _check_equipment_type(data["equipment_type_id"], sess)
+    in_safety_review = event_request.status is EventRequestStatus.SAFETY_REVIEW
 
     line = EventEquipmentLine(
         event_request_id=event_request.id, status=EquipmentLineStatus.REQUESTED, **data
     )
     _withdraw_safety_approval_for_line(coordinator_id, line, "added", sess)
+    _return_to_approved(event_request)
     _record_line_change(
         coordinator_id,
         event_request,
@@ -1770,6 +1834,8 @@ def add_equipment_line(
     sess.add(line)
     _commit_line_or_conflict(sess)
     _notify_technical_support(event_request, NotificationKind.EQUIPMENT_REQUESTED, sess)
+    if in_safety_review:
+        _tell_safety_officers_of_change(event_request, [EQUIPMENT_LINE_FIELD], sess)
     return line
 
 
@@ -1850,8 +1916,9 @@ def update_equipment_line(
     change (ADR-0019). A new equipment type or quantity is a significant change (AC4):
     it is written to the event's history, withdraws any safety approval and clears the
     line's outcome, so it awaits Technical Support's review again, and once it is
-    saved every Technical Support Staff member is told. New notes alone are none of
-    these.
+    saved every Technical Support Staff member is told. In Safety Review it sends the
+    event back to Approved and every Safety Officer is told (SCRUM-33 AC9, ADR-0107).
+    New notes alone are none of these.
 
     Returns:
         The updated :class:`EventEquipmentLine`.
@@ -1871,6 +1938,7 @@ def update_equipment_line(
     line = _line_of_event(event_request, line_id, sess)
     if "equipment_type_id" in data:
         _check_equipment_type(data["equipment_type_id"], sess)
+    in_safety_review = event_request.status is EventRequestStatus.SAFETY_REVIEW
 
     asks_for_new_equipment = _changes_the_equipment(line, data)
     if asks_for_new_equipment:
@@ -1881,6 +1949,8 @@ def update_equipment_line(
     _commit_line_or_conflict(sess)
     if asks_for_new_equipment:
         _notify_technical_support(event_request, NotificationKind.SIGNIFICANT_CHANGE, sess)
+    if asks_for_new_equipment and in_safety_review:
+        _tell_safety_officers_of_change(event_request, [EQUIPMENT_LINE_FIELD], sess)
     return line
 
 
@@ -1892,7 +1962,9 @@ def remove_equipment_line(
     Only the event's assigned coordinator may, while its equipment may still change.
     It is a significant change (AC4): it is written to the event's history, any
     safety approval is withdrawn and the event's reservations of the line's type are
-    released, and once it is saved every Technical Support Staff member is told.
+    released, and once it is saved every Technical Support Staff member is told. In
+    Safety Review every Safety Officer is told too; the event stays there, as removing
+    a line leaves no line without an outcome (SCRUM-33 AC9, ADR-0107).
 
     Raises:
         NotFoundError: 404 — no such event request among the coordinator's own, or no
@@ -1902,6 +1974,7 @@ def remove_equipment_line(
     sess = resolve_session(session)
     event_request = _event_request_with_editable_equipment(coordinator_id, reference, sess)
     line = _line_of_event(event_request, line_id, sess)
+    in_safety_review = event_request.status is EventRequestStatus.SAFETY_REVIEW
     _withdraw_safety_approval_for_line(coordinator_id, line, "removed", sess)
     _record_line_change(
         coordinator_id,
@@ -1914,6 +1987,8 @@ def remove_equipment_line(
     sess.delete(line)
     sess.commit()
     _notify_technical_support(event_request, NotificationKind.SIGNIFICANT_CHANGE, sess)
+    if in_safety_review:
+        _tell_safety_officers_of_change(event_request, [EQUIPMENT_LINE_FIELD], sess)
 
 
 # --------------------------------------------------------------------------
@@ -2388,8 +2463,10 @@ def update_event_request(
     withdraws a safety approval in the same commit, naming the significant fields
     (AC7, :func:`withdraw_safety_approval`), and flags only the venue arrangements
     it affects, each reassessed on its own (AC6, ADR-0094); Venue Staff are told
-    about each one flagged once the edit is saved. An edit that changes nothing
-    writes and commits nothing.
+    about each one flagged once the edit is saved. In Safety Review, a significant
+    change that flags an arrangement sends the event back to Approved in the same
+    commit, and every Safety Officer is told, naming the fields changed, once it is
+    saved (AC9, ADR-0107). An edit that changes nothing writes and commits nothing.
 
     Args:
         coordinator_id: The caller's user id, taken from their token.
@@ -2414,6 +2491,7 @@ def update_event_request(
     event_request = _event_request_editable_by(coordinator_id, reference, sess)
     data = load_or_raise(EditEventRequestSchema(event_request, today=today), payload)
     attendance_before = event_request.expected_attendance
+    in_safety_review = event_request.status is EventRequestStatus.SAFETY_REVIEW
     changes = _record_field_changes(
         event_request,
         int(coordinator_id),
@@ -2433,9 +2511,14 @@ def update_event_request(
             session=sess,
         )
     venue_notices = _flag_venue_arrangements(event_request, changes, attendance_before, sess)
+    if venue_notices:
+        _return_to_approved(event_request)
     sess.commit()
     _reassess_arrangements(event_request, changes, sess)
     _tell_venue_staff_of_flags(event_request, venue_notices, sess)
+    if significant_fields and in_safety_review:
+        changed_fields = [change.field for change in changes]
+        _tell_safety_officers_of_change(event_request, changed_fields, sess)
     return EventEdit(event_request, changes)
 
 
@@ -4318,17 +4401,6 @@ def _arrangement_gaps(event_id: int, session: Session) -> dict[str, list[str]]:
     return held_back
 
 
-def _notify_safety_officers(event_request: EventRequest, session: Session) -> None:
-    """Tell every Safety Officer the event has entered Safety Review (SCRUM-97 AC4).
-
-    Called once the move is saved. Each Safety Officer hears it once, as a single write.
-    """
-    officer_ids = list_user_ids_with_role(Role.SAFETY_OFFICER, session=session)
-    _raise_notifications(
-        officer_ids, event_request, NotificationKind.SAFETY_REVIEW_REQUESTED, session
-    )
-
-
 def submit_for_safety_review(
     coordinator_id: int | str, reference: str, *, session: Session | None = None
 ) -> EventRequest:
@@ -4371,7 +4443,7 @@ def submit_for_safety_review(
         session=sess,
     )
     sess.commit()
-    _notify_safety_officers(event_request, sess)
+    _notify_safety_officers(event_request, NotificationKind.SAFETY_REVIEW_REQUESTED, sess)
     return event_request
 
 

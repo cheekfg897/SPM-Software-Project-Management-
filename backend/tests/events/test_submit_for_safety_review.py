@@ -338,17 +338,21 @@ def test_an_event_in_safety_review_can_be_edited_and_stays_in_safety_review(
     ]
 
 
-def test_equipment_added_in_safety_review_leaves_the_event_in_safety_review(
+def test_equipment_added_in_safety_review_sends_the_event_back_to_approved(
     db_session: Session,
     event_in_review: EventRequest,
     valid_equipment_line_payload: dict[str, Any],
     reload_event_request: ReloadEventRequest,
 ) -> None:
-    """SCRUM-37 AC2: equipment may change until the event is Confirmed (ADR-0092)."""
+    """SCRUM-37 AC2: equipment may change until the event is Confirmed (ADR-0092).
+
+    The new line has no outcome, so the event no longer meets this gate and goes back
+    to Approved (SCRUM-33 AC9, ADR-0107).
+    """
     add_equipment_line(COORDINATOR_ID, REFERENCE, valid_equipment_line_payload, session=db_session)
 
     reloaded = reload_event_request(event_in_review.id)
-    assert reloaded.status is EventRequestStatus.SAFETY_REVIEW
+    assert reloaded.status is EventRequestStatus.APPROVED
     assert len(reloaded.equipment_lines) == 1
 
 
