@@ -1,6 +1,6 @@
 # ADR-0006: Log in with a 1-hour JWT access token, no refresh token yet
 
-- **Status:** Accepted; the Product Owner decided on 25 Oct (answer 1) to add server-side logout to Sprint 4 as SCRUM-89, with option 2 (server-side revocation), which will supersede the "no real logout" consequence below
+- **Status:** Accepted; server-side logout is SCRUM-89, which the Product Owner put in Sprint 4 on 20 Oct and on 25 Oct (answer 1) chose option 2 for (server-side revocation); it will supersede the "no real logout" consequence below
 - **Date:** 2026-09-25 (recorded from the Sprint 1 `STORIES.md`; the code has followed it since then)
 - **Story:** SCRUM-6 Log in to the system
 
@@ -18,9 +18,9 @@ between requests or how long it lasts.
 ## Consequences
 - The server keeps no session state, so any instance can check any token.
 - A token can't be revoked before it expires, so there is no real logout (SCRUM-6 AC4). That gap
-  is tracked as SCRUM-89, which the Product Owner added to Sprint 4 on 25 Oct (answer 1) with
-  option 2: server-side revocation, each token's `jti` kept in a blocklist table checked through
-  Flask-JWT-Extended's `token_in_blocklist_loader`, which needs a new table and a migration.
+  is tracked as SCRUM-89, in Sprint 4 since 20 Oct. On 25 Oct (answer 1) the Product Owner chose
+  its option 2: server-side revocation, each token's `jti` kept in a blocklist table checked
+  through Flask-JWT-Extended's `token_in_blocklist_loader`, which needs a new table and a migration.
 - A role change only takes effect when the user's current token expires.
 
 ## Revisit when

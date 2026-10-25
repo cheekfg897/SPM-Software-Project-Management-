@@ -43,6 +43,7 @@ The safety part of AC4 is already built ([ADR-0019](0019-event-equipment-lines.m
    - The line itself is still deleted (ADR-0019), which closes its request: it can't be on Technical Support's list (SCRUM-38 AC4). The `equipment_reserved` history entries stay.
    - **Default to review:** a line moved to another equipment type releases the old type's reservations the same way, since the event no longer asks for that type.
    - A new quantity keeps the reservations: Technical Support re-review the line and decide. **Decided by the Product Owner (25 Oct, answer 7):** a lower quantity keeps the full reservation until Technical Support act by hand; nothing shrinks it automatically.
+     - **Not built:** Technical Support have no way to act by hand yet. The equipment routes reserve, list reservations and record their preparation, but nothing releases or shrinks one, so today the extra units stay reserved for the event's period unless the line is removed, moves to another type or the event is rejected. A ticket to open: let Technical Support release part or all of a reservation.
 7. **Technical Support Staff are told (AC4, SCRUM-60).** After the line's own commit, each one gets a `significant_change` notice for a changed or removed line ("An event you have arrangements for has changed significantly. Please check they still fit.", ADR-0025 decision 13).
    - An added line keeps its one `equipment_requested` notice (AC6) rather than a second one.
    - A notice that fails to save is logged and doesn't undo the change (ADR-0015). Nobody else is told.
@@ -52,7 +53,7 @@ The safety part of AC4 is already built ([ADR-0019](0019-event-equipment-lines.m
 
 ## Questions for the Product Owner
 1. ~~Does changing a line's equipment type reopen it like a quantity change? We built the "safe reading", yes, which also withdraws a safety approval and releases the old type's reservations.~~ Answered on 25 Oct (answer 5): yes, as built.
-2. ~~Does a lower quantity shrink the reservation?~~ Answered on 25 Oct (answer 7): no; the full reservation stays until Technical Support act by hand, as built.
+2. ~~Does a lower quantity shrink the reservation?~~ Answered on 25 Oct (answer 7): no; the full reservation stays until Technical Support act by hand. Nothing shrinks it, as built, but they can't act by hand yet (decision 6).
 
 ## Consequences
 - The frontend's mock (`frontend/src/mocks/handlers/equipmentLines.ts`) accepts the same statuses, answers with the new message, clears a changed line's outcome and no longer refuses a lower quantity. Its integration tests for the line routes are still `it.todo`, waiting for an assigned event to test against. The mock keeps one list of reservations shared by every event, so it does not release any when a line is removed; that waits for the mock to track reservations per event.
@@ -63,4 +64,5 @@ The safety part of AC4 is already built ([ADR-0019](0019-event-equipment-lines.m
 - ~~The Product Owner answers the question above: if a type change does not count, `_changes_the_equipment` stops counting `equipment_type_id`.~~ Answered on 25 Oct: a type change counts.
 - Change requests for Confirmed events (SCRUM-56, SCRUM-57) are built: they decide how a Confirmed event's lines change.
 - Technical Support want a lower quantity to shrink a reservation, rather than keep it until they act. The Product Owner said no on 25 Oct (answer 7), so only a new request reopens this.
+- A route lets Technical Support release part or all of a reservation by hand (decision 6): the reading of answer 7 is then complete.
 - The customer says the coordinator shouldn't change equipment while the organiser is answering a clarification.
