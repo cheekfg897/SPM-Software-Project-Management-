@@ -268,14 +268,11 @@ def _mark_conflicting(
 NOTICE_TIME_FORMAT = "%Y-%m-%d %H:%M"
 #: How a notice ends a deactivation's period, which has no end (AC9).
 UNTIL_REACTIVATED = "until it is reactivated"
-#: What the coordinator is told once an arrangement's venue is available again (AC8,
-#: ADR-0100): the venue, the arrangement's purpose and its period, in business time.
-AVAILABLE_AGAIN_DETAIL = "{venue} is available again for {purpose} ({starts} to {ends})."
 
 
 @dataclass(frozen=True)
 class AlternativeVenueNotice:
-    """What the coordinator of one arrangement's event is to be told (AC5, AC8)."""
+    """What the coordinator of one arrangement's event is to be told (AC5)."""
 
     event_id: int
     detail: str
@@ -361,16 +358,18 @@ def _flagged_only_by(arrangement: VenueBookingRequest, venue_block_id: int | Non
     return all(flag.venue_block_id == venue_block_id for flag in arrangement.flags)
 
 
-def _available_again_notices(
+def _events_available_again(
     venue: Venue, venue_block_id: int | None, session: Session
-) -> list[AlternativeVenueNotice]:
-    """What each coordinator is told once a block or a deactivation is lifted (AC8).
+) -> list[int]:
+    """The events to tell once a block or a deactivation is lifted (AC8).
 
     ``venue_block_id`` names the block being removed, or is ``None`` for the
     deactivation a reactivation lifts. Each live arrangement at the venue it flagged is
-    available again, unless another block still flags it (ADR-0100). Worked out before
-    the flags are deleted; the notices are sent after the commit (ADR-0015). Earliest
-    arrangement first.
+    available again, unless another block, or the deactivation, still flags it
+    (ADR-0100). The notice names the venue and the event, so an event hears once however
+    many of its arrangements are freed (ADR-0108). Worked out before the flags are
+    deleted; the notices are sent after the commit (ADR-0015). Earliest arrangement
+    first.
     """
     stmt = (
         select(VenueBookingRequest)
@@ -381,29 +380,24 @@ def _available_again_notices(
         )
         .order_by(VenueBookingRequest.starts_at, VenueBookingRequest.id)
     )
-    notices = []
+    event_ids: list[int] = []
     for arrangement in session.scalars(stmt):
         if not _flagged_only_by(arrangement, venue_block_id):
             continue
-        detail = AVAILABLE_AGAIN_DETAIL.format(
-            venue=venue.name,
-            purpose=arrangement.purpose,
-            starts=_notice_time(arrangement.starts_at),
-            ends=_notice_time(arrangement.ends_at),
-        )
-        notices.append(AlternativeVenueNotice(arrangement.event_id, detail))
-    return notices
+        if arrangement.event_id not in event_ids:
+            event_ids.append(arrangement.event_id)
+    return event_ids
 
 
 def _tell_coordinators_available_again(
-    notices: list[AlternativeVenueNotice], session: Session | None
+    venue: Venue, event_ids: list[int], session: Session | None
 ) -> None:
-    """Tell each coordinator the venue is available again, once the flags are gone."""
+    """Tell each event's coordinator the venue is available again, after the commit."""
     from app.modules.events import services as event_services  # circular at import time
 
-    for notice in notices:
+    for event_id in event_ids:
         event_services.notify_coordinator_venue_available_again(
-            notice.event_id, detail=notice.detail, session=session
+            event_id, venue_name=venue.name, session=session
         )
 
 
@@ -628,7 +622,7 @@ def reactivate_venue(venue_id: int, *, session: Session | None = None) -> Venue:
     sess = resolve_session(session)
     venue = get_venue(venue_id, session=sess)
     venue.is_active = True
-    notices = _available_again_notices(venue, None, sess)
+    available_again = _events_available_again(venue, None, sess)
     arrangements_here = select(VenueBookingRequest.id).where(
         VenueBookingRequest.venue_id == venue.id
     )
@@ -639,7 +633,7 @@ def reactivate_venue(venue_id: int, *, session: Session | None = None) -> Venue:
         )
     )
     sess.commit()
-    _tell_coordinators_available_again(notices, session)
+    _tell_coordinators_available_again(venue, available_again, session)
     return venue
 
 
@@ -1037,11 +1031,11 @@ def remove_venue_block(venue_id: int, block_id: int, *, session: Session | None 
     )
     if block is None:
         raise NotFoundError("Block not found.")
-    notices = _available_again_notices(venue, block.id, sess)
+    available_again = _events_available_again(venue, block.id, sess)
     sess.execute(delete(AlternativeVenueFlag).where(_flag_left_by(block.id)))
     sess.delete(block)
     sess.commit()
-    _tell_coordinators_available_again(notices, session)
+    _tell_coordinators_available_again(venue, available_again, session)
 
 
 # --------------------------------------------------------------------------

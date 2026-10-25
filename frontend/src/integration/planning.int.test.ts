@@ -1065,24 +1065,24 @@ describe('SCRUM-92 replacing a venue that became unavailable', () => {
     )
   }
 
-  /** What the coordinator is told once the morning arrangement's venue is free again (AC8). */
-  const AVAILABLE_AGAIN = {
-    message:
-      'A venue that was unavailable for your event is available again. ' +
-      'Its original arrangement stands.',
-    detail: `is available again for Integration planning (${EVENT_DATE} 09:00 to ${EVENT_DATE} 12:00).`,
-  }
+  /**
+   * The "available again" notice's detail: the venue (newVenue's "Integration Hall <unique>") and
+   * the event, by name (AC8, Product Owner 25 Oct).
+   */
+  const AVAILABLE_AGAIN =
+    /^Integration Hall \S+ is available again for Integration Planning\. Your original booking stands\.$/
+  /** The same, for an event the venue sent back from Confirmed to Approved (AC3, AC8). */
+  const AVAILABLE_AGAIN_SENT_BACK =
+    /^Integration Hall \S+ is available again for Integration Planning\. Your original booking stands\. It still needs Safety Review and confirmation\.$/
 
   /** Check the "available again" notice about the event, as the coordinator reads it (AC8). */
-  async function expectToldAvailableAgain(reference: string) {
+  async function expectToldAvailableAgain(reference: string, detail = AVAILABLE_AGAIN) {
     const notice = await noticeAbout(reference, 'venue_available_again')
     expect(notice).toMatchObject({
-      message: AVAILABLE_AGAIN.message,
+      message: 'A venue that was unavailable for your event is available again.',
       link: `/events/${reference}`,
     })
-    // The venue's name (newVenue's "Integration Hall <unique>"), then the arrangement.
-    expect(notice?.detail).toMatch(/^Integration Hall /)
-    expect(notice?.detail).toContain(AVAILABLE_AGAIN.detail)
+    expect(notice?.detail).toMatch(detail)
   }
 
   /**
@@ -1222,6 +1222,53 @@ describe('SCRUM-92 replacing a venue that became unavailable', () => {
       })
       // --- ...and the coordinator is told the venue is available again (AC8) ---
       await expectToldAvailableAgain(reference)
+    },
+  )
+
+  it.skipIf(!canApproveVenue)(
+    'tells the coordinator only once every overlapping block is removed (AC8)',
+    async () => {
+      const { reference } = await settledEvent()
+      const original = await onlyArrangement(reference)
+      const wholeDay = await blockVenueOf(original)
+      await signInAs(required(VENUE_STAFF))
+      const morning = await blockVenue(original.venue_id, {
+        start_time: `${EVENT_DATE}T10:00`,
+        end_time: `${EVENT_DATE}T12:00`,
+        category: 'maintenance',
+        reason: 'Aircon repair',
+      })
+
+      await removeVenueBlock(original.venue_id, wholeDay.id)
+      await signInAs(staffAccount())
+
+      // --- The morning block still covers the arrangement, so nothing is said yet ---
+      expect(await noticeAbout(reference, 'venue_available_again')).toBeUndefined()
+      expect(await onlyArrangement(reference)).toMatchObject({ needs_alternative_venue: true })
+      // --- Once the last block goes, the coordinator is told ---
+      await signInAs(required(VENUE_STAFF))
+      await removeVenueBlock(original.venue_id, morning.id)
+      await signInAs(staffAccount())
+      await expectToldAvailableAgain(reference)
+    },
+  )
+
+  it.skipIf(!canApproveSafety)(
+    'tells the coordinator a confirmed event sent back to Approved still needs Safety Review (AC3, AC8)',
+    async () => {
+      const { reference } = await safetyApprovedEvent()
+      await confirmEvent(reference)
+      const original = await onlyArrangement(reference)
+      const block = await blockVenueOf(original)
+      expect((await fetchEventRequest(reference)).status).toBe('approved')
+
+      await signInAs(required(VENUE_STAFF))
+      await removeVenueBlock(original.venue_id, block.id)
+      await signInAs(staffAccount())
+
+      await expectToldAvailableAgain(reference, AVAILABLE_AGAIN_SENT_BACK)
+      // Nothing is confirmed again automatically (AC8).
+      expect((await fetchEventRequest(reference)).status).toBe('approved')
     },
   )
 

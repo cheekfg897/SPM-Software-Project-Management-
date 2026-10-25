@@ -2,10 +2,12 @@
 
 When Venue Staff remove a block, or reactivate a venue, before a replacement is
 approved, the flag clears, the original arrangement stands and the event's assigned
-coordinator is notified that the venue is available again (Product Owner, 19 Oct). One
-notice per arrangement left with no unavailability flag; one another block still
-covers is not told (ADR-0100). A notice that can't be saved loses only itself
-(ADR-0015).
+coordinator is notified that the venue is available again (Product Owner, 19 Oct). The
+notice names the venue and the event, and adds that the event still needs Safety Review
+and confirmation when the venue sent it back from Confirmed to Approved (Product Owner,
+25 Oct). One notice per event with an arrangement left with no unavailability flag; one
+another block still covers is not told (ADR-0100, ADR-0108). A notice that can't be
+saved loses only itself (ADR-0015).
 
 The services run against ``db_session``; the event is the ``saved_event`` fixture's,
 assigned to coordinator 3, with an arrangement from 09:00 to 12:00 on 1 November 2026
@@ -24,7 +26,7 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.modules.events import services as event_services
-from app.modules.events.models import EventRequest
+from app.modules.events.models import EventRequest, EventRequestStatus
 from app.modules.notifications.models import Notification
 from app.modules.notifications.schemas import NotificationSchema
 from app.modules.notifications.services import NotificationKind, list_notifications_for_recipient
@@ -44,6 +46,7 @@ from tests.venue.conftest import (
     block,
     decide,
     raise_booking,
+    reload_event,
     reload_request,
     two_venues,
 )
@@ -52,9 +55,9 @@ pytestmark = pytest.mark.scrum_92
 
 #: A coordinator who did not raise the request; the event is reassigned to them.
 REASSIGNED_COORDINATOR_ID = 9
-MAIN_HALL_AGAIN = (
-    "Main Hall is available again for Main hall (2026-11-01 09:00 to 2026-11-01 12:00)."
-)
+MAIN_HALL_AGAIN = "Main Hall is available again for Partner Summit. Your original booking stands."
+#: What the notice adds when the venue sent the event back from Confirmed to Approved.
+STILL_NEEDS_SAFETY_REVIEW = " It still needs Safety Review and confirmation."
 #: The statuses in which an arrangement still holds or asks for its venue, so a block
 #: flags it (AC1, ADR-0100). Typed out, so the code's own list is checked against it.
 LIVE_STATUSES = {
@@ -156,10 +159,7 @@ def test_the_notice_names_what_happened_and_links_to_the_event(
     [notice] = _notifications_again(COORDINATOR_ID)
     shown = NotificationSchema().dump(notice)
 
-    assert shown["message"] == (
-        "A venue that was unavailable for your event is available again."
-        " Its original arrangement stands."
-    )
+    assert shown["message"] == "A venue that was unavailable for your event is available again."
     assert shown["event_name"] == "Partner Summit"
     assert shown["link"] == f"/events/{event.reference}"
 
@@ -275,9 +275,39 @@ def test_only_the_arrangements_the_block_flagged_are_told_about(
     assert _told_again(COORDINATOR_ID) == [
         (
             morning_event.id,
-            "Auditorium is available again for Main hall (2026-11-01 09:00 to 2026-11-01 12:00).",
+            "Auditorium is available again for Partner Summit. Your original booking stands.",
         )
     ]
+
+
+def test_an_event_sent_back_from_confirmed_is_told_it_still_needs_safety_review(
+    db_session: Session, venue: Venue, saved_event: SavedEvent
+) -> None:
+    """The Product Owner, 25 Oct: nothing is confirmed again automatically (AC8)."""
+    event, _ = _approved(venue, saved_event, db_session)
+    event.status = EventRequestStatus.CONFIRMED
+    db_session.commit()
+    venue_block = block(venue, at(10), at(11), db_session)
+
+    _remove(venue, venue_block, db_session)
+
+    assert _told_again(COORDINATOR_ID) == [(event.id, MAIN_HALL_AGAIN + STILL_NEEDS_SAFETY_REVIEW)]
+    assert reload_event(db_session, event.id).status is EventRequestStatus.APPROVED
+
+
+def test_an_event_with_two_arrangements_freed_is_told_once(
+    db_session: Session, venue: Venue, saved_event: SavedEvent
+) -> None:
+    """It names the venue and the event, so a second would say the same (ADR-0108)."""
+    event, _ = _approved(venue, saved_event, db_session)
+    raise_booking(
+        venue, event, db_session, starts_at=at(13).isoformat(), ends_at=at(15).isoformat()
+    )
+    venue_block = block(venue, at(8), at(16), db_session)
+
+    _remove(venue, venue_block, db_session)
+
+    assert _told_again(COORDINATOR_ID) == [(event.id, MAIN_HALL_AGAIN)]
 
 
 def test_removing_a_block_that_flagged_nothing_tells_nobody(

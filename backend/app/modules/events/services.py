@@ -3182,17 +3182,43 @@ def notify_coordinator_alternative_venue_needed(
     )
 
 
+#: What the coordinator is told once a venue is available again for their event
+#: (SCRUM-92 AC8, Product Owner 25 Oct): the venue and the event, by name.
+AVAILABLE_AGAIN_DETAIL = "{venue} is available again for {event}. Your original booking stands."
+#: Added when the venue had sent the event back from Confirmed to Approved: nothing is
+#: confirmed again automatically (AC8, ADR-0053 decision 8).
+STILL_NEEDS_SAFETY_REVIEW_DETAIL = " It still needs Safety Review and confirmation."
+
+
+def _sent_back_by_a_venue(event_id: int, session: Session) -> bool:
+    """Whether a venue becoming unavailable sent the event back from Confirmed (AC3).
+
+    Each flag's history entry says whether it did (``returned_to_planning``).
+    """
+    stmt = select(EventHistoryEntry).where(
+        EventHistoryEntry.event_request_id == event_id,
+        EventHistoryEntry.kind == EventHistoryKind.ALTERNATIVE_VENUE_NEEDED,
+    )
+    flag_entries = session.scalars(stmt)
+    return any(entry.details["returned_to_planning"] for entry in flag_entries)
+
+
 def notify_coordinator_venue_available_again(
-    event_id: int, *, detail: str, session: Session | None = None
+    event_id: int, *, venue_name: str, session: Session | None = None
 ) -> None:
     """Tell the event's assigned coordinator a venue is available again (SCRUM-92 AC8).
 
     For the venue module, once a block's removal or a venue's reactivation is committed
-    (ADR-0015, ADR-0100). ``detail`` names the venue, the arrangement and its period.
-    With nobody assigned the arrangement stands, nobody is told, and that is logged.
+    (ADR-0015, ADR-0100). The ``detail`` names the venue and the event, and says the
+    event still needs Safety Review and confirmation when the venue had sent it back
+    from Confirmed to Approved (ADR-0108). With nobody assigned the arrangement stands,
+    nobody is told, and that is logged.
     """
     sess = resolve_session(session)
     event_request = sess.get(EventRequest, event_id)
+    detail = AVAILABLE_AGAIN_DETAIL.format(venue=venue_name, event=event_request.name)
+    if _sent_back_by_a_venue(event_id, sess):
+        detail += STILL_NEEDS_SAFETY_REVIEW_DETAIL
     _notify_assigned_coordinator(
         event_request, NotificationKind.VENUE_AVAILABLE_AGAIN, sess, detail=detail
     )
