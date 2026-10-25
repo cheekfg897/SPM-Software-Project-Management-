@@ -14,8 +14,9 @@ import {
 
 /**
  * SCRUM-49 AC11 against the running backend: once the event is confirmed, its organiser's record
- * lists every approved venue arrangement with its venue, date and times, and what was arranged
- * (ADR-0099). Before then it lists none, and the coordinator's record never has the list.
+ * lists every approved venue arrangement with its venue, date and times, and what was arranged,
+ * and shows the Safety Officer's final decision with when it was made (ADR-0099). Before then it
+ * shows neither, and the coordinator's record never has them.
  * Confirming an event takes a Lead, Venue Staff and a Safety Officer, which plannedEvent.ts reads;
  * the check skips without them.
  */
@@ -24,9 +25,9 @@ const canConfirm = LEAD !== null && VENUE_STAFF !== null && SAFETY_OFFICER !== n
 
 afterEach(() => sendRequestsAs(null))
 
-describe('SCRUM-49 AC11 a confirmed event venues on its organiser record against the backend', () => {
+describe('SCRUM-49 AC11 a confirmed event on its organiser record against the backend', () => {
   it.skipIf(!canConfirm)(
-    "lists the venues only once the event is confirmed, and never on the coordinator's record",
+    "shows the venues and the safety decision only once the event is confirmed, and never on the coordinator's record",
     async () => {
       const event = await safetyApprovedEvent()
       await signInAs(staffAccount())
@@ -42,6 +43,7 @@ describe('SCRUM-49 AC11 a confirmed event venues on its organiser record against
       const organisersRecord = await fetchEventRequest(event.reference)
 
       expect(beforeConfirming.venue_arrangements).toEqual([])
+      expect(beforeConfirming.safety_decision).toBeNull()
       expect(organisersRecord.venue_arrangements).toEqual([
         {
           venue_name: venueName,
@@ -53,7 +55,15 @@ describe('SCRUM-49 AC11 a confirmed event venues on its organiser record against
           expected_occupancy: 120,
         },
       ])
+      // Only the outcome and when: no officer, checklist or reason.
+      expect(Object.keys(organisersRecord.safety_decision ?? {}).sort()).toEqual([
+        'decided_at',
+        'outcome',
+      ])
+      expect(organisersRecord.safety_decision?.outcome).toBe('approved')
+      expect(organisersRecord.safety_decision?.decided_at).toMatch(/[+-]\d\d:\d\d$/)
       expect(coordinatorsRecord).not.toHaveProperty('venue_arrangements')
+      expect(coordinatorsRecord).not.toHaveProperty('safety_decision')
     },
   )
 })

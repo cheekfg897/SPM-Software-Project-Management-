@@ -150,19 +150,20 @@ describe('SCRUM-24 mock of an event record', () => {
     ])
   })
 
-  it('shows a coordinator the same record for an event assigned to them, but for the equipment and venues', async () => {
+  it('shows a coordinator the same record for an event assigned to them, but for the equipment, venues and safety decision', async () => {
     signInAs(MOCK_ACCOUNTS.organiser)
     const organisersView = await fetchEventRequest(COORDINATORS_UNDER_REVIEW)
     signInAs(MOCK_ACCOUNTS.coordinator)
 
     const coordinatorsView = await fetchEventRequest(COORDINATORS_UNDER_REVIEW)
 
-    // Each sees the equipment their own way, and only the organiser is sent the venues: both
-    // checked below.
+    // Each sees the equipment their own way, and only the organiser is sent the venues and the
+    // safety decision: all checked below.
     expect({ ...coordinatorsView, equipment_lines: [] }).toEqual({
       ...organisersView,
       equipment_lines: [],
       venue_arrangements: undefined,
+      safety_decision: undefined,
     })
   })
 
@@ -327,11 +328,42 @@ describe('SCRUM-49 AC11 mock of a confirmed event venues on its record', () => {
     expect(record.venue_arrangements).toEqual([])
   })
 
-  it('sends the coordinator no venue list: they have the venue requests page', async () => {
+  it('sends the coordinator no venue list or safety decision: they have their own pages', async () => {
     signInAs(MOCK_ACCOUNTS.coordinator)
 
     const record = await fetchEventRequest(APPROVED_CAREERS_FAIR)
 
     expect(record).not.toHaveProperty('venue_arrangements')
+    expect(record).not.toHaveProperty('safety_decision')
+  })
+})
+
+describe('SCRUM-49 AC11 mock of the Safety Officer final decision on a confirmed event record', () => {
+  it('shows the organiser the outcome of the current check and when, and nothing internal', async () => {
+    signInAs(MOCK_ACCOUNTS.otherOrganiser)
+
+    const record = await fetchEventRequest('EVR-BOOK0102')
+
+    expect(record.safety_decision).toEqual({
+      outcome: 'approved',
+      decided_at: '2026-10-04T14:00:00+08:00',
+    })
+  })
+
+  it('shows none before the event is confirmed, even with an outcome recorded', async () => {
+    // Approved, with the Safety Officer's "changes requested" on its last check.
+    signInAs(MOCK_ACCOUNTS.organiser)
+
+    const record = await fetchEventRequest(ANOTHER_COORDINATORS)
+
+    expect(record.safety_decision).toBeNull()
+  })
+
+  it('shows none for a confirmed event whose check has no outcome on record', async () => {
+    signInAs(MOCK_ACCOUNTS.otherOrganiser)
+
+    const record = await fetchEventRequest('EVR-BOOK0112')
+
+    expect(record.safety_decision).toBeNull()
   })
 })
