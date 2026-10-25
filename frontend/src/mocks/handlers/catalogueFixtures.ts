@@ -34,6 +34,21 @@ const VENUES = {
   SCIENCE: { id: 8, name: 'Science Centre Singapore, Omni-Theatre' },
 } as const
 
+/**
+ * Where each venue is, by venue id. The catalogue sends a venue's id and name only, so its
+ * location lives here, for an Attendee's own event page (docs/adr/0109).
+ */
+export const MOCK_VENUE_LOCATIONS: ReadonlyMap<number, string> = new Map([
+  [VENUES.ESPLANADE.id, '1 Esplanade Drive'],
+  [VENUES.FLOWER_DOME.id, '18 Marina Gardens Drive'],
+  [VENUES.GALLERY.id, '1 St Andrew’s Road, Level B1'],
+  [VENUES.CAPITOL.id, '17 Stamford Road'],
+  [VENUES.PROJECTOR.id, '100 Beach Road, Level 5'],
+  [VENUES.BOTANIC.id, '1 Cluny Road'],
+  [VENUES.EXPO.id, '10 Bayfront Avenue, Level 1'],
+  [VENUES.SCIENCE.id, '15 Science Centre Road'],
+])
+
 /** name, venue, days after MOCK_TODAY, start time, minutes, capacity, places taken, description */
 type EventRow = [
   string,
@@ -414,6 +429,9 @@ export interface MockUnlistedEvent {
   id: number
   reference: string
   name: string
+  description: string
+  /** The venue it was booked at; none for a cancelled event, whose booking was released. */
+  venue: MockCatalogueEvent['venue']
   starts_at: string
   ends_at: string
   event_status: EventRequestStatus
@@ -428,6 +446,8 @@ export const MOCK_ATTENDEE_UNLISTED_EVENTS: MockUnlistedEvent[] = [
     id: 901,
     reference: 'EVR-MOCK0901',
     name: 'Orchid Show Opening Night',
+    description: 'The first look at this year’s orchids, with the growers who raised them.',
+    venue: VENUES.FLOWER_DOME,
     starts_at: '2026-09-28T18:00:00+08:00',
     ends_at: '2026-09-28T20:00:00+08:00',
     event_status: 'completed',
@@ -436,6 +456,8 @@ export const MOCK_ATTENDEE_UNLISTED_EVENTS: MockUnlistedEvent[] = [
     id: 902,
     reference: 'EVR-MOCK0902',
     name: 'Harbour Lights Run',
+    description: 'A 5K at first light along the waterfront.',
+    venue: null,
     starts_at: '2026-10-10T07:00:00+08:00',
     ends_at: '2026-10-10T09:00:00+08:00',
     event_status: 'cancelled',

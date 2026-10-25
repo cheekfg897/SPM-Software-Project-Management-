@@ -9,6 +9,8 @@
 
 import { register } from '@/features/auth/api'
 import { decideBookingRequest, raiseBookingRequest } from '@/features/booking/api'
+import { fetchCatalogue } from '@/features/catalogue/api'
+import { confirmEvent, updateRegistrationSettings } from '@/features/eventRequests/api'
 import { assignCoordinator } from '@/features/lead/api'
 import { createOrganisation } from '@/features/organisations/api'
 import { recordSafetyOutcome } from '@/features/safety/api'
@@ -177,4 +179,25 @@ export async function safetyApprovedEvent() {
     checklist: CHECKLIST,
   })
   return event
+}
+
+/**
+ * A Safety-approved event the staff account confirmed and opened for registration, with 50
+ * places (SCRUM-49, SCRUM-69): what an Attendee registers for. Also its id, which the
+ * registration routes take, read from the catalogue. Leaves the staff account signed in.
+ */
+export async function registrableEvent() {
+  const event = await safetyApprovedEvent()
+  await signInAs(staffAccount())
+  await confirmEvent(event.reference)
+  await updateRegistrationSettings(event.reference, {
+    registration_enabled: true,
+    registration_capacity: 50,
+  })
+  const page = await fetchCatalogue({ q: event.name })
+  const listed = page.items.find((item) => item.reference === event.reference)
+  if (listed === undefined) {
+    throw new Error(`The catalogue does not list ${event.reference} once it is open.`)
+  }
+  return { ...event, id: listed.id }
 }
