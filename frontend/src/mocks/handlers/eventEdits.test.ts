@@ -374,6 +374,62 @@ describe('SCRUM-33 mock of an edit: the safety approval (AC7)', () => {
 })
 
 /**
+ * SCRUM-33 AC9 (ADR-0107): a significant change in Safety Review that flags a venue arrangement
+ * leaves it unsettled, so the event goes back to Approved, once, and can be sent again only once
+ * the flag clears. Hana's EVR-PLAN0004 is in Safety Review, not yet approved by the Safety
+ * Officer, with an approved hall for everyone (47); EVR-PLAN0003 has the officer's approval.
+ */
+describe('SCRUM-33 mock of an edit: a significant change in Safety Review (AC9)', () => {
+  const HANA = MOCK_ACCOUNTS.planningCoordinator
+
+  /** The kinds of the event's history entries, oldest first. */
+  async function historyKindsOf(reference: string) {
+    return (await fetchEventHistory(reference)).history.map((entry) => entry.kind)
+  }
+
+  it.each([
+    ['a new time', { end_time: '23:00' }],
+    ['new venue requirements', { venue_requirements: 'Step-free stage.' }],
+  ])('sends the event back to Approved for %s, which flags its hall', async (_case, changes) => {
+    signInAs(HANA)
+
+    const edited = await editEventRequest('EVR-PLAN0004', changes)
+
+    expect(edited.status).toBe('approved')
+    expect((await fetchEventRequest('EVR-PLAN0004')).status).toBe('approved')
+    expect(await historyKindsOf('EVR-PLAN0004')).toEqual(['field_changed'])
+  })
+
+  it('keeps the event in Safety Review for a change that flags nothing', async () => {
+    signInAs(HANA)
+
+    const edited = await editEventRequest('EVR-PLAN0004', { equipment_requirements: 'Two mics.' })
+
+    expect(edited.status).toBe('safety_review')
+  })
+
+  it('moves an approved event once, withdrawing its approval once', async () => {
+    signInAs(HANA)
+
+    const edited = await editEventRequest('EVR-PLAN0003', { end_time: '23:00' })
+
+    expect(edited.status).toBe('approved')
+    expect(await historyKindsOf('EVR-PLAN0003')).toEqual([
+      'field_changed',
+      'safety_approval_withdrawn',
+    ])
+  })
+
+  it('leaves an Approved event Approved when a change flags its arrangement', async () => {
+    signInAs(HANA)
+
+    const edited = await editEventRequest('EVR-PLAN0002', { end_time: '23:00' })
+
+    expect(edited.status).toBe('approved')
+  })
+})
+
+/**
  * SCRUM-33 AC6 (ADR-0094, `flag_arrangements_after_change`): a significant change reassesses each
  * live venue arrangement (Pending, Conflicting or Approved) on its own, and only those it affects
  * are flagged, so the event can't go to Safety Review until they're settled. Hana's EVR-PLAN0001
