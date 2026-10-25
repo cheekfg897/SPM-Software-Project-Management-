@@ -30,6 +30,7 @@ from app.modules.events.schemas import (
     EventRequestSchema,
     FieldChangeSchema,
     OrganiserEquipmentLineSchema,
+    OrganiserSafetyDecisionSchema,
     OrganiserVenueArrangementSchema,
     RegistrationSettingsSchema,
     StaffEventRecordSectionsSchema,
@@ -88,6 +89,7 @@ _equipment_line_schema = EquipmentLineSchema()
 _equipment_line_with_outcome_schema = EquipmentLineWithOutcomeSchema()
 _organiser_equipment_line_schema = OrganiserEquipmentLineSchema()
 _organiser_venue_arrangement_schema = OrganiserVenueArrangementSchema()
+_organiser_safety_decision_schema = OrganiserSafetyDecisionSchema()
 _equipment_event_schema = EventRequestSchema(only=EQUIPMENT_EVENT_FIELDS)
 _equipment_awaiting_action_schema = EquipmentAwaitingActionSchema()
 _awaiting_safety_review_schema = EventAwaitingSafetyReviewSchema()
@@ -160,7 +162,8 @@ def _organiser_event_record_body(record: OrganiserEventRecord) -> dict[str, Any]
 
     The sections every record shows, with the staff's equipment lines replaced by the
     organiser's own view of them: no technical notes, outcome note or reviewer. Then
-    the confirmed event's venues, an empty list until it is confirmed.
+    the confirmed event's venues, an empty list until it is confirmed, and the Safety
+    Officer's final decision, ``null`` until then.
     """
     body = _event_record_body(record)
     body["equipment_lines"] = _organiser_equipment_line_schema.dump(
@@ -168,6 +171,9 @@ def _organiser_event_record_body(record: OrganiserEventRecord) -> dict[str, Any]
     )
     body["venue_arrangements"] = _organiser_venue_arrangement_schema.dump(
         record.venue_arrangements, many=True
+    )
+    body["safety_decision"] = _shown_or_none(
+        _organiser_safety_decision_schema, record.safety_decision
     )
     return body
 
