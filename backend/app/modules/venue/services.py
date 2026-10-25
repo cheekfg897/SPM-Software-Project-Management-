@@ -2893,3 +2893,46 @@ def list_arrangements_flagged_after_change(
         if arrangement.is_flagged_after_change:
             flagged.append(arrangement)
     return flagged
+
+
+# --------------------------------------------------------------------------
+# SCRUM-24 AC11 — the venues an Attendee sees on their event's page
+# --------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class BookedVenue:
+    """A venue an event is booked at, as the people going to it see it (ADR-0109).
+
+    Its name and where it is, as SCRUM-52 shows an event; nothing about the booking.
+    """
+
+    name: str
+    location: str
+
+
+def list_booked_venues(event_id: int, *, session: Session | None = None) -> list[BookedVenue]:
+    """The venues Venue Staff approved for the event, earliest booking first (ADR-0109).
+
+    Only an approved arrangement is where the event takes place: a pending or held one
+    is not settled yet, and a retired one no longer counts. A venue booked for two
+    periods is listed once.
+    """
+    sess = resolve_session(session)
+    query = (
+        select(VenueBookingRequest)
+        .where(
+            VenueBookingRequest.event_id == event_id,
+            VenueBookingRequest.status == BookingRequestStatus.APPROVED,
+        )
+        .order_by(VenueBookingRequest.starts_at, VenueBookingRequest.id)
+    )
+    booked = []
+    listed_venue_ids = set()
+    for arrangement in sess.scalars(query):
+        if arrangement.venue_id in listed_venue_ids:
+            continue
+        listed_venue_ids.add(arrangement.venue_id)
+        venue = get_venue(arrangement.venue_id, session=sess)
+        booked.append(BookedVenue(name=venue.name, location=venue.location))
+    return booked
