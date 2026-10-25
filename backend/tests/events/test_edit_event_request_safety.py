@@ -181,25 +181,22 @@ def test_an_event_without_a_safety_approval_has_nothing_withdrawn(
 
 
 # --------------------------------------------------------------------------
-# AC5 — the withdrawal is for internal eyes only
+# AC5 — the withdrawal is in the history the coordinator and the organiser read
 # --------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
-    ("viewer_id", "viewer_role", "sees_it"),
-    [
-        (COORDINATOR_ID, Role.EVENT_COORDINATOR, True),
-        (ORGANISER_ID, Role.EVENT_ORGANISER, False),
-    ],
+    ("viewer_id", "viewer_role"),
+    [(COORDINATOR_ID, Role.EVENT_COORDINATOR), (ORGANISER_ID, Role.EVENT_ORGANISER)],
     ids=["the-coordinator", "the-organiser"],
 )
-def test_only_internal_staff_see_the_withdrawal(
+def test_the_coordinator_and_the_organiser_see_the_withdrawal(
     approved_for_safety: ApprovedForSafety,
     edit_event: EditEvent,
     viewer_id: int,
     viewer_role: Role,
-    sees_it: bool,
 ) -> None:
+    """Nothing on the record is hidden from the organiser (SCRUM-24 AC10, ADR-0104)."""
     approved_for_safety(EventRequestStatus.SAFETY_REVIEW)
     edit_event(COORDINATOR_ID, {"expected_attendance": 300})
 
@@ -207,4 +204,4 @@ def test_only_internal_staff_see_the_withdrawal(
 
     kinds = [entry.kind for entry in history]
     assert EventHistoryKind.FIELD_CHANGED in kinds
-    assert (WITHDRAWN in kinds) is sees_it
+    assert WITHDRAWN in kinds

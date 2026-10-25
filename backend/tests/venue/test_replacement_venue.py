@@ -827,10 +827,10 @@ def _history_kinds(
     return [entry.kind for entry in entries]
 
 
-def test_the_withdrawal_is_for_internal_eyes_only(
+def test_the_withdrawal_is_shown_to_the_coordinator_and_the_organiser(
     db_session: Session, flagged: Flagged, saved_users: list[User]
 ) -> None:
-    """ADR-0053 §7: hidden from organisers, like the safety outcome it unsettles."""
+    """Nothing on the record is hidden from the organiser (SCRUM-24 AC10, ADR-0104)."""
     flagged.event.organisation_id = 3
     approve_safety(flagged.event, db_session)
     decide(_replace(flagged, db_session).id, "approved", db_session)
@@ -840,7 +840,7 @@ def test_the_withdrawal_is_for_internal_eyes_only(
     coordinator_sees = _history_kinds(
         db_session, flagged.event, COORDINATOR_ID, Role.EVENT_COORDINATOR
     )
-    assert withdrawn not in organiser_sees
+    assert withdrawn in organiser_sees
     assert withdrawn in coordinator_sees
 
 

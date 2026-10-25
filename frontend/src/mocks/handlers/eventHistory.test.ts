@@ -9,8 +9,9 @@ import { addToHistory } from './eventRecordSections'
 
 /**
  * The mock of an event's history (GET /api/events/requests/<reference>/history), pinned to
- * what the backend sends (SCRUM-33 AC4, AC5; ADR-0025): who may read it, and what an organiser
- * is not shown. The integration tests check the same shape against the running backend.
+ * what the backend sends (SCRUM-33 AC4, AC5; ADR-0025): who may read it, and that its organiser
+ * reads all of it (SCRUM-24 AC10, ADR-0104). The integration tests check the same shape against
+ * the running backend.
  */
 
 /** Chloe's, under review, in the mock organiser's organisation. */
@@ -19,8 +20,8 @@ const CHLOES = 'EVR-7K2M9QXA'
 const MARCUSES = 'EVR-W9CR5E7M'
 const A_DRAFT = 'EVR-3HD8PL2W'
 const NOT_FOUND = { status: 404, code: 'not_found', message: 'Event request not found.' }
-/** INTERNAL_ONLY_KINDS in events/services.py on main, written out. */
-const INTERNAL_ONLY_KINDS = [
+/** The kinds the backend kept from organisers until ADR-0104, written out. */
+const ONCE_INTERNAL_KINDS = [
   'equipment_reserved',
   'equipment_outcome_recorded',
   'safety_outcome_recorded',
@@ -68,7 +69,7 @@ describe('SCRUM-33 mock of an event history: what each viewer sees', () => {
     ])
   })
 
-  it('leaves the internal planning notes out of an organiser copy (ADR-0025)', async () => {
+  it('gives the organiser the planning notes change too (SCRUM-24 AC10, ADR-0104)', async () => {
     signInAs(MOCK_ACCOUNTS.organiser)
 
     const { history } = await fetchEventHistory(CHLOES)
@@ -76,15 +77,19 @@ describe('SCRUM-33 mock of an event history: what each viewer sees', () => {
     expect(history.map((entry) => entry.details.field)).toEqual([
       undefined,
       undefined,
+      'internal_planning_notes',
       'expected_attendance',
     ])
   })
 
-  it('leaves equipment and the safety outcome out of an organiser copy, and keeps the rest', async () => {
+  it('gives the organiser the equipment and the safety outcome too (ADR-0104)', async () => {
     expect(await kindsSeenBy(MOCK_ACCOUNTS.organiser, MARCUSES)).toEqual([
       'coordinator_assigned',
       'decision_recorded',
+      'equipment_reserved',
+      'equipment_outcome_recorded',
       'safety_review_requested',
+      'safety_outcome_recorded',
     ])
   })
 
@@ -104,21 +109,15 @@ describe('SCRUM-33 mock of an event history: what each viewer sees', () => {
     ])
   })
 
-  it.each(INTERNAL_ONLY_KINDS)(
-    'keeps %s entries from an organiser but not from staff',
+  it.each([...ONCE_INTERNAL_KINDS, 'venue_hold_expired'])(
+    'shows %s entries to the organiser as to staff',
     async (kind) => {
       recordOnPartnerSummit(kind)
 
-      expect(await kindsSeenBy(MOCK_ACCOUNTS.organiser, CHLOES)).not.toContain(kind)
+      expect(await kindsSeenBy(MOCK_ACCOUNTS.organiser, CHLOES)).toContain(kind)
       expect(await kindsSeenBy(MOCK_ACCOUNTS.coordinator, CHLOES)).toContain(kind)
     },
   )
-
-  it('shows an organiser a kind the backend does not keep internal, such as an expired hold', async () => {
-    recordOnPartnerSummit('venue_hold_expired')
-
-    expect(await kindsSeenBy(MOCK_ACCOUNTS.organiser, CHLOES)).toContain('venue_hold_expired')
-  })
 
   it('gives an event with nothing recorded yet an empty history', async () => {
     signInAs(MOCK_ACCOUNTS.organiser)

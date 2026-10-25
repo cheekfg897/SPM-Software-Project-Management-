@@ -68,14 +68,14 @@ describe('SCRUM-33 AC5 the history on an event record', () => {
     expect(within(note).queryByText('Significant change')).not.toBeInTheDocument()
   })
 
-  it('shows an organiser only what the backend sends them', async () => {
+  it('shows an organiser every entry the backend sends them (SCRUM-24 AC10)', async () => {
     renderApp(organiserRequestPath(PARTNER_SUMMIT), { session: ORGANISER })
 
     const entries = await historyEntries()
 
-    expect(entries).toHaveLength(3)
+    expect(entries).toHaveLength(4)
     const history = await findRegion('History')
-    expect(within(history).queryByText(/Internal planning notes/)).not.toBeInTheDocument()
+    expect(within(history).getByText('Internal planning notes changed')).toBeInTheDocument()
   })
 
   it('says only when for an entry made by the system', async () => {

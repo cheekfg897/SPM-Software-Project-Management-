@@ -136,18 +136,14 @@ def test_other_internal_users_read_the_details_in_the_events_history(
     assert entry.details["notes"] == "Projector mounted, cables to run."
 
 
-def test_the_organiser_never_sees_the_preparation_in_the_history(
+def test_the_organiser_sees_the_preparation_in_the_history(
     db_session: Session,
     saved_users: list[User],
     reservation: EquipmentReservation,
     saved_event_request: EventRequest,
     save: Callable[..., None],
 ) -> None:
-    """ADR-0050 decision 6: the entry is internal-only.
-
-    An entry the organiser may see is saved first, so the test can't pass on a
-    history that shows them nothing at all.
-    """
+    """SCRUM-85 AC2: the organiser sees the preparation details (ADR-0104)."""
     review_started = EventHistoryEntry(
         event_request=saved_event_request,
         kind=EventHistoryKind.REVIEW_STARTED,
@@ -165,7 +161,11 @@ def test_the_organiser_never_sees_the_preparation_in_the_history(
         session=db_session,
     )
 
-    assert [shown.kind for shown in history] == [EventHistoryKind.REVIEW_STARTED]
+    assert [shown.kind for shown in history] == [
+        EventHistoryKind.SAFETY_OUTCOME_RECORDED,
+        EventHistoryKind.REVIEW_STARTED,
+        EventHistoryKind.EQUIPMENT_PREPARATION_UPDATED,
+    ]
 
 
 @pytest.mark.parametrize("field", ["quantity", "equipment_type_id", "event_id", "reserved_by"])

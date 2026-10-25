@@ -3,8 +3,7 @@ import type { RequestHandler } from 'msw'
 
 import { INTERNAL_ROLES, ROLE } from '@/config/roles'
 import type { Role } from '@/config/roles'
-import type { EventHistoryEntry, Registrant } from '@/features/eventRequests/api'
-import { EVENT_HISTORY_KIND } from '@/features/eventRequests/eventHistory'
+import type { Registrant } from '@/features/eventRequests/api'
 
 import { errorResponse } from '../responses'
 
@@ -26,40 +25,17 @@ export { addToHistory, resetMockEventHistory } from './eventHistoryStore'
 /**
  * The sections of an event's record that have routes of their own: its history (SCRUM-33,
  * ADR-0025) and who registered (SCRUM-55). Who may read which event is decided as the backend
- * decides it, through the same lookups as the record itself (eventRequests.ts), and so are what
- * an organiser is not shown and the count against the capacity. An edit adds to the history
+ * decides it, through the same lookups as the record itself (eventRequests.ts), and so is the
+ * count against the capacity. Everyone who may read the history reads all of it: nothing is
+ * hidden from the organiser (SCRUM-24 AC10, ADR-0104). An edit adds to the history
  * (eventEdits.ts), so the history is kept here and put back after every test.
  */
 
 const REQUESTS_PATH = '/api/events/requests'
 const NOT_FOUND_MESSAGE = 'Event request not found.'
-/** Kinds the backend never shows an organiser (INTERNAL_ONLY_KINDS in events/services.py). */
-const INTERNAL_ONLY_KINDS: readonly string[] = [
-  EVENT_HISTORY_KIND.EQUIPMENT_RESERVED,
-  EVENT_HISTORY_KIND.EQUIPMENT_OUTCOME_RECORDED,
-  EVENT_HISTORY_KIND.SAFETY_OUTCOME_RECORDED,
-  // Kinds the page has no wording for yet (it shows them as a plain line), kept internal too.
-  'venue_preparation_updated',
-  'equipment_preparation_updated',
-  'alternative_venue_needed',
-  'safety_approval_withdrawn',
-]
-/** Fields whose changes the backend never shows an organiser (INTERNAL_ONLY_FIELDS). */
-const INTERNAL_ONLY_FIELDS: readonly unknown[] = ['internal_planning_notes']
 const HISTORY_READERS: readonly Role[] = [...INTERNAL_ROLES, ROLE.EVENT_ORGANISER]
 /** The registrants route's roles (SCRUM-55 AC1, AC2): an attendee or other staff get 403. */
 const REGISTRANT_READERS: readonly Role[] = [ROLE.EVENT_ORGANISER, ROLE.EVENT_COORDINATOR]
-
-/** Whether the backend shows `entry` to an organiser (`_shown_to_organiser`, ADR-0025). */
-function shownToOrganiser(entry: EventHistoryEntry): boolean {
-  if (INTERNAL_ONLY_KINDS.includes(entry.kind)) {
-    return false
-  }
-  if (entry.kind !== EVENT_HISTORY_KIND.FIELD_CHANGED) {
-    return true
-  }
-  return !INTERNAL_ONLY_FIELDS.includes(entry.details.field)
-}
 
 /**
  * The reference of an event staff other than a coordinator may read: any event but a draft,
@@ -74,8 +50,8 @@ function staffEventReference(reference: unknown): string | undefined {
 }
 
 /**
- * The reference of the event the caller, holding one of `roles`, may read, and whether they read
- * it as an organiser; or the refusal. Staff read any event but a draft, a coordinator only those
+ * The reference of the event the caller, holding one of `roles`, may read, or the refusal.
+ * Staff read any event but a draft, a coordinator only those
  * assigned to them, and an organiser their organisation's; anything else is "not found"
  * (ADR-0012).
  */
@@ -85,9 +61,8 @@ function readerOrRefusal(request: Request, roles: readonly Role[], reference: un
     return { refusal: found.refusal }
   }
   const { caller } = found
-  const isOrganiser = caller.role === ROLE.EVENT_ORGANISER
   let eventReference: string | undefined
-  if (isOrganiser) {
+  if (caller.role === ROLE.EVENT_ORGANISER) {
     const organiser = organiserOrRefusal(request)
     if ('refusal' in organiser) {
       return { refusal: organiser.refusal }
@@ -102,7 +77,7 @@ function readerOrRefusal(request: Request, roles: readonly Role[], reference: un
   if (eventReference === undefined) {
     return { refusal: errorResponse(404, 'not_found', NOT_FOUND_MESSAGE) }
   }
-  return { eventReference, isOrganiser }
+  return { eventReference }
 }
 
 /** Oldest registration first, as the backend lists them. */
@@ -125,9 +100,7 @@ export const eventRecordSectionHandlers: RequestHandler[] = [
       return found.refusal
     }
 
-    const history = historyOf(found.eventReference)
-    const shown = found.isOrganiser ? history.filter(shownToOrganiser) : history
-    return HttpResponse.json({ history: shown })
+    return HttpResponse.json({ history: historyOf(found.eventReference) })
   }),
 
   http.get(`${REQUESTS_PATH}/:reference/registrations`, ({ request, params }) => {
