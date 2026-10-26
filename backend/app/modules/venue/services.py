@@ -2178,6 +2178,43 @@ def _release_replaced(
     )
 
 
+def _category_labels(arrangement: VenueBookingRequest) -> str:
+    """Each category that flagged the arrangement, once, in flag order (AC9).
+
+    For example ``"maintenance, safety concern"``.
+    """
+    labels: list[str] = []
+    for flag in arrangement.flags:
+        if flag.category.label not in labels:
+            labels.append(flag.category.label)
+    return ", ".join(labels)
+
+
+def _tell_organiser_of_replacement(approved: VenueBookingRequest, session: Session | None) -> None:
+    """Tell the organiser a replacement venue was approved, after the commit (AC9).
+
+    Only for a replacement of an arrangement whose venue became unavailable, which
+    keeps its unavailability flags once released; one flagged only after a change is
+    SCRUM-33's. The events module tells the organiser only if a venue sent the event
+    back from Confirmed (ADR-0108).
+    """
+    from app.modules.events import services as event_services  # circular at import time
+
+    if approved.replaces_request_id is None:
+        return
+    sess = resolve_session(session)
+    replaced = sess.get(VenueBookingRequest, approved.replaces_request_id)
+    if not replaced.flags:
+        return
+    event_services.notify_organiser_replacement_approved(
+        approved.event_id,
+        unavailable_venue=sess.get(Venue, replaced.venue_id).name,
+        replacement_venue=sess.get(Venue, approved.venue_id).name,
+        category=_category_labels(replaced),
+        session=session,
+    )
+
+
 def _save_decision(
     request: VenueBookingRequest,
     decision: BookingDecision,
@@ -2237,7 +2274,8 @@ def decide_booking_request(
     its hold into the confirmed booking, and rejecting it releases the venue.
 
     Approving a replacement releases the arrangement it replaces and withdraws the
-    event's safety approval, in the same commit (SCRUM-92 AC7, AC10, ADR-0053).
+    event's safety approval, in the same commit (SCRUM-92 AC7, AC10, ADR-0053). For an
+    event a venue sent back from Confirmed, the organiser is then told (AC9, ADR-0108).
 
     Args:
         request_id: The request's own id, as the queue lists it.
@@ -2281,6 +2319,8 @@ def decide_booking_request(
         detail=reason,
         session=session,
     )
+    if decision is BookingDecision.APPROVED:
+        _tell_organiser_of_replacement(request, session)
     return show_booking_request(request, event)
 
 

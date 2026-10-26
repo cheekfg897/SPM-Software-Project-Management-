@@ -7,7 +7,9 @@ ADR-0108). AC7: approving the replacement
 releases the flagged arrangement and cancels its booking, or its hold if it was On Hold
 (ADR-0100). AC10: if the event had passed
 its safety check, approving the replacement withdraws that approval, and an event in
-Safety Review goes back to Approved to be sent again.
+Safety Review goes back to Approved to be sent again. AC9, AC10 (Product Owner, 26 Oct):
+when a replacement is approved for an event a venue sent back from Confirmed, the
+Organiser who submitted it is told, naming the event, both venues and the category.
 
 The services run against ``db_session``. The flagged arrangement is at the Auditorium,
 09:00 to 12:00 on 1 November 2026; the replacement is at the Breakout room.
@@ -32,6 +34,9 @@ from app.modules.events.models import (
     EventRequest,
     EventRequestStatus,
 )
+from app.modules.notifications.models import Notification
+from app.modules.notifications.schemas import NotificationSchema
+from app.modules.notifications.services import NotificationKind
 from app.modules.venue import services
 from app.modules.venue.models import (
     BookingRequestStatus,
@@ -68,6 +73,12 @@ LOCKED_PERIOD_MESSAGE = (
 )
 #: The ``saved_users`` organiser, of client organisation 3.
 ORGANISER_ID = 7
+#: What the organiser of an event sent back is told once its replacement is approved
+#: (AC9): the event, both venues and the category of what flagged the original.
+ORGANISER_TOLD = (
+    "Auditorium became unavailable for Partner Summit ({category}), and Breakout room has"
+    " been approved in its place. The event still needs Safety Review and confirmation."
+)
 #: AC6: the planning stage, and Safety Review, which a flag leaves an event in (AC3).
 MAY_REPLACE = {EventRequestStatus.APPROVED, EventRequestStatus.SAFETY_REVIEW}
 #: A draft is left out: a coordinator gets a 404 for it, not a 409 (ADR-0024).
@@ -87,6 +98,26 @@ class Flagged:
         self.other = other
 
 
+def _booked_at_the_auditorium(
+    session: Session,
+    make_venue: Callable[..., Venue],
+    save: Callable[..., None],
+    saved_event: SavedEvent,
+) -> Flagged:
+    """An approved event booked at the Auditorium, not yet flagged."""
+    auditorium, breakout = two_venues(make_venue, save)
+    event = saved_event()
+    original = decide(raise_booking(auditorium, event, session).id, "approved", session)
+    return Flagged(event, original, breakout)
+
+
+def _block_the_auditorium(booked: Flagged, session: Session, **overrides: Any) -> None:
+    """Block the original's venue for part of its period, flagging it (AC1)."""
+    auditorium = session.get(Venue, booked.original.venue_id)
+    assert auditorium is not None
+    block(auditorium, at(10), at(11), session, **overrides)
+
+
 @pytest.fixture()
 def flagged(
     db_session: Session,
@@ -94,11 +125,24 @@ def flagged(
     save: Callable[..., None],
     saved_event: SavedEvent,
 ) -> Flagged:
-    auditorium, breakout = two_venues(make_venue, save)
-    event = saved_event()
-    original = decide(raise_booking(auditorium, event, db_session).id, "approved", db_session)
-    block(auditorium, at(10), at(11), db_session)
-    return Flagged(event, original, breakout)
+    booked = _booked_at_the_auditorium(db_session, make_venue, save, saved_event)
+    _block_the_auditorium(booked, db_session)
+    return booked
+
+
+@pytest.fixture()
+def sent_back(
+    db_session: Session,
+    make_venue: Callable[..., Venue],
+    save: Callable[..., None],
+    saved_event: SavedEvent,
+) -> Flagged:
+    """As ``flagged``, but the event was Confirmed, so the block sent it back (AC3)."""
+    booked = _booked_at_the_auditorium(db_session, make_venue, save, saved_event)
+    booked.event.status = EventRequestStatus.CONFIRMED
+    db_session.commit()
+    _block_the_auditorium(booked, db_session)
+    return booked
 
 
 def _replace(flagged: Flagged, session: Session, **overrides: Any) -> VenueBookingRequest:
@@ -115,6 +159,19 @@ def _replace(flagged: Flagged, session: Session, **overrides: Any) -> VenueBooki
 def _set_event_status(session: Session, event: EventRequest, status: EventRequestStatus) -> None:
     event.status = status
     session.commit()
+
+
+def _replacement_notices(session: Session) -> list[tuple[int, int, str | None]]:
+    """Every "replacement venue approved" notice, as (recipient, event id, detail)."""
+    stmt = (
+        select(Notification)
+        .where(Notification.kind == NotificationKind.REPLACEMENT_VENUE_APPROVED)
+        .order_by(Notification.id)
+    )
+    rows = []
+    for notification in session.scalars(stmt):
+        rows.append((notification.recipient_id, notification.event_request_id, notification.detail))
+    return rows
 
 
 # --------------------------------------------------------------------------
@@ -603,6 +660,81 @@ def test_another_venue_booked_for_the_same_period_is_not_cancelled(
         (auditorium.id, BookingStatus.CANCELLED),
         (annex.id, BookingStatus.CONFIRMED),
     ]
+
+
+# --------------------------------------------------------------------------
+# AC9, AC10 — the organiser of an event sent back hears of the approved replacement
+# --------------------------------------------------------------------------
+
+
+def test_the_organiser_of_an_event_sent_back_is_told_its_replacement_was_approved(
+    db_session: Session, sent_back: Flagged
+) -> None:
+    """The Product Owner, 26 Oct: told how it resolves; only the submitter (AC10)."""
+    replacement = _replace(sent_back, db_session)
+
+    decide(replacement.id, "approved", db_session)
+
+    assert _replacement_notices(db_session) == [
+        (ORGANISER_ID, sent_back.event.id, ORGANISER_TOLD.format(category="maintenance"))
+    ]
+    [notice] = db_session.scalars(
+        select(Notification).where(Notification.kind == NotificationKind.REPLACEMENT_VENUE_APPROVED)
+    )
+    shown = NotificationSchema().dump(notice)
+    assert shown["message"] == "A replacement venue was approved for your event."
+    assert shown["link"] == f"/events/{sent_back.event.reference}"
+
+
+def test_the_notice_names_each_category_that_flagged_the_original_once(
+    db_session: Session, sent_back: Flagged
+) -> None:
+    """Two more blocks over it, one of the same category: each is named once."""
+    _block_the_auditorium(sent_back, db_session)
+    _block_the_auditorium(sent_back, db_session, category="safety_concern", reason="Wiring.")
+    replacement = _replace(sent_back, db_session)
+
+    decide(replacement.id, "approved", db_session)
+
+    assert _replacement_notices(db_session) == [
+        (
+            ORGANISER_ID,
+            sent_back.event.id,
+            ORGANISER_TOLD.format(category="maintenance, safety concern"),
+        )
+    ]
+
+
+def test_the_organiser_of_an_event_the_venue_did_not_send_back_is_not_told(
+    db_session: Session, flagged: Flagged
+) -> None:
+    """The event was Approved when the block came, so it never went back (AC3, AC9)."""
+    replacement = _replace(flagged, db_session)
+
+    decide(replacement.id, "approved", db_session)
+
+    assert _replacement_notices(db_session) == []
+
+
+def test_a_rejected_replacement_tells_the_organiser_nothing(
+    db_session: Session, sent_back: Flagged
+) -> None:
+    replacement = _replace(sent_back, db_session)
+
+    decide(replacement.id, "rejected", db_session, reason="Booked out.")
+
+    assert _replacement_notices(db_session) == []
+
+
+def test_approving_an_ordinary_request_tells_the_organiser_nothing(
+    db_session: Session, sent_back: Flagged
+) -> None:
+    """A second venue for the event replaces nothing (AC9 is about AC7)."""
+    request = raise_booking(sent_back.other, sent_back.event, db_session)
+
+    decide(request.id, "approved", db_session)
+
+    assert _replacement_notices(db_session) == []
 
 
 # --------------------------------------------------------------------------
