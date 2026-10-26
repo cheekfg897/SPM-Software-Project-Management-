@@ -213,26 +213,29 @@ describe('SCRUM-24 the read-only staff record against the backend', () => {
         lineId: line.id,
         body: { provided_quantity: 3, note: 'One is out for repair.' },
       })
+      // Technical Support's name, so a reviewer missing everywhere can't pass as a match.
+      expect(recorded.reviewed_by).toEqual(expect.any(String))
+      const reviewedLine = [
+        expect.objectContaining({
+          status: 'partially_fulfilled',
+          provided_quantity: 3,
+          shortfall: 1,
+          outcome_note: 'One is out for repair.',
+          reviewed_by: recorded.reviewed_by,
+          reviewed_at: recorded.reviewed_at,
+        }),
+      ]
       const readers: (Credentials | null)[] = [VENUE_STAFF, SAFETY_OFFICER, LEAD]
 
       for (const reader of readers) {
         await signInAs(required(reader))
         const record = await fetchStaffEventRecord(event.reference)
 
-        expect(record.equipment_lines).toEqual([
-          expect.objectContaining({
-            status: 'partially_fulfilled',
-            provided_quantity: 3,
-            shortfall: 1,
-            outcome_note: 'One is out for repair.',
-            reviewed_by: recorded.reviewed_by,
-            reviewed_at: recorded.reviewed_at,
-          }),
-        ])
+        expect(record.equipment_lines).toEqual(reviewedLine)
       }
       await signInAsTechSupport()
       const technicalSupportsCopy = await fetchStaffEventRecord(event.reference)
-      expect(technicalSupportsCopy.equipment_lines[0]?.reviewed_by).toEqual(expect.any(String))
+      expect(technicalSupportsCopy.equipment_lines).toEqual(reviewedLine)
     },
   )
 
