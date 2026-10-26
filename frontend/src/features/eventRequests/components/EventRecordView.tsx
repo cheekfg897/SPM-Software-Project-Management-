@@ -5,7 +5,7 @@ import { ROLE } from '@/config/roles'
 import { eventEquipmentPath, venueRequestsPath } from '@/config/routes'
 import { selectSessionUser, useAppSelector } from '@/store'
 
-import { isOrganiserEquipmentLine } from '../api'
+import { isRecordEquipmentLine } from '../api'
 import type { EventRecord } from '../api'
 import { useAnswerClarification } from '../hooks'
 
@@ -14,16 +14,17 @@ import { ClarificationList } from './ClarificationList'
 import { CoordinatorDetails } from './CoordinatorDetails'
 import { DecisionDetails } from './DecisionDetails'
 import { EditDetailsSection } from './EditDetailsSection'
+import { EquipmentOnRecord } from './EquipmentOnRecord'
 import { EventHistorySection } from './EventHistorySection'
 import { MessageForm } from './MessageForm'
-import { OrganiserEquipment } from './OrganiserEquipment'
-import { OrganiserVenues } from './OrganiserVenues'
+import { PlanningNotes } from './PlanningNotes'
 import { RecordActions } from './RecordActions'
 import { RecordHeading } from './RecordHeading'
 import { RecordSection } from './RecordSection'
 import { RegistrantsSection } from './RegistrantsSection'
 import { ReviewActions } from './ReviewActions'
-import { SafetyDecisionDetails } from './SafetyDecisionDetails'
+import { SafetyOutcomeDetails } from './SafetyOutcomeDetails'
+import { VenueArrangementList } from './VenueArrangementList'
 
 /** The organiser's answer to the open question (SCRUM-32 AC2, ADR-0060). */
 function AnswerClarification({ reference }: { reference: string }) {
@@ -59,9 +60,9 @@ function CoordinatorLinks({ reference }: { reference: string }) {
  * and its decision, clarifications and programme notes once there are any (SCRUM-24 AC9,
  * ADR-0056). Which record a viewer may open is the backend's call. Its assigned coordinator
  * also gets links on and the review actions, and an organiser answers an open question here
- * (SCRUM-31, SCRUM-32, ADR-0060) and sees their equipment (SCRUM-37 AC5, ADR-0098) and, once
- * the event is confirmed, its venues and the Safety Officer's final decision (SCRUM-49 AC11,
- * ADR-0099).
+ * (SCRUM-31, SCRUM-32, ADR-0060). The organiser is sent everything else on the record too, at
+ * every stage: the planning notes, every venue arrangement, the equipment with its outcomes and
+ * reservations, and the safety check (SCRUM-24 AC10, ADR-0104).
  */
 export function EventRecordView({ record }: { record: EventRecord }) {
   const viewer = useAppSelector(selectSessionUser)
@@ -69,13 +70,10 @@ export function EventRecordView({ record }: { record: EventRecord }) {
   const isAnswerNeeded =
     viewer?.role === ROLE.EVENT_ORGANISER &&
     record.status === EVENT_REQUEST_STATUS.AWAITING_CLARIFICATION
-  // Only the organiser's record names each line's equipment; the coordinator works on the
-  // lines from the Equipment page instead.
-  const organisersEquipment = record.equipment_lines.filter(isOrganiserEquipmentLine)
-  // Only the organiser's record lists the venues and the safety decision, and only once the
-  // event is confirmed.
-  const confirmedVenues = record.venue_arrangements ?? []
-  const safetyDecision = record.safety_decision ?? null
+  // Only the organiser's record names each line's equipment and sends the rest of the record:
+  // everything on it, at every stage (ADR-0104). The coordinator works on the lines, venues and
+  // safety check from their own pages instead.
+  const recordLines = record.equipment_lines.filter(isRecordEquipmentLine)
   return (
     <PageContainer title={record.name}>
       <RecordHeading request={record} />
@@ -100,24 +98,29 @@ export function EventRecordView({ record }: { record: EventRecord }) {
           {isAnswerNeeded && <AnswerClarification reference={record.reference} />}
         </RecordSection>
       )}
-      {safetyDecision !== null && (
-        <RecordSection title="Safety check">
-          <SafetyDecisionDetails decision={safetyDecision} />
-        </RecordSection>
-      )}
-      {confirmedVenues.length > 0 && (
-        <RecordSection title="Venues">
-          <OrganiserVenues arrangements={confirmedVenues} />
-        </RecordSection>
-      )}
-      {organisersEquipment.length > 0 && (
-        <RecordSection title="Equipment">
-          <OrganiserEquipment lines={organisersEquipment} />
-        </RecordSection>
-      )}
       {record.programme_notes !== null && (
         <RecordSection title="Programme notes">
           <p className="text-ink whitespace-pre-line">{record.programme_notes}</p>
+        </RecordSection>
+      )}
+      {record.internal_planning_notes !== undefined && (
+        <RecordSection title="Planning notes">
+          <PlanningNotes notes={record.internal_planning_notes} />
+        </RecordSection>
+      )}
+      {record.venue_arrangements !== undefined && (
+        <RecordSection title="Venue arrangements">
+          <VenueArrangementList arrangements={record.venue_arrangements} />
+        </RecordSection>
+      )}
+      {record.equipment_reservations !== undefined && (
+        <RecordSection title="Equipment">
+          <EquipmentOnRecord lines={recordLines} reservations={record.equipment_reservations} />
+        </RecordSection>
+      )}
+      {record.safety_outcome !== undefined && (
+        <RecordSection title="Safety check">
+          <SafetyOutcomeDetails outcome={record.safety_outcome} />
         </RecordSection>
       )}
       {isCoordinator && <EditDetailsSection record={record} />}

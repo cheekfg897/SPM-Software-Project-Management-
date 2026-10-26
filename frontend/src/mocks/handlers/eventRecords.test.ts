@@ -1,9 +1,10 @@
 import { ROLE } from '@/config/roles'
 import type { Role } from '@/config/roles'
 import { decideBookingRequest, raiseBookingRequest } from '@/features/booking/api'
-import { recordEquipmentOutcome } from '@/features/equipment/api'
+import { recordEquipmentOutcome, reserveEquipment } from '@/features/equipment/api'
 import {
   completeEvent,
+  editEventRequest,
   fetchAssignedEventRequests,
   fetchEventRequest,
 } from '@/features/eventRequests/api'
@@ -29,6 +30,66 @@ const ANOTHER_COORDINATORS_REJECTED = 'EVR-M1XJ7T3D'
 const UNASSIGNED = 'EVR-Q4ZT6N1B'
 const NOT_FOUND = { status: 404, code: 'not_found', message: 'Event request not found.' }
 const NOT_PERMITTED = { status: 403, code: 'authorization_error' }
+/** Sara's open event, which the equipment mocks keep: two lines, Technical Support reserve for it. */
+const WITH_EQUIPMENT = 'EVR-MOCK0001'
+/** The request's own fields, as every record sends them. */
+const REQUEST_KEYS = [
+  'reference',
+  'status',
+  'name',
+  'purpose',
+  'description',
+  'proposed_date',
+  'end_date',
+  'start_time',
+  'end_time',
+  'expected_attendance',
+  'venue_requirements',
+  'accessibility_needs',
+  'equipment_requirements',
+  'registration_required',
+  'created_at',
+]
+/** The sections the organiser's and the coordinator's record both send. */
+const EVERY_RECORD_KEY = [
+  'programme_notes',
+  'coordinator',
+  'decision',
+  'clarifications',
+  'equipment_lines',
+]
+/** What only the organiser's record sends: everything else on it (SCRUM-24 AC10, ADR-0104). */
+const ORGANISERS_OWN_KEYS = [
+  'internal_planning_notes',
+  'venue_arrangements',
+  'equipment_reservations',
+  'safety_outcome',
+]
+/** A Harbour Gala arrangement as the booking mock saves it, before its own details. */
+const GALA_ARRANGEMENT = {
+  expected_occupancy: 10,
+  required_layout: null,
+  justification: null,
+  status: 'approved',
+  decision_reason: null,
+  hold_expires_at: null,
+  needs_alternative_venue: false,
+  unavailability: [],
+  flagged_after_change: false,
+  reassessment_flags: [],
+  preparation_status: 'not_started',
+  preparation_notes: null,
+}
+/** The Safety Officer's checklist on the mock's recorded outcomes. */
+const SAFETY_CHECKLIST = {
+  attendance_vs_capacity: '80 expected in a hall for 120.',
+  venue_layout: 'Theatre layout with two aisles.',
+  emergency_access: 'Both fire exits are clear.',
+  accessibility: 'Ramp at the side entrance.',
+  equipment_placement: 'Cables taped down along the stage.',
+  crowd_movement: 'One-way flow at the doors.',
+  venue_restrictions: 'No open flames.',
+}
 
 function signInAs(account: MockAccount | null) {
   sendRequestsAs(account === null ? null : mockTokenFor(account))
@@ -156,20 +217,22 @@ describe('SCRUM-24 mock of an event record', () => {
     ])
   })
 
-  it('shows a coordinator the same record for an event assigned to them, but for the equipment, venues and safety decision', async () => {
+  it("shows a coordinator the same record for an event assigned to them, but for the organiser's own sections", async () => {
     signInAs(MOCK_ACCOUNTS.organiser)
     const organisersView = await fetchEventRequest(COORDINATORS_UNDER_REVIEW)
     signInAs(MOCK_ACCOUNTS.coordinator)
 
     const coordinatorsView = await fetchEventRequest(COORDINATORS_UNDER_REVIEW)
 
-    // Each sees the equipment their own way, and only the organiser is sent the venues and the
-    // safety decision: all checked below.
+    // Each sees the equipment their own way, and only the organiser is sent the rest of the
+    // record: all checked below.
     expect({ ...coordinatorsView, equipment_lines: [] }).toEqual({
       ...organisersView,
       equipment_lines: [],
+      internal_planning_notes: undefined,
       venue_arrangements: undefined,
-      safety_decision: undefined,
+      equipment_reservations: undefined,
+      safety_outcome: undefined,
     })
   })
 
@@ -194,33 +257,128 @@ describe('SCRUM-24 mock of an event record', () => {
   )
 })
 
-describe('SCRUM-37 AC5, SCRUM-48 AC5 mock of the equipment on an event record', () => {
-  it("shows the organiser each line's type, quantity, status and quantity provided, and nothing internal", async () => {
+describe('SCRUM-24 AC10 mock of everything on the organiser record, at every stage', () => {
+  const CONFIRMED_GALA = 'EVR-BOOK0112'
+  const APPROVED_CAREERS_FAIR = 'EVR-BOOK0101'
+
+  it('sends the organiser every section of the record and nothing else', async () => {
+    signInAs(MOCK_ACCOUNTS.organiser)
+
+    const record = await fetchEventRequest(COORDINATORS_UNDER_REVIEW)
+
+    expect(Object.keys(record).sort()).toEqual(
+      [...REQUEST_KEYS, ...EVERY_RECORD_KEY, ...ORGANISERS_OWN_KEYS].sort(),
+    )
+  })
+
+  it("sends the coordinator none of the organiser's own sections: they have their own pages", async () => {
+    signInAs(MOCK_ACCOUNTS.coordinator)
+
+    const record = await fetchEventRequest(APPROVED_CAREERS_FAIR)
+
+    expect(Object.keys(record).sort()).toEqual([...REQUEST_KEYS, ...EVERY_RECORD_KEY].sort())
+  })
+
+  it('shows the organiser every arrangement in full, earliest first, a withdrawn one too', async () => {
+    signInAs(MOCK_ACCOUNTS.otherOrganiser)
+
+    const record = await fetchEventRequest(CONFIRMED_GALA)
+
+    expect(record.venue_arrangements).toEqual([
+      {
+        ...GALA_ARRANGEMENT,
+        venue_name: 'Boardroom Two',
+        venue_location: 'Level 3, Tower Block',
+        starts_at: '2026-12-05T17:00:00+08:00',
+        ends_at: '2026-12-05T18:00:00+08:00',
+        purpose: 'Drinks reception',
+        decision_reason: 'Booked',
+      },
+      {
+        ...GALA_ARRANGEMENT,
+        venue_name: 'Marina Hall',
+        venue_location: 'Level 1, Marina Wing',
+        starts_at: '2026-12-05T18:00:00+08:00',
+        ends_at: '2026-12-05T23:00:00+08:00',
+        purpose: 'Gala dinner',
+        required_layout: 'banquet',
+        decision_reason: 'Booked for the dinner.',
+        preparation_status: 'ready',
+        preparation_notes: 'Tables set for 80.',
+      },
+      {
+        ...GALA_ARRANGEMENT,
+        venue_name: 'Boardroom Two',
+        venue_location: 'Level 3, Tower Block',
+        starts_at: '2026-12-05T19:00:00+08:00',
+        ends_at: '2026-12-05T21:00:00+08:00',
+        purpose: 'Overflow room',
+        status: 'withdrawn',
+      },
+    ])
+  })
+
+  it('shows an arrangement as soon as it is raised, long before the event is confirmed', async () => {
+    signInAs(MOCK_ACCOUNTS.coordinator)
+    const raised = await raiseBookingRequest(APPROVED_CAREERS_FAIR, {
+      venue_id: 1,
+      starts_at: '2026-11-10T09:00:00+08:00',
+      ends_at: '2026-11-10T12:00:00+08:00',
+      purpose: 'Careers fair',
+    })
+    signInAs(MOCK_ACCOUNTS.otherOrganiser)
+    const pending = await fetchEventRequest(APPROVED_CAREERS_FAIR)
+    signInAs(MOCK_ACCOUNTS.venueStaff)
+    await decideBookingRequest(raised.id, { outcome: 'rejected', reason: 'Hall is closed.' })
+    signInAs(MOCK_ACCOUNTS.otherOrganiser)
+
+    const rejected = await fetchEventRequest(APPROVED_CAREERS_FAIR)
+
+    expect(pending.status).toBe('approved')
+    expect(pending.venue_arrangements?.map((shown) => shown.status)).toEqual(['pending'])
+    expect(rejected.venue_arrangements?.map((shown) => shown.decision_reason)).toEqual([
+      'Hall is closed.',
+    ])
+  })
+
+  it('shows the organiser each equipment line in full: notes, outcome, note and reviewer', async () => {
     signInAs(MOCK_ACCOUNTS.organiser)
 
     const record = await fetchEventRequest(COORDINATORS_UNDER_REVIEW)
 
     expect(record.equipment_lines).toEqual([
       {
-        id: 61,
         equipment_type_name: 'Projector',
         quantity: 10,
+        notes: 'Two at the back of the hall.',
         status: 'partially_fulfilled',
         provided_quantity: 6,
+        shortfall: 4,
+        outcome_note: 'Four are out for repair.',
+        reviewed_by: 'Tariq Hassan',
+        reviewed_at: '2026-10-05T11:00:00+08:00',
       },
       {
-        id: 62,
         equipment_type_name: 'Microphone',
         quantity: 4,
+        notes: 'Lapel, not handheld.',
         status: 'requested',
         provided_quantity: null,
+        shortfall: null,
+        outcome_note: null,
+        reviewed_by: null,
+        reviewed_at: null,
       },
       {
-        id: 63,
         equipment_type_name: 'Lectern',
         quantity: 1,
+        notes: 'At the front, stage left.',
         status: 'fulfilled',
         provided_quantity: 1,
+        shortfall: 0,
+        outcome_note: 'The spare one, with a reading light.',
+        reviewed_by: 'Tariq Hassan',
+        reviewed_at: '2026-10-05T11:05:00+08:00',
       },
     ])
   })
@@ -255,132 +413,91 @@ describe('SCRUM-37 AC5, SCRUM-48 AC5 mock of the equipment on an event record', 
     ])
   })
 
-  it("shows only the event's own lines, and none on an event with no equipment", async () => {
-    signInAs(MOCK_ACCOUNTS.otherOrganiser)
-    const withLines = await fetchEventRequest('EVR-MOCK0001')
-    signInAs(MOCK_ACCOUNTS.organiser)
-
-    const withoutLines = await fetchEventRequest(COORDINATORS_AWAITING_ANSWER)
-
-    expect(withLines.equipment_lines.map((line) => line.id)).toEqual([41, 42])
-    expect(withoutLines.equipment_lines).toEqual([])
-  })
-
-  it('shows the organiser an outcome as soon as Technical Support record it', async () => {
+  it('shows the organiser an outcome and a reservation as soon as Technical Support record them', async () => {
     signInAs(MOCK_ACCOUNTS.technicalSupport)
-    await recordEquipmentOutcome('EVR-MOCK0001', {
+    await recordEquipmentOutcome(WITH_EQUIPMENT, {
       lineId: 41,
       body: { provided_quantity: 6, note: 'Two are being repaired.' },
     })
+    await reserveEquipment(WITH_EQUIPMENT, { equipment_type_id: 2, quantity: 4 })
+    // A decoy on another event, which this event's record must leave out.
+    await reserveEquipment('EVR-APPROVED', { equipment_type_id: 1, quantity: 1 })
     signInAs(MOCK_ACCOUNTS.otherOrganiser)
 
-    const record = await fetchEventRequest('EVR-MOCK0001')
+    const record = await fetchEventRequest(WITH_EQUIPMENT)
 
-    expect(record.equipment_lines[0]).toEqual({
-      id: 41,
+    expect(record.equipment_lines[0]).toMatchObject({
       equipment_type_name: 'Projector',
-      quantity: 8,
-      status: 'partially_fulfilled',
       provided_quantity: 6,
+      shortfall: 2,
+      outcome_note: 'Two are being repaired.',
+      reviewed_by: 'Tariq Hassan',
     })
-  })
-})
-
-describe('SCRUM-49 AC11 mock of a confirmed event venues on its record', () => {
-  const CONFIRMED_GALA = 'EVR-BOOK0112'
-  const APPROVED_CAREERS_FAIR = 'EVR-BOOK0101'
-
-  it('shows the organiser each approved venue, earliest first, with its period and what was arranged, and nothing internal', async () => {
-    signInAs(MOCK_ACCOUNTS.otherOrganiser)
-
-    const record = await fetchEventRequest(CONFIRMED_GALA)
-
-    expect(record.venue_arrangements).toEqual([
+    expect(record.equipment_reservations).toEqual([
       {
-        venue_name: 'Boardroom Two',
-        venue_location: 'Level 3, Tower Block',
-        starts_at: '2026-12-05T17:00:00+08:00',
-        ends_at: '2026-12-05T18:00:00+08:00',
-        purpose: 'Drinks reception',
-        layout: null,
-        expected_occupancy: 10,
-      },
-      {
-        venue_name: 'Marina Hall',
-        venue_location: 'Level 1, Marina Wing',
-        starts_at: '2026-12-05T18:00:00+08:00',
-        ends_at: '2026-12-05T23:00:00+08:00',
-        purpose: 'Gala dinner',
-        layout: 'banquet',
-        expected_occupancy: 10,
+        equipment_type_name: 'Microphone',
+        quantity: 4,
+        starts_at: expect.any(String) as string,
+        ends_at: expect.any(String) as string,
+        reserved_by: 'Tariq Hassan',
+        preparation_status: 'not_started',
+        preparation_notes: null,
       },
     ])
   })
 
-  it('shows none before the event is confirmed, even once a venue is approved', async () => {
+  it('shows the organiser the planning notes the coordinator saved', async () => {
     signInAs(MOCK_ACCOUNTS.coordinator)
-    const raised = await raiseBookingRequest(APPROVED_CAREERS_FAIR, {
-      venue_id: 1,
-      starts_at: '2026-11-10T09:00:00+08:00',
-      ends_at: '2026-11-10T12:00:00+08:00',
-      purpose: 'Careers fair',
-    })
-    signInAs(MOCK_ACCOUNTS.venueStaff)
-    await decideBookingRequest(raised.id, { outcome: 'approved' })
-    signInAs(MOCK_ACCOUNTS.otherOrganiser)
+    await editEventRequest(COORDINATORS_UNDER_REVIEW, { internal_planning_notes: 'Call AV.' })
+    signInAs(MOCK_ACCOUNTS.organiser)
 
-    const record = await fetchEventRequest(APPROVED_CAREERS_FAIR)
+    const record = await fetchEventRequest(COORDINATORS_UNDER_REVIEW)
 
-    expect(record.venue_arrangements).toEqual([])
+    expect(record.internal_planning_notes).toBe('Call AV.')
   })
 
-  it('sends the coordinator no venue list or safety decision: they have their own pages', async () => {
-    signInAs(MOCK_ACCOUNTS.coordinator)
-
-    const record = await fetchEventRequest(APPROVED_CAREERS_FAIR)
-
-    expect(record).not.toHaveProperty('venue_arrangements')
-    expect(record).not.toHaveProperty('safety_decision')
-  })
-})
-
-describe('SCRUM-49 AC11 mock of the Safety Officer final decision on a confirmed event record', () => {
-  it('shows the organiser the outcome of the current check and when, and nothing internal', async () => {
+  it("shows the organiser the current safety check's outcome, checklist, comments, officer and time", async () => {
     signInAs(MOCK_ACCOUNTS.otherOrganiser)
 
     const record = await fetchEventRequest('EVR-BOOK0102')
 
-    expect(record.safety_decision).toEqual({
+    expect(record.safety_outcome).toEqual({
       outcome: 'approved',
-      decided_at: '2026-10-04T14:00:00+08:00',
+      checklist: SAFETY_CHECKLIST,
+      reason: null,
+      recorded_by: 'Sana Iyer',
+      recorded_at: '2026-10-04T14:00:00+08:00',
     })
   })
 
-  it('shows none before the event is confirmed, even with an outcome recorded', async () => {
-    // Approved, with the Safety Officer's "changes requested" on its last check.
+  it('shows a request for changes before the event is confirmed, with its reason', async () => {
     signInAs(MOCK_ACCOUNTS.organiser)
 
     const record = await fetchEventRequest(ANOTHER_COORDINATORS)
 
-    expect(record.safety_decision).toBeNull()
+    expect(record.status).toBe('approved')
+    expect(record.safety_outcome).toMatchObject({
+      outcome: 'changes_requested',
+      reason: 'Keep the terrace exit clear during the dinner.',
+    })
   })
 
-  it('shows none for a confirmed event whose check has no outcome on record', async () => {
+  it('shows no outcome while the current check has none on record', async () => {
     signInAs(MOCK_ACCOUNTS.otherOrganiser)
 
-    const record = await fetchEventRequest('EVR-BOOK0112')
+    const record = await fetchEventRequest(CONFIRMED_GALA)
 
-    expect(record.safety_decision).toBeNull()
+    expect(record.safety_outcome).toBeNull()
   })
 
-  it('keeps showing it once the event is completed', async () => {
+  it('keeps showing the outcome once the event is completed', async () => {
     // Hana's Autumn Book Fair, confirmed and already ended, in Sara's organisation.
     const ended = 'EVR-PLAN0005'
     const approval = {
       kind: 'safety_outcome_recorded',
       occurred_at: '2026-10-01T10:00:00+08:00',
       actor_name: MOCK_ACCOUNTS.safetyOfficer.full_name,
-      details: { outcome: 'approved' },
+      details: { outcome: 'approved', checklist: SAFETY_CHECKLIST, reason: null },
     }
     addToHistory(ended, [approval])
     signInAs(MOCK_ACCOUNTS.planningCoordinator)
@@ -390,9 +507,21 @@ describe('SCRUM-49 AC11 mock of the Safety Officer final decision on a confirmed
     const record = await fetchEventRequest(ended)
 
     expect(record.status).toBe('completed')
-    expect(record.safety_decision).toEqual({
+    expect(record.safety_outcome).toMatchObject({
       outcome: 'approved',
-      decided_at: '2026-10-01T10:00:00+08:00',
+      recorded_by: MOCK_ACCOUNTS.safetyOfficer.full_name,
+      recorded_at: '2026-10-01T10:00:00+08:00',
     })
+  })
+
+  it("shows only the event's own lines, and none on an event with no equipment", async () => {
+    signInAs(MOCK_ACCOUNTS.otherOrganiser)
+    const withLines = await fetchEventRequest(WITH_EQUIPMENT)
+    signInAs(MOCK_ACCOUNTS.organiser)
+
+    const withoutLines = await fetchEventRequest(COORDINATORS_AWAITING_ANSWER)
+
+    expect(withLines.equipment_lines.map((line) => line.quantity)).toEqual([8, 4])
+    expect(withoutLines.equipment_lines).toEqual([])
   })
 })

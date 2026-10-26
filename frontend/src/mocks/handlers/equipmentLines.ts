@@ -127,38 +127,48 @@ function savedLine(line: MockEquipmentLine) {
   return { id, equipment_type_id, quantity, notes, status }
 }
 
-/** A line as its event's organiser sees it (OrganiserEquipmentLineSchema, ADR-0098). */
-function organisersLine(line: MockEquipmentLine) {
-  const { id, quantity, status, provided_quantity } = line
+/** How many fewer units are provided than asked for, or null until it is reviewed. */
+function shortfallOf(line: MockEquipmentLine): number | null {
+  return line.provided_quantity === null ? null : line.quantity - line.provided_quantity
+}
+
+/**
+ * A line in full, as the organiser's record shows it (RecordEquipmentLineSchema, ADR-0104): the
+ * type by name, the technical notes, the outcome with the quantity provided and the shortfall,
+ * the outcome note and who reviewed it when.
+ */
+function recordLine(line: MockEquipmentLine) {
   return {
-    id,
     equipment_type_name: equipmentTypeName(line.equipment_type_id),
-    quantity,
-    status,
-    provided_quantity,
+    quantity: line.quantity,
+    notes: line.notes,
+    status: line.status,
+    provided_quantity: line.provided_quantity,
+    shortfall: shortfallOf(line),
+    outcome_note: line.outcome_note,
+    reviewed_by: line.reviewed_by,
+    reviewed_at: line.reviewed_at,
   }
 }
 
 /**
- * The event's lines as its record shows them (SCRUM-37 AC5, SCRUM-48 AC5, ADR-0098): the
- * organiser's own view of each, without the notes, outcome note or reviewer, and the line as
- * staff save it for the coordinator.
+ * The event's lines as its record shows them: everything on each to the organiser (SCRUM-37 AC5,
+ * SCRUM-48 AC5, ADR-0104), and the line as staff save it to the coordinator (ADR-0098).
  */
 export function recordLinesOf(reference: string, viewerRole: Role) {
   const eventLines = linesOfEvent(reference)
   if (viewerRole === ROLE.EVENT_ORGANISER) {
-    return eventLines.map(organisersLine)
+    return eventLines.map(recordLine)
   }
   return eventLines.map(savedLine)
 }
 
 /** A line as the event's list shows it to staff, with its shortfall (EquipmentLineWithOutcomeSchema). */
 function shownLine(line: MockEquipmentLine) {
-  const shortfall = line.provided_quantity === null ? null : line.quantity - line.provided_quantity
   return {
     ...savedLine(line),
     provided_quantity: line.provided_quantity,
-    shortfall,
+    shortfall: shortfallOf(line),
     outcome_note: line.outcome_note,
     reviewed_by: line.reviewed_by,
     reviewed_at: line.reviewed_at,

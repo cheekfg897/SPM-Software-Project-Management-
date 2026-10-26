@@ -2,8 +2,8 @@ import { apiRequest } from '@/lib/api'
 
 import type { EventRequestStatus } from '@/config/eventStatus'
 import type { Preparation } from '@/config/preparation'
-import type { BookingRequestStatus } from '@/features/booking/api'
-import type { EquipmentLineStatus, SavedEquipmentLine } from '@/features/equipment/api'
+import type { BookingRequest, BookingRequestStatus } from '@/features/booking/api'
+import type { SavedEquipmentLine } from '@/features/equipment/api'
 import type { SafetyChecklist, SafetyReviewEquipment } from '@/features/safety/api'
 import type { SafetyOutcome } from '@/features/safety/constants'
 
@@ -79,70 +79,76 @@ export interface Clarification {
 }
 
 /**
- * An equipment line as the event's organiser is sent it: the type by name, how many were asked
- * for, the status and, once Technical Support have reviewed it, how many will be provided
- * (SCRUM-37 AC5, SCRUM-48 AC5, ADR-0098). Never the technical notes, the outcome note or who
- * reviewed it.
+ * An equipment line with Technical Support's outcome, as the event's record shows it: the Safety
+ * Officer's view of a line (the type by name, the coordinator's technical notes, the outcome, the
+ * quantity provided and the outcome note), with the shortfall and who reviewed it when (SCRUM-37
+ * AC5, SCRUM-48 AC5, ADR-0104). The reviewer is null until it is reviewed, or once their account
+ * is gone.
  */
-export interface OrganiserEquipmentLine {
-  id: number
-  equipment_type_name: string
-  quantity: number
-  status: EquipmentLineStatus
-  provided_quantity: number | null
+export interface RecordEquipmentLine extends SafetyReviewEquipment {
+  shortfall: number | null
+  reviewed_by: string | null
+  /** ISO date-time with an offset; null until it is reviewed. */
+  reviewed_at: string | null
 }
 
 /**
- * A confirmed venue arrangement as the event's organiser is sent it (SCRUM-49 AC11, ADR-0099):
- * the venue's name and location, the period, and what was arranged. Nothing internal.
+ * A venue arrangement in full, as the event's record shows it (SCRUM-24 AC10, SCRUM-93 AC5,
+ * ADR-0104): everything on it but its ids, under the names the coordinator's own list uses, with
+ * the venue's name and location.
  */
-export interface OrganiserVenueArrangement {
+export interface RecordVenueArrangement
+  extends
+    Preparation,
+    Pick<
+      BookingRequest,
+      | 'starts_at'
+      | 'ends_at'
+      | 'purpose'
+      | 'expected_occupancy'
+      | 'required_layout'
+      | 'justification'
+      | 'status'
+      | 'decision_reason'
+      | 'hold_expires_at'
+      | 'needs_alternative_venue'
+      | 'unavailability'
+      | 'flagged_after_change'
+      | 'reassessment_flags'
+    > {
   venue_name: string
   venue_location: string
-  /** ISO date-time with an offset. */
-  starts_at: string
-  /** ISO date-time with an offset. */
-  ends_at: string
-  purpose: string
-  /** A layout value (LAYOUT_OPTIONS), or null when none was asked for. */
-  layout: string | null
-  expected_occupancy: number
-}
-
-/**
- * The Safety Officer's final decision as the event's organiser is sent it (SCRUM-49 AC11,
- * ADR-0099): the outcome of the current check and when it was made. Not the officer's name, the
- * checklist notes or the reason.
- */
-export interface OrganiserSafetyDecision {
-  outcome: SafetyOutcome
-  /** ISO date-time with an offset. */
-  decided_at: string
 }
 
 /**
  * An event request's record: the request, the coordinator's note the organiser may see, who
  * the coordinator is (null until one is assigned), the decision (null until one is made), the
  * clarification exchange, oldest first (SCRUM-24 AC9, ADR-0026, ADR-0056), and the equipment
- * lines. The organiser is sent their own view of each line; the coordinator is sent the line as
- * staff save it, and works on it from the Equipment page (ADR-0098).
+ * lines. The coordinator is sent each line as staff save it, and works on it from the Equipment
+ * page (ADR-0098). The organiser is sent everything on the record, at every stage (SCRUM-24
+ * AC10, ADR-0104): each line with its outcome and reviewer, the planning notes, every venue
+ * arrangement, the reservations and the current safety check.
  */
 export interface EventRecord extends EventRequest {
   programme_notes: string | null
   coordinator: CoordinatorContact | null
   decision: Decision | null
   clarifications: Clarification[]
-  equipment_lines: (OrganiserEquipmentLine | SavedEquipmentLine)[]
-  /** Only on the organiser's record, and empty until the event is confirmed (ADR-0099). */
-  venue_arrangements?: OrganiserVenueArrangement[]
-  /** Only on the organiser's record, and null until the event is confirmed (ADR-0099). */
-  safety_decision?: OrganiserSafetyDecision | null
+  equipment_lines: (RecordEquipmentLine | SavedEquipmentLine)[]
+  /** Only on the organiser's record (ADR-0104). */
+  internal_planning_notes?: string | null
+  /** Only on the organiser's record: every arrangement, in any status (ADR-0104). */
+  venue_arrangements?: RecordVenueArrangement[]
+  /** Only on the organiser's record (ADR-0104). */
+  equipment_reservations?: StaffReservation[]
+  /** Only on the organiser's record: null until the current check has an outcome (ADR-0104). */
+  safety_outcome?: SafetyCheckOutcome | null
 }
 
-/** Whether the line is the organiser's view of it: only theirs names the equipment type. */
-export function isOrganiserEquipmentLine(
-  line: OrganiserEquipmentLine | SavedEquipmentLine,
-): line is OrganiserEquipmentLine {
+/** Whether the line is the record's view of it: only that one names the equipment type. */
+export function isRecordEquipmentLine(
+  line: RecordEquipmentLine | SavedEquipmentLine,
+): line is RecordEquipmentLine {
   return 'equipment_type_name' in line
 }
 

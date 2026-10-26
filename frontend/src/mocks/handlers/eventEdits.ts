@@ -29,7 +29,8 @@ import type { SignificantChange } from './reassessmentRules'
  * serves only its seeded notices. Checks run in the backend's order:
  * the coordinator's own event (404), a status that can be edited (409: every status before
  * Confirmed, and a Confirmed event is pointed to a change request; AC8, ADR-0101), then the
- * fields (400). The internal planning notes are kept here: the record never shows them.
+ * fields (400). The planning notes are kept here: the organiser's record and the staff record
+ * read them, and the coordinator's own record doesn't (ADR-0095, ADR-0104).
  */
 
 const REQUESTS_PATH = '/api/events/requests'
@@ -97,7 +98,7 @@ export function resetMockEventEdits(): void {
   internalNotes = {}
 }
 
-/** The event's internal planning notes as last saved, or null: staff read them (ADR-0095). */
+/** The event's planning notes as last saved, or null: staff and the organiser read them. */
 export function internalNotesOf(reference: string): string | null {
   return internalNotes[reference] ?? null
 }

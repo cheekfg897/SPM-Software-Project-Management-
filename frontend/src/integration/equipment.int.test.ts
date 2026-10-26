@@ -406,7 +406,7 @@ describe('SCRUM-48 equipment outcomes against the backend', () => {
   it.todo('answers 404 "Equipment line not found." for another event\'s line')
 
   it.skipIf(!canReviewALine)(
-    "shows the organiser each line's type, quantity, status and quantity provided, but not the notes, outcome note or reviewer (AC5, SCRUM-37 AC5)",
+    'shows the organiser each line in full: notes, outcome, quantity provided, note and reviewer (AC5, SCRUM-37 AC5, ADR-0104)',
     async () => {
       const equipmentTypeId = await newEquipmentType()
       const { name: typeName } = await apiRequest<{ name: string }>(
@@ -419,7 +419,7 @@ describe('SCRUM-48 equipment outcomes against the backend', () => {
         notes: 'Two at the back of the hall.',
       })
       await signInAsTechSupport()
-      await recordEquipmentOutcome(event.reference, {
+      const recorded = await recordEquipmentOutcome(event.reference, {
         lineId: line.id,
         body: { provided_quantity: 6, note: 'Four are out for repair.' },
       })
@@ -431,13 +431,18 @@ describe('SCRUM-48 equipment outcomes against the backend', () => {
 
       expect(organisersRecord.equipment_lines).toEqual([
         {
-          id: line.id,
           equipment_type_name: typeName,
           quantity: 10,
+          notes: 'Two at the back of the hall.',
           status: 'partially_fulfilled',
           provided_quantity: 6,
+          shortfall: 4,
+          outcome_note: 'Four are out for repair.',
+          reviewed_by: recorded.reviewed_by,
+          reviewed_at: recorded.reviewed_at,
         },
       ])
+      expect(recorded.reviewed_by).toEqual(expect.any(String))
       expect(coordinatorsRecord.equipment_lines).toEqual([
         {
           id: line.id,
