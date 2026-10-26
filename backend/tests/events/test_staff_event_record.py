@@ -43,6 +43,7 @@ from app.modules.venue.models import (
     PreparationStatus as VenuePreparationStatus,
     Venue,
 )
+from tests.conftest import HOLD_STATUSES, place_hold_on
 from tests.events.cases import (
     DRAFT_REFERENCE,
     NON_DRAFT_STATUSES,
@@ -200,6 +201,21 @@ def test_the_record_holds_each_venue_arrangement_with_its_preparation(
             preparation_status=VenuePreparationStatus.READY, preparation_notes="Stage built."
         )
     ]
+
+
+def test_the_record_lists_every_arrangement_whatever_its_status(
+    db_session: Session, saved_users: list[User], arrange: Arrange, save: Callable[..., None]
+) -> None:
+    """AC9 (25 Oct): withdrawn, released and expired ones too (ADR-0105)."""
+    for status in BookingRequestStatus:
+        arrangement = arrange(status)
+        if status in HOLD_STATUSES:
+            place_hold_on(arrangement, FIRST_CHECK_AT, save)
+
+    staff_record = get_staff_event_record(REFERENCE, session=db_session)
+
+    statuses = [arrangement.status for arrangement in staff_record.venue_arrangements]
+    assert statuses == list(BookingRequestStatus)
 
 
 def test_another_events_venue_arrangements_are_left_out(

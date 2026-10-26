@@ -35,7 +35,6 @@ import {
   savedNotes,
 } from './preparationRules'
 import { FLAGGABLE_STATUSES, reassessmentFlagsFor } from './reassessmentRules'
-import { MOCK_VENUES } from './venueFixtures'
 import type { SignificantChange } from './reassessmentRules'
 import { instantOf } from './venueBlockRules'
 import { unknownFieldErrors } from './venueRules'
@@ -497,33 +496,6 @@ export function hasActiveArrangement(reference: string): boolean {
 /** The booking mock's event behind a reference, for the staff record mock (ADR-0095). */
 export function bookingEventByReference(reference: string): MockBookingEvent | undefined {
   return events.find((known) => known.reference === reference)
-}
-
-/** A venue by name, or by its id as the history names one the catalogue doesn't hold (ADR-0076). */
-function venueNameOf(venueId: number): string {
-  const venue = Object.values(MOCK_VENUES).find((candidate) => candidate.id === venueId)
-  return venue?.name ?? `Venue ID ${String(venueId)}`
-}
-
-/**
- * The event's arrangements that still count, earliest first, as the read-only staff record shows
- * them: each venue by name, its period, its status and Venue Staff's preparation, as the
- * backend's list_arrangements_for_record does (SCRUM-84 AC2, ADR-0095).
- */
-export function arrangementsForRecord(reference: string) {
-  const event = bookingEventByReference(reference)
-  if (event === undefined) {
-    return []
-  }
-  const active = requestsOf(event).filter((existing) => !RETIRED_STATUSES.includes(existing.status))
-  return active.map((arrangement) => ({
-    venue_name: venueNameOf(arrangement.venue_id),
-    starts_at: arrangement.starts_at,
-    ends_at: arrangement.ends_at,
-    status: arrangement.status,
-    preparation_status: arrangement.preparation_status,
-    preparation_notes: arrangement.preparation_notes,
-  }))
 }
 
 /**

@@ -1737,27 +1737,13 @@ def _arrangement_for_record(
     )
 
 
-def list_arrangements_for_record(
-    event_id: int, *, session: Session | None = None
-) -> list[ArrangementForRecord]:
-    """The event's arrangements that still count, earliest period first (ADR-0095).
-
-    Withdrawn and released ones are left out, as :func:`list_active_arrangements`
-    does.
-    """
-    shown = []
-    for arrangement in list_active_arrangements(event_id, session=session):
-        shown.append(_arrangement_for_record(arrangement, session))
-    return shown
-
-
 def list_every_arrangement_for_record(
     event_id: int, *, session: Session | None = None
 ) -> list[ArrangementForRecord]:
     """Every one of the event's arrangements, in any status, earliest period first.
 
-    SCRUM-24 AC10 and SCRUM-93 AC5 (ADR-0104): withdrawn, released, rejected and
-    expired ones too, each with its status, so the record hides none of them.
+    SCRUM-24 AC9, AC10 and SCRUM-93 AC5 (ADR-0104, ADR-0105): withdrawn, released,
+    rejected and expired ones too, each with its status, so the record hides none.
     """
     shown = []
     for arrangement in _every_arrangement_of(event_id, session):

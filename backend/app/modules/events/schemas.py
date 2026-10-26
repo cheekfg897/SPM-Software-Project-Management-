@@ -887,22 +887,6 @@ class StaffEventRequestSchema(EventRequestSchema):
     internal_planning_notes = fields.String(dump_only=True, allow_none=True)
 
 
-class StaffVenueArrangementSchema(Schema):
-    """A venue arrangement as the read-only staff record shows it (SCRUM-84 AC2).
-
-    Dumped from the venue module's ``ArrangementForRecord``, whose statuses are the
-    venue module's own enums, so each is shown by its value. Times are in business
-    time (ADR-0009).
-    """
-
-    venue_name = fields.String(dump_only=True)
-    starts_at = BusinessDateTime(dump_only=True)
-    ends_at = BusinessDateTime(dump_only=True)
-    status = fields.String(attribute="status.value", dump_only=True)
-    preparation_status = fields.String(attribute="preparation_status.value", dump_only=True)
-    preparation_notes = fields.String(dump_only=True, allow_none=True)
-
-
 class StaffReservationSchema(Schema):
     """An equipment reservation as the read-only staff record shows it (SCRUM-85 AC2).
 
@@ -930,6 +914,61 @@ class SafetyOutcomeSchema(Schema):
     reason = fields.String(dump_only=True, allow_none=True)
     recorded_by = fields.String(dump_only=True, allow_none=True)
     recorded_at = BusinessDateTime(dump_only=True)
+
+
+class RecordUnavailabilitySchema(Schema):
+    """A block or deactivation that flagged an arrangement, in business time.
+
+    Dumped from the venue module's ``UnavailabilityForRecord`` (SCRUM-92 AC1); the
+    category is the venue module's enum, shown by its value. ``ends_at`` is ``null``
+    for a deactivation.
+    """
+
+    category = fields.String(attribute="category.value", dump_only=True)
+    reason = fields.String(dump_only=True)
+    starts_at = BusinessDateTime(dump_only=True)
+    ends_at = BusinessDateTime(dump_only=True, allow_none=True)
+
+
+class RecordReassessmentSchema(Schema):
+    """A reason a significant change flagged an arrangement (SCRUM-33 AC6, ADR-0094)."""
+
+    kind = fields.String(attribute="kind.value", dump_only=True)
+    reason = fields.String(dump_only=True)
+
+
+class RecordVenueArrangementSchema(Schema):
+    """A venue arrangement in full, as the event's record shows it (ADR-0104).
+
+    Dumped from the venue module's ``ArrangementForRecord``: everything on it but its
+    ids, under the names the coordinator's own list uses, and what the venue offers as
+    the Safety Officer reviews it (SCRUM-24 AC9, AC10, SCRUM-93 AC5, SCRUM-97 AC6). The
+    organiser's and the staff record both send it (ADR-0104, ADR-0105).
+    Statuses are the venue module's enums, shown by their values; times are in
+    business time (ADR-0009). ``hold_expires_at`` is ``null`` unless it is On Hold or
+    its hold expired.
+    """
+
+    venue_name = fields.String(dump_only=True)
+    venue_location = fields.String(dump_only=True)
+    venue_capacity = fields.Integer(dump_only=True)
+    venue_facilities = fields.List(fields.String(), dump_only=True)
+    venue_accessibility_features = fields.List(fields.String(), dump_only=True)
+    starts_at = BusinessDateTime(dump_only=True)
+    ends_at = BusinessDateTime(dump_only=True)
+    purpose = fields.String(dump_only=True)
+    expected_occupancy = fields.Integer(dump_only=True)
+    required_layout = fields.String(dump_only=True, allow_none=True)
+    justification = fields.String(dump_only=True, allow_none=True)
+    status = fields.String(attribute="status.value", dump_only=True)
+    decision_reason = fields.String(dump_only=True, allow_none=True)
+    hold_expires_at = BusinessDateTime(dump_only=True, allow_none=True)
+    needs_alternative_venue = fields.Boolean(dump_only=True)
+    unavailability = fields.Nested(RecordUnavailabilitySchema, many=True, dump_only=True)
+    flagged_after_change = fields.Boolean(dump_only=True)
+    reassessment_flags = fields.Nested(RecordReassessmentSchema, many=True, dump_only=True)
+    preparation_status = fields.String(attribute="preparation_status.value", dump_only=True)
+    preparation_notes = fields.String(dump_only=True, allow_none=True)
 
 
 class RecordEquipmentLineSchema(SafetyReviewEquipmentSchema):
@@ -962,64 +1001,10 @@ class StaffEventRecordSectionsSchema(Schema):
     clarifications = fields.Nested(
         ClarificationSchema, attribute="record.clarifications", many=True, dump_only=True
     )
-    venue_arrangements = fields.Nested(StaffVenueArrangementSchema, many=True, dump_only=True)
+    venue_arrangements = fields.Nested(RecordVenueArrangementSchema, many=True, dump_only=True)
     equipment_lines = fields.Nested(RecordEquipmentLineSchema, many=True, dump_only=True)
     equipment_reservations = fields.Nested(StaffReservationSchema, many=True, dump_only=True)
     safety_outcome = fields.Nested(SafetyOutcomeSchema, allow_none=True, dump_only=True)
-
-
-class RecordUnavailabilitySchema(Schema):
-    """A block or deactivation that flagged an arrangement, in business time.
-
-    Dumped from the venue module's ``UnavailabilityForRecord`` (SCRUM-92 AC1); the
-    category is the venue module's enum, shown by its value. ``ends_at`` is ``null``
-    for a deactivation.
-    """
-
-    category = fields.String(attribute="category.value", dump_only=True)
-    reason = fields.String(dump_only=True)
-    starts_at = BusinessDateTime(dump_only=True)
-    ends_at = BusinessDateTime(dump_only=True, allow_none=True)
-
-
-class RecordReassessmentSchema(Schema):
-    """A reason a significant change flagged an arrangement (SCRUM-33 AC6, ADR-0094)."""
-
-    kind = fields.String(attribute="kind.value", dump_only=True)
-    reason = fields.String(dump_only=True)
-
-
-class RecordVenueArrangementSchema(Schema):
-    """A venue arrangement in full, as the organiser's record shows it (ADR-0104).
-
-    Dumped from the venue module's ``ArrangementForRecord``: everything on it but its
-    ids, under the names the coordinator's own list uses, and what the venue offers as
-    the Safety Officer reviews it (SCRUM-24 AC10, SCRUM-93 AC5, SCRUM-97 AC6).
-    Statuses are the venue module's enums, shown by their values; times are in
-    business time (ADR-0009). ``hold_expires_at`` is ``null`` unless it is On Hold or
-    its hold expired.
-    """
-
-    venue_name = fields.String(dump_only=True)
-    venue_location = fields.String(dump_only=True)
-    venue_capacity = fields.Integer(dump_only=True)
-    venue_facilities = fields.List(fields.String(), dump_only=True)
-    venue_accessibility_features = fields.List(fields.String(), dump_only=True)
-    starts_at = BusinessDateTime(dump_only=True)
-    ends_at = BusinessDateTime(dump_only=True)
-    purpose = fields.String(dump_only=True)
-    expected_occupancy = fields.Integer(dump_only=True)
-    required_layout = fields.String(dump_only=True, allow_none=True)
-    justification = fields.String(dump_only=True, allow_none=True)
-    status = fields.String(attribute="status.value", dump_only=True)
-    decision_reason = fields.String(dump_only=True, allow_none=True)
-    hold_expires_at = BusinessDateTime(dump_only=True, allow_none=True)
-    needs_alternative_venue = fields.Boolean(dump_only=True)
-    unavailability = fields.Nested(RecordUnavailabilitySchema, many=True, dump_only=True)
-    flagged_after_change = fields.Boolean(dump_only=True)
-    reassessment_flags = fields.Nested(RecordReassessmentSchema, many=True, dump_only=True)
-    preparation_status = fields.String(attribute="preparation_status.value", dump_only=True)
-    preparation_notes = fields.String(dump_only=True, allow_none=True)
 
 
 class OrganiserRecordSectionsSchema(Schema):

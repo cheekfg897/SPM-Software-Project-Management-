@@ -1,4 +1,8 @@
-import { updateBookingPreparation } from '@/features/booking/api'
+import {
+  raiseBookingRequest,
+  updateBookingPreparation,
+  withdrawArrangement,
+} from '@/features/booking/api'
 import { addEquipmentLine, recordEquipmentOutcome } from '@/features/equipment/api'
 import { fetchStaffEventRecord, saveDraftEventRequest } from '@/features/eventRequests/api'
 import { apiRequest } from '@/lib/api'
@@ -17,7 +21,9 @@ import type { Credentials } from './backend'
 import {
   approvedEvent,
   CHECKLIST,
+  EVENT_DATE,
   LEAD,
+  newVenue,
   required,
   SAFETY_OFFICER,
   safetyApprovedEvent,
@@ -153,6 +159,34 @@ describe('SCRUM-24 the read-only staff record against the backend', () => {
         })
         expect(record.coordinator?.email).toBe(staffAccount().email)
       }
+    },
+  )
+
+  it.skipIf(!canReachSafetyApproval)(
+    'lists a withdrawn arrangement with its status, as every other (AC9, ADR-0105)',
+    async () => {
+      const event = await approvedEvent()
+      const venueId = await newVenue()
+      await signInAs(staffAccount())
+      const raised = await raiseBookingRequest(event.reference, {
+        venue_id: venueId,
+        starts_at: `${EVENT_DATE}T09:00:00+08:00`,
+        ends_at: `${EVENT_DATE}T12:00:00+08:00`,
+        purpose: 'Integration withdrawn hall',
+      })
+      await withdrawArrangement(event.reference, raised.id)
+      await signInAs(required(LEAD))
+
+      const record = await fetchStaffEventRecord(event.reference)
+
+      expect(record.venue_arrangements).toEqual([
+        expect.objectContaining({
+          purpose: 'Integration withdrawn hall',
+          status: 'withdrawn',
+          venue_location: 'Level 1',
+          hold_expires_at: null,
+        }),
+      ])
     },
   )
 
