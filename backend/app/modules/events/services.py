@@ -3230,16 +3230,28 @@ STILL_NEEDS_SAFETY_REVIEW_DETAIL = " It still needs Safety Review and confirmati
 
 
 def _sent_back_by_a_venue(event_id: int, session: Session) -> bool:
-    """Whether a venue becoming unavailable sent the event back from Confirmed (AC3).
+    """Whether a venue sent the event back from Confirmed, and it isn't confirmed since.
 
-    Each flag's history entry says whether it did (``returned_to_planning``).
+    SCRUM-92 AC3, AC8, AC9. Each flag's history entry says whether it sent the event
+    back (``returned_to_planning``); the newest such entry or confirmation decides, so
+    a return the coordinator has since confirmed past no longer counts (ADR-0108).
     """
-    stmt = select(EventHistoryEntry).where(
-        EventHistoryEntry.event_request_id == event_id,
-        EventHistoryEntry.kind == EventHistoryKind.ALTERNATIVE_VENUE_NEEDED,
+    stmt = (
+        select(EventHistoryEntry)
+        .where(
+            EventHistoryEntry.event_request_id == event_id,
+            EventHistoryEntry.kind.in_(
+                (EventHistoryKind.ALTERNATIVE_VENUE_NEEDED, EventHistoryKind.EVENT_CONFIRMED)
+            ),
+        )
+        .order_by(EventHistoryEntry.occurred_at.desc(), EventHistoryEntry.id.desc())
     )
-    flag_entries = session.scalars(stmt)
-    return any(entry.details["returned_to_planning"] for entry in flag_entries)
+    for entry in session.scalars(stmt):
+        if entry.kind is EventHistoryKind.EVENT_CONFIRMED:
+            return False
+        if entry.details["returned_to_planning"]:
+            return True
+    return False
 
 
 def notify_coordinator_venue_available_again(
