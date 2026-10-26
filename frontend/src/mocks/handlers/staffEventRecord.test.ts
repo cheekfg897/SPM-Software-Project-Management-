@@ -259,6 +259,22 @@ describe('SCRUM-24 mock of the read-only staff record', () => {
     },
   )
 
+  it('names who reviewed each line of an event the Safety Officer is checking (SCRUM-48 AC5)', async () => {
+    // An event reaches Safety Review only once every line has an outcome, and the backend keeps
+    // who recorded each one, so no line on it comes back reviewed by nobody.
+    signInAs(MOCK_ACCOUNTS.safetyOfficer)
+
+    const { equipment_lines: lines } = await fetchStaffEventRecord(GALA)
+
+    expect(lines.map((line) => [line.status, line.reviewed_by])).toEqual([
+      ['fulfilled', 'Tariq Hassan'],
+      ['partially_fulfilled', 'Tariq Hassan'],
+    ])
+    for (const line of lines) {
+      expect(line.reviewed_at).toEqual(expect.any(String))
+    }
+  })
+
   it('shows the outcome the Safety Officer records, with the checklist', async () => {
     signInAs(MOCK_ACCOUNTS.lead)
     expect((await fetchStaffEventRecord(GALA)).safety_outcome).toBeNull()

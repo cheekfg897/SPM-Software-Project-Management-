@@ -140,9 +140,13 @@ function safetyArrangementsOf(safetyEvent: MockSafetyEvent | undefined): RecordV
   }))
 }
 
+/** When Technical Support reviewed the Safety Officer's mock's lines, before any check began. */
+const SAFETY_LINES_REVIEWED_AT = '2026-10-02T10:00:00+08:00'
+
 /**
- * The Safety Officer's mock's equipment as the record's lines: it keeps each line's outcome but
- * not who reviewed it, so no reviewer is named.
+ * The Safety Officer's mock's equipment as the record's lines. An event reaches Safety Review only
+ * once every line has an outcome, and the backend keeps who recorded it (SCRUM-48 AC5), so each
+ * line is shown reviewed by the mock's Technical Support account; that mock keeps no reviewer.
  */
 function safetyLinesOf(safetyEvent: MockSafetyEvent | undefined): RecordEquipmentLine[] {
   if (safetyEvent === undefined) {
@@ -151,8 +155,8 @@ function safetyLinesOf(safetyEvent: MockSafetyEvent | undefined): RecordEquipmen
   return safetyEvent.equipment.map((line) => ({
     ...line,
     shortfall: shortfallOf(line),
-    reviewed_by: null,
-    reviewed_at: null,
+    reviewed_by: MOCK_ACCOUNTS.technicalSupport.full_name,
+    reviewed_at: SAFETY_LINES_REVIEWED_AT,
   }))
 }
 
