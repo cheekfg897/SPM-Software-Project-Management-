@@ -317,6 +317,24 @@ def test_an_edit_that_flags_an_arrangement_sends_the_event_back_to_approved(
     assert reload_event_request(in_safety_review.id).status is EventRequestStatus.APPROVED
 
 
+def test_a_rise_in_attendance_that_outgrows_an_arrangement_sends_the_event_back_to_approved(
+    in_safety_review: EventRequest,
+    arrange: Arrange,
+    save: Callable[..., None],
+    edit_event: EditEvent,
+    reload_event_request: ReloadEventRequest,
+) -> None:
+    """An arrangement for all 250 people can't hold 300, so it is flagged (ADR-0094)."""
+    whole_audience = arrange(BookingRequestStatus.APPROVED)
+    whole_audience.expected_occupancy = 250
+    save(whole_audience)
+
+    edit_event(COORDINATOR_ID, {"expected_attendance": 300})
+
+    assert reload_event_request(in_safety_review.id).status is EventRequestStatus.APPROVED
+    _assert_every_officer_told("Changed: expected attendance." + BACK_IN_PLANNING)
+
+
 @pytest.mark.parametrize("payload", NOT_FLAGGING_EDITS, ids=lambda payload: next(iter(payload)))
 def test_an_edit_that_flags_nothing_leaves_the_event_in_safety_review(
     in_safety_review: EventRequest,
