@@ -1,19 +1,59 @@
-"""SCRUM-53: attendees take and give up the one place at an event, through the API.
+"""SCRUM-63: attendees fill an event; one withdraws and registers again, via the API.
 
-The event starts out approved. The coordinator can't open registration yet, because only
-a confirmed event can (SCRUM-69 AC4). A venue is booked and approved, the Safety Officer
-approves the event, and the coordinator confirms it (SCRUM-49 AC1), so the event reaches
-Confirmed through the real routes rather than being saved that way. The coordinator then
-opens registration with room for one. Attendee A registers and sees it in their list.
-Attendee B is turned away because the event is full (SCRUM-54 AC2). When A withdraws,
-the place is free and B takes it, and A, registering again, finds it gone (SCRUM-53 AC2,
-ADR-0032). Every call goes through the real routes with Flask's test client (ADR-0031).
+This is SCRUM-63's registration journey (and SCRUM-53's before it). It exercises these
+user stories and acceptance criteria (SCRUM-63 AC5):
 
-The event is saved as approved with its coordinator; the request-to-approval journey is
-test_request_to_approval_journey.py.
+- SCRUM-63 AC1: registration up to capacity, a refusal at capacity, a withdrawal and a
+  successful re-registration.
+- SCRUM-69 AC1, AC2, AC4: the coordinator opens registration with a capacity, which is
+  refused until the event is confirmed.
+- SCRUM-42 and SCRUM-43: a venue is booked and Venue Staff approve it.
+- SCRUM-97 AC1, AC2 and SCRUM-98 AC1: the event, which has no equipment, goes to Safety
+  Review and the Safety Officer approves it.
+- SCRUM-49 AC1, AC2: the coordinator confirms the event.
+- SCRUM-52 AC1, AC2, AC5: the event is in the catalogue; attendees register with their
+  account and see the event in their list.
+- SCRUM-54 AC1, AC2, AC3: the event fills and is shown full, a further registration is
+  refused, and a withdrawal frees a place that a further registration takes.
+- SCRUM-53 AC1, AC2, AC5: attendees see each registration's status, withdraw, and the
+  place goes back to the event's capacity.
+- SCRUM-55 AC2, AC3, AC4: the coordinator's list of registrants shows each status and
+  the count against the capacity.
 
-The Event Organiser's list of registrants is SCRUM-55's route, which is not on main
-yet; add it here when it lands (the organiser sees A withdrawn and B registered).
+The journey. The event starts out approved, so the coordinator can't open
+registration yet. A venue is booked and approved, the Safety Officer approves the event,
+and the coordinator confirms it: the event reaches Confirmed through the real routes
+rather than being saved that way. The coordinator opens registration with two places.
+Alice and Bob fill them, the catalogue shows the event full with no places left, and
+Carol is turned away. Alice withdraws and Carol takes the freed place, so Alice,
+registering again, is turned away too: a withdrawn attendee has no claim on the place.
+Bob withdraws, and Alice registers again into his place, on her own registration once
+more (ADR-0032). Dan holds a place at a second confirmed event the whole time: it never
+counts against this event's places, and that event loses only his. Every call goes
+through the real routes with Flask's test client (ADR-0031).
+
+SCRUM-63 AC2 (a confirmed event's date change flagging its bookings, through to Venue
+Staff reconfirming) and AC3 (a cancellation releasing them) are deferred until SCRUM-56
+to SCRUM-61 land; none of them is built yet. AC4 is met by CI's backend job, which runs
+every test under ``tests/`` with no marker filter, this one included; main's ruleset
+requires every CI check to pass before a merge (Product Owner, 20 Oct).
+
+Defaults settled in SCRUM-63's question pass:
+
+1. The journey runs through Flask's test client on the in-memory database, as ADR-0031
+   and SCRUM-51's journeys do, marked ``scrum_63`` and ``e2e``.
+2. SCRUM-53's registration journey is extended rather than copied.
+3. "Up to capacity" is a capacity of two: two attendees fill it and a third is refused.
+4. "A successful re-registration" is the attendee who withdrew registering again into a
+   freed place, which reuses her registration (ADR-0032).
+5. The event reaches Confirmed through the real routes. It is saved as approved, with
+   its coordinator; the request-to-approval journey is
+   test_request_to_approval_journey.py. The second event is only a decoy for the
+   counts, so it is saved as confirmed with registration open.
+
+The Event Organiser's own view of the registrants is not walked here: their account
+would have to be linked to the event's client organisation first, which
+test_request_to_approval_journey.py does. The coordinator reads the same list.
 """
 
 from __future__ import annotations
@@ -33,13 +73,15 @@ from app.modules.auth.services import create_staff_user
 from app.modules.events.models import EventRequest, EventRequestStatus
 from tests.e2e.actors import Actor, SignIn
 
-pytestmark = [pytest.mark.scrum_53, pytest.mark.e2e]
+pytestmark = [pytest.mark.scrum_53, pytest.mark.scrum_63, pytest.mark.e2e]
 
 PASSWORD = "Password123"
 COORDINATOR_ACCOUNT = {"full_name": "Cara Coordinator", "email": "cara@example.com"}
 VENUE_STAFF_ACCOUNT = {"full_name": "Vera Venue", "email": "vera@example.com"}
 SAFETY_OFFICER_ACCOUNT = {"full_name": "Sam Safety", "email": "sam@example.com"}
 EVENT = "EVR-AAAAAAAA"
+DECOY_EVENT = "EVR-BBBBBBBB"
+DECOY_PLACES = 5
 MAIN_HALL = {
     "name": "Main Hall",
     "location": "Level 1",
@@ -58,8 +100,9 @@ CHECKLIST = {
     "crowd_movement": "One-way flow at the doors.",
     "venue_restrictions": "No open flames.",
 }
-ONE_PLACE = {"registration_enabled": True, "registration_capacity": 1}
+TWO_PLACES = {"registration_enabled": True, "registration_capacity": 2}
 SETTINGS_PATH = f"/api/events/requests/{EVENT}/registration"
+EVENT_FULL = {"error": "event_full", "message": "This event is full."}
 
 
 def _body(response: TestResponse, expected_status: int) -> Any:
@@ -100,6 +143,21 @@ def _my_registration_statuses(attendee: Actor) -> list[str]:
     return [row["status"] for row in listed]
 
 
+def _refusal(response: TestResponse) -> dict[str, str]:
+    """A 409's error code and message."""
+    body = _body(response, 409)
+    return {"error": body["error"], "message": body["message"]}
+
+
+def _places(client: FlaskClient, event_id: int) -> tuple[int, bool]:
+    """The event's places left and whether it is full, as the public catalogue shows."""
+    listed = _body(client.get("/api/events/catalogue"), 200)["items"]
+    for entry in listed:
+        if entry["id"] == event_id:
+            return entry["places_left"], entry["is_full"]
+    raise AssertionError(f"event {event_id} is not in the catalogue")
+
+
 def _book_the_hall(coordinator: Actor, venue_staff: Actor, event_day: str) -> None:
     """Book the Main Hall for the event's morning, and have Venue Staff approve it."""
     hall = _body(venue_staff.post("/api/venues", MAIN_HALL), 201)
@@ -126,7 +184,7 @@ def _pass_safety_check(coordinator: Actor, safety_officer: Actor) -> None:
 
 @pytest.fixture()
 def coordinator_id(db_session: Session) -> int:
-    """The Event Coordinator's user id; the event is assigned to them."""
+    """The Event Coordinator's user id; both events are assigned to them."""
     return _create_staff(COORDINATOR_ACCOUNT, Role.EVENT_COORDINATOR, db_session)
 
 
@@ -173,59 +231,119 @@ def approved_event(
     return event_request.id
 
 
-def test_one_place_passes_from_one_attendee_to_another(
+@pytest.fixture()
+def decoy_event(
+    db_session: Session,
+    make_event_request: Callable[..., EventRequest],
+    coordinator_id: int,
+    event_day: str,
+) -> int:
+    """Another confirmed event with registration open for five; returns its id."""
+    event_request = make_event_request(
+        reference=DECOY_EVENT,
+        status=EventRequestStatus.CONFIRMED,
+        coordinator_id=coordinator_id,
+        proposed_date=date.fromisoformat(event_day),
+    )
+    event_request.registration_enabled = True
+    event_request.registration_capacity = DECOY_PLACES
+    db_session.add(event_request)
+    db_session.commit()
+    return event_request.id
+
+
+def test_attendees_fill_an_event_and_one_who_withdrew_registers_again(
     client: FlaskClient,
     sign_in: SignIn,
     coordinator: Actor,
     venue_staff: Actor,
     safety_officer: Actor,
     approved_event: int,
+    decoy_event: int,
     event_day: str,
 ) -> None:
     registrations_path = f"/api/events/catalogue/{approved_event}/registrations"
     alice = _attendee("Alice", client, sign_in)
     bob = _attendee("Bob", client, sign_in)
+    carol = _attendee("Carol", client, sign_in)
+    dan = _attendee("Dan", client, sign_in)
+
+    # --- Dan holds a place at the decoy, which never counts against this event ---
+    decoy_path = f"/api/events/catalogue/{decoy_event}/registrations"
+    assert _body(dan.post(decoy_path), 201)["status"] == "registered"
 
     # --- Registration can't open before the event is confirmed (SCRUM-69 AC4) ---
-    too_early = _body(coordinator.patch(SETTINGS_PATH, ONE_PLACE), 409)
-    assert (too_early["error"], too_early["message"]) == (
-        "registration_not_enablable",
-        "Registration can be enabled only for a confirmed event.",
-    )
+    assert _refusal(coordinator.patch(SETTINGS_PATH, TWO_PLACES)) == {
+        "error": "registration_not_enablable",
+        "message": "Registration can be enabled only for a confirmed event.",
+    }
 
     # --- A venue is booked and approved, and the event passes its safety check
-    # --- (SCRUM-42, SCRUM-43, SCRUM-97, SCRUM-98) ---
+    # --- (SCRUM-42, SCRUM-43, SCRUM-97 AC1, AC2, SCRUM-98 AC1) ---
     _book_the_hall(coordinator, venue_staff, event_day)
     _pass_safety_check(coordinator, safety_officer)
 
-    # --- The coordinator confirms it (SCRUM-49 AC1) ---
+    # --- The coordinator confirms it (SCRUM-49 AC1, AC2) ---
     confirmed = _body(coordinator.post(f"/api/events/requests/{EVENT}/confirm"), 200)
     assert confirmed["status"] == "confirmed"
 
-    # --- The coordinator opens registration with one place (SCRUM-69 AC1) ---
-    settings = _body(coordinator.patch(SETTINGS_PATH, ONE_PLACE), 200)
-    assert (settings["registration_enabled"], settings["registration_capacity"]) == (True, 1)
+    # --- The coordinator opens registration with two places (SCRUM-69 AC1, AC2) ---
+    settings = _body(coordinator.patch(SETTINGS_PATH, TWO_PLACES), 200)
+    assert (settings["registration_enabled"], settings["registration_capacity"]) == (True, 2)
+    assert _places(client, approved_event) == (2, False)
 
-    # --- A registers, and sees it in their list (SCRUM-52 AC2, AC5) ---
-    registered = _body(alice.post(registrations_path), 201)
-    assert registered["status"] == "registered"
+    # --- Alice and Bob register, and each sees it in their list (SCRUM-52 AC2, AC5) ---
+    first_registration = _body(alice.post(registrations_path), 201)
+    assert first_registration["status"] == "registered"
     assert _my_registration_statuses(alice) == ["registered"]
-
-    # --- B is turned away: the event is full (SCRUM-54 AC2) ---
-    full = _body(bob.post(registrations_path), 409)
-    assert full["error"] == "event_full"
-    assert _my_registration_statuses(bob) == []
-
-    # --- A withdraws; the row stays, marked withdrawn (SCRUM-53 AC2) ---
-    withdrawn = _body(alice.delete(registrations_path), 200)
-    assert withdrawn["status"] == "withdrawn"
-    assert _my_registration_statuses(alice) == ["withdrawn"]
-
-    # --- The place is free, so B takes it (SCRUM-53 AC2, SCRUM-54 AC2) ---
+    assert _places(client, approved_event) == (1, False)
     assert _body(bob.post(registrations_path), 201)["status"] == "registered"
     assert _my_registration_statuses(bob) == ["registered"]
 
-    # --- A registers again, and finds it gone (ADR-0032) ---
-    refused_again = _body(alice.post(registrations_path), 409)
-    assert refused_again["error"] == "event_full"
+    # --- Up to capacity: the catalogue shows it full (SCRUM-63 AC1, SCRUM-54 AC1) ---
+    assert _places(client, approved_event) == (0, True)
+
+    # --- Carol is turned away at capacity (SCRUM-63 AC1, SCRUM-54 AC2) ---
+    assert _refusal(carol.post(registrations_path)) == EVENT_FULL
+    assert _my_registration_statuses(carol) == []
+    assert _places(client, approved_event) == (0, True)
+
+    # --- Alice withdraws; the row stays, and the place is free (SCRUM-63 AC1,
+    # --- SCRUM-53 AC1, AC2, AC5) ---
+    withdrawn = _body(alice.delete(registrations_path), 200)
+    assert withdrawn["status"] == "withdrawn"
     assert _my_registration_statuses(alice) == ["withdrawn"]
+    assert _places(client, approved_event) == (1, False)
+
+    # --- Carol takes the freed place (SCRUM-54 AC3) ---
+    assert _body(carol.post(registrations_path), 201)["status"] == "registered"
+    assert _my_registration_statuses(carol) == ["registered"]
+    assert _places(client, approved_event) == (0, True)
+
+    # --- Alice, registering again, is turned away: the place is gone (ADR-0032) ---
+    assert _refusal(alice.post(registrations_path)) == EVENT_FULL
+    assert _my_registration_statuses(alice) == ["withdrawn"]
+
+    # --- Bob withdraws, and Alice registers again into his place (SCRUM-63 AC1,
+    # --- SCRUM-54 AC3, ADR-0032) ---
+    assert _body(bob.delete(registrations_path), 200)["status"] == "withdrawn"
+    assert _places(client, approved_event) == (1, False)
+    registered_again = _body(alice.post(registrations_path), 201)
+    assert registered_again["status"] == "registered"
+    assert registered_again["id"] == first_registration["id"]
+    assert _my_registration_statuses(alice) == ["registered"]
+    assert _places(client, approved_event) == (0, True)
+
+    # --- The coordinator's list of registrants shows each one's status (SCRUM-55 AC2,
+    # --- AC3, AC4) ---
+    registrants = _body(coordinator.get(f"/api/events/requests/{EVENT}/registrations"), 200)
+    assert (
+        registrants["capacity"],
+        registrants["registered_count"],
+        registrants["places_left"],
+    ) == (2, 2, 0)
+    statuses = {row["name"]: row["status"] for row in registrants["items"]}
+    assert statuses == {"Alice": "registered", "Bob": "withdrawn", "Carol": "registered"}
+
+    # --- The decoy has lost only Dan's place ---
+    assert _places(client, decoy_event) == (DECOY_PLACES - 1, False)
