@@ -93,6 +93,23 @@ async function withdrawThroughThePage(user: ReturnType<typeof renderApp>['user']
   await user.click(screen.getByRole('button', { name: 'Yes, withdraw' }))
 }
 
+/**
+ * Open Sunrise Yoga as the backend sent it before the event started, then try to withdraw: by now
+ * it has started, so the backend refuses, saying when withdrawals closed.
+ */
+async function tryToWithdrawFromSunriseYogaAfterItStarted() {
+  const sunriseYoga = {
+    ...pitchNight(),
+    id: SUNRISE_YOGA.id,
+    reference: SUNRISE_YOGA.reference,
+    name: SUNRISE_YOGA.name,
+  }
+  server.use(http.get(MY_EVENT_API, () => HttpResponse.json(sunriseYoga), { once: true }))
+  const rendered = await openAsAttendee(SUNRISE_YOGA.reference, SUNRISE_YOGA.name)
+  await withdrawThroughThePage(rendered.user, SUNRISE_YOGA.name)
+  return rendered
+}
+
 /** The GETs of this event the page has sent so far. */
 function readsOf(requests: Request[], reference: string): Request[] {
   return requests.filter(
@@ -258,18 +275,9 @@ describe('SCRUM-24 my registered event page: withdrawing (SCRUM-53)', () => {
   })
 
   it('shows the refusal and the cut-off when withdrawals closed while the page was open, and reads the event again', async () => {
-    // The page was read before Sunrise Yoga started; since then the backend refuses.
-    const sunriseYoga = {
-      ...pitchNight(),
-      id: SUNRISE_YOGA.id,
-      reference: SUNRISE_YOGA.reference,
-      name: SUNRISE_YOGA.name,
-    }
-    server.use(http.get(MY_EVENT_API, () => HttpResponse.json(sunriseYoga), { once: true }))
     const requests = recordRequests()
-    const { user } = await openAsAttendee(SUNRISE_YOGA.reference, SUNRISE_YOGA.name)
 
-    await withdrawThroughThePage(user, SUNRISE_YOGA.name)
+    await tryToWithdrawFromSunriseYogaAfterItStarted()
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Withdrawals for this event have closed.',
@@ -282,6 +290,17 @@ describe('SCRUM-24 my registered event page: withdrawing (SCRUM-53)', () => {
     })
     expect(screen.getByRole('alert')).toHaveTextContent('Withdrawals for this event have closed.')
     expect(screen.getByText('The cut-off was 5 Oct, 7:00 am.')).toBeInTheDocument()
+  })
+
+  it('keeps one event’s refusal off the page of another event that offers no Withdraw', async () => {
+    const { router } = await tryToWithdrawFromSunriseYogaAfterItStarted()
+    await screen.findByRole('alert')
+
+    await router.navigate(myEventPath(ORCHID_SHOW))
+
+    await screen.findByRole('heading', { level: 1, name: 'Orchid Show Opening Night' })
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.queryByText(/The cut-off was/)).not.toBeInTheDocument()
   })
 })
 
