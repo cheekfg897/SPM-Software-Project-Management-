@@ -28,6 +28,9 @@ import type { MyRegisteredEvent } from '../api'
 const ATTENDEE = mockSessionFor(MOCK_ACCOUNTS.attendee)
 const ORCHID_SHOW = 'EVR-MOCK0901'
 const HARBOUR_RUN = 'EVR-MOCK0902'
+const ROOFTOP_FILM = 'EVR-MOCK0903'
+const BEING_REVIEWED =
+  'This event’s arrangements are being reviewed and may change. You will be notified of any change.'
 const MY_EVENT_API = '/api/events/registrations/:reference'
 
 /** How each status reads on the page, as the status chip words it. */
@@ -115,6 +118,22 @@ describe('SCRUM-24 my registered event page: what it shows', () => {
     expect(screen.getByText('100 Beach Road, Level 5')).toBeInTheDocument()
     expect(screen.getByText('Registered')).toBeInTheDocument()
     expect(screen.getByText('You registered on 5 Oct, 12:00 pm.')).toBeInTheDocument()
+  })
+
+  it('says an event sent back to planning is being reviewed, and still offers Withdraw (AC11, 26 Oct)', async () => {
+    await openAsAttendee(ROOFTOP_FILM, 'Rooftop Film Night')
+
+    expect(screen.getByText(BEING_REVIEWED)).toBeInTheDocument()
+    expect(screen.getByText('Approved')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Withdraw from Rooftop Film Night' }),
+    ).toBeInTheDocument()
+  })
+
+  it('says nothing about a review for an event going ahead as planned', async () => {
+    await openAsAttendee(PITCH_NIGHT.reference, PITCH_NIGHT.name)
+
+    expect(screen.queryByText(BEING_REVIEWED)).not.toBeInTheDocument()
   })
 
   it('says when no venue is booked, as for a cancelled event', async () => {

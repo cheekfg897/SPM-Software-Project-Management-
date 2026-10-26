@@ -13,6 +13,12 @@ import { useMyRegisteredEvent, useWithdrawalRefusal } from '../hooks'
 
 /** Before the event arrives, or when it can't be opened, the page has no name for it yet. */
 const UNNAMED_TITLE = 'Your event'
+/**
+ * What the page says while a change has sent the event back to planning (SCRUM-24 AC11, 26 Oct):
+ * the venues shown may still change, and the Attendee will hear of it (SCRUM-62).
+ */
+const BEING_REVIEWED_NOTE =
+  'This event’s arrangements are being reviewed and may change. You will be notified of any change.'
 
 /** Each venue the event is booked at, by name and where it is (SCRUM-52). */
 function Venues({ venues }: { venues: BookedVenue[] }) {
@@ -72,7 +78,8 @@ function Registration({ event }: { event: MyRegisteredEvent }) {
 /**
  * One event the Attendee registered for (SCRUM-24 AC11, docs/adr/0109): what the catalogue shows
  * of any event, its venues, its status and their registration, and Withdraw while the backend
- * offers it. Nothing internal. A Completed or Cancelled event opens read-only with its status.
+ * offers it. Nothing internal. A Completed or Cancelled event opens read-only with its status,
+ * and one a change sent back to planning says its arrangements are being reviewed.
  * This is the page the event link in an Attendee's notifications opens (SCRUM-28).
  */
 export function MyRegisteredEventPage() {
@@ -105,6 +112,11 @@ export function MyRegisteredEventPage() {
       <div className="mt-4">
         <StatusChip status={event.event_status} />
       </div>
+      {event.is_being_reviewed && (
+        <p className="border-ember/50 bg-ember/15 text-corona mt-6 max-w-2xl rounded-xl border px-4 py-3 text-sm">
+          {BEING_REVIEWED_NOTE}
+        </p>
+      )}
       <p className="text-flare mt-6 font-medium">
         {formatWeekday(event.starts_at)} {formatShortDate(event.starts_at)},{' '}
         {formatTimeRange(event.starts_at, event.ends_at)}
