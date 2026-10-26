@@ -396,6 +396,9 @@ def test_the_route_sends_each_arrangement_in_full_in_business_time(
         {
             "venue_name": "Main Hall",
             "venue_location": "Building A",
+            "venue_capacity": 100,
+            "venue_facilities": ["projector", "wifi"],
+            "venue_accessibility_features": ["wheelchair_access"],
             "starts_at": "2026-11-01T17:00:00+08:00",
             "ends_at": "2026-11-01T17:30:00+08:00",
             "purpose": "Main session",

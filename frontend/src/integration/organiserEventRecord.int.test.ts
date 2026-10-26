@@ -76,6 +76,10 @@ describe('SCRUM-24 AC10 everything on the organiser record against the backend',
         {
           venue_name: name,
           venue_location: 'Level 1',
+          // What the Safety Officer reviews of the venue (SCRUM-24 AC10, 26 Oct).
+          venue_capacity: 300,
+          venue_facilities: ['projector'],
+          venue_accessibility_features: ['wheelchair_access'],
           starts_at: `${EVENT_DATE}T09:00:00+08:00`,
           ends_at: `${EVENT_DATE}T12:00:00+08:00`,
           purpose: 'Integration keynote',

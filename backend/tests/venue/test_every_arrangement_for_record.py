@@ -104,7 +104,13 @@ def test_an_arrangement_shows_everything_on_it(
     save_arrangement: SaveArrangement,
 ) -> None:
     event = saved_event()
-    hall = make_venue(name="Main Hall", location="Building A")
+    hall = make_venue(
+        name="Main Hall",
+        location="Building A",
+        capacity=250,
+        facilities="stage,pa system",
+        accessibility_features="hearing loop",
+    )
     save(hall)
     arrangement = save_arrangement(event, hall, hour=1, status=BookingRequestStatus.REJECTED)
     arrangement.required_layout = "theatre"
@@ -120,6 +126,9 @@ def test_an_arrangement_shows_everything_on_it(
         ArrangementForRecord(
             venue_name="Main Hall",
             venue_location="Building A",
+            venue_capacity=250,
+            venue_facilities=["stage", "pa system"],
+            venue_accessibility_features=["hearing loop"],
             starts_at=datetime(2026, 11, 1, 1, tzinfo=UTC),
             ends_at=datetime(2026, 11, 1, 2, tzinfo=UTC),
             purpose="Main session",

@@ -27,6 +27,9 @@ const NOT_FOUND_MESSAGE = 'Event request not found.'
 const ARRANGEMENT_IN_FULL: RecordVenueArrangement = {
   venue_name: 'Orchid Room',
   venue_location: 'Marina Bay, Level 3',
+  venue_capacity: 300,
+  venue_facilities: ['stage', 'pa system'],
+  venue_accessibility_features: [],
   starts_at: '2026-11-12T09:00:00+08:00',
   ends_at: '2026-11-12T12:00:00+08:00',
   purpose: 'Keynote',
@@ -355,6 +358,9 @@ describe('SCRUM-24 AC10 event record: everything an organiser sees, at every sta
     expect(dinner).toHaveTextContent('Level 1, Marina Wing')
     expect(dinner).toHaveTextContent('5 Dec, 6:00 pm – 11:00 pm · Approved')
     expect(dinner).toHaveTextContent('Gala dinner · 10 guests · Banquet')
+    expect(dinner).toHaveTextContent(
+      'Holds 200 · Facilities: projector, stage · Accessibility: step-free access, hearing loop',
+    )
     expect(dinner).toHaveTextContent('Venue Staff: Booked for the dinner.')
     expect(dinner).toHaveTextContent('Tables set for 80.')
     expect(reception).toHaveTextContent('Drinks reception · 10 guests · No layout set')
@@ -373,6 +379,10 @@ describe('SCRUM-24 AC10 event record: everything an organiser sees, at every sta
       HTMLElement,
     ]
     expect(held).toHaveTextContent('Hold expires 30 Oct, 5:00 pm')
+    // A venue with no accessibility features listed says so (SCRUM-24 AC10, 26 Oct).
+    expect(held).toHaveTextContent(
+      'Holds 300 · Facilities: stage, pa system · Accessibility: none listed',
+    )
     expect(held).toHaveTextContent('Why this venue: Only hall free that week.')
     expect(expired).toHaveTextContent('Hold expired 25 Oct, 5:00 pm')
     expect(

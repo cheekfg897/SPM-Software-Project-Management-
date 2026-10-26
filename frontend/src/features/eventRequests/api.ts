@@ -95,7 +95,8 @@ export interface RecordEquipmentLine extends SafetyReviewEquipment {
 /**
  * A venue arrangement in full, as the event's record shows it (SCRUM-24 AC10, SCRUM-93 AC5,
  * ADR-0104): everything on it but its ids, under the names the coordinator's own list uses, with
- * the venue's name and location.
+ * the venue's name, location, capacity, facilities and accessibility features (what the Safety
+ * Officer reviews, SCRUM-97).
  */
 export interface RecordVenueArrangement
   extends
@@ -118,6 +119,9 @@ export interface RecordVenueArrangement
     > {
   venue_name: string
   venue_location: string
+  venue_capacity: number
+  venue_facilities: string[]
+  venue_accessibility_features: string[]
 }
 
 /**

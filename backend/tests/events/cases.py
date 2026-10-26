@@ -174,12 +174,16 @@ def arrangement_for_record(**overrides: Any) -> ArrangementForRecord:
     """An arrangement as the record shows it; ``overrides`` replace any of its fields.
 
     By default it is the first one the ``arrange`` fixture saves: an approved, unflagged
-    arrangement at the default venue, Main Hall in Building A, from 09:00 UTC on 1
-    November 2026 for half an hour, with nothing prepared yet.
+    arrangement at the default venue (Main Hall in Building A: 100 seats, a projector
+    and wifi, wheelchair access), from 09:00 UTC on 1 November 2026 for half an hour,
+    with nothing prepared yet.
     """
     shown: dict[str, Any] = {
         "venue_name": "Main Hall",
         "venue_location": "Building A",
+        "venue_capacity": 100,
+        "venue_facilities": ["projector", "wifi"],
+        "venue_accessibility_features": ["wheelchair_access"],
         "starts_at": datetime(2026, 11, 1, 9, 0, tzinfo=UTC),
         "ends_at": datetime(2026, 11, 1, 9, 30, tzinfo=UTC),
         "purpose": "Main session",

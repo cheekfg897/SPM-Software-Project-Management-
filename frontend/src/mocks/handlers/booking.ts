@@ -548,7 +548,8 @@ export function releaseEventArrangements(reference: string): void {
 
 /**
  * An arrangement in full as the record shows it (RecordVenueArrangementSchema, ADR-0104):
- * everything on it but its ids and its event's timing, with its venue's name and location.
+ * everything on it but its ids and its event's timing, with its venue's name, location,
+ * capacity, facilities and accessibility features.
  */
 function arrangementInFull(arrangement: BookingRequest) {
   const venue = currentMockVenues().find((known) => known.id === arrangement.venue_id)
@@ -558,6 +559,9 @@ function arrangementInFull(arrangement: BookingRequest) {
   return {
     venue_name: venue.name,
     venue_location: venue.location,
+    venue_capacity: venue.capacity,
+    venue_facilities: venue.facilities,
+    venue_accessibility_features: venue.accessibility_features,
     starts_at: arrangement.starts_at,
     ends_at: arrangement.ends_at,
     purpose: arrangement.purpose,

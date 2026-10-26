@@ -981,7 +981,8 @@ class RecordVenueArrangementSchema(Schema):
     """A venue arrangement in full, as the organiser's record shows it (ADR-0104).
 
     Dumped from the venue module's ``ArrangementForRecord``: everything on it but its
-    ids, under the names the coordinator's own list uses (SCRUM-24 AC10, SCRUM-93 AC5).
+    ids, under the names the coordinator's own list uses, and what the venue offers as
+    the Safety Officer reviews it (SCRUM-24 AC10, SCRUM-93 AC5, SCRUM-97 AC6).
     Statuses are the venue module's enums, shown by their values; times are in
     business time (ADR-0009). ``hold_expires_at`` is ``null`` unless it is On Hold or
     its hold expired.
@@ -989,6 +990,9 @@ class RecordVenueArrangementSchema(Schema):
 
     venue_name = fields.String(dump_only=True)
     venue_location = fields.String(dump_only=True)
+    venue_capacity = fields.Integer(dump_only=True)
+    venue_facilities = fields.List(fields.String(), dump_only=True)
+    venue_accessibility_features = fields.List(fields.String(), dump_only=True)
     starts_at = BusinessDateTime(dump_only=True)
     ends_at = BusinessDateTime(dump_only=True)
     purpose = fields.String(dump_only=True)

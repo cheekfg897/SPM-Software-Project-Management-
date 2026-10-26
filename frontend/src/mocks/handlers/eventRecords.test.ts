@@ -80,6 +80,14 @@ const GALA_ARRANGEMENT = {
   preparation_status: 'not_started',
   preparation_notes: null,
 }
+/** Boardroom Two as the record names it, with what it offers. */
+const BOARDROOM_TWO = {
+  venue_name: 'Boardroom Two',
+  venue_location: 'Level 3, Tower Block',
+  venue_capacity: 20,
+  venue_facilities: ['video conferencing'],
+  venue_accessibility_features: ['lift access'],
+}
 /** The Safety Officer's checklist on the mock's recorded outcomes. */
 const SAFETY_CHECKLIST = {
   attendance_vs_capacity: '80 expected in a hall for 120.',
@@ -287,8 +295,7 @@ describe('SCRUM-24 AC10 mock of everything on the organiser record, at every sta
     expect(record.venue_arrangements).toEqual([
       {
         ...GALA_ARRANGEMENT,
-        venue_name: 'Boardroom Two',
-        venue_location: 'Level 3, Tower Block',
+        ...BOARDROOM_TWO,
         starts_at: '2026-12-05T17:00:00+08:00',
         ends_at: '2026-12-05T18:00:00+08:00',
         purpose: 'Drinks reception',
@@ -298,6 +305,10 @@ describe('SCRUM-24 AC10 mock of everything on the organiser record, at every sta
         ...GALA_ARRANGEMENT,
         venue_name: 'Marina Hall',
         venue_location: 'Level 1, Marina Wing',
+        // What the Safety Officer reviews of the venue, the organiser sees too (26 Oct).
+        venue_capacity: 200,
+        venue_facilities: ['projector', 'stage'],
+        venue_accessibility_features: ['step-free access', 'hearing loop'],
         starts_at: '2026-12-05T18:00:00+08:00',
         ends_at: '2026-12-05T23:00:00+08:00',
         purpose: 'Gala dinner',
@@ -308,8 +319,7 @@ describe('SCRUM-24 AC10 mock of everything on the organiser record, at every sta
       },
       {
         ...GALA_ARRANGEMENT,
-        venue_name: 'Boardroom Two',
-        venue_location: 'Level 3, Tower Block',
+        ...BOARDROOM_TWO,
         starts_at: '2026-12-05T19:00:00+08:00',
         ends_at: '2026-12-05T21:00:00+08:00',
         purpose: 'Overflow room',
