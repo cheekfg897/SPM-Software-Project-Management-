@@ -48,6 +48,7 @@ from app.modules.events.services import (
 from app.modules.notifications.models import Notification
 from app.modules.notifications.schemas import NotificationSchema
 from app.modules.notifications.services import NotificationKind, list_notifications_for_recipient
+from app.modules.venue import services as venue_services
 from app.modules.venue.models import BookingRequestStatus
 from tests.events.cases import LOST_CONNECTION, Arrange
 
@@ -171,6 +172,20 @@ def _add_microphones(microphone: EquipmentType) -> None:
     )
 
 
+def _lose_every_notice(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make every notice the change sends fail to save, the events' and Venue Staff's.
+
+    Each lost notice rolls back what wasn't committed (ADR-0015), so whatever is still
+    there afterwards was saved in the change's own commit.
+    """
+
+    def _fail(*_: Any, **__: Any) -> None:
+        raise LOST_CONNECTION
+
+    monkeypatch.setattr(events_services, "notify_users", _fail)
+    monkeypatch.setattr(venue_services, "notify_users", _fail)
+
+
 # --------------------------------------------------------------------------
 # AC9 — every Safety Officer is told, naming the event and the fields
 # --------------------------------------------------------------------------
@@ -280,11 +295,7 @@ def test_a_lost_notice_does_not_lose_the_edit(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """ADR-0015: the edit is committed before the Safety Officers are told."""
-
-    def _fail(*_: Any, **__: Any) -> None:
-        raise LOST_CONNECTION
-
-    monkeypatch.setattr(events_services, "notify_users", _fail)
+    _lose_every_notice(monkeypatch)
 
     with caplog.at_level(logging.WARNING, logger="connectsphere.events"):
         edit_event(COORDINATOR_ID, {"expected_attendance": 300})
@@ -422,13 +433,9 @@ def test_the_move_back_is_saved_with_the_edit(
     reload_event_request: ReloadEventRequest,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A notice that can't be saved loses only itself, not the move (ADR-0015)."""
+    """The move rides in the edit's own commit, so losing every notice keeps it."""
     arrange(BookingRequestStatus.APPROVED)
-
-    def _fail(*_: Any, **__: Any) -> None:
-        raise LOST_CONNECTION
-
-    monkeypatch.setattr(events_services, "notify_users", _fail)
+    _lose_every_notice(monkeypatch)
 
     edit_event(COORDINATOR_ID, {"start_time": "08:00"})
 
@@ -534,6 +541,20 @@ def test_a_line_refused_as_a_duplicate_moves_nothing_and_tells_nobody(
     status = reload_event_request(projector_line.event_request_id).status
     assert status is EventRequestStatus.SAFETY_REVIEW
     _assert_no_officer_told()
+
+
+def test_the_move_back_is_saved_with_the_added_line(
+    in_safety_review: EventRequest,
+    microphone: EquipmentType,
+    reload_event_request: ReloadEventRequest,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The move rides in the line's own commit, so losing every notice keeps it."""
+    _lose_every_notice(monkeypatch)
+
+    _add_microphones(microphone)
+
+    assert reload_event_request(in_safety_review.id).status is EventRequestStatus.APPROVED
 
 
 def test_a_line_added_after_the_safety_approval_moves_the_event_once(
