@@ -1,6 +1,6 @@
 # ADR-0053: A block or deactivation flags the arrangements it affects "Needs Alternative Venue", and an approved replacement releases them
 
-- **Status:** Accepted for the flag, the notice and the replacement (SCRUM-92 AC1-AC10); decisions 4, 5, 8, 9 and 12 are defaults pending the customer; flagging tentative holds, refusing a same-venue replacement and the notice when a flag clears were added after the Product Owner's decisions of 19 Oct by [ADR-0100](0100-on-hold-same-venue-and-available-again.md)
+- **Status:** Accepted for the flag, the notice and the replacement (SCRUM-92 AC1-AC10); decisions 4, 5, 8, 9 and 12 are defaults pending the customer; flagging tentative holds, refusing a same-venue replacement and the notice when a flag clears were added after the Product Owner's decisions of 19 Oct by [ADR-0100](0100-on-hold-same-venue-and-available-again.md); decision 7's internal-only history entry superseded by [ADR-0104](0104-organiser-sees-everything-on-the-record.md): the organiser reads it, and sees each flag with its reason on their record
 - **Date:** 2026-10-18
 - **Stories:** SCRUM-92 Flag bookings affected when a venue becomes unavailable; SCRUM-49 AC6
 

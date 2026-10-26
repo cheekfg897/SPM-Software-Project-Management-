@@ -1,6 +1,6 @@
 # ADR-0049: Venue Staff record a preparation status and notes on an approved booking
 
-- **Status:** Accepted (defaults to review); decision 7 is extended by [ADR-0095](0095-read-only-event-record-for-internal-staff.md), whose read-only record shows other internal users the preparation details
+- **Status:** Accepted (defaults to review); decision 7 is extended by [ADR-0095](0095-read-only-event-record-for-internal-staff.md), whose read-only record shows other internal users the preparation details; decision 6's internal-only history entry superseded by [ADR-0104](0104-organiser-sees-everything-on-the-record.md): the organiser reads it, and sees the preparation on their record
 - **Date:** 2026-10-17
 - **Stories:** SCRUM-84 Update venue preparation details
 

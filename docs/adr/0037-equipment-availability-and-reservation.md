@@ -1,6 +1,6 @@
 # ADR-0037: Equipment availability is calculated per event period; Technical Support reserve up to it under a row lock; out-of-service units are a read-only seam for SCRUM-47
 
-- **Status:** Accepted; section 5 (the coordinator is notified of each reservation) superseded by [ADR-0102](0102-reserving-equipment-notifies-nobody.md): reserving notifies nobody, and the coordinator hears once, when the outcome is recorded
+- **Status:** Accepted; section 5 (the coordinator is notified of each reservation) superseded by [ADR-0102](0102-reserving-equipment-notifies-nobody.md): reserving notifies nobody, and the coordinator hears once, when the outcome is recorded; section 4's internal-only history entry superseded by [ADR-0104](0104-organiser-sees-everything-on-the-record.md): the organiser reads it too
 - **Date:** 2026-10-11
 - **Story:** SCRUM-45 Check whether enough equipment is free; SCRUM-46 Reserve equipment
 - **Extends:** [ADR-0014](0014-equipment-type-location-and-quantity.md): what is subtracted from `total_quantity`; [ADR-0015](0015-in-app-notifications.md) and [ADR-0018](0018-least-loaded-coordinator-and-event-history.md): a new notification kind and a new history kind; [ADR-0019](0019-event-equipment-lines.md) and [ADR-0022](0022-equipment-awaiting-action.md): what reserving does to an equipment line (nothing, for now), and who may read an event's equipment (as its lines, ADR-0019 and [ADR-0034](0034-coordinators-see-only-their-own-events.md)); [ADR-0025](0025-event-edits-significant-changes-and-history.md): history entries hidden from the organiser
