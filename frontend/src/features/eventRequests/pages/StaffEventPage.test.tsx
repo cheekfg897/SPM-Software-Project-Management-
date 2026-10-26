@@ -142,6 +142,17 @@ describe('SCRUM-24 AC9, AC10 the read-only staff record', () => {
     expect(venues).toHaveTextContent('Preparation notes: Stage half built.')
   })
 
+  it('lists every arrangement with its status, a withdrawn one too (AC9, SCRUM-93 AC5)', async () => {
+    openAs(MOCK_ACCOUNTS.venueStaff, 'EVR-BOOK0112')
+
+    const venues = await section('Venue arrangements')
+    const arrangements = within(venues).getAllByRole('listitem')
+    expect(arrangements).toHaveLength(3)
+    expect(arrangements[2]).toHaveTextContent('Overflow room')
+    expect(arrangements[2]).toHaveTextContent('5 Dec, 7:00 pm – 9:00 pm · Withdrawn')
+    expect(arrangements[1]).toHaveTextContent('Venue Staff: Booked for the dinner.')
+  })
+
   it('says when no venue is arranged and no equipment requested or reserved', async () => {
     openAs(MOCK_ACCOUNTS.lead, NOTHING_ARRANGED)
 

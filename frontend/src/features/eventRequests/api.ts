@@ -2,7 +2,7 @@ import { apiRequest } from '@/lib/api'
 
 import type { EventRequestStatus } from '@/config/eventStatus'
 import type { Preparation } from '@/config/preparation'
-import type { BookingRequest, BookingRequestStatus } from '@/features/booking/api'
+import type { BookingRequest } from '@/features/booking/api'
 import type { SavedEquipmentLine } from '@/features/equipment/api'
 import type { SafetyChecklist, SafetyReviewEquipment } from '@/features/safety/api'
 import type { SafetyOutcome } from '@/features/safety/constants'
@@ -497,15 +497,6 @@ export function fetchEventRequestsWithVenueBookings(): Promise<EventListRows> {
   return apiRequest<EventListRows>(WITH_VENUE_BOOKINGS_PATH)
 }
 
-/** One of the event's venue arrangements on the read-only staff record (SCRUM-84 AC2). */
-export interface StaffVenueArrangement extends Preparation {
-  venue_name: string
-  /** ISO date-times with an offset. */
-  starts_at: string
-  ends_at: string
-  status: BookingRequestStatus
-}
-
 /** One equipment reservation on the read-only staff record (SCRUM-85 AC2). */
 export interface StaffReservation extends Preparation {
   equipment_type_name: string
@@ -538,7 +529,8 @@ export interface StaffEventRecord
   extends EventRequest, Pick<EventRecord, 'coordinator' | 'decision' | 'clarifications'> {
   programme_notes: string | null
   internal_planning_notes: string | null
-  venue_arrangements: StaffVenueArrangement[]
+  /** Every arrangement, in any status (AC9, ADR-0105). */
+  venue_arrangements: RecordVenueArrangement[]
   /** The equipment requested, by name, with Technical Support's outcome and reviewer. */
   equipment_lines: RecordEquipmentLine[]
   equipment_reservations: StaffReservation[]

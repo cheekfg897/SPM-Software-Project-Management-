@@ -250,9 +250,23 @@ def test_the_record_shows_every_section_and_no_ids_or_registrants(
         "venue_arrangements": [
             {
                 "venue_name": "Main Hall",
+                "venue_location": "Building A",
+                "venue_capacity": 100,
+                "venue_facilities": ["projector", "wifi"],
+                "venue_accessibility_features": ["wheelchair_access"],
                 "starts_at": "2026-11-01T09:00:00+08:00",
                 "ends_at": "2026-11-01T17:00:00+08:00",
+                "purpose": "Main session",
+                "expected_occupancy": 80,
+                "required_layout": None,
+                "justification": None,
                 "status": "approved",
+                "decision_reason": None,
+                "hold_expires_at": None,
+                "needs_alternative_venue": False,
+                "unavailability": [],
+                "flagged_after_change": False,
+                "reassessment_flags": [],
                 "preparation_status": "in_progress",
                 "preparation_notes": "Chairs set out.",
             }

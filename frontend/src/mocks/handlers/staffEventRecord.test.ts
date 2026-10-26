@@ -146,25 +146,28 @@ describe('SCRUM-24 mock of the read-only staff record', () => {
     expect(record.internal_planning_notes).toBe('Client prefers mornings.')
   })
 
-  it('shows the active venue arrangements with their preparation, and not retired ones', async () => {
+  it('shows every venue arrangement in full, a withdrawn one too (AC9, ADR-0105)', async () => {
     signInAs(MOCK_ACCOUNTS.lead)
 
     const multiVenue = await fetchStaffEventRecord(MULTI_VENUE)
     const prepared = await fetchStaffEventRecord(BEING_PREPARED)
 
     expect(multiVenue.venue_arrangements.map((arrangement) => arrangement.status)).toEqual([
+      'withdrawn',
       'rejected',
       'rejected',
     ])
     expect(prepared.venue_arrangements).toEqual([
-      {
+      expect.objectContaining({
         venue_name: 'Marina Hall',
+        venue_location: 'Level 1, Marina Wing',
         starts_at: '2026-11-12T09:00:00+08:00',
         ends_at: '2026-11-12T17:00:00+08:00',
         status: 'approved',
+        hold_expires_at: null,
         preparation_status: 'in_progress',
         preparation_notes: 'Stage half built.',
-      },
+      }),
     ])
   })
 

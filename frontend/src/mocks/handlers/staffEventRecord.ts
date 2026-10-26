@@ -7,13 +7,13 @@ import type {
   EventRequest,
   RecordEquipmentLine,
   StaffEventRecord,
-  StaffVenueArrangement,
+  RecordVenueArrangement,
 } from '@/features/eventRequests/api'
 
 import { MOCK_ACCOUNTS } from '../fixtures/accounts'
 import { errorResponse } from '../responses'
 
-import { arrangementsForRecord } from './booking'
+import { everyArrangementForRecord } from './booking'
 import { reservationsForRecord } from './equipment'
 import { equipmentLinesForRecord, shortfallOf } from './equipmentLines'
 import { internalNotesOf } from './eventEdits'
@@ -100,19 +100,41 @@ function baseOf(reference: string): StaffRecordBase | undefined {
   return listed === undefined ? undefined : listedAsBase(listed)
 }
 
+/** Where the Safety Officer's mock's venues are: its list doesn't send a venue's location. */
+const SAFETY_VENUE_LOCATIONS: Readonly<Record<string, string>> = {
+  'Marina Ballroom': 'Level 2, Marina Wing',
+  'Atrium Hall': 'Ground floor, Central Block',
+  'Riverside Auditorium': 'River Wing',
+}
+
 /**
- * The Safety Officer's mock's venues as arrangements: an event reaches Safety Review only with
- * every arrangement approved, and nothing is prepared before the check (SCRUM-84 AC5).
+ * The Safety Officer's mock's venues as arrangements in full: an event reaches Safety Review only
+ * with every arrangement approved and unflagged, each for the whole event's attendance, and
+ * nothing is prepared before the check (SCRUM-84 AC5).
  */
-function safetyArrangementsOf(safetyEvent: MockSafetyEvent | undefined): StaffVenueArrangement[] {
+function safetyArrangementsOf(safetyEvent: MockSafetyEvent | undefined): RecordVenueArrangement[] {
   if (safetyEvent === undefined) {
     return []
   }
   return safetyEvent.venues.map((venue) => ({
     venue_name: venue.name,
+    venue_location: SAFETY_VENUE_LOCATIONS[venue.name] ?? '',
+    venue_capacity: venue.capacity,
+    venue_facilities: venue.facilities,
+    venue_accessibility_features: venue.accessibility_features,
     starts_at: venue.starts_at,
     ends_at: venue.ends_at,
+    purpose: 'Main programme',
+    expected_occupancy: safetyEvent.event.expected_attendance,
+    required_layout: null,
+    justification: null,
     status: 'approved',
+    decision_reason: null,
+    hold_expires_at: null,
+    needs_alternative_venue: false,
+    unavailability: [],
+    flagged_after_change: false,
+    reassessment_flags: [],
     preparation_status: 'not_started',
     preparation_notes: null,
   }))
@@ -145,7 +167,10 @@ function recordOf(base: StaffRecordBase): StaffEventRecord {
     coordinator: base.coordinator,
     decision: base.sections.decision,
     clarifications: base.sections.clarifications,
-    venue_arrangements: [...arrangementsForRecord(reference), ...safetyArrangementsOf(safetyEvent)],
+    venue_arrangements: [
+      ...everyArrangementForRecord(reference),
+      ...safetyArrangementsOf(safetyEvent),
+    ],
     equipment_lines: [...equipmentLinesForRecord(reference), ...safetyLinesOf(safetyEvent)],
     equipment_reservations: reservationsForRecord(reference),
     safety_outcome: safetyEvent?.outcome ?? null,

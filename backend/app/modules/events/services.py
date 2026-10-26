@@ -4785,6 +4785,7 @@ class StaffEventRecord:
 
     #: The sections the organiser's and coordinator's record shows too.
     record: EventRecord
+    #: Every venue arrangement, in any status, earliest period first (AC9, ADR-0105).
     venue_arrangements: list[ArrangementForRecord]
     #: Each equipment line with its outcome and who reviewed it (SCRUM-48 AC5).
     equipment_lines: list[EquipmentLineOnRecord]
@@ -4840,7 +4841,7 @@ def get_staff_event_record(reference: str, *, session: Session | None = None) ->
     event_request = _event_request_for_staff(reference, sess)
     return StaffEventRecord(
         record=_event_record(event_request, sess),
-        venue_arrangements=venue_services.list_arrangements_for_record(
+        venue_arrangements=venue_services.list_every_arrangement_for_record(
             event_request.id, session=sess
         ),
         equipment_lines=_equipment_lines_on_record(event_request, sess),

@@ -5,15 +5,10 @@ import { unavailabilityText } from '@/config/unavailabilityCategories'
 import { REASSESSMENT_KIND_LABELS, STATUS_LABELS } from '@/features/booking/constants'
 import { formatDateTime, formatShortDate, formatTimeRange } from '@/lib/formatDate'
 
-import type { RecordVenueArrangement, StaffVenueArrangement } from '../api'
+import type { RecordVenueArrangement } from '../api'
 
 const NONE_ARRANGED = 'No venue is arranged for this event yet.'
 const NONE_LISTED = 'none listed'
-
-/** Whether the backend sent the arrangement in full, as the organiser's record does (ADR-0104). */
-function isInFull(arrangement: StaffVenueArrangement): arrangement is RecordVenueArrangement {
-  return 'venue_location' in arrangement
-}
 
 /** The layout in words, or that none was asked for, as a booking request's details say it. */
 function layoutLabel(layout: string | null): string {
@@ -55,8 +50,8 @@ function ArrangementFlag({ heading, reasons }: { heading: string; reasons: strin
 
 /**
  * What the venue offers (as the Safety Officer reviews it, SCRUM-97), what the coordinator asked
- * for, Venue Staff's reason, any hold's expiry and each flag with its reason: the rest of an
- * arrangement sent in full (SCRUM-24 AC10, SCRUM-93 AC5).
+ * for, Venue Staff's reason, any hold's expiry and each flag with its reason (SCRUM-24 AC9,
+ * AC10, SCRUM-93 AC5).
  */
 function ArrangementDetails({ arrangement }: { arrangement: RecordVenueArrangement }) {
   const hold = holdText(arrangement)
@@ -94,11 +89,11 @@ function ArrangementDetails({ arrangement }: { arrangement: RecordVenueArrangeme
 }
 
 /**
- * The event's venue arrangements, earliest first as the backend sends them: each venue, when,
- * where its request stands, and Venue Staff's preparation (SCRUM-84 AC2, ADR-0095). An
- * arrangement sent in full also says where the venue is and everything else on it (ADR-0104).
+ * Every one of the event's venue arrangements, earliest first as the backend sends them: each
+ * venue and where it is, when, where its request stands, everything else on it, and Venue Staff's
+ * preparation (SCRUM-24 AC9, AC10, SCRUM-84 AC2, ADR-0104, ADR-0105).
  */
-export function VenueArrangementList({ arrangements }: { arrangements: StaffVenueArrangement[] }) {
+export function VenueArrangementList({ arrangements }: { arrangements: RecordVenueArrangement[] }) {
   if (arrangements.length === 0) {
     return <EmptyState message={NONE_ARRANGED} />
   }
@@ -110,15 +105,13 @@ export function VenueArrangementList({ arrangements }: { arrangements: StaffVenu
           className="border-line/60 bg-surface/50 rounded-2xl border p-5"
         >
           <p className="text-ink font-medium">{arrangement.venue_name}</p>
-          {isInFull(arrangement) && (
-            <p className="text-ink-muted text-sm">{arrangement.venue_location}</p>
-          )}
+          <p className="text-ink-muted text-sm">{arrangement.venue_location}</p>
           <p className="text-ink-muted text-sm">
             {formatShortDate(arrangement.starts_at)},{' '}
             {formatTimeRange(arrangement.starts_at, arrangement.ends_at)} ·{' '}
             {STATUS_LABELS[arrangement.status]}
           </p>
-          {isInFull(arrangement) && <ArrangementDetails arrangement={arrangement} />}
+          <ArrangementDetails arrangement={arrangement} />
           <PreparationSummary preparation={arrangement} />
         </li>
       ))}
