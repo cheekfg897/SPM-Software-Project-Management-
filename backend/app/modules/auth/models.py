@@ -8,10 +8,11 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, func
+from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 from werkzeug.security import check_password_hash, generate_password_hash
 
+from app.common.database import UTCDateTime
 from app.extensions import db
 from app.modules.auth.permissions import Role
 
@@ -68,3 +69,24 @@ class User(db.Model):  # type: ignore[name-defined]
     def __repr__(self) -> str:  # pragma: no cover - debugging aid
         role = getattr(self.role, "value", self.role)
         return f"<User id={self.id} email={self.email!r} role={role!r}>"
+
+
+class RevokedToken(db.Model):  # type: ignore[name-defined]
+    """An access token logged out before it expired (SCRUM-89, ADR-0110).
+
+    Every protected request checks the blocklist for its token's ``jti``. A row is only
+    needed until ``expires_at``: after that the token is refused as expired anyway, so
+    each logout deletes the rows that have run out.
+    """
+
+    __tablename__ = "revoked_tokens"
+    __table_args__ = (UniqueConstraint("jti", name="uq_revoked_tokens_jti"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    #: The token's unique id, a UUID Flask-JWT-Extended writes into every token.
+    jti: Mapped[str] = mapped_column(String(36), nullable=False)
+    #: Whose token it was.
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+    #: When the token expires, from its ``exp`` claim, in UTC (ADR-0009). Indexed for
+    #: each logout's deletion of the rows that have run out.
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime, index=True, nullable=False)
