@@ -3186,6 +3186,13 @@ def notify_coordinator_alternative_venue_needed(
     )
 
 
+def _notify_submitting_organiser(
+    event_request: EventRequest, kind: NotificationKind, session: Session, detail: str
+) -> None:
+    """Tell the organiser who submitted the request, and only them (SCRUM-92 AC10)."""
+    _raise_notifications([event_request.organiser_id], event_request, kind, session, detail=detail)
+
+
 #: What the organiser is told when a venue becoming unavailable sends their Confirmed
 #: event back to Approved: the venue, the event and the category (SCRUM-92 AC3, Product
 #: Owner 25 and 26 Oct). Venue Staff's note is left out, as it is of the organiser's
@@ -3212,12 +3219,8 @@ def notify_organiser_venue_unavailable(
     detail = VENUE_UNAVAILABLE_ORGANISER_DETAIL.format(
         venue=venue_name, event=event_request.name, category=category
     )
-    _raise_notifications(
-        [event_request.organiser_id],
-        event_request,
-        NotificationKind.ALTERNATIVE_VENUE_NEEDED,
-        sess,
-        detail=detail,
+    _notify_submitting_organiser(
+        event_request, NotificationKind.ALTERNATIVE_VENUE_NEEDED, sess, detail
     )
 
 
@@ -3302,12 +3305,8 @@ def notify_organiser_venue_available_again(
     detail = ORGANISER_AVAILABLE_AGAIN_DETAIL.format(
         venue=venue_name, event=event_request.name, category=category
     )
-    _raise_notifications(
-        [event_request.organiser_id],
-        event_request,
-        NotificationKind.VENUE_AVAILABLE_AGAIN,
-        sess,
-        detail=detail,
+    _notify_submitting_organiser(
+        event_request, NotificationKind.VENUE_AVAILABLE_AGAIN, sess, detail
     )
 
 
@@ -3346,12 +3345,8 @@ def notify_organiser_replacement_approved(
         category=category,
         replacement_venue=replacement_venue,
     )
-    _raise_notifications(
-        [event_request.organiser_id],
-        event_request,
-        NotificationKind.REPLACEMENT_VENUE_APPROVED,
-        sess,
-        detail=detail,
+    _notify_submitting_organiser(
+        event_request, NotificationKind.REPLACEMENT_VENUE_APPROVED, sess, detail
     )
 
 
