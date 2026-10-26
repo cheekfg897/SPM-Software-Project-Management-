@@ -285,8 +285,8 @@ class EventRequest(db.Model):  # type: ignore[name-defined]
     #: What the event needs from planning, editable by the assigned coordinator and
     #: shown to the organiser (SCRUM-33 AC1, ADR-0025).
     programme_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
-    #: Notes for internal staff only; never shown to the organiser (SCRUM-33 AC1,
-    #: ADR-0025).
+    #: The planning notes, editable by the assigned coordinator and shown to staff and
+    #: the organiser (SCRUM-33 AC1, ADR-0104); the name is from when they were internal.
     internal_planning_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     registration_required: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=false()

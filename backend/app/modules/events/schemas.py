@@ -756,7 +756,7 @@ class EquipmentLineWithOutcomeSchema(EquipmentLineSchema):
     """An equipment line with its review outcome, for staff (SCRUM-48 AC4).
 
     Dumped from ``EquipmentLineAsShown``, so the reviewer is a name, never a user id.
-    The organiser's record has :class:`OrganiserEquipmentLineSchema` instead.
+    The organiser's record has :class:`RecordEquipmentLineSchema` instead (ADR-0104).
     """
 
     provided_quantity = fields.Integer(dump_only=True, allow_none=True)

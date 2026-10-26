@@ -104,8 +104,8 @@ export const MOCK_BOOKING_EVENTS = {
     proposed_date: '2026-11-29',
   },
   /**
-   * Confirmed, with two venues booked and one withdrawn, for what its organiser sees (SCRUM-49
-   * AC11). Marcus coordinates it (an id no mock account has), so no coordinator page lists it.
+   * Confirmed, with two venues booked and one withdrawn, for what its organiser sees (SCRUM-24
+   * AC10). Marcus coordinates it (an id no mock account has), so no coordinator page lists it.
    */
   confirmedGala: {
     ...APPROVED_EVENT,
@@ -261,8 +261,8 @@ function arrangementOf(
  * with no end to the unavailability (SCRUM-92).
  *
  * The confirmed gala's dinner hall and reception room are approved, saved out of period order,
- * with Venue Staff's reasons and preparation its organiser must not see, and its overflow room
- * was withdrawn (SCRUM-49 AC11).
+ * with Venue Staff's reasons and preparation, and its overflow room was withdrawn: its organiser
+ * sees all three in full (SCRUM-24 AC10, ADR-0104).
  */
 export const MOCK_ARRANGEMENTS = {
   rejectedMain: arrangementOf(MOCK_BOOKING_EVENTS.multiVenue, {
