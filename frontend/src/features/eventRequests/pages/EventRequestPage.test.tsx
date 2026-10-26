@@ -299,10 +299,13 @@ describe('SCRUM-24 AC9, AC10 event record: what a coordinator sees', () => {
 })
 
 describe('SCRUM-24 event record: who reaches which address', () => {
-  it("sends an organiser who opens the coordinator's address to their own home", () => {
+  it("takes an organiser who opens the coordinator's address, as a notification links, to their own record", async () => {
     const { router } = renderApp(coordinatorEventPath('EVR-7K2M9QXA'), { session: ORGANISER })
 
-    expect(router.state.location.pathname).toBe(ROUTES.ORGANISER_HOME)
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Partner Summit' }),
+    ).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/organiser/requests/EVR-7K2M9QXA')
   })
 
   it("sends a coordinator who opens the organiser's address to their own home", () => {

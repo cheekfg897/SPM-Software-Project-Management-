@@ -4,8 +4,8 @@ import { http, HttpResponse } from 'msw'
 import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
 import type { EventRequestStatus } from '@/config/eventStatus'
 import { ROLE } from '@/config/roles'
+import type { Role } from '@/config/roles'
 import { loginPathReturningTo, myEventPath, ROUTES } from '@/config/routes'
-import { homeFor } from '@/features/auth/roleHome'
 import { MOCK_ACCOUNTS, mockSessionFor, mockTokenFor } from '@/mocks/fixtures/accounts'
 import { MOCK_CATALOGUE_EVENTS } from '@/mocks/handlers/catalogueFixtures'
 import { server } from '@/mocks/server'
@@ -310,8 +310,24 @@ describe('SCRUM-24 my registered event page: who opens it', () => {
     ([role]) => role !== ROLE.EVENT_COORDINATOR,
   )
 
+  /**
+   * Where each role opens its own view of the event, written out rather than built from the path
+   * helpers, so a wrong mapping shows. A notification's event link brings every role to this
+   * address (SCRUM-28 AC1), so each must land on the event, not on its home. The Attendee and the
+   * coordinator open theirs here.
+   */
+  const OWN_VIEW_OF_PITCH_NIGHT: Record<Role, string> = {
+    [ROLE.ATTENDEE]: `/events/${PITCH_NIGHT.reference}`,
+    [ROLE.EVENT_COORDINATOR]: `/events/${PITCH_NIGHT.reference}`,
+    [ROLE.EVENT_ORGANISER]: `/organiser/requests/${PITCH_NIGHT.reference}`,
+    [ROLE.EVENT_COORDINATOR_LEAD]: `/staff/events/${PITCH_NIGHT.reference}`,
+    [ROLE.VENUE_STAFF]: `/staff/events/${PITCH_NIGHT.reference}`,
+    [ROLE.TECHNICAL_SUPPORT_STAFF]: `/staff/events/${PITCH_NIGHT.reference}`,
+    [ROLE.SAFETY_OFFICER]: `/staff/events/${PITCH_NIGHT.reference}`,
+  }
+
   it.each(OTHER_ROLE_ACCOUNTS)(
-    'sends the %s role to its own home, without asking for the attendee’s event',
+    'takes the %s role to its own view of the event, without asking for the attendee’s',
     async (role, account) => {
       const requests = recordRequests()
       const { router } = renderApp(myEventPath(PITCH_NIGHT.reference), {
@@ -319,7 +335,7 @@ describe('SCRUM-24 my registered event page: who opens it', () => {
       })
 
       await waitFor(() => {
-        expect(router.state.location.pathname).toBe(homeFor(role))
+        expect(router.state.location.pathname).toBe(OWN_VIEW_OF_PITCH_NIGHT[role])
       })
       expect(readsOf(requests, PITCH_NIGHT.reference)).toEqual([])
     },
