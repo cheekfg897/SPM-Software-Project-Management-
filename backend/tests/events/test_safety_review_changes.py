@@ -216,6 +216,15 @@ def test_the_notice_names_every_field_the_edit_changed(
     _assert_every_officer_told("Changed: description, end time, expected attendance.")
 
 
+def test_the_notice_calls_the_planning_notes_what_the_story_now_calls_them(
+    in_safety_review: EventRequest, edit_event: EditEvent
+) -> None:
+    """SCRUM-33 AC1 renamed them "planning notes" on 25 Oct; the API name stays."""
+    edit_event(COORDINATOR_ID, {"internal_planning_notes": "Lift out", "end_time": "18:00"})
+
+    _assert_every_officer_told("Changed: planning notes, end time.")
+
+
 def test_the_notice_says_what_it_is_and_links_to_the_event(
     in_safety_review: EventRequest, edit_event: EditEvent
 ) -> None:
