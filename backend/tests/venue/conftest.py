@@ -99,6 +99,23 @@ def approve_safety(event: EventRequest, session: Session) -> None:
     session.commit()
 
 
+def record_confirmation(event: EventRequest, session: Session) -> None:
+    """Record the coordinator confirming the event, as the history holds it (SCRUM-49).
+
+    Only the entry: the event keeps its status, as one that was confirmed and then sent
+    back to Approved for some other reason would.
+    """
+    confirmation = EventHistoryEntry(
+        event_request=event,
+        kind=EventHistoryKind.EVENT_CONFIRMED,
+        actor_id=COORDINATOR_ID,
+        details=None,
+        occurred_at=datetime.now(UTC),
+    )
+    session.add(confirmation)
+    session.commit()
+
+
 def event_starts_at() -> datetime:
     """When ``multi_venue_event`` starts: 09:00, 30 days from today."""
     starts_on = local_today() + timedelta(days=EVENT_DAYS_AWAY)

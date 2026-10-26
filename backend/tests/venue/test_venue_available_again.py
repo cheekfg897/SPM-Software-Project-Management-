@@ -46,6 +46,7 @@ from tests.venue.conftest import (
     block,
     decide,
     raise_booking,
+    record_confirmation,
     reload_event,
     reload_request,
     two_venues,
@@ -293,6 +294,26 @@ def test_an_event_sent_back_from_confirmed_is_told_it_still_needs_safety_review(
 
     assert _told_again(COORDINATOR_ID) == [(event.id, MAIN_HALL_AGAIN + STILL_NEEDS_SAFETY_REVIEW)]
     assert reload_event(db_session, event.id).status is EventRequestStatus.APPROVED
+
+
+def test_an_event_confirmed_again_since_it_was_sent_back_is_not_told_it_needs_review(
+    db_session: Session, venue: Venue, saved_event: SavedEvent
+) -> None:
+    """Only a return to Approved not yet followed by a confirmation counts (ADR-0108).
+
+    The event went back once, was confirmed again, and is Approved now for another
+    reason; a later block finds it Approved, so it didn't send it back.
+    """
+    event, _ = _approved(venue, saved_event, db_session)
+    event.status = EventRequestStatus.CONFIRMED
+    db_session.commit()
+    _remove(venue, block(venue, at(10), at(11), db_session), db_session)
+    record_confirmation(event, db_session)
+    later_block = block(venue, at(10), at(11), db_session)
+
+    _remove(venue, later_block, db_session)
+
+    assert _told_again(COORDINATOR_ID)[0] == (event.id, MAIN_HALL_AGAIN)
 
 
 def test_an_event_with_two_arrangements_freed_is_told_once(
