@@ -1086,6 +1086,10 @@ describe('SCRUM-92 replacing a venue that became unavailable', () => {
   const ORGANISER_TOLD_AVAILABLE_AGAIN =
     /^Integration Hall \S+ is available again for Integration Planning after being unavailable \(equipment failure\)\. Your original booking stands\. The event still needs Safety Review and confirmation\.$/
 
+  /** What the organiser of a confirmed event sent back is told once its replacement is approved (AC9). */
+  const ORGANISER_TOLD_REPLACED =
+    /^Integration Hall \S+ became unavailable for Integration Planning \(equipment failure\), and Integration Hall \S+ has been approved in its place\. The event still needs Safety Review and confirmation\.$/
+
   /** Check the "available again" notice about the event, as the coordinator reads it (AC8). */
   async function expectToldAvailableAgain(reference: string, detail = AVAILABLE_AGAIN) {
     const notice = await noticeAbout(reference, 'venue_available_again')
@@ -1115,7 +1119,7 @@ describe('SCRUM-92 replacing a venue that became unavailable', () => {
   it.skipIf(!canApproveVenue)(
     'flags the booked arrangement, takes a replacement linked to it, and releases it once the replacement is approved',
     async () => {
-      const { reference } = await settledEvent()
+      const { reference, organiser } = await settledEvent()
       const original = await onlyArrangement(reference)
 
       await blockVenueOf(original)
@@ -1166,6 +1170,9 @@ describe('SCRUM-92 replacing a venue that became unavailable', () => {
         [replacement.id, 'approved', false],
       ])
       expect(listed[0]?.unavailability).toHaveLength(1)
+      // --- The event was never Confirmed, so its organiser hears nothing of it (AC9) ---
+      await signInAs(organiser)
+      expect(await noticeAbout(reference, 'replacement_venue_approved')).toBeUndefined()
     },
   )
 
@@ -1342,6 +1349,44 @@ describe('SCRUM-92 replacing a venue that became unavailable', () => {
       )
       expect(toldOrganiser).toHaveLength(1)
       expect(toldOrganiser[0]?.detail).toMatch(ORGANISER_TOLD_AVAILABLE_AGAIN)
+    },
+  )
+
+  it.skipIf(!canApproveSafety)(
+    'tells the organiser of a confirmed event sent back once its replacement is approved (AC9, AC10)',
+    async () => {
+      const { reference, organiser } = await safetyApprovedEvent()
+      await confirmEvent(reference)
+      const original = await onlyArrangement(reference)
+      await blockVenueOf(original)
+      const otherVenue = await newVenue()
+      await signInAs(staffAccount())
+      const replacement = await raiseBookingRequest(reference, {
+        venue_id: otherVenue,
+        starts_at: original.starts_at,
+        ends_at: original.ends_at,
+        purpose: 'Integration replacement',
+        replaces_request_id: original.id,
+      })
+
+      await signInAs(required(VENUE_STAFF))
+      await decideBookingRequest(replacement.id, { outcome: 'approved' })
+
+      // --- Only the organiser who submitted it is told, once, naming both venues ---
+      await signInAs(organiser)
+      const told = (await fetchNotifications()).filter(
+        (notification) =>
+          notification.kind === 'replacement_venue_approved' &&
+          notification.event_reference === reference,
+      )
+      expect(told).toHaveLength(1)
+      expect(told[0]).toMatchObject({
+        message: 'A replacement venue was approved for your event.',
+        link: `/events/${reference}`,
+      })
+      expect(told[0]?.detail).toMatch(ORGANISER_TOLD_REPLACED)
+      await signInAs(staffAccount())
+      expect(await noticeAbout(reference, 'replacement_venue_approved')).toBeUndefined()
     },
   )
 

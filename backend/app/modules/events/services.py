@@ -3311,6 +3311,50 @@ def notify_organiser_venue_available_again(
     )
 
 
+#: What the organiser of an event a venue sent back is told once a replacement venue is
+#: approved (SCRUM-92 AC9, Product Owner 26 Oct): the event, both venues and the
+#: category of what made the first one unavailable.
+REPLACEMENT_APPROVED_ORGANISER_DETAIL = (
+    "{unavailable_venue} became unavailable for {event} ({category}), and"
+    " {replacement_venue} has been approved in its place. The event still needs Safety"
+    " Review and confirmation."
+)
+
+
+def notify_organiser_replacement_approved(
+    event_id: int,
+    *,
+    unavailable_venue: str,
+    replacement_venue: str,
+    category: str,
+    session: Session | None = None,
+) -> None:
+    """Tell the organiser a replacement venue was approved, if a venue sent it back.
+
+    SCRUM-92 AC9, AC10: only for an event a venue sent back from Confirmed to Approved
+    and not confirmed since, and only the organiser who submitted the request, once
+    for each replacement approved (ADR-0108). For the venue module, after the
+    decision's commit (ADR-0015).
+    """
+    sess = resolve_session(session)
+    if not _sent_back_by_a_venue(event_id, sess):
+        return
+    event_request = sess.get(EventRequest, event_id)
+    detail = REPLACEMENT_APPROVED_ORGANISER_DETAIL.format(
+        unavailable_venue=unavailable_venue,
+        event=event_request.name,
+        category=category,
+        replacement_venue=replacement_venue,
+    )
+    _raise_notifications(
+        [event_request.organiser_id],
+        event_request,
+        NotificationKind.REPLACEMENT_VENUE_APPROVED,
+        sess,
+        detail=detail,
+    )
+
+
 # --------------------------------------------------------------------------
 # SCRUM-68 — mark an event as completed after it has taken place
 # --------------------------------------------------------------------------
