@@ -11,12 +11,14 @@ instead of a real database session. In production the default
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any
 
 from flask_jwt_extended import create_access_token
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -25,10 +27,14 @@ from app.common.database import resolve_session
 from app.common.decorators import ROLE_CLAIM
 from app.common.errors import AuthenticationError, ConflictError, NotFoundError, ValidationError
 from app.common.validation import load_or_raise
-from app.modules.auth.models import User
+from app.modules.auth.models import RevokedToken, User
 from app.modules.auth.permissions import Role, role_value
 from app.modules.auth.schemas import CreateStaffUserSchema, RegisterSchema
 from app.modules.organisations.services import get_organisation
+
+#: The audit logger refused requests already write to (ADR-0007); a logout is
+#: recorded there too (ADR-0110).
+logger = logging.getLogger("connectsphere.authz")
 
 #: The one message used for *every* login failure so that responses cannot be
 #: used to discover which emails are registered.
@@ -278,3 +284,56 @@ def authenticate_user(email: str, password: str, *, session: Session | None = No
         raise AuthenticationError(INVALID_CREDENTIALS_MESSAGE)
 
     return AuthResult(access_token=issue_access_token(user), user=user)
+
+
+def is_token_revoked(jti: str, *, session: Session | None = None) -> bool:
+    """Return ``True`` if the token with this ``jti`` was logged out (SCRUM-89).
+
+    Flask-JWT-Extended asks this for every request that sends a token, so a logged-out
+    token is refused like an expired one (ADR-0110).
+    """
+    stmt = select(RevokedToken.id).where(RevokedToken.jti == jti)
+    return resolve_session(session).scalar(stmt) is not None
+
+
+def revoke_access_token(
+    claims: Mapping[str, Any],
+    *,
+    session: Session | None = None,
+    now: datetime | None = None,
+) -> None:
+    """Log out: block this access token until it expires (SCRUM-6 AC4, SCRUM-89).
+
+    Only this token is revoked; the user's other sessions carry on until their tokens
+    expire (ADR-0110). The same commit deletes the rows of tokens that have expired by
+    ``now``, since an expired token is refused anyway, and one line goes to the
+    ``connectsphere.authz`` log.
+
+    Args:
+        claims: The decoded claims of the token to revoke: its ``jti``, ``sub`` and
+            ``exp``.
+        session: Database session; defaults to ``db.session``.
+        now: The current instant; defaults to now, in UTC.
+    """
+    if now is None:
+        now = datetime.now(timezone.utc)
+    sess = resolve_session(session)
+    user_id = int(claims["sub"])
+
+    sess.execute(delete(RevokedToken).where(RevokedToken.expires_at <= now))
+    sess.add(
+        RevokedToken(
+            jti=claims["jti"],
+            user_id=user_id,
+            expires_at=datetime.fromtimestamp(claims["exp"], tz=timezone.utc),
+        )
+    )
+    try:
+        sess.commit()
+    except IntegrityError:
+        # Two logouts sent the same token at once, and the other saved its jti first.
+        # The token is revoked, which is all this one wanted.
+        sess.rollback()
+        return
+
+    logger.info("logout user_id=%s jti=%s", user_id, claims["jti"])

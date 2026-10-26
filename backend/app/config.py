@@ -51,7 +51,8 @@ class BaseConfig:
     JWT_TOKEN_LOCATION: ClassVar[list[str]] = ["headers"]
     JWT_HEADER_NAME: str = "Authorization"
     JWT_HEADER_TYPE: str = "Bearer"
-    # TODO: refresh tokens and revocation are tracked as SCRUM-89 (see ADR-0006).
+    # Logging out revokes the token through a jti blocklist (SCRUM-89, ADR-0110).
+    # TODO: refresh tokens are a future story (see ADR-0006).
 
     # Password policy (SCRUM-65). Kept in config so the team can tune it
     # without touching service code.

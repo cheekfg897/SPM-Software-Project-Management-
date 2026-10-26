@@ -125,12 +125,16 @@ curl -X POST http://localhost:5000/api/auth/login \
 # Authenticated routes
 curl http://localhost:5000/api/auth/me            -H "Authorization: Bearer <token>"
 curl http://localhost:5000/api/auth/internal-only -H "Authorization: Bearer <token>"
+
+# Log out: the token is refused from then on (204)
+curl -X POST http://localhost:5000/api/auth/logout -H "Authorization: Bearer <token>"
 ```
 
 | Route                          | Access                                                          |
 | ------------------------------ | --------------------------------------------------------------- |
 | `POST /api/auth/register`      | public — `event_organiser` or `attendee` only; staff accounts come from `flask create-staff-user` ([ADR-0023](docs/adr/0023-staff-accounts-created-by-command.md)) |
 | `POST /api/auth/login`         | public                                                          |
+| `POST /api/auth/logout`        | any authenticated user — revokes the token sent, which gets `401` from then on; the user's other sessions carry on (`204`, [ADR-0110](docs/adr/0110-logout-revokes-the-access-token.md)) |
 | `GET  /api/auth/me`            | any authenticated user                                          |
 | `GET  /api/auth/internal-only` | `event_coordinator`, `event_coordinator_lead`, `venue_staff`, `technical_support_staff`, `safety_officer` |
 | `POST /api/events/requests`    | `event_organiser` — submit an event request                     |

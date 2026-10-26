@@ -28,7 +28,7 @@ from sqlalchemy.orm import Session
 from app import create_app
 from app.common.decorators import ROLE_CLAIM
 from app.extensions import db
-from app.modules.auth.models import User
+from app.modules.auth.models import RevokedToken, User
 from app.modules.auth.permissions import Role
 from app.modules.equipment.models import EquipmentType
 from app.modules.events.models import (
@@ -102,6 +102,21 @@ def app_context(app: Flask) -> Iterator[None]:
     """Push an application context around every test."""
     with app.app_context():
         yield
+
+
+@pytest.fixture(autouse=True)
+def revoked_tokens_table(app_context: None) -> Iterator[None]:
+    """Give the in-memory database the logout blocklist for every test (SCRUM-89).
+
+    Every request that sends a token reads ``revoked_tokens`` (ADR-0110), including the
+    route tests that mock their services and have no ``db_session``. ``db_session``
+    creates and drops it with the other tables, so ``checkfirst`` leaves it to that.
+    """
+    table = db.metadata.tables[RevokedToken.__tablename__]
+    table.create(db.engine, checkfirst=True)
+    yield
+    db.session.remove()
+    table.drop(db.engine, checkfirst=True)
 
 
 @pytest.fixture()

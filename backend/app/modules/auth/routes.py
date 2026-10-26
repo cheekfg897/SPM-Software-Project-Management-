@@ -12,12 +12,18 @@ also driven over HTTP by the end-to-end journey in ``tests/e2e`` (ADR-0031).
 from __future__ import annotations
 
 from flask import Blueprint, Response, g, jsonify, request
+from flask_jwt_extended import get_jwt
 
 from app.common.decorators import requires_auth, requires_role
 from app.common.validation import load_or_raise
 from app.modules.auth.permissions import INTERNAL_ROLES
 from app.modules.auth.schemas import LoginSchema, UserSchema
-from app.modules.auth.services import authenticate_user, get_user_by_id, register_user
+from app.modules.auth.services import (
+    authenticate_user,
+    get_user_by_id,
+    register_user,
+    revoke_access_token,
+)
 
 bp = Blueprint("auth", __name__, url_prefix="/api/auth")
 
@@ -55,6 +61,18 @@ def login() -> tuple[Response, int]:
         ),
         200,
     )
+
+
+@bp.post("/logout")
+@requires_auth
+def logout() -> tuple[Response, int]:
+    """Log out: revoke the token sent with this request (SCRUM-6 AC4, SCRUM-89).
+
+    Any signed-in user may. Only this token stops working; the user's other sessions
+    carry on until their tokens expire (ADR-0110). Returns ``204`` with no body.
+    """
+    revoke_access_token(get_jwt())
+    return Response(), 204
 
 
 @bp.get("/me")
