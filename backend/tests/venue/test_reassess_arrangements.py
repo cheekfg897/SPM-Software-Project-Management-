@@ -576,6 +576,34 @@ def test_a_replacement_at_another_venue_keeps_the_period_once_the_venue_is_unava
 
 
 @pytest.mark.scrum_92
+def test_a_change_flagged_replacement_at_another_venue_may_take_a_new_period(
+    db_session: Session,
+    make_venue: Callable[..., Venue],
+    save: Callable[..., None],
+    event: EventRequest,
+    main_id: int,
+) -> None:
+    """With only the change flag, the period isn't locked (SCRUM-92 AC6, ADR-0108 d4).
+
+    The event's new time is what flagged it, so its replacement takes the new time at
+    another venue, as it may at its own.
+    """
+    _edit(db_session, event, {"end_time": "18:00"})
+    great_hall = make_venue(name="Great Hall", capacity=200)
+    save(great_hall)
+
+    replacement = raise_booking(
+        great_hall, event, db_session, replaces_request_id=main_id, **SECOND_PERIOD
+    )
+
+    assert (replacement.replaces_request_id, replacement.starts_at, replacement.ends_at) == (
+        main_id,
+        at(13),
+        at(16),
+    )
+
+
+@pytest.mark.scrum_92
 def test_a_change_flagged_replacement_tells_the_organiser_nothing_though_the_event_went_back(
     db_session: Session,
     breakout_room: Venue,
