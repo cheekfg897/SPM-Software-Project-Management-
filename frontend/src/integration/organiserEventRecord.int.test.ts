@@ -29,12 +29,7 @@ import {
 const canPlan = LEAD !== null && VENUE_STAFF !== null
 const canConfirm = canPlan && SAFETY_OFFICER !== null
 /** What only the organiser's record sends: everything else on it. */
-const ORGANISERS_OWN_KEYS = [
-  'internal_planning_notes',
-  'venue_arrangements',
-  'equipment_reservations',
-  'safety_outcome',
-]
+const ORGANISERS_OWN_KEYS = ['internal_planning_notes', 'equipment_reservations', 'safety_outcome']
 
 afterEach(() => sendRequestsAs(null))
 
@@ -101,6 +96,8 @@ describe('SCRUM-24 AC10 everything on the organiser record against the backend',
       expect(record.equipment_reservations).toEqual([])
       expect(record.safety_outcome).toBeNull()
       expect(organisersOwnKeysOf(coordinatorsRecord)).toEqual([])
+      // SCRUM-93 AC5: the coordinator's record lists every arrangement too (ADR-0105).
+      expect(coordinatorsRecord.venue_arrangements).toEqual(record.venue_arrangements)
     },
   )
 

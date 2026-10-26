@@ -4,6 +4,7 @@ import { http, HttpResponse } from 'msw'
 import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
 import type { EventRequestStatus } from '@/config/eventStatus'
 import { coordinatorEventPath, organiserRequestPath, ROUTES } from '@/config/routes'
+import { raiseBookingRequest, withdrawArrangement } from '@/features/booking/api'
 import { editEventRequest, fetchEventRequest } from '@/features/eventRequests/api'
 import type { EventRecord, RecordVenueArrangement } from '@/features/eventRequests/api'
 import { MOCK_ACCOUNTS, mockSessionFor, mockTokenFor } from '@/mocks/fixtures/accounts'
@@ -457,13 +458,51 @@ describe('SCRUM-24 AC10 event record: everything an organiser sees, at every sta
     ).toBeInTheDocument()
   })
 
-  it('shows none of these sections to the coordinator, who works on them from their own pages', async () => {
+  it("shows the coordinator none of the organiser's own sections: they have their own pages", async () => {
     openAsCoordinator('EVR-7K2M9QXA')
 
     await section('About the event')
-    for (const name of ['Planning notes', 'Venue arrangements', 'Equipment', 'Safety check']) {
+    for (const name of ['Planning notes', 'Equipment', 'Safety check']) {
       expect(screen.queryByRole('heading', { level: 2, name })).not.toBeInTheDocument()
     }
+  })
+})
+
+describe('SCRUM-93 AC5 event record: every arrangement on the coordinator page', () => {
+  it('lists every arrangement with its status, a hold with its expiry and one that expired', async () => {
+    server.use(
+      http.get('/api/events/requests/:reference', () =>
+        HttpResponse.json({
+          ...EVERYTHING_RECORDED,
+          internal_planning_notes: undefined,
+          equipment_reservations: undefined,
+          safety_outcome: undefined,
+        }),
+      ),
+    )
+    openAsCoordinator('EVR-7K2M9QXA')
+
+    const venues = await section('Venue arrangements')
+    expect(venues).toHaveTextContent('12 Nov, 9:00 am – 12:00 pm · On hold')
+    expect(venues).toHaveTextContent('Hold expires 30 Oct, 5:00 pm')
+    expect(venues).toHaveTextContent('Hold expired 25 Oct, 5:00 pm')
+  })
+
+  it('lists an arrangement the coordinator withdrew, with its status', async () => {
+    sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.coordinator))
+    const raised = await raiseBookingRequest('EVR-BOOK0101', {
+      venue_id: 1,
+      starts_at: '2026-11-10T09:00:00+08:00',
+      ends_at: '2026-11-10T12:00:00+08:00',
+      purpose: 'Careers fair',
+    })
+    await withdrawArrangement('EVR-BOOK0101', raised.id)
+    sendRequestsAs(null)
+    openAsCoordinator('EVR-BOOK0101')
+
+    const venues = await section('Venue arrangements')
+    expect(venues).toHaveTextContent('Careers fair')
+    expect(venues).toHaveTextContent('10 Nov, 9:00 am – 12:00 pm · Withdrawn')
   })
 })
 

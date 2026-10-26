@@ -28,7 +28,7 @@ from app.modules.auth.models import User
 from app.modules.auth.permissions import ALL_ROLES, Role
 from app.modules.events import routes
 from app.modules.events.models import EventEquipmentLine, EventRequest
-from app.modules.events.services import EquipmentLineAsShown, EventRecord
+from app.modules.events.services import CoordinatorEventRecord, EquipmentLineAsShown
 
 pytestmark = pytest.mark.scrum_37
 
@@ -245,7 +245,7 @@ def test_the_coordinators_detail_route_shows_the_equipment_lines_with_their_note
     """The organiser's record shows its own view instead (ADR-0098)."""
     event_request = make_event_request()
     event_request.equipment_lines = [shown_line]
-    record = EventRecord(event_request=event_request, coordinator=None)
+    record = CoordinatorEventRecord(event_request=event_request, coordinator=None)
     replace_services(routes, {"get_event_record_for_coordinator": record})
     coordinator = make_user(role=Role.EVENT_COORDINATOR, user_id=3)
 

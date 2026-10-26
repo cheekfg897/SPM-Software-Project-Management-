@@ -28,7 +28,7 @@ from app.modules.auth.models import User
 from app.modules.auth.permissions import ALL_ROLES, Role
 from app.modules.events import routes
 from app.modules.events.models import EventEquipmentLine, EventRequest
-from app.modules.events.services import CoordinatorContact, EventRecord
+from app.modules.events.services import CoordinatorContact, CoordinatorEventRecord
 
 pytestmark = pytest.mark.scrum_24
 
@@ -292,7 +292,7 @@ def test_a_coordinator_opening_a_record_sees_the_request_its_equipment_and_its_c
     mocks = replace_services(
         routes,
         {
-            "get_event_record_for_coordinator": EventRecord(
+            "get_event_record_for_coordinator": CoordinatorEventRecord(
                 event_request=event_request, coordinator=coordinator_three
             ),
             "get_event_record_for_organiser": None,

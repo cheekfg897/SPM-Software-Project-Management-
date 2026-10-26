@@ -50,21 +50,17 @@ const REQUEST_KEYS = [
   'registration_required',
   'created_at',
 ]
-/** The sections the organiser's and the coordinator's record both send. */
+/** The sections the organiser's and the coordinator's record both send (SCRUM-93 AC5). */
 const EVERY_RECORD_KEY = [
   'programme_notes',
   'coordinator',
   'decision',
   'clarifications',
   'equipment_lines',
+  'venue_arrangements',
 ]
 /** What only the organiser's record sends: everything else on it (SCRUM-24 AC10, ADR-0104). */
-const ORGANISERS_OWN_KEYS = [
-  'internal_planning_notes',
-  'venue_arrangements',
-  'equipment_reservations',
-  'safety_outcome',
-]
+const ORGANISERS_OWN_KEYS = ['internal_planning_notes', 'equipment_reservations', 'safety_outcome']
 /** A Harbour Gala arrangement as the booking mock saves it, before its own details. */
 const GALA_ARRANGEMENT = {
   expected_occupancy: 10,
@@ -245,7 +241,6 @@ describe('SCRUM-24 mock of an event record', () => {
       ...organisersView,
       equipment_lines: [],
       internal_planning_notes: undefined,
-      venue_arrangements: undefined,
       equipment_reservations: undefined,
       safety_outcome: undefined,
     })
