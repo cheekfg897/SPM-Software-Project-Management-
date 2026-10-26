@@ -1,7 +1,8 @@
 # ADR-0044: An Attendee's events list is their registrations, split into upcoming and past
 
-- **Status:** Accepted; keeping completed and cancelled events in the list is a default to review
-  with the Product Owner (SCRUM-24 AC7 says "confirmed")
+- **Status:** Accepted; decision 5 is superseded by [ADR-0109](0109-attendee-event-page.md)
+  decision 11: on 26 Oct the Product Owner reworded SCRUM-24 AC7, so the list holds every event the
+  Attendee has a registration on, whatever its status, withdrawn registrations included
 - **Date:** 2026-10-15
 - **Story:** SCRUM-24 See the events my role is involved in (AC7, AC8, AC11), with SCRUM-52 AC5
 - **Extends:** ADR-0026, ADR-0032
