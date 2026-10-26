@@ -19,13 +19,26 @@ from app.config import get_config
 from app.extensions import db, jwt, migrate
 
 
-def _configure_logging(app: Flask) -> None:
-    """Ensure INFO-level logs (incl. authorization failures) reach the console."""
-    if not app.logger.handlers:
+def _add_console_handler(logger: logging.Logger) -> None:
+    """Send ``logger``'s lines to the console, once however many apps are built."""
+    if not logger.handlers:
         handler = logging.StreamHandler()
         handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
-        app.logger.addHandler(handler)
+        logger.addHandler(handler)
+
+
+def _configure_logging(app: Flask) -> None:
+    """Ensure INFO-level logs reach the console.
+
+    That is the app's own, and the ``connectsphere.*`` loggers', such as authorization
+    failures and logouts on ``connectsphere.authz`` (ADR-0007, ADR-0110).
+    """
+    _add_console_handler(app.logger)
     app.logger.setLevel(logging.DEBUG if app.debug else logging.INFO)
+
+    connectsphere_logger = logging.getLogger("connectsphere")
+    _add_console_handler(connectsphere_logger)
+    connectsphere_logger.setLevel(logging.INFO)
 
 
 def _init_extensions(app: Flask) -> None:
