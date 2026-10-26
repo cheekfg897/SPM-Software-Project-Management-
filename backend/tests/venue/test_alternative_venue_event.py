@@ -63,10 +63,12 @@ DEACTIVATION_DETAIL = (
     "Main Hall is unavailable from 2026-10-20 12:00 until it is reactivated"
     " (renovation): Closed for a refit."
 )
-#: What the organiser is told when the venue sends their Confirmed event back (AC3).
+#: What the organiser is told when the venue sends their Confirmed event back: the
+#: venue, the event and the category (AC3, Product Owner 26 Oct).
 ORGANISER_DETAIL = (
-    "Main Hall became unavailable for Partner Summit, so the event has gone back from"
-    " Confirmed to Approved for its venue to be reviewed. It has not been cancelled."
+    "Main Hall became unavailable for Partner Summit ({category}), so the event has gone"
+    " back from Confirmed to Approved for its venue to be reviewed. It has not been"
+    " cancelled."
 )
 NOT_CONFIRMED = [
     status for status in EventRequestStatus if status is not EventRequestStatus.CONFIRMED
@@ -160,10 +162,10 @@ def test_an_event_that_is_not_confirmed_keeps_its_status(
 
 
 @pytest.mark.parametrize(
-    "make_unavailable",
+    ("make_unavailable", "category"),
     [
-        pytest.param(_block_with_lift_broken, id="a block"),
-        pytest.param(_deactivate, id="a deactivation"),
+        pytest.param(_block_with_lift_broken, "equipment failure", id="a block"),
+        pytest.param(_deactivate, "renovation", id="a deactivation"),
     ],
 )
 def test_the_organiser_is_told_their_confirmed_event_went_back_to_approved(
@@ -171,8 +173,9 @@ def test_the_organiser_is_told_their_confirmed_event_went_back_to_approved(
     venue: Venue,
     saved_event: SavedEvent,
     make_unavailable: Callable[[Venue, Session], None],
+    category: str,
 ) -> None:
-    """The Product Owner, 25 Oct: the notice names the event and the venue (AC3).
+    """The notice names the event, the venue and the category (AC3, PO 25 and 26 Oct).
 
     Venue Staff's note stays out of it, as it does of the organiser's history.
     """
@@ -181,7 +184,11 @@ def test_the_organiser_is_told_their_confirmed_event_went_back_to_approved(
     make_unavailable(venue, db_session)
 
     assert _notices(ORGANISER_ID) == [
-        (event.id, NotificationKind.ALTERNATIVE_VENUE_NEEDED, ORGANISER_DETAIL)
+        (
+            event.id,
+            NotificationKind.ALTERNATIVE_VENUE_NEEDED,
+            ORGANISER_DETAIL.format(category=category),
+        )
     ]
 
 
@@ -224,7 +231,11 @@ def test_the_organiser_is_told_once_when_one_block_flags_two_of_its_arrangements
     block(venue, at(8), at(16), db_session)
 
     assert _notices(ORGANISER_ID) == [
-        (event.id, NotificationKind.ALTERNATIVE_VENUE_NEEDED, ORGANISER_DETAIL)
+        (
+            event.id,
+            NotificationKind.ALTERNATIVE_VENUE_NEEDED,
+            ORGANISER_DETAIL.format(category="maintenance"),
+        )
     ]
 
 

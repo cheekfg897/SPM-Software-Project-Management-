@@ -1076,11 +1076,11 @@ describe('SCRUM-92 replacing a venue that became unavailable', () => {
     /^Integration Hall \S+ is available again for Integration Planning\. Your original booking stands\. It still needs Safety Review and confirmation\.$/
 
   /**
-   * What the organiser is told when the venue sends their confirmed event back: the venue and the
-   * event, by name, and not Venue Staff's note (AC3, Product Owner 25 Oct).
+   * What the organiser is told when the venue sends their confirmed event back: the venue, the
+   * event and the category, and not Venue Staff's note (AC3, Product Owner 25 and 26 Oct).
    */
   const ORGANISER_TOLD =
-    /^Integration Hall \S+ became unavailable for Integration Planning, so the event has gone back from Confirmed to Approved for its venue to be reviewed\. It has not been cancelled\.$/
+    /^Integration Hall \S+ became unavailable for Integration Planning \(equipment failure\), so the event has gone back from Confirmed to Approved for its venue to be reviewed\. It has not been cancelled\.$/
 
   /** Check the "available again" notice about the event, as the coordinator reads it (AC8). */
   async function expectToldAvailableAgain(reference: string, detail = AVAILABLE_AGAIN) {

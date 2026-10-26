@@ -43,6 +43,7 @@ from app.modules.venue.models import (
     ReassessmentFlag,
     ReassessmentFlagKind,
     RequirementKind,
+    UnavailabilityCategory,
     Venue,
     VenueBlock,
     VenueBookingRequest,
@@ -279,6 +280,8 @@ class AlternativeVenueNotice:
     #: The flag sent the event back from Confirmed to Approved, so its organiser is
     #: told too (AC3).
     returned_to_planning: bool
+    #: Why the venue is unavailable, which the organiser's notice names (AC3).
+    category: UnavailabilityCategory
 
 
 def _notice_time(moment: datetime) -> str:
@@ -336,7 +339,7 @@ def _flag_arrangements(
             arrangement.event_id, details=_flag_details(arrangement, flag), session=session
         )
         notice = AlternativeVenueNotice(
-            arrangement.event_id, _notice_detail(venue, flag), returned_to_planning
+            arrangement.event_id, _notice_detail(venue, flag), returned_to_planning, flag.category
         )
         notices.append(notice)
     return notices
@@ -361,7 +364,10 @@ def _tell_organisers(
     for notice in notices:
         if notice.returned_to_planning:
             event_services.notify_organiser_venue_unavailable(
-                notice.event_id, venue_name=venue.name, session=session
+                notice.event_id,
+                venue_name=venue.name,
+                category=notice.category.label,
+                session=session,
             )
 
 

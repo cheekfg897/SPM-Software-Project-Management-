@@ -3187,27 +3187,31 @@ def notify_coordinator_alternative_venue_needed(
 
 
 #: What the organiser is told when a venue becoming unavailable sends their Confirmed
-#: event back to Approved (SCRUM-92 AC3, Product Owner 25 Oct). Venue Staff's note is
-#: left out, as it is of the organiser's history (ADR-0053 decision 7).
+#: event back to Approved: the venue, the event and the category (SCRUM-92 AC3, Product
+#: Owner 25 and 26 Oct). Venue Staff's note is left out, as it is of the organiser's
+#: history (ADR-0053 decision 7).
 VENUE_UNAVAILABLE_ORGANISER_DETAIL = (
-    "{venue} became unavailable for {event}, so the event has gone back from Confirmed"
-    " to Approved for its venue to be reviewed. It has not been cancelled."
+    "{venue} became unavailable for {event} ({category}), so the event has gone back from"
+    " Confirmed to Approved for its venue to be reviewed. It has not been cancelled."
 )
 
 
 def notify_organiser_venue_unavailable(
-    event_id: int, *, venue_name: str, session: Session | None = None
+    event_id: int, *, venue_name: str, category: str, session: Session | None = None
 ) -> None:
     """Tell the organiser their Confirmed event went back to Approved (SCRUM-92 AC3).
 
     For the venue module, after the flag's own commit (ADR-0015), and only for an event
     the flag sent back. Only the organiser who submitted the request, as for the
     other decisions on it (ADR-0028), with the kind the coordinator's notice uses: a
-    venue booked for the event is unavailable (ADR-0108).
+    venue booked for the event is unavailable (ADR-0108). ``category`` is how the
+    notice words the unavailability category, e.g. ``"equipment failure"``.
     """
     sess = resolve_session(session)
     event_request = sess.get(EventRequest, event_id)
-    detail = VENUE_UNAVAILABLE_ORGANISER_DETAIL.format(venue=venue_name, event=event_request.name)
+    detail = VENUE_UNAVAILABLE_ORGANISER_DETAIL.format(
+        venue=venue_name, event=event_request.name, category=category
+    )
     _raise_notifications(
         [event_request.organiser_id],
         event_request,
