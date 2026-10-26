@@ -1,21 +1,31 @@
 import { INTERNAL_ROLES, ROLE } from '@/config/roles'
-import { fetchCurrentUser, logIn, register } from '@/features/auth/api'
+import { fetchCurrentUser, logIn, logOut, register } from '@/features/auth/api'
+import { fetchNotifications } from '@/features/notifications/api'
 import { createOrganisation } from '@/features/organisations/api'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
 
 import {
+  hasTechSupport,
   newOrganiser,
   refusal,
   signInAs,
+  signInAsTechSupport,
   staffAccount,
   uniqueEmail,
   VALID_PASSWORD,
 } from './backend'
+import type { Credentials } from './backend'
 
 /** An organisation id no database has. */
 const UNKNOWN_ORGANISATION_ID = 99_999_999
 
 const INVALID_CREDENTIALS_MESSAGE = 'Invalid email or password.'
+/** The backend's 401 for a missing, invalid, expired or logged-out token (ADR-0110). */
+const INVALID_TOKEN = {
+  status: 401,
+  code: 'authentication_error',
+  message: 'Missing, invalid or expired token.',
+}
 /** What the backend says when sign-up names a staff role (SCRUM-88), as the mock says it too. */
 const EXTERNAL_ROLE_ONLY_MESSAGE = 'Role must be one of: attendee, event_organiser.'
 
@@ -26,6 +36,19 @@ function newAttendee() {
     password: VALID_PASSWORD,
     role: ROLE.ATTENDEE,
   }
+}
+
+/** Sign a new attendee up, and return their details for logging in. */
+async function registeredAttendee(): Promise<Credentials> {
+  const attendee = newAttendee()
+  await register(attendee)
+  return { email: attendee.email, password: attendee.password }
+}
+
+/** Log in and return the token, without sending it yet: one call is one device's session. */
+async function tokenFor(credentials: Credentials): Promise<string> {
+  const session = await logIn(credentials)
+  return session.access_token
 }
 
 afterEach(() => sendRequestsAs(null))
@@ -132,5 +155,57 @@ describe('SCRUM-88 against the backend', () => {
 
     expect(error).toMatchObject({ status: 400, code: 'validation_error' })
     expect(error.fieldErrors).toEqual({ role: [EXTERNAL_ROLE_ONLY_MESSAGE] })
+  })
+})
+
+describe('SCRUM-89 against the backend', () => {
+  it('logs out with no content, after which that token is refused everywhere', async () => {
+    sendRequestsAs(await tokenFor(await registeredAttendee()))
+
+    await expect(logOut()).resolves.toBeUndefined()
+
+    expect(await refusal(fetchCurrentUser())).toMatchObject(INVALID_TOKEN)
+    expect(await refusal(fetchNotifications())).toMatchObject(INVALID_TOKEN)
+  })
+
+  it('leaves the same user’s other session and other users signed in', async () => {
+    const credentials = await registeredAttendee()
+    const loggedOut = await tokenFor(credentials)
+    const otherDevice = await tokenFor(credentials)
+    const otherUser = await tokenFor(await registeredAttendee())
+
+    sendRequestsAs(loggedOut)
+    await logOut()
+
+    sendRequestsAs(otherDevice)
+    expect(await fetchCurrentUser()).toMatchObject({ email: credentials.email })
+    sendRequestsAs(otherUser)
+    expect(await fetchCurrentUser()).toMatchObject({ role: ROLE.ATTENDEE })
+  })
+
+  it('refuses a logout without a token, or with a token already logged out', async () => {
+    const withoutToken = await refusal(logOut())
+    sendRequestsAs(await tokenFor(await registeredAttendee()))
+    await logOut()
+    const again = await refusal(logOut())
+
+    expect(withoutToken).toMatchObject(INVALID_TOKEN)
+    expect(again).toMatchObject(INVALID_TOKEN)
+  })
+
+  it('logs out a member of staff', async () => {
+    sendRequestsAs(await tokenFor(staffAccount()))
+
+    await logOut()
+
+    expect(await refusal(fetchCurrentUser())).toMatchObject(INVALID_TOKEN)
+  })
+
+  it.skipIf(!hasTechSupport)('logs out Technical Support', async () => {
+    await signInAsTechSupport()
+
+    await logOut()
+
+    expect(await refusal(fetchCurrentUser())).toMatchObject(INVALID_TOKEN)
   })
 })
