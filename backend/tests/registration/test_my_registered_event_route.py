@@ -66,6 +66,7 @@ def page_service(replace_services: ReplaceServices, now: datetime) -> MagicMock:
         withdrawn_at=None,
         withdrawals_close_at=STARTS_AT - timedelta(days=1),
         can_withdraw=True,
+        is_being_reviewed=False,
     )
     return replace_services(routes, {"get_my_registered_event": shown})["get_my_registered_event"]
 
@@ -90,6 +91,7 @@ def test_the_event_is_shown_with_its_venues_registration_and_withdrawal(
         "withdrawn_at": None,
         "withdrawals_close_at": "2026-10-19T19:30:00+08:00",
         "can_withdraw": True,
+        "is_being_reviewed": False,
     }
 
 
