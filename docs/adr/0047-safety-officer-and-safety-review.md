@@ -1,6 +1,6 @@
 # ADR-0047: The Safety Officer is an internal role, and the assigned coordinator sends a settled, approved event to Safety Review
 
-- **Status:** Accepted (parts A and B of SCRUM-97; SCRUM-98)
+- **Status:** Accepted (parts A and B of SCRUM-97; SCRUM-98); decision 19's internal-only history entry superseded by [ADR-0104](0104-organiser-sees-everything-on-the-record.md): the organiser reads the outcome with its checklist and reason
 - **Date:** 2026-10-16, amended 2026-10-17 for SCRUM-98
 - **Stories:** SCRUM-97 Submit an event for operational safety check; SCRUM-98 Record the operational safety check outcome; the list is also SCRUM-24 AC6 (See the events my role is involved in)
 
