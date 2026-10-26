@@ -110,6 +110,11 @@ class NotificationKind(str, enum.Enum):
     #: Safety Review; the fields changed, and whether the event went back to planning,
     #: are the notification's ``detail`` (SCRUM-33 AC9, ADR-0107).
     SAFETY_REVIEW_EVENT_CHANGED = "safety_review_event_changed"
+    #: Tells the Organiser who submitted an event that a venue sent back from Confirmed
+    #: to Approved that Venue Staff approved a replacement venue for it; the event, the
+    #: venues and the category are the notification's ``detail`` (SCRUM-92 AC9,
+    #: ADR-0108). Migration 0047.
+    REPLACEMENT_VENUE_APPROVED = "replacement_venue_approved"
 
 
 class Notification(db.Model):  # type: ignore[name-defined]

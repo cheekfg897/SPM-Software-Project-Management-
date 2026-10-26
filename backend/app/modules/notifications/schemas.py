@@ -77,6 +77,7 @@ MESSAGE_BY_KIND: dict[NotificationKind, str] = {
     NotificationKind.SAFETY_REVIEW_EVENT_CHANGED: (
         "An event in Safety Review changed significantly."
     ),
+    NotificationKind.REPLACEMENT_VENUE_APPROVED: "A replacement venue was approved for your event.",
 }
 
 #: Where a notification links to: the event's page, found by its reference
