@@ -1,6 +1,6 @@
 # ADR-0006: Log in with a 1-hour JWT access token, no refresh token yet
 
-- **Status:** Accepted; server-side logout is SCRUM-89, which the Product Owner put in Sprint 4 on 20 Oct and on 25 Oct (answer 1) chose option 2 for (server-side revocation); it will supersede the "no real logout" consequence below
+- **Status:** Accepted; the "no real logout" and "no session state" consequences superseded by [ADR-0110](0110-logout-revokes-the-access-token.md) (SCRUM-89: logging out revokes that token through a `jti` blocklist, the Product Owner's choice of 25 Oct)
 - **Date:** 2026-09-25 (recorded from the Sprint 1 `STORIES.md`; the code has followed it since then)
 - **Story:** SCRUM-6 Log in to the system
 
@@ -16,13 +16,14 @@ between requests or how long it lasts.
 - There are **no refresh tokens** yet; when the token expires, the user logs in again.
 
 ## Consequences
-- The server keeps no session state, so any instance can check any token.
-- A token can't be revoked before it expires, so there is no real logout (SCRUM-6 AC4). That gap
-  is tracked as SCRUM-89, in Sprint 4 since 20 Oct. On 25 Oct (answer 1) the Product Owner chose
-  its option 2: server-side revocation, each token's `jti` kept in a blocklist table checked
-  through Flask-JWT-Extended's `token_in_blocklist_loader`, which needs a new table and a migration.
+- ~~The server keeps no session state, so any instance can check any token.~~ Superseded by
+  [ADR-0110](0110-logout-revokes-the-access-token.md): every request with a token now reads the
+  logout blocklist, a table every instance shares.
+- ~~A token can't be revoked before it expires, so there is no real logout (SCRUM-6 AC4).~~
+  Superseded by [ADR-0110](0110-logout-revokes-the-access-token.md): `POST /api/auth/logout`
+  revokes the token it is sent with (SCRUM-89, the Product Owner's option 2 of 25 Oct).
 - A role change only takes effect when the user's current token expires.
 
 ## Revisit when
-- SCRUM-89 (logout and revocation; Sprint 4, server-side revocation, per the Product Owner on 25 Oct)
-  is built; its ADR will supersede this one's "no real logout".
+- Refresh tokens are added, or a role change needs to take effect at once (see ADR-0110's
+  "Revisit when").
