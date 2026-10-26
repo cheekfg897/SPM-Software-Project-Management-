@@ -1,7 +1,11 @@
 import { ROLE, STAFF_RECORD_READER_ROLES } from '@/config/roles'
 import type { Role } from '@/config/roles'
 import { updateBookingPreparation } from '@/features/booking/api'
-import { reserveEquipment, updateReservationPreparation } from '@/features/equipment/api'
+import {
+  recordEquipmentOutcome,
+  reserveEquipment,
+  updateReservationPreparation,
+} from '@/features/equipment/api'
 import {
   editEventRequest,
   fetchEventHistory,
@@ -200,7 +204,10 @@ describe('SCRUM-24 mock of the read-only staff record', () => {
         notes: 'Ceiling-mounted, with HDMI at the lectern.',
         status: 'requested',
         provided_quantity: null,
+        shortfall: null,
         outcome_note: null,
+        reviewed_by: null,
+        reviewed_at: null,
       },
       {
         equipment_type_name: 'Microphone',
@@ -208,7 +215,11 @@ describe('SCRUM-24 mock of the read-only staff record', () => {
         notes: null,
         status: 'fulfilled',
         provided_quantity: 4,
+        shortfall: 0,
         outcome_note: null,
+        // SCRUM-48 AC5: every reader of the record sees who reviewed the line (ADR-0105).
+        reviewed_by: 'Tariq Hassan',
+        reviewed_at: '2026-10-05T10:00:00+08:00',
       },
     ])
     expect(record.equipment_reservations).toEqual([
@@ -223,6 +234,27 @@ describe('SCRUM-24 mock of the read-only staff record', () => {
       },
     ])
   })
+
+  it.each(accountsWithRoles(STAFF_RECORD_READER_ROLES))(
+    'shows %s who reviewed a line as soon as Technical Support record its outcome (SCRUM-48 AC5)',
+    async (_name, account) => {
+      signInAs(MOCK_ACCOUNTS.technicalSupport)
+      await recordEquipmentOutcome(WITH_EQUIPMENT, {
+        lineId: 41,
+        body: { provided_quantity: 6, note: 'Two are being repaired.' },
+      })
+      signInAs(account)
+
+      const [line] = (await fetchStaffEventRecord(WITH_EQUIPMENT)).equipment_lines
+
+      expect(line).toMatchObject({
+        provided_quantity: 6,
+        shortfall: 2,
+        outcome_note: 'Two are being repaired.',
+        reviewed_by: 'Tariq Hassan',
+      })
+    },
+  )
 
   it('shows the outcome the Safety Officer records, with the checklist', async () => {
     signInAs(MOCK_ACCOUNTS.lead)

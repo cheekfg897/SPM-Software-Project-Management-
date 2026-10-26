@@ -932,13 +932,25 @@ class SafetyOutcomeSchema(Schema):
     recorded_at = BusinessDateTime(dump_only=True)
 
 
+class RecordEquipmentLineSchema(SafetyReviewEquipmentSchema):
+    """An equipment line with its outcome and reviewer (SCRUM-48 AC5, ADR-0104).
+
+    Dumped from ``EquipmentLineOnRecord``: the Safety Officer's view of a line, plus
+    the shortfall and who reviewed it when, by name and in business time.
+    """
+
+    shortfall = fields.Integer(dump_only=True, allow_none=True)
+    reviewed_by = fields.String(dump_only=True, allow_none=True)
+    reviewed_at = BusinessDateTime(dump_only=True, allow_none=True)
+
+
 class StaffEventRecordSectionsSchema(Schema):
     """Every section of the read-only staff record beside the request (ADR-0095).
 
     Dumped from ``StaffEventRecord``. The coordinator, decision and clarifications are
-    shown as on the organiser's and coordinator's record; the equipment requests as the
-    Safety Officer's list shows them, by name with Technical Support's outcome
-    (SCRUM-97 AC6). No registrants (SCRUM-55).
+    shown as on the organiser's and coordinator's record; the equipment requests by name
+    with Technical Support's outcome and who reviewed them (SCRUM-48 AC5, ADR-0105).
+    No registrants (SCRUM-55).
     """
 
     coordinator = fields.Nested(
@@ -951,7 +963,7 @@ class StaffEventRecordSectionsSchema(Schema):
         ClarificationSchema, attribute="record.clarifications", many=True, dump_only=True
     )
     venue_arrangements = fields.Nested(StaffVenueArrangementSchema, many=True, dump_only=True)
-    equipment_lines = fields.Nested(SafetyReviewEquipmentSchema, many=True, dump_only=True)
+    equipment_lines = fields.Nested(RecordEquipmentLineSchema, many=True, dump_only=True)
     equipment_reservations = fields.Nested(StaffReservationSchema, many=True, dump_only=True)
     safety_outcome = fields.Nested(SafetyOutcomeSchema, allow_none=True, dump_only=True)
 
@@ -1008,18 +1020,6 @@ class RecordVenueArrangementSchema(Schema):
     reassessment_flags = fields.Nested(RecordReassessmentSchema, many=True, dump_only=True)
     preparation_status = fields.String(attribute="preparation_status.value", dump_only=True)
     preparation_notes = fields.String(dump_only=True, allow_none=True)
-
-
-class RecordEquipmentLineSchema(SafetyReviewEquipmentSchema):
-    """An equipment line with its outcome and reviewer (SCRUM-48 AC5, ADR-0104).
-
-    Dumped from ``EquipmentLineOnRecord``: the Safety Officer's view of a line, plus
-    the shortfall and who reviewed it when, by name and in business time.
-    """
-
-    shortfall = fields.Integer(dump_only=True, allow_none=True)
-    reviewed_by = fields.String(dump_only=True, allow_none=True)
-    reviewed_at = BusinessDateTime(dump_only=True, allow_none=True)
 
 
 class OrganiserRecordSectionsSchema(Schema):
