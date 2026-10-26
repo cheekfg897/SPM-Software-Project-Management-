@@ -17,8 +17,9 @@ export { MOCK_ACCOUNTS, mockSessionFor } from '../fixtures/accounts'
 
 /**
  * The auth endpoints, as the backend answers them (backend/app/modules/auth, with SCRUM-66's
- * organisation_id and SCRUM-88's external-only sign-up). Accounts live in memory: sign up, then
- * log in with the same details, and it works until the page reloads or resetMockAccounts runs.
+ * organisation_id, SCRUM-88's external-only sign-up and SCRUM-89's logout). Accounts live in
+ * memory: sign up, then log in with the same details, and it works until the page reloads or
+ * resetMockAccounts runs.
  */
 
 export const INVALID_CREDENTIALS_MESSAGE = 'Invalid email or password.'
@@ -27,9 +28,16 @@ const REQUIRED_MESSAGE = 'Missing data for required field.'
 
 let accounts: MockAccount[] = []
 
-/** Forget every account made by sign-up, keeping only MOCK_ACCOUNTS. */
+/**
+ * Tokens logged out (SCRUM-89, ADR-0110), which every handler then refuses. The mock issues one
+ * token per account, so logging in again issues that token afresh and takes it off this list.
+ */
+const loggedOutTokens = new Set<string>()
+
+/** Forget every account made by sign-up and every logout, keeping only MOCK_ACCOUNTS. */
 export function resetMockAccounts(): void {
   accounts = Object.values(MOCK_ACCOUNTS).map((account) => ({ ...account }))
+  loggedOutTokens.clear()
 }
 resetMockAccounts()
 
@@ -105,12 +113,20 @@ function findByEmail(email: unknown): MockAccount | undefined {
   return accounts.find((account) => account.email === wanted)
 }
 
+function tokenOf(request: Request): string {
+  return (request.headers.get('Authorization') ?? '').replace('Bearer ', '')
+}
+
 /**
- * The account whose mock token the request carries, or undefined when it carries none. Every
- * mock handler that needs to know who is calling uses this, as the backend's decorators do.
+ * The account whose mock token the request carries, or undefined when it carries none or one
+ * that was logged out. Every mock handler that needs to know who is calling uses this, as the
+ * backend's decorators do.
  */
 export function accountForRequest(request: Request): MockAccount | undefined {
-  const token = (request.headers.get('Authorization') ?? '').replace('Bearer ', '')
+  const token = tokenOf(request)
+  if (loggedOutTokens.has(token)) {
+    return undefined
+  }
   const id = accountIdFromMockToken(token)
   return accounts.find((account) => account.id === id)
 }
@@ -126,6 +142,7 @@ export const authHandlers: RequestHandler[] = [
     if (account === undefined || account.password !== body.password) {
       return errorResponse(401, 'authentication_error', INVALID_CREDENTIALS_MESSAGE)
     }
+    loggedOutTokens.delete(mockTokenFor(account))
     return HttpResponse.json({
       access_token: mockTokenFor(account),
       token_type: 'Bearer',
@@ -152,6 +169,14 @@ export const authHandlers: RequestHandler[] = [
     }
     accounts.push(account)
     return HttpResponse.json(publicUser(account), { status: 201 })
+  }),
+
+  http.post('/api/auth/logout', ({ request }) => {
+    if (accountForRequest(request) === undefined) {
+      return notAuthenticated()
+    }
+    loggedOutTokens.add(tokenOf(request))
+    return new HttpResponse(null, { status: 204 })
   }),
 
   http.get('/api/auth/me', ({ request }) => {

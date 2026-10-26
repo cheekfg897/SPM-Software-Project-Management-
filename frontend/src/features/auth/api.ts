@@ -6,6 +6,7 @@ const AUTH_PATHS = {
   LOGIN: '/api/auth/login',
   REGISTER: '/api/auth/register',
   ME: '/api/auth/me',
+  LOGOUT: '/api/auth/logout',
 } as const
 
 export interface LoginCredentials {
@@ -57,4 +58,12 @@ export async function register(registration: Registration): Promise<void> {
 
 export function fetchCurrentUser(): Promise<CurrentUser> {
   return apiRequest<CurrentUser>(AUTH_PATHS.ME)
+}
+
+/**
+ * `POST /api/auth/logout` (SCRUM-89): the backend revokes the token this request carries, so it
+ * stops working everywhere (ADR-0110). Call it while the session still holds the token.
+ */
+export async function logOut(): Promise<void> {
+  await apiRequest<undefined>(AUTH_PATHS.LOGOUT, { method: 'POST' })
 }
