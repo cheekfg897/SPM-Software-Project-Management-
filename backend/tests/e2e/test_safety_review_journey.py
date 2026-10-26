@@ -333,6 +333,10 @@ def test_a_settled_event_reaches_the_safety_officer(
         {
             "venue_name": "Main Hall",
             "venue_location": "Level 1",
+            # What the Safety Officer reviews, the organiser sees too (SCRUM-24 AC10).
+            "venue_capacity": 300,
+            "venue_facilities": ["projector"],
+            "venue_accessibility_features": ["wheelchair_access"],
             "starts_at": f"{event_day}T09:00:00+08:00",
             "ends_at": f"{event_day}T12:00:00+08:00",
             "purpose": "Partner summit",

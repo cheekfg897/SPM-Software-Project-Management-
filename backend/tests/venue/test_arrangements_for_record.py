@@ -44,6 +44,9 @@ def test_each_arrangement_shows_its_venue_period_status_and_preparation(
         ArrangementForRecord(
             venue_name="Auditorium",
             venue_location="Building A",
+            venue_capacity=100,
+            venue_facilities=["projector", "wifi"],
+            venue_accessibility_features=["wheelchair_access"],
             starts_at=datetime(2026, 11, 1, 1, 0, tzinfo=timezone.utc),
             ends_at=datetime(2026, 11, 1, 4, 0, tzinfo=timezone.utc),
             purpose="Main hall",
@@ -63,6 +66,9 @@ def test_each_arrangement_shows_its_venue_period_status_and_preparation(
         ArrangementForRecord(
             venue_name="Breakout room",
             venue_location="Building A",
+            venue_capacity=100,
+            venue_facilities=["projector", "wifi"],
+            venue_accessibility_features=["wheelchair_access"],
             starts_at=datetime(2026, 11, 1, 5, 0, tzinfo=timezone.utc),
             ends_at=datetime(2026, 11, 1, 8, 0, tzinfo=timezone.utc),
             purpose="Main hall",

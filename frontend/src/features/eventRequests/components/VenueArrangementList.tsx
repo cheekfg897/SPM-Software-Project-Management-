@@ -8,6 +8,7 @@ import { formatDateTime, formatShortDate, formatTimeRange } from '@/lib/formatDa
 import type { RecordVenueArrangement, StaffVenueArrangement } from '../api'
 
 const NONE_ARRANGED = 'No venue is arranged for this event yet.'
+const NONE_LISTED = 'none listed'
 
 /** Whether the backend sent the arrangement in full, as the organiser's record does (ADR-0104). */
 function isInFull(arrangement: StaffVenueArrangement): arrangement is RecordVenueArrangement {
@@ -18,6 +19,11 @@ function isInFull(arrangement: StaffVenueArrangement): arrangement is RecordVenu
 function layoutLabel(layout: string | null): string {
   const option = LAYOUT_OPTIONS.find((candidate) => candidate.value === layout)
   return option?.label ?? 'No layout set'
+}
+
+/** A venue's facilities or features as one line, or that it lists none. */
+function listed(values: string[]): string {
+  return values.length === 0 ? NONE_LISTED : values.join(', ')
 }
 
 /** When an On Hold arrangement's hold expires, or an Expired one's did (SCRUM-93 AC5). */
@@ -48,8 +54,9 @@ function ArrangementFlag({ heading, reasons }: { heading: string; reasons: strin
 }
 
 /**
- * What the coordinator asked for, Venue Staff's reason, any hold's expiry and each flag with its
- * reason: the rest of an arrangement sent in full (SCRUM-24 AC10, SCRUM-93 AC5).
+ * What the venue offers (as the Safety Officer reviews it, SCRUM-97), what the coordinator asked
+ * for, Venue Staff's reason, any hold's expiry and each flag with its reason: the rest of an
+ * arrangement sent in full (SCRUM-24 AC10, SCRUM-93 AC5).
  */
 function ArrangementDetails({ arrangement }: { arrangement: RecordVenueArrangement }) {
   const hold = holdText(arrangement)
@@ -58,6 +65,10 @@ function ArrangementDetails({ arrangement }: { arrangement: RecordVenueArrangeme
   )
   return (
     <>
+      <p className="text-ink-muted text-sm">
+        Holds {arrangement.venue_capacity} · Facilities: {listed(arrangement.venue_facilities)} ·
+        Accessibility: {listed(arrangement.venue_accessibility_features)}
+      </p>
       <p className="text-ink-muted text-sm">
         {arrangement.purpose} · {arrangement.expected_occupancy} guests ·{' '}
         {layoutLabel(arrangement.required_layout)}

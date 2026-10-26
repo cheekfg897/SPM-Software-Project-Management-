@@ -1658,14 +1658,18 @@ class ReassessmentForRecord:
 class ArrangementForRecord:
     """One of an event's venue arrangements as its record shows it.
 
-    SCRUM-24 AC9, AC10 and SCRUM-84 AC2: the venue and where it is, the period, what
-    the coordinator asked for, where the request stands and why, any hold's expiry, any
-    flag with its reason, and Venue Staff's preparation (ADR-0095, ADR-0104). No ids:
-    the reader has nothing to do with them.
+    SCRUM-24 AC9, AC10 and SCRUM-84 AC2: the venue, where it is and what it offers, the
+    period, what the coordinator asked for, where the request stands and why, any hold's
+    expiry, any flag with its reason, and Venue Staff's preparation (ADR-0095,
+    ADR-0104). No ids: the reader has nothing to do with them.
     """
 
     venue_name: str
     venue_location: str
+    #: What the Safety Officer reviews of the venue (SCRUM-97 AC6, SCRUM-24 AC10).
+    venue_capacity: int
+    venue_facilities: list[str]
+    venue_accessibility_features: list[str]
     starts_at: datetime
     ends_at: datetime
     purpose: str
@@ -1712,6 +1716,9 @@ def _arrangement_for_record(
     return ArrangementForRecord(
         venue_name=venue.name,
         venue_location=venue.location,
+        venue_capacity=venue.capacity,
+        venue_facilities=venue.facilities_list(),
+        venue_accessibility_features=venue.accessibility_list(),
         starts_at=arrangement.starts_at,
         ends_at=arrangement.ends_at,
         purpose=arrangement.purpose,
