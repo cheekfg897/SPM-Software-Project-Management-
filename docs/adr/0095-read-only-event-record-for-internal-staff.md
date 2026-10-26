@@ -1,6 +1,6 @@
 # ADR-0095: A read-only event record for Venue Staff, Technical Support, the Safety Officer and the Lead
 
-- **Status:** Accepted. Who may open it is the product owner's (SCRUM-24 AC9, 19 Oct; AC10, Week 7 change #5). A separate route, only the arrangements that still count, the current check's safety outcome, and Technical Support's list opening the record instead of the Equipment page are defaults to review
+- **Status:** Accepted. Who may open it is the product owner's (SCRUM-24 AC9, 19 Oct; AC10, Week 7 change #5). Decision 4 (only the arrangements that still count) and the line and arrangement shapes of decision 3 are superseded by [ADR-0105](0105-reviewer-and-every-arrangement-on-the-staff-record.md): every arrangement in full, and each line with its reviewer. A separate route, the current check's safety outcome, and Technical Support's list opening the record instead of the Equipment page are defaults to review
 - **Date:** 2026-10-25
 - **Stories:** SCRUM-24 AC9, AC10; SCRUM-33 AC5; SCRUM-84 AC2; SCRUM-85 AC2
 - **Extends:** [ADR-0056](0056-event-request-detail-page.md) (the event page), [ADR-0076](0076-event-history-and-registrants-on-the-event-page.md) (its history section); [ADR-0049](0049-venue-preparation-details.md) and [ADR-0050](0050-equipment-preparation-details.md) decision 7 (who reads the preparation details)
