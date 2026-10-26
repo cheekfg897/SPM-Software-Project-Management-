@@ -951,6 +951,21 @@ describe('SCRUM-49 mock: rejecting an event during planning', () => {
 
       expect(await statusOf(REJECTED_THROUGH_REVIEW)).toBe('approved')
     })
+
+    it('leaves an approval changed to a rejection through SCRUM-31 free to change again', async () => {
+      signInAs(CHLOE)
+      await decideEventRequest(APPROVED_WITH_NOTHING_ARRANGED, {
+        outcome: 'rejected',
+        reason: REASON,
+      })
+
+      await decideEventRequest(APPROVED_WITH_NOTHING_ARRANGED, {
+        outcome: 'approved',
+        reason: CHANGE,
+      })
+
+      expect(await statusOf(APPROVED_WITH_NOTHING_ARRANGED)).toBe('approved')
+    })
   })
 })
 
