@@ -57,7 +57,7 @@ The remaining choices:
 - SQLite enforces neither enums nor foreign keys, so those remain CI's migration steps' job.
 
 ## Open items
-- **41-10:** the repo owner must confirm that the backend check ("Backend — migrate + unit tests") is a **required** status check on `main`. Until then, a red journey is reported on the PR but doesn't block the merge, and AC2's "blocks the merge" is not met.
+- ~~**41-10:** the repo owner must confirm that the backend check ("Backend — migrate + unit tests") is a **required** status check on `main`. Until then, a red journey is reported on the PR but doesn't block the merge, and AC2's "blocks the merge" is not met.~~ Settled on 2026-10-20: the Product Owner confirmed that `main`'s ruleset requires every CI check to pass before a merge, the backend check included. So a red journey blocks the merge, for this one and for every later journey that runs in that job (SCRUM-51 AC4, SCRUM-63 AC4).
 
 ## Revisit when
 - CI sets a `TEST_DATABASE_URL` for Postgres. Running the journey against the migrated schema (option c) would also check enums and foreign keys, but `db_session`'s `create_all`/`drop_all` would first have to give way to the migrations.
