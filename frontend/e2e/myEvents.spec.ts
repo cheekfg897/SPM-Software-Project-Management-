@@ -7,7 +7,8 @@ import { signInAs } from './signInAs'
 
 /**
  * SCRUM-24 AC7 and SCRUM-52 AC5: an Attendee's own events, against the mock (docs/adr/0044).
- * The mock's "now" is Monday 5 October 2026, so the same events show on every run.
+ * Every event they have a registration on is listed, whatever its status (docs/adr/0109). The
+ * mock's "now" is Monday 5 October 2026, so the same events show on every run.
  */
 
 function card(page: Page, eventName: string) {
@@ -38,10 +39,13 @@ test('a new attendee signs up, lands on My events, registers, and finds the even
   await expect(registered.getByText('Confirmed')).toBeVisible()
 })
 
-test('an attendee looks back at past events, and sees one that was cancelled', async ({ page }) => {
+test('an attendee sees every event they registered for, whatever its status, upcoming and past', async ({
+  page,
+}) => {
   await signInAs(page, MOCK_ACCOUNTS.attendee)
   await page.goto('/my-events')
   await expect(card(page, 'Harbour Lights Run').getByText('Cancelled')).toBeVisible()
+  await expect(card(page, 'Rooftop Film Night').getByText('Approved')).toBeVisible()
 
   await page
     .getByRole('radiogroup', { name: 'Which events' })

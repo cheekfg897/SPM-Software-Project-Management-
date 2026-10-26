@@ -1,6 +1,8 @@
 import { screen, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 
+import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
+import type { EventRequestStatus } from '@/config/eventStatus'
 import { myEventPath, ROUTES } from '@/config/routes'
 import { MOCK_ACCOUNTS, mockSessionFor } from '@/mocks/fixtures/accounts'
 import { MOCK_CATALOGUE_EVENTS } from '@/mocks/handlers/catalogueFixtures'
@@ -37,7 +39,11 @@ describe('SCRUM-24 my events page: upcoming and past', () => {
     renderApp(ROUTES.MY_EVENTS, { session: ATTENDEE })
 
     expect(await screen.findByRole('heading', { name: 'Startup Pitch Night' })).toBeInTheDocument()
-    expect(eventNames()).toEqual(['Startup Pitch Night', 'Harbour Lights Run'])
+    expect(eventNames()).toEqual([
+      'Startup Pitch Night',
+      'Harbour Lights Run',
+      'Rooftop Film Night',
+    ])
     expect(screen.getByRole('heading', { name: 'Wednesday 7 Oct' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Saturday 10 Oct' })).toBeInTheDocument()
     const pitchNight = within(eventCard('Startup Pitch Night'))
@@ -88,6 +94,56 @@ describe('SCRUM-24 my events page: upcoming and past', () => {
 
     expect(await screen.findByRole('heading', { name: 'Startup Pitch Night' })).toBeInTheDocument()
     expect(router.state.location.search).toBe('')
+  })
+})
+
+describe('SCRUM-24 my events page: every event with a registration (AC7, 26 Oct)', () => {
+  /** How each status reads on a card, as the status chip words it. */
+  const STATUS_LABELS: Record<EventRequestStatus, string> = {
+    draft: 'Draft',
+    submitted: 'Submitted',
+    under_review: 'Under review',
+    awaiting_clarification: 'Awaiting clarification',
+    approved: 'Approved',
+    safety_review: 'Safety review',
+    confirmed: 'Confirmed',
+    completed: 'Completed',
+    cancelled: 'Cancelled',
+    rejected: 'Rejected',
+  }
+
+  it('shows every row the backend sends, each with the event’s and the registration’s status', async () => {
+    const statuses = Object.values(EVENT_REQUEST_STATUS)
+    const rows = statuses.map((status, index) => ({
+      event_id: 500 + index,
+      reference: `EVR-ROW${String(index).padStart(5, '0')}`,
+      name: `Event ${status}`,
+      starts_at: '2026-10-07T19:00:00+08:00',
+      ends_at: '2026-10-07T21:00:00+08:00',
+      event_status: status,
+      // Every other row is a withdrawn registration, which stays listed too.
+      status: index % 2 === 0 ? 'registered' : 'withdrawn',
+      registered_at: '2026-10-01T12:00:00+08:00',
+      withdrawn_at: index % 2 === 0 ? null : '2026-10-02T12:00:00+08:00',
+    }))
+    server.use(http.get(MY_EVENTS_API, () => HttpResponse.json({ registrations: rows })))
+
+    renderApp(ROUTES.MY_EVENTS, { session: ATTENDEE })
+
+    expect(await screen.findByRole('heading', { name: 'Event draft' })).toBeInTheDocument()
+    statuses.forEach((status, index) => {
+      const card = within(eventCard(`Event ${status}`))
+      expect(card.getByText(STATUS_LABELS[status])).toBeInTheDocument()
+      expect(card.getByText(index % 2 === 0 ? 'Registered' : 'Withdrawn')).toBeInTheDocument()
+    })
+  })
+
+  it('lists an event a change sent back to planning, from the mock', async () => {
+    renderApp(ROUTES.MY_EVENTS, { session: ATTENDEE })
+
+    await screen.findByRole('heading', { name: 'Rooftop Film Night' })
+
+    expect(within(eventCard('Rooftop Film Night')).getByText('Approved')).toBeInTheDocument()
   })
 })
 

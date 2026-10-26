@@ -438,8 +438,9 @@ export interface MockUnlistedEvent {
 }
 
 /**
- * The mock attendee's other events (ADR-0044): one that has taken place, and one the
- * organiser has since called off, which stays under Upcoming until its date passes.
+ * The mock attendee's other events (ADR-0044, docs/adr/0109): one that has taken place, one the
+ * organiser has since called off, which stays under Upcoming until its date passes, and one a
+ * change sent back to planning (Approved), where the place stays held.
  */
 export const MOCK_ATTENDEE_UNLISTED_EVENTS: MockUnlistedEvent[] = [
   {
@@ -461,5 +462,15 @@ export const MOCK_ATTENDEE_UNLISTED_EVENTS: MockUnlistedEvent[] = [
     starts_at: '2026-10-10T07:00:00+08:00',
     ends_at: '2026-10-10T09:00:00+08:00',
     event_status: 'cancelled',
+  },
+  {
+    id: 903,
+    reference: 'EVR-MOCK0903',
+    name: 'Rooftop Film Night',
+    description: 'A classic under the stars, with deckchairs and popcorn.',
+    venue: VENUES.CAPITOL,
+    starts_at: '2026-10-14T20:00:00+08:00',
+    ends_at: '2026-10-14T22:30:00+08:00',
+    event_status: 'approved',
   },
 ]
