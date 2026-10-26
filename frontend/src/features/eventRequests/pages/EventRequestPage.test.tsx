@@ -1,8 +1,11 @@
 import { screen, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 
+import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
+import type { EventRequestStatus } from '@/config/eventStatus'
 import { coordinatorEventPath, organiserRequestPath, ROUTES } from '@/config/routes'
-import { fetchEventRequest } from '@/features/eventRequests/api'
+import { editEventRequest, fetchEventRequest } from '@/features/eventRequests/api'
+import type { EventRecord, RecordVenueArrangement } from '@/features/eventRequests/api'
 import { MOCK_ACCOUNTS, mockSessionFor, mockTokenFor } from '@/mocks/fixtures/accounts'
 import { server } from '@/mocks/server'
 import { signedIn } from '@/store'
@@ -20,6 +23,112 @@ import { sendRequestsAs } from '@/test/sendRequestsAs'
 const ORGANISER = mockSessionFor(MOCK_ACCOUNTS.organiser)
 const COORDINATOR = mockSessionFor(MOCK_ACCOUNTS.coordinator)
 const NOT_FOUND_MESSAGE = 'Event request not found.'
+/** An arrangement as the organiser's record sends it in full, before its own details. */
+const ARRANGEMENT_IN_FULL: RecordVenueArrangement = {
+  venue_name: 'Orchid Room',
+  venue_location: 'Marina Bay, Level 3',
+  starts_at: '2026-11-12T09:00:00+08:00',
+  ends_at: '2026-11-12T12:00:00+08:00',
+  purpose: 'Keynote',
+  expected_occupancy: 250,
+  required_layout: 'theatre',
+  justification: null,
+  status: 'approved',
+  decision_reason: null,
+  hold_expires_at: null,
+  needs_alternative_venue: false,
+  unavailability: [],
+  flagged_after_change: false,
+  reassessment_flags: [],
+  preparation_status: 'not_started',
+  preparation_notes: null,
+}
+/**
+ * The Partner Summit's record with one of everything the organiser is sent on it (ADR-0104): a
+ * held, an expired and a flagged arrangement, a reviewed line and the Safety Officer's outcome.
+ */
+const EVERYTHING_RECORDED: EventRecord = {
+  reference: 'EVR-7K2M9QXA',
+  status: 'approved',
+  name: 'Partner Summit',
+  purpose: null,
+  description: null,
+  proposed_date: '2026-11-12',
+  end_date: '2026-11-12',
+  start_time: '09:00:00',
+  end_time: '17:00:00',
+  expected_attendance: 250,
+  venue_requirements: null,
+  accessibility_needs: null,
+  equipment_requirements: null,
+  registration_required: false,
+  created_at: '2026-10-01T09:00:00+08:00',
+  programme_notes: null,
+  coordinator: null,
+  decision: null,
+  clarifications: [],
+  equipment_lines: [
+    {
+      equipment_type_name: 'Projector',
+      quantity: 10,
+      notes: 'Two at the back of the hall.',
+      status: 'partially_fulfilled',
+      provided_quantity: 6,
+      shortfall: 4,
+      outcome_note: 'Four are out for repair.',
+      reviewed_by: 'Tariq Hassan',
+      reviewed_at: '2026-10-05T11:00:00+08:00',
+    },
+  ],
+  internal_planning_notes: 'Caterer arrives at 7:00.',
+  venue_arrangements: [
+    {
+      ...ARRANGEMENT_IN_FULL,
+      status: 'on_hold',
+      hold_expires_at: '2026-10-30T17:00:00+08:00',
+      justification: 'Only hall free that week.',
+    },
+    {
+      ...ARRANGEMENT_IN_FULL,
+      starts_at: '2026-11-12T13:00:00+08:00',
+      ends_at: '2026-11-12T14:00:00+08:00',
+      status: 'expired',
+      hold_expires_at: '2026-10-25T17:00:00+08:00',
+    },
+    {
+      ...ARRANGEMENT_IN_FULL,
+      starts_at: '2026-11-12T15:00:00+08:00',
+      ends_at: '2026-11-12T16:00:00+08:00',
+      needs_alternative_venue: true,
+      unavailability: [
+        {
+          category: 'maintenance',
+          reason: 'Aircon repair',
+          starts_at: '2026-11-01T08:00:00+08:00',
+          ends_at: null,
+        },
+      ],
+      flagged_after_change: true,
+      reassessment_flags: [{ kind: 'requires_reconfirmation', reason: 'The date changed.' }],
+    },
+  ],
+  equipment_reservations: [],
+  safety_outcome: {
+    outcome: 'approved',
+    checklist: {
+      attendance_vs_capacity: '250 expected in a hall for 300.',
+      venue_layout: 'Theatre layout with two aisles.',
+      emergency_access: 'Both fire exits are clear.',
+      accessibility: 'Ramp at the side entrance.',
+      equipment_placement: 'Cables taped down along the stage.',
+      crowd_movement: 'One-way flow at the doors.',
+      venue_restrictions: 'No open flames.',
+    },
+    reason: 'Keep the aisles clear.',
+    recorded_by: 'Sana Iyer',
+    recorded_at: '2026-10-04T14:00:00+08:00',
+  },
+}
 
 function openAsOrganiser(reference: string) {
   return renderApp(organiserRequestPath(reference), { session: ORGANISER })
@@ -37,17 +146,6 @@ async function section(name: string): Promise<HTMLElement> {
     throw new Error(`No section is headed "${name}"`)
   }
   return found
-}
-
-/** Each row of the table named `name`, as the text of its cells. */
-function rowsOf(name: string): string[][] {
-  const table = screen.getByRole('table', { name })
-  const rows = within(table).getAllByRole('row').slice(1)
-  return rows.map((row) =>
-    within(row)
-      .getAllByRole('cell')
-      .map((cell) => cell.textContent),
-  )
 }
 
 /** What the record says against `label` in the "About the event" list. */
@@ -213,118 +311,143 @@ describe('SCRUM-24 AC9 event record: what an organiser sees', () => {
   })
 })
 
-describe('SCRUM-37 AC5, SCRUM-48 AC5 event record: the equipment an organiser sees', () => {
-  it("shows each line's equipment, quantity asked for, status and quantity provided", async () => {
-    openAsOrganiser('EVR-7K2M9QXA')
+describe('SCRUM-24 AC10 event record: everything an organiser sees, at every stage', () => {
+  const SARA = mockSessionFor(MOCK_ACCOUNTS.otherOrganiser)
+  /** Every status a submitted event can be in, built from the enum: all but a draft. */
+  const SUBMITTED_STATUSES = Object.values(EVENT_REQUEST_STATUS).filter(
+    (status) => status !== EVENT_REQUEST_STATUS.DRAFT,
+  )
 
-    await section('Equipment')
-    expect(rowsOf('Equipment requested')).toEqual([
-      ['Projector', '10', 'Partially fulfilled', '6'],
-      ['Microphone', '4', 'Awaiting Technical Support', 'Not reviewed yet'],
-      ['Lectern', '1', 'Fulfilled', '1'],
-    ])
-  })
+  /** Answer the organiser's record with everything on it, in `status`, whatever is asked for. */
+  function recordWithEverything(status: EventRequestStatus) {
+    server.use(
+      http.get('/api/events/requests/:reference', () =>
+        HttpResponse.json({ ...EVERYTHING_RECORDED, status }),
+      ),
+    )
+  }
 
-  it('shows none of what stays internal: the technical notes, the outcome note or the reviewer', async () => {
-    openAsOrganiser('EVR-7K2M9QXA')
+  it.each(SUBMITTED_STATUSES)(
+    'shows every section of the record while the event is %s',
+    async (status) => {
+      recordWithEverything(status)
+      openAsOrganiser('EVR-7K2M9QXA')
 
-    const equipment = await section('Equipment')
-    const internals = [
-      'Two at the back of the hall.',
-      'Four are out for repair.',
-      'At the front, stage left.',
-      'The spare one, with a reading light.',
-      'Tariq',
+      expect(await section('Planning notes')).toHaveTextContent('Caterer arrives at 7:00.')
+      expect(await section('Venue arrangements')).toHaveTextContent('Orchid Room')
+      expect(await section('Equipment')).toHaveTextContent(
+        'Reviewed by Tariq Hassan, 5 Oct, 11:00 am',
+      )
+      expect(await section('Safety check')).toHaveTextContent('Keep the aisles clear.')
+    },
+  )
+
+  it("shows every arrangement with its status, where it is, what was asked for and Venue Staff's reason", async () => {
+    renderApp(organiserRequestPath('EVR-BOOK0112'), { session: SARA })
+
+    const venues = await section('Venue arrangements')
+    const [reception, dinner, overflow] = within(venues).getAllByRole('listitem') as [
+      HTMLElement,
+      HTMLElement,
+      HTMLElement,
     ]
-    for (const internal of internals) {
-      expect(within(equipment).queryByText(internal, { exact: false })).not.toBeInTheDocument()
-    }
+    expect(dinner).toHaveTextContent('Marina Hall')
+    expect(dinner).toHaveTextContent('Level 1, Marina Wing')
+    expect(dinner).toHaveTextContent('5 Dec, 6:00 pm – 11:00 pm · Approved')
+    expect(dinner).toHaveTextContent('Gala dinner · 10 guests · Banquet')
+    expect(dinner).toHaveTextContent('Venue Staff: Booked for the dinner.')
+    expect(dinner).toHaveTextContent('Tables set for 80.')
+    expect(reception).toHaveTextContent('Drinks reception · 10 guests · No layout set')
+    expect(overflow).toHaveTextContent('5 Dec, 7:00 pm – 9:00 pm · Withdrawn')
   })
 
-  it('leaves the section out of an event with no equipment', async () => {
-    openAsOrganiser('EVR-B6YF2K8V')
+  it("shows a hold's expiry, a hold that expired, and each flag with its reason", async () => {
+    recordWithEverything(EVENT_REQUEST_STATUS.APPROVED)
+    openAsOrganiser('EVR-7K2M9QXA')
 
-    await section('About the event')
-    expect(screen.queryByRole('heading', { level: 2, name: 'Equipment' })).not.toBeInTheDocument()
+    const venues = await section('Venue arrangements')
+    // The flagged arrangement's reasons are list items too, after the three arrangements.
+    const [held, expired, flagged] = within(venues).getAllByRole('listitem') as [
+      HTMLElement,
+      HTMLElement,
+      HTMLElement,
+    ]
+    expect(held).toHaveTextContent('Hold expires 30 Oct, 5:00 pm')
+    expect(held).toHaveTextContent('Why this venue: Only hall free that week.')
+    expect(expired).toHaveTextContent('Hold expired 25 Oct, 5:00 pm')
+    expect(
+      within(flagged).getByRole('list', { name: 'Needs an alternative venue' }),
+    ).toHaveTextContent(
+      'Maintenance: Aircon repair. Unavailable from 1 Nov, 8:00 am until the venue is reactivated.',
+    )
+    expect(
+      within(flagged).getByRole('list', { name: 'Flagged after a change to the event' }),
+    ).toHaveTextContent('Requires reconfirmation: The date changed.')
   })
 
-  it('leaves it out for the coordinator, who works on the equipment from its own page', async () => {
-    openAsCoordinator('EVR-7K2M9QXA')
+  it("shows each line's technical notes, outcome, outcome note and who reviewed it", async () => {
+    openAsOrganiser('EVR-7K2M9QXA')
 
-    await section('About the event')
-    expect(screen.queryByRole('heading', { level: 2, name: 'Equipment' })).not.toBeInTheDocument()
-  })
-})
-
-describe('SCRUM-49 AC11 event record: the venues an organiser sees once it is confirmed', () => {
-  const SARA = mockSessionFor(MOCK_ACCOUNTS.otherOrganiser)
-
-  it('lists each booked venue with where it is, when, and what was arranged', async () => {
-    renderApp(organiserRequestPath('EVR-BOOK0112'), { session: SARA })
-
-    await section('Venues')
-    expect(rowsOf('Venues booked')).toEqual([
-      [
-        'Boardroom TwoLevel 3, Tower Block',
-        '5 Dec, 5:00 pm – 6:00 pm',
-        'Drinks reception',
-        'No layout set',
-        '10',
-      ],
-      [
-        'Marina HallLevel 1, Marina Wing',
-        '5 Dec, 6:00 pm – 11:00 pm',
-        'Gala dinner',
-        'Banquet',
-        '10',
-      ],
-    ])
+    const requested = within(await section('Equipment')).getByRole('list', {
+      name: 'Equipment requested',
+    })
+    const [projectors, microphones] = within(requested).getAllByRole('listitem') as [
+      HTMLElement,
+      HTMLElement,
+    ]
+    expect(projectors).toHaveTextContent('Projector · 10 requested')
+    expect(projectors).toHaveTextContent('Note: Two at the back of the hall.')
+    expect(projectors).toHaveTextContent('Technical Support: Partially fulfilled, 6 provided')
+    expect(projectors).toHaveTextContent('Four are out for repair.')
+    expect(projectors).toHaveTextContent('Reviewed by Tariq Hassan, 5 Oct, 11:00 am')
+    expect(microphones).toHaveTextContent('Technical Support: Awaiting Technical Support')
+    expect(microphones).not.toHaveTextContent('Reviewed')
   })
 
-  it("shows none of Venue Staff's notes or preparation", async () => {
-    renderApp(organiserRequestPath('EVR-BOOK0112'), { session: SARA })
+  it('says when nothing is reserved yet, and when no planning notes are saved', async () => {
+    openAsOrganiser('EVR-7K2M9QXA')
 
-    const venues = await section('Venues')
-    for (const internal of ['Booked for the dinner.', 'Tables set for 80.', 'Overflow room']) {
-      expect(within(venues).queryByText(internal, { exact: false })).not.toBeInTheDocument()
-    }
+    expect(await section('Equipment')).toHaveTextContent(
+      'No equipment is reserved for this event yet.',
+    )
+    expect(await section('Planning notes')).toHaveTextContent('No planning notes yet.')
   })
 
-  it('leaves the section out before the event is confirmed', async () => {
-    renderApp(organiserRequestPath('EVR-BOOK0101'), { session: SARA })
+  it('shows the planning notes the coordinator saved (SCRUM-33 AC1)', async () => {
+    sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.coordinator))
+    await editEventRequest('EVR-7K2M9QXA', { internal_planning_notes: 'Client prefers mornings.' })
+    sendRequestsAs(null)
+    openAsOrganiser('EVR-7K2M9QXA')
 
-    await section('About the event')
-    expect(screen.queryByRole('heading', { level: 2, name: 'Venues' })).not.toBeInTheDocument()
+    expect(await section('Planning notes')).toHaveTextContent('Client prefers mornings.')
   })
-})
 
-describe("SCRUM-49 AC11 event record: the Safety Officer's final decision, once confirmed", () => {
-  const SARA = mockSessionFor(MOCK_ACCOUNTS.otherOrganiser)
-
-  it('shows the outcome and when it was made', async () => {
+  it("shows the Safety Officer's outcome with each checklist note, who recorded it and when", async () => {
     renderApp(organiserRequestPath('EVR-BOOK0102'), { session: SARA })
 
     const safety = await section('Safety check')
     expect(within(safety).getByText('Approved')).toBeInTheDocument()
-    expect(within(safety).getByText('Decided 4 Oct, 2:00 pm')).toBeInTheDocument()
+    expect(within(safety).getByText('Both fire exits are clear.')).toBeInTheDocument()
+    expect(within(safety).getByText('Recorded by Sana Iyer, 4 Oct, 2:00 pm')).toBeInTheDocument()
   })
 
-  it("shows none of the Safety Officer's name or checklist notes", async () => {
-    renderApp(organiserRequestPath('EVR-BOOK0102'), { session: SARA })
-
-    const safety = await section('Safety check')
-    for (const internal of ['Sana Iyer', 'Both fire exits are clear.']) {
-      expect(within(safety).queryByText(internal, { exact: false })).not.toBeInTheDocument()
-    }
-  })
-
-  it('leaves the section out before the event is confirmed', async () => {
+  it('shows a request for changes and its reason before the event is confirmed', async () => {
     openAsOrganiser('EVR-W9CR5E7M')
 
-    await section('About the event')
+    const safety = await section('Safety check')
+    expect(within(safety).getByText('Changes requested')).toBeInTheDocument()
     expect(
-      screen.queryByRole('heading', { level: 2, name: 'Safety check' }),
-    ).not.toBeInTheDocument()
+      within(safety).getByText('Keep the terrace exit clear during the dinner.'),
+    ).toBeInTheDocument()
+  })
+
+  it('shows none of these sections to the coordinator, who works on them from their own pages', async () => {
+    openAsCoordinator('EVR-7K2M9QXA')
+
+    await section('About the event')
+    for (const name of ['Planning notes', 'Venue arrangements', 'Equipment', 'Safety check']) {
+      expect(screen.queryByRole('heading', { level: 2, name })).not.toBeInTheDocument()
+    }
   })
 })
 

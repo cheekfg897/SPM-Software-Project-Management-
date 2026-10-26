@@ -547,32 +547,46 @@ export function releaseEventArrangements(reference: string): void {
 }
 
 /**
- * The event's approved arrangements as its organiser sees them, earliest period first, as the
- * backend's list_organiser_venue_arrangements reads them (SCRUM-49 AC11, ADR-0099): each venue's
- * name and location, the period and what was arranged, and nothing internal. When the organiser
- * sees them is the event record mock's call.
+ * An arrangement in full as the record shows it (RecordVenueArrangementSchema, ADR-0104):
+ * everything on it but its ids and its event's timing, with its venue's name and location.
  */
-export function organiserVenueArrangementsOf(reference: string) {
+function arrangementInFull(arrangement: BookingRequest) {
+  const venue = currentMockVenues().find((known) => known.id === arrangement.venue_id)
+  if (venue === undefined) {
+    throw new Error(`Arrangement ${String(arrangement.id)} is at a venue the mock lacks`)
+  }
+  return {
+    venue_name: venue.name,
+    venue_location: venue.location,
+    starts_at: arrangement.starts_at,
+    ends_at: arrangement.ends_at,
+    purpose: arrangement.purpose,
+    expected_occupancy: arrangement.expected_occupancy,
+    required_layout: arrangement.required_layout,
+    justification: arrangement.justification,
+    status: arrangement.status,
+    decision_reason: arrangement.decision_reason,
+    hold_expires_at: arrangement.hold_expires_at,
+    needs_alternative_venue: arrangement.needs_alternative_venue,
+    unavailability: arrangement.unavailability,
+    flagged_after_change: arrangement.flagged_after_change,
+    reassessment_flags: arrangement.reassessment_flags,
+    preparation_status: arrangement.preparation_status,
+    preparation_notes: arrangement.preparation_notes,
+  }
+}
+
+/**
+ * Every one of the event's arrangements, in any status, earliest period first, as the backend's
+ * list_every_arrangement_for_record reads them for the organiser's record (SCRUM-24 AC10,
+ * SCRUM-93 AC5, ADR-0104).
+ */
+export function everyArrangementForRecord(reference: string) {
   const event = events.find((known) => known.reference === reference)
   if (event === undefined) {
     return []
   }
-  const approved = requestsOf(event).filter((existing) => existing.status === 'approved')
-  return approved.map((arrangement) => {
-    const venue = currentMockVenues().find((known) => known.id === arrangement.venue_id)
-    if (venue === undefined) {
-      throw new Error(`Arrangement ${String(arrangement.id)} is at a venue the mock lacks`)
-    }
-    return {
-      venue_name: venue.name,
-      venue_location: venue.location,
-      starts_at: arrangement.starts_at,
-      ends_at: arrangement.ends_at,
-      purpose: arrangement.purpose,
-      layout: arrangement.required_layout,
-      expected_occupancy: arrangement.expected_occupancy,
-    }
-  })
+  return requestsOf(event).map(arrangementInFull)
 }
 
 /**

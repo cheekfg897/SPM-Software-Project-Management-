@@ -195,7 +195,7 @@ describe('SCRUM-33 mock of an edit: what changes', () => {
     expect((await fetchEventHistory(PARTNER_SUMMIT)).history).toHaveLength(4)
   })
 
-  it('shows the organiser the planning notes change in the history too (ADR-0104)', async () => {
+  it('shows the organiser the planning notes, on the record and in the history (ADR-0104)', async () => {
     signInAs(MOCK_ACCOUNTS.coordinator)
     const edited = await editEventRequest(PARTNER_SUMMIT, { internal_planning_notes: 'Call AV.' })
     const coordinatorsHistory = await fetchEventHistory(PARTNER_SUMMIT)
@@ -206,7 +206,7 @@ describe('SCRUM-33 mock of an edit: what changes', () => {
 
     expect(edited.internal_planning_notes).toBe('Call AV.')
     expect(coordinatorsHistory.history).toHaveLength(5)
-    expect(record).not.toHaveProperty('internal_planning_notes')
+    expect(record.internal_planning_notes).toBe('Call AV.')
     expect(organisersHistory).toEqual(coordinatorsHistory)
   })
 })

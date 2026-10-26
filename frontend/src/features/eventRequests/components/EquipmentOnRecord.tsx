@@ -2,12 +2,18 @@ import { PreparationSummary } from '@/components/preparation/PreparationSummary'
 import { EmptyState } from '@/components/ui'
 import { EQUIPMENT_LINE_STATUS_LABELS } from '@/features/equipment/constants'
 import type { SafetyReviewEquipment } from '@/features/safety/api'
+import { attributed } from '@/lib/attributed'
 import { formatShortDate, formatTimeRange } from '@/lib/formatDate'
 
-import type { StaffReservation } from '../api'
+import type { RecordEquipmentLine, StaffReservation } from '../api'
 
 const NONE_REQUESTED = 'No equipment has been requested for this event.'
 const NONE_RESERVED = 'No equipment is reserved for this event yet.'
+
+/** Whether the backend sent who reviewed the line, as the organiser's record does (ADR-0104). */
+function isReviewedLine(line: SafetyReviewEquipment): line is RecordEquipmentLine {
+  return 'reviewed_by' in line
+}
 
 /** Technical Support's answer: the outcome, with how many they will provide once decided. */
 function outcomeOf(line: SafetyReviewEquipment): string {
@@ -35,6 +41,11 @@ function RequestedEquipment({ lines }: { lines: SafetyReviewEquipment[] }) {
           {line.notes !== null && <p className="text-ink-muted">Note: {line.notes}</p>}
           <p className="text-ink mt-2">Technical Support: {outcomeOf(line)}</p>
           {line.outcome_note !== null && <p className="text-ink-muted">{line.outcome_note}</p>}
+          {isReviewedLine(line) && line.reviewed_at !== null && (
+            <p className="text-ink-faint mt-1 text-sm">
+              {attributed('Reviewed', line.reviewed_by, line.reviewed_at)}
+            </p>
+          )}
         </li>
       ))}
     </ul>
@@ -71,8 +82,9 @@ interface EquipmentOnRecordProps {
 }
 
 /**
- * The event's equipment: what was requested, with Technical Support's outcome, then what is
- * reserved, with their preparation (SCRUM-85 AC2, ADR-0095), each in the backend's order.
+ * The event's equipment: what was requested, with Technical Support's outcome (and who reviewed
+ * it, when the backend sends that, ADR-0104), then what is reserved, with their preparation
+ * (SCRUM-85 AC2, ADR-0095), each in the backend's order.
  */
 export function EquipmentOnRecord({ lines, reservations }: EquipmentOnRecordProps) {
   return (

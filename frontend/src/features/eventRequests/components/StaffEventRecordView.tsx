@@ -12,12 +12,11 @@ import { CoordinatorDetails } from './CoordinatorDetails'
 import { DecisionDetails } from './DecisionDetails'
 import { EquipmentOnRecord } from './EquipmentOnRecord'
 import { EventHistorySection } from './EventHistorySection'
+import { PlanningNotes } from './PlanningNotes'
 import { RecordHeading } from './RecordHeading'
 import { RecordSection } from './RecordSection'
 import { SafetyOutcomeDetails } from './SafetyOutcomeDetails'
 import { VenueArrangementList } from './VenueArrangementList'
-
-const NO_PLANNING_NOTES = 'No planning notes yet.'
 
 /**
  * Any submitted event's record, read-only, for Venue Staff, Technical Support, the Safety Officer
@@ -63,11 +62,7 @@ export function StaffEventRecordView({ record }: { record: StaffEventRecord }) {
         </RecordSection>
       )}
       <RecordSection title="Planning notes">
-        {record.internal_planning_notes === null ? (
-          <p className="text-ink-muted">{NO_PLANNING_NOTES}</p>
-        ) : (
-          <p className="text-ink whitespace-pre-line">{record.internal_planning_notes}</p>
-        )}
+        <PlanningNotes notes={record.internal_planning_notes} />
       </RecordSection>
       <RecordSection title="Venue arrangements">
         <VenueArrangementList arrangements={record.venue_arrangements} />

@@ -12,10 +12,12 @@ import type { MockAccount } from '../fixtures/accounts'
 import { errorResponse, notAllowed, notAuthenticated, validationError } from '../responses'
 
 import { accountForRequest } from './auth'
-import { hasActiveArrangement, organiserVenueArrangementsOf } from './booking'
+import { everyArrangementForRecord, hasActiveArrangement } from './booking'
 import { MOCK_NOW } from './catalogueFixtures'
+import { reservationsForRecord } from './equipment'
 import { recordLinesOf } from './equipmentLines'
-import { currentSafetyOutcomeOf } from './eventHistoryStore'
+import { internalNotesOf } from './eventEdits'
+import { currentSafetyCheckOf } from './eventHistoryStore'
 import {
   DETAIL_FIELDS,
   draftChangeErrors,
@@ -231,34 +233,11 @@ function ownDraftOrRefusal(organiser: MockAccount, organisationId: number, refer
 }
 
 /**
- * When the organiser sees the event's venues and the Safety Officer's final decision: once it is
- * confirmed (SCRUM-49 AC11, ADR-0099).
- */
-const CONFIRMED_DETAILS_STATUSES: readonly EventRequestStatus[] = [
-  EVENT_REQUEST_STATUS.CONFIRMED,
-  EVENT_REQUEST_STATUS.COMPLETED,
-]
-
-/** The confirmed event's venues, which the backend adds to the organiser's record only. */
-function organiserVenuesOf(request: EventRequest) {
-  if (!CONFIRMED_DETAILS_STATUSES.includes(request.status)) {
-    return []
-  }
-  return organiserVenueArrangementsOf(request.reference)
-}
-
-/** The Safety Officer's final decision, which the backend adds to the organiser's record only. */
-function organiserSafetyDecisionOf(request: EventRequest) {
-  if (!CONFIRMED_DETAILS_STATUSES.includes(request.status)) {
-    return null
-  }
-  return currentSafetyOutcomeOf(request.reference)
-}
-
-/**
  * A request's record as the backend shows it to `viewerRole`: the coordinator by name and email,
- * no ids, and the equipment lines as that role sees them (ADR-0098). The organiser's also lists
- * the confirmed event's venues and the Safety Officer's final decision (ADR-0099).
+ * no ids, and the equipment lines as that role sees them (ADR-0098). The organiser's holds
+ * everything on the record, whatever the event's status (SCRUM-24 AC10, ADR-0104): the planning
+ * notes, every venue arrangement, the reservations and the current safety check, each read from
+ * the mock that keeps it.
  */
 function recordOf(stored: MockEventRequest, viewerRole: Role) {
   const { coordinator } = stored
@@ -274,10 +253,13 @@ function recordOf(stored: MockEventRequest, viewerRole: Role) {
   if (viewerRole !== ROLE.EVENT_ORGANISER) {
     return record
   }
+  const { reference } = stored.request
   return {
     ...record,
-    venue_arrangements: organiserVenuesOf(stored.request),
-    safety_decision: organiserSafetyDecisionOf(stored.request),
+    internal_planning_notes: internalNotesOf(reference),
+    venue_arrangements: everyArrangementForRecord(reference),
+    equipment_reservations: reservationsForRecord(reference),
+    safety_outcome: currentSafetyCheckOf(reference),
   }
 }
 
