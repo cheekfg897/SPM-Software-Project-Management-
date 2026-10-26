@@ -1082,6 +1082,10 @@ describe('SCRUM-92 replacing a venue that became unavailable', () => {
   const ORGANISER_TOLD =
     /^Integration Hall \S+ became unavailable for Integration Planning \(equipment failure\), so the event has gone back from Confirmed to Approved for its venue to be reviewed\. It has not been cancelled\.$/
 
+  /** What the organiser of a confirmed event sent back is told once the venue is free (AC9). */
+  const ORGANISER_TOLD_AVAILABLE_AGAIN =
+    /^Integration Hall \S+ is available again for Integration Planning after being unavailable \(equipment failure\)\. Your original booking stands\. The event still needs Safety Review and confirmation\.$/
+
   /** Check the "available again" notice about the event, as the coordinator reads it (AC8). */
   async function expectToldAvailableAgain(reference: string, detail = AVAILABLE_AGAIN) {
     const notice = await noticeAbout(reference, 'venue_available_again')
@@ -1269,6 +1273,9 @@ describe('SCRUM-92 replacing a venue that became unavailable', () => {
       })
       // --- ...and the coordinator is told the venue is available again (AC8) ---
       await expectToldAvailableAgain(reference)
+      // --- The event was never Confirmed, so its organiser hears nothing of it (AC9) ---
+      await signInAs(organiser)
+      expect(await noticeAbout(reference, 'venue_available_again')).toBeUndefined()
     },
   )
 
@@ -1301,7 +1308,7 @@ describe('SCRUM-92 replacing a venue that became unavailable', () => {
   )
 
   it.skipIf(!canApproveSafety)(
-    'tells the organiser a confirmed event went back to Approved, and the coordinator it still needs Safety Review once the venue is free (AC3, AC8)',
+    'tells the organiser a confirmed event went back to Approved, and both of them once the venue is free (AC3, AC8, AC9)',
     async () => {
       const { reference, organiser } = await safetyApprovedEvent()
       await confirmEvent(reference)
@@ -1326,6 +1333,15 @@ describe('SCRUM-92 replacing a venue that became unavailable', () => {
       await expectToldAvailableAgain(reference, AVAILABLE_AGAIN_SENT_BACK)
       // Nothing is confirmed again automatically (AC8).
       expect((await fetchEventRequest(reference)).status).toBe('approved')
+      // --- The organiser is told how it resolved, once, with the category (AC9, AC10) ---
+      await signInAs(organiser)
+      const toldOrganiser = (await fetchNotifications()).filter(
+        (notification) =>
+          notification.kind === 'venue_available_again' &&
+          notification.event_reference === reference,
+      )
+      expect(toldOrganiser).toHaveLength(1)
+      expect(toldOrganiser[0]?.detail).toMatch(ORGANISER_TOLD_AVAILABLE_AGAIN)
     },
   )
 

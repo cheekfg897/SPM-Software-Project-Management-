@@ -3275,6 +3275,42 @@ def notify_coordinator_venue_available_again(
     )
 
 
+#: What the organiser of an event a venue sent back is told once it is available again
+#: (SCRUM-92 AC9, Product Owner 26 Oct): the venue, the event and the category.
+ORGANISER_AVAILABLE_AGAIN_DETAIL = (
+    "{venue} is available again for {event} after being unavailable ({category})."
+    " Your original booking stands. The event still needs Safety Review and confirmation."
+)
+
+
+def notify_organiser_venue_available_again(
+    event_id: int, *, venue_name: str, category: str, session: Session | None = None
+) -> None:
+    """Tell the organiser a venue is available again, if it had sent the event back.
+
+    SCRUM-92 AC9, AC10: only for an event a venue sent back from Confirmed to Approved
+    and not confirmed since; for any other, the organiser heard nothing of the venue
+    and hears nothing now. Only the organiser who submitted the request, with the
+    coordinator's kind, whose message fits them too (ADR-0108). For the venue module,
+    after the commit (ADR-0015). ``category`` is how the notice words the lifted
+    block's or deactivation's category, e.g. ``"maintenance"``.
+    """
+    sess = resolve_session(session)
+    if not _sent_back_by_a_venue(event_id, sess):
+        return
+    event_request = sess.get(EventRequest, event_id)
+    detail = ORGANISER_AVAILABLE_AGAIN_DETAIL.format(
+        venue=venue_name, event=event_request.name, category=category
+    )
+    _raise_notifications(
+        [event_request.organiser_id],
+        event_request,
+        NotificationKind.VENUE_AVAILABLE_AGAIN,
+        sess,
+        detail=detail,
+    )
+
+
 # --------------------------------------------------------------------------
 # SCRUM-68 — mark an event as completed after it has taken place
 # --------------------------------------------------------------------------

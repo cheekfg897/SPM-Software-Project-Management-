@@ -9,6 +9,10 @@ and confirmation when the venue sent it back from Confirmed to Approved (Product
 another block still covers is not told (ADR-0100, ADR-0108). A notice that can't be
 saved loses only itself (ADR-0015).
 
+AC9, AC10 (Product Owner, 26 Oct): for an event a venue sent back from Confirmed, the
+Organiser who submitted it is told too, once per event, naming the venue, the event and
+the category.
+
 The services run against ``db_session``; the event is the ``saved_event`` fixture's,
 assigned to coordinator 3, with an arrangement from 09:00 to 12:00 on 1 November 2026
 at Main Hall.
@@ -21,10 +25,11 @@ from collections.abc import Callable
 from typing import Any
 
 import pytest
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
+from app.modules.auth.models import User
 from app.modules.events import services as event_services
 from app.modules.events.models import EventRequest, EventRequestStatus
 from app.modules.notifications.models import Notification
@@ -59,6 +64,13 @@ REASSIGNED_COORDINATOR_ID = 9
 MAIN_HALL_AGAIN = "Main Hall is available again for Partner Summit. Your original booking stands."
 #: What the notice adds when the venue sent the event back from Confirmed to Approved.
 STILL_NEEDS_SAFETY_REVIEW = " It still needs Safety Review and confirmation."
+ORGANISER_ID = 7
+#: What the organiser of an event sent back is told (AC9): the venue, the event and the
+#: category, as their notice of the return named it (AC3).
+ORGANISER_TOLD = (
+    "Main Hall is available again for Partner Summit after being unavailable ({category})."
+    " Your original booking stands. The event still needs Safety Review and confirmation."
+)
 #: The statuses in which an arrangement still holds or asks for its venue, so a block
 #: flags it (AC1, ADR-0100). Typed out, so the code's own list is checked against it.
 LIVE_STATUSES = {
@@ -119,6 +131,22 @@ def _approved(
     event = saved_event()
     approved = decide(raise_booking(venue, event, session).id, "approved", session)
     return event, approved
+
+
+def _confirmed(venue: Venue, saved_event: SavedEvent, session: Session) -> EventRequest:
+    """A Confirmed event booked at ``venue``, which a block will send back (AC3)."""
+    event, _ = _approved(venue, saved_event, session)
+    event.status = EventRequestStatus.CONFIRMED
+    session.commit()
+    return event
+
+
+def _recipients_told_again(session: Session) -> set[int]:
+    """Everyone who got an "available again" notice, whatever the event."""
+    stmt = select(Notification.recipient_id).where(
+        Notification.kind == NotificationKind.VENUE_AVAILABLE_AGAIN
+    )
+    return set(session.scalars(stmt))
 
 
 # --------------------------------------------------------------------------
@@ -285,9 +313,7 @@ def test_an_event_sent_back_from_confirmed_is_told_it_still_needs_safety_review(
     db_session: Session, venue: Venue, saved_event: SavedEvent
 ) -> None:
     """The Product Owner, 25 Oct: nothing is confirmed again automatically (AC8)."""
-    event, _ = _approved(venue, saved_event, db_session)
-    event.status = EventRequestStatus.CONFIRMED
-    db_session.commit()
+    event = _confirmed(venue, saved_event, db_session)
     venue_block = block(venue, at(10), at(11), db_session)
 
     _remove(venue, venue_block, db_session)
@@ -304,9 +330,7 @@ def test_an_event_confirmed_again_since_it_was_sent_back_is_not_told_it_needs_re
     The event went back once, was confirmed again, and is Approved now for another
     reason; a later block finds it Approved, so it didn't send it back.
     """
-    event, _ = _approved(venue, saved_event, db_session)
-    event.status = EventRequestStatus.CONFIRMED
-    db_session.commit()
+    event = _confirmed(venue, saved_event, db_session)
     _remove(venue, block(venue, at(10), at(11), db_session), db_session)
     record_confirmation(event, db_session)
     later_block = block(venue, at(10), at(11), db_session)
@@ -314,6 +338,8 @@ def test_an_event_confirmed_again_since_it_was_sent_back_is_not_told_it_needs_re
     _remove(venue, later_block, db_session)
 
     assert _told_again(COORDINATOR_ID)[0] == (event.id, MAIN_HALL_AGAIN)
+    # The organiser heard of the first return's end, and nothing of the later block.
+    assert len(_told_again(ORGANISER_ID)) == 1
 
 
 def test_an_event_with_two_arrangements_freed_is_told_once(
@@ -329,6 +355,104 @@ def test_an_event_with_two_arrangements_freed_is_told_once(
     _remove(venue, venue_block, db_session)
 
     assert _told_again(COORDINATOR_ID) == [(event.id, MAIN_HALL_AGAIN)]
+
+
+# --------------------------------------------------------------------------
+# AC9, AC10 — the organiser of an event sent back hears the venue is available again
+# --------------------------------------------------------------------------
+
+
+def test_the_organiser_of_an_event_sent_back_is_told_the_venue_is_available_again(
+    db_session: Session, venue: Venue, saved_event: SavedEvent
+) -> None:
+    """The Product Owner, 26 Oct: the Organiser is told how the return resolves."""
+    event = _confirmed(venue, saved_event, db_session)
+    venue_block = block(venue, at(10), at(11), db_session)
+
+    _remove(venue, venue_block, db_session)
+
+    assert _told_again(ORGANISER_ID) == [(event.id, ORGANISER_TOLD.format(category="maintenance"))]
+    [notice] = _notifications_again(ORGANISER_ID)
+    shown = NotificationSchema().dump(notice)
+    assert shown["message"] == "A venue that was unavailable for your event is available again."
+    assert shown["link"] == f"/events/{event.reference}"
+
+
+def test_the_organiser_is_told_when_the_venue_is_reactivated(
+    db_session: Session, venue: Venue, saved_event: SavedEvent
+) -> None:
+    event = _confirmed(venue, saved_event, db_session)
+    _deactivate(venue, db_session)
+
+    services.reactivate_venue(venue.id, session=db_session)
+
+    assert _told_again(ORGANISER_ID) == [(event.id, ORGANISER_TOLD.format(category="renovation"))]
+
+
+@pytest.mark.parametrize(
+    "status",
+    [status for status in EventRequestStatus if status is not EventRequestStatus.CONFIRMED],
+)
+def test_the_organiser_of_an_event_the_venue_did_not_send_back_is_not_told(
+    db_session: Session, venue: Venue, saved_event: SavedEvent, status: EventRequestStatus
+) -> None:
+    """Not Confirmed when the block came, so its status stayed as it was (AC3, AC9)."""
+    event, _ = _approved(venue, saved_event, db_session)
+    event.status = status
+    db_session.commit()
+    venue_block = block(venue, at(10), at(11), db_session)
+
+    _remove(venue, venue_block, db_session)
+
+    assert _told_again(ORGANISER_ID) == []
+
+
+def test_the_organiser_waits_for_the_last_overlapping_block_too(
+    db_session: Session, venue: Venue, saved_event: SavedEvent
+) -> None:
+    """AC9 sends it under AC8's condition: nothing else still covers the booking."""
+    event = _confirmed(venue, saved_event, db_session)
+    first = block(venue, at(9), at(11), db_session)
+    second = block(venue, at(10), at(12), db_session, category="other", reason="Filming.")
+
+    _remove(venue, first, db_session)
+    told_after_first = _told_again(ORGANISER_ID)
+    _remove(venue, second, db_session)
+
+    assert told_after_first == []
+    # The block left standing was the "other" one, so that is the category named.
+    assert _told_again(ORGANISER_ID) == [(event.id, ORGANISER_TOLD.format(category="other"))]
+
+
+def test_the_organiser_is_told_once_however_many_arrangements_are_freed(
+    db_session: Session, venue: Venue, saved_event: SavedEvent
+) -> None:
+    """AC10: once per event."""
+    event, _ = _approved(venue, saved_event, db_session)
+    raise_booking(
+        venue, event, db_session, starts_at=at(13).isoformat(), ends_at=at(15).isoformat()
+    )
+    event.status = EventRequestStatus.CONFIRMED
+    db_session.commit()
+    venue_block = block(venue, at(8), at(16), db_session)
+
+    _remove(venue, venue_block, db_session)
+
+    assert _told_again(ORGANISER_ID) == [(event.id, ORGANISER_TOLD.format(category="maintenance"))]
+
+
+def test_only_the_coordinator_and_the_submitting_organiser_are_told(
+    db_session: Session, venue: Venue, saved_event: SavedEvent, saved_users: list[User]
+) -> None:
+    """AC10: the Organiser who submitted the event, not every user who could see it."""
+    event = _confirmed(venue, saved_event, db_session)
+    event.organisation_id = 3
+    db_session.commit()
+    venue_block = block(venue, at(10), at(11), db_session)
+
+    _remove(venue, venue_block, db_session)
+
+    assert _recipients_told_again(db_session) == {COORDINATOR_ID, ORGANISER_ID}
 
 
 def test_removing_a_block_that_flagged_nothing_tells_nobody(
