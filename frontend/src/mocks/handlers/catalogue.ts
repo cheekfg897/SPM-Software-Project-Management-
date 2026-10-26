@@ -35,10 +35,18 @@ const CATALOGUE_PATH = '/api/events/catalogue'
 const MY_EVENTS_PATH = '/api/events/registrations'
 const MY_EVENT_PATH = `${MY_EVENTS_PATH}/:reference`
 /**
- * The event statuses whose page offers Withdraw, as the backend's WITHDRAWABLE_EVENT_STATUSES:
- * the event is still going ahead (docs/adr/0109).
+ * The statuses of an event a change sent back to planning, as the backend's
+ * BEING_REVIEWED_EVENT_STATUSES: its page says the arrangements are being reviewed (docs/adr/0109).
  */
-const WITHDRAWABLE_EVENT_STATUSES: readonly string[] = ['confirmed', 'approved', 'safety_review']
+const BEING_REVIEWED_EVENT_STATUSES: readonly string[] = ['approved', 'safety_review']
+/**
+ * The event statuses whose page offers Withdraw, as the backend's WITHDRAWABLE_EVENT_STATUSES:
+ * the event is still going ahead, confirmed or being reviewed (docs/adr/0109).
+ */
+const WITHDRAWABLE_EVENT_STATUSES: readonly string[] = [
+  'confirmed',
+  ...BEING_REVIEWED_EVENT_STATUSES,
+]
 const REGISTRATIONS_PATH = `${CATALOGUE_PATH}/:eventId/registrations`
 const KNOWN_MY_EVENTS_WHEN: readonly string[] = Object.values(MY_EVENTS_WHEN)
 /** What an empty half of an Attendee's events says, as the backend words it. */
@@ -511,6 +519,7 @@ export const catalogueHandlers: RequestHandler[] = [
       withdrawn_at: registration.withdrawn_at,
       withdrawals_close_at: withdrawalClosesAt(event),
       can_withdraw: mayWithdraw(registration, known),
+      is_being_reviewed: BEING_REVIEWED_EVENT_STATUSES.includes(status),
     })
   }),
 ]

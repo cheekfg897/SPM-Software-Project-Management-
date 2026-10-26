@@ -99,6 +99,8 @@ export interface MyRegisteredEvent {
   withdrawals_close_at: string
   /** Whether the Attendee may withdraw now: the backend decides (SCRUM-53). */
   can_withdraw: boolean
+  /** Whether a change sent the event back to planning, so its arrangements may change. */
+  is_being_reviewed: boolean
 }
 
 /** One half of the Attendee's events. `message` is there only when the list is empty. */

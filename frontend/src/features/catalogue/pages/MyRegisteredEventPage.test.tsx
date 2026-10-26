@@ -72,6 +72,7 @@ function pitchNight(overrides: Partial<MyRegisteredEvent> = {}): MyRegisteredEve
     withdrawn_at: null,
     withdrawals_close_at: PITCH_NIGHT.starts_at,
     can_withdraw: true,
+    is_being_reviewed: false,
     ...overrides,
   }
 }

@@ -24,6 +24,7 @@ const MY_REGISTERED_EVENT_FIELDS = [
   'ends_at',
   'event_status',
   'id',
+  'is_being_reviewed',
   'name',
   'reference',
   'registered_at',
@@ -81,6 +82,7 @@ describe('SCRUM-24 AC11 an attendee opens an event they registered for, against 
         withdrawn_at: null,
         withdrawals_close_at: `${EVENT_DATE}T09:00:00+08:00`,
         can_withdraw: true,
+        is_being_reviewed: false,
       })
       expect(opened.venues).toEqual([
         { name: expect.stringMatching(/^Integration Hall /) as string, location: 'Level 1' },

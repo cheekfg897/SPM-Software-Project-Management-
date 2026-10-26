@@ -51,11 +51,14 @@ ALREADY_WITHDRAWN_MESSAGE = "You have already withdrawn from this event."
 WITHDRAWAL_CLOSED_MESSAGE = "Withdrawals for this event have closed."
 MY_EVENT_NOT_FOUND_MESSAGE = "Event not found."
 
+#: The statuses of an event a change sent back to planning, where places stay held
+#: (ADR-0087): its page says the arrangements are being reviewed (SCRUM-24 AC11,
+#: ADR-0109). Plain values: the events module's models are not imported (module
+#: boundary).
+BEING_REVIEWED_EVENT_STATUSES = frozenset({"approved", "safety_review"})
 #: The event statuses whose page offers Withdraw: the event is still going ahead,
-#: confirmed or sent back to planning after a change, where places stay held
-#: (SCRUM-24 AC11, ADR-0087, ADR-0109). Plain values: the events module's models are
-#: not imported (module boundary).
-WITHDRAWABLE_EVENT_STATUSES = frozenset({"confirmed", "approved", "safety_review"})
+#: confirmed or being reviewed (ADR-0109).
+WITHDRAWABLE_EVENT_STATUSES = frozenset({"confirmed"}) | BEING_REVIEWED_EVENT_STATUSES
 
 #: Monday is 0 and Sunday is 6, as :meth:`datetime.date.weekday` counts.
 SATURDAY = 5
@@ -145,8 +148,9 @@ class MyRegisteredEvent:
     """An event an attendee registered for, as its page shows it (SCRUM-24 AC11).
 
     What SCRUM-52 shows of any event, its booked venues, the attendee's own
-    registration, when withdrawals close and whether the page offers Withdraw
-    (ADR-0109). Nothing from the event's internal planning.
+    registration, when withdrawals close, whether the page offers Withdraw, and
+    whether the event's arrangements are being reviewed after a change (ADR-0109).
+    Nothing from the event's internal planning.
     """
 
     id: int
@@ -162,6 +166,7 @@ class MyRegisteredEvent:
     withdrawn_at: datetime | None
     withdrawals_close_at: datetime
     can_withdraw: bool
+    is_being_reviewed: bool
 
 
 @dataclass(frozen=True)
@@ -665,6 +670,7 @@ def get_my_registered_event(
         withdrawn_at=registration.withdrawn_at,
         withdrawals_close_at=_withdrawal_closes_at(event),
         can_withdraw=_may_withdraw(registration, event, now),
+        is_being_reviewed=event.status in BEING_REVIEWED_EVENT_STATUSES,
     )
 
 

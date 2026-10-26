@@ -37,6 +37,7 @@ const PITCH_NIGHT = referenceOf('Startup Pitch Night')
 const DATA_VIZ = referenceOf('Data Viz Meetup')
 const ORCHID_SHOW = 'EVR-MOCK0901'
 const HARBOUR_RUN = 'EVR-MOCK0902'
+const ROOFTOP_FILM = 'EVR-MOCK0903'
 
 beforeEach(() => signInAs(MOCK_ACCOUNTS.attendee))
 
@@ -56,6 +57,7 @@ describe('SCRUM-24 my registered event mock: what it answers', () => {
       withdrawn_at: null,
       withdrawals_close_at: '2026-10-07T19:00:00+08:00',
       can_withdraw: true,
+      is_being_reviewed: false,
     })
   })
 
@@ -71,7 +73,22 @@ describe('SCRUM-24 my registered event mock: what it answers', () => {
   ])('opens a %s event read-only, with its status', async (status, reference) => {
     const event = await fetchMyRegisteredEvent(reference)
 
-    expect(event).toMatchObject({ event_status: status, status: 'registered', can_withdraw: false })
+    expect(event).toMatchObject({
+      event_status: status,
+      status: 'registered',
+      can_withdraw: false,
+      is_being_reviewed: false,
+    })
+  })
+
+  it('says an event a change sent back to planning is being reviewed, and still offers Withdraw', async () => {
+    expect(await fetchMyRegisteredEvent(ROOFTOP_FILM)).toMatchObject({
+      name: 'Rooftop Film Night',
+      event_status: 'approved',
+      venues: [{ name: 'Capitol Theatre', location: '17 Stamford Road' }],
+      can_withdraw: true,
+      is_being_reviewed: true,
+    })
   })
 
   it('keeps the venue of a completed event, and has none for a cancelled one', async () => {

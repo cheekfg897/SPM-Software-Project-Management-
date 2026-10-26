@@ -129,7 +129,8 @@ class MyRegisteredEventSchema(PublicEventSchema):
     """An event the attendee registered for, as its page shows it (ADR-0109).
 
     The catalogue's public fields, the event's status and booked venues, the
-    registration, when withdrawals close and whether Withdraw is offered.
+    registration, when withdrawals close, whether Withdraw is offered, and whether
+    the event's arrangements are being reviewed after a change (SCRUM-24 AC11).
     """
 
     event_status = fields.String(dump_only=True)
@@ -139,6 +140,7 @@ class MyRegisteredEventSchema(PublicEventSchema):
     withdrawn_at = BusinessDateTime(dump_only=True)
     withdrawals_close_at = BusinessDateTime(dump_only=True)
     can_withdraw = fields.Boolean(dump_only=True)
+    is_being_reviewed = fields.Boolean(dump_only=True)
 
 
 class RegistrationSchema(Schema):

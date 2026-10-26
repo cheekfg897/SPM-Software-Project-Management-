@@ -45,13 +45,18 @@ EVENT_ENDS = datetime(2026, 10, 20, 14, 0, tzinfo=timezone.utc)
 CUT_OFF = EVENT_STARTS - timedelta(days=1)
 ONE_SECOND = timedelta(seconds=1)
 
-#: The statuses whose page offers Withdraw: the event is still going ahead, confirmed
-#: or sent back to planning after a change, where places stay held (ADR-0087).
-WITHDRAWABLE_STATUSES = [
-    EventRequestStatus.CONFIRMED,
-    EventRequestStatus.APPROVED,
-    EventRequestStatus.SAFETY_REVIEW,
+#: The statuses of an event a change sent back to planning, where places stay held
+#: (ADR-0087): its page says the arrangements are being reviewed (AC11, 26 Oct).
+BEING_REVIEWED_STATUSES = [EventRequestStatus.APPROVED, EventRequestStatus.SAFETY_REVIEW]
+#: Every other status but a draft, which is never found.
+NOT_BEING_REVIEWED_STATUSES = [
+    status
+    for status in EventRequestStatus
+    if status not in BEING_REVIEWED_STATUSES and status is not EventRequestStatus.DRAFT
 ]
+#: The statuses whose page offers Withdraw: the event is still going ahead, confirmed
+#: or sent back to planning.
+WITHDRAWABLE_STATUSES = [EventRequestStatus.CONFIRMED, *BEING_REVIEWED_STATUSES]
 #: Every other status, Completed and Cancelled among them: read-only (AC11). A draft is
 #: never found at all, which its own test checks.
 READ_ONLY_STATUSES = [
@@ -120,6 +125,7 @@ def test_the_event_shows_its_public_facts_venues_and_the_attendees_registration(
         withdrawn_at=None,
         withdrawals_close_at=CUT_OFF,
         can_withdraw=True,
+        is_being_reviewed=False,
     )
 
 
@@ -223,11 +229,49 @@ def test_every_other_event_status_opens_read_only_with_its_status(
     assert (shown.event_status, shown.can_withdraw) == (status.value, False)
 
 
+# --------------------------------------------------------------------------
+# AC11 (26 Oct): an event sent back to planning says it is being reviewed
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("status", BEING_REVIEWED_STATUSES, ids=lambda status: status.value)
+def test_an_event_sent_back_to_planning_is_being_reviewed(
+    now: datetime,
+    open_at: OpenAt,
+    make_open_event: MakeOpenEvent,
+    make_registration: MakeRegistration,
+    status: EventRequestStatus,
+) -> None:
+    make_registration(make_open_event(status=status), ATTENDEE)
+
+    assert open_at(REFERENCE, now).is_being_reviewed is True
+
+
+@pytest.mark.parametrize("status", NOT_BEING_REVIEWED_STATUSES, ids=lambda status: status.value)
+def test_every_other_event_status_is_not_being_reviewed(
+    now: datetime,
+    open_at: OpenAt,
+    make_open_event: MakeOpenEvent,
+    make_registration: MakeRegistration,
+    status: EventRequestStatus,
+) -> None:
+    """Confirmed is going ahead as planned; Completed and Cancelled are settled."""
+    make_registration(make_open_event(status=status), ATTENDEE)
+
+    assert open_at(REFERENCE, now).is_being_reviewed is False
+
+
 def test_the_status_lists_cover_every_status_with_completed_and_cancelled_read_only() -> None:
     """AC11 names these two; the rest of the read-only list is built from the enum."""
     assert {EventRequestStatus.COMPLETED, EventRequestStatus.CANCELLED} <= set(READ_ONLY_STATUSES)
     every_listed = {*WITHDRAWABLE_STATUSES, *READ_ONLY_STATUSES, EventRequestStatus.DRAFT}
     assert every_listed == set(EventRequestStatus)
+    every_reviewed_or_not = {
+        *BEING_REVIEWED_STATUSES,
+        *NOT_BEING_REVIEWED_STATUSES,
+        EventRequestStatus.DRAFT,
+    }
+    assert every_reviewed_or_not == set(EventRequestStatus)
 
 
 def test_an_attendee_who_withdrew_still_opens_the_event_read_only(
