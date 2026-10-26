@@ -38,3 +38,20 @@ test('an attendee opens their event from My events and withdraws from it there',
     .filter({ has: page.getByRole('heading', { name: PITCH_NIGHT }) })
   await expect(card.getByText('Withdrawn')).toBeVisible()
 })
+
+test('an attendee opens an event a change sent back to planning, and is told it may change', async ({
+  page,
+}) => {
+  await signInAs(page, MOCK_ACCOUNTS.attendee)
+  await page.goto(ROUTES.MY_EVENTS)
+
+  await page.getByRole('link', { name: 'Rooftop Film Night' }).click()
+  await expect(page).toHaveURL(myEventPath('EVR-MOCK0903'))
+  await expect(page.getByRole('heading', { level: 1, name: 'Rooftop Film Night' })).toBeVisible()
+  await expect(
+    page.getByText(
+      'This event’s arrangements are being reviewed and may change. You will be notified of any change.',
+    ),
+  ).toBeVisible()
+  await expect(page.getByText('Approved')).toBeVisible()
+})
