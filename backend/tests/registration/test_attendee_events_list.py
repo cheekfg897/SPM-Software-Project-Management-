@@ -5,6 +5,11 @@ the events that haven't ended, soonest first; ``past`` lists the ones that have,
 recent first. An event has ended once now reaches its end. Ties go by the event's id.
 Each row carries the event's own status, so a cancelled event shows as cancelled.
 
+Since 26 Oct AC7 lists every event the attendee has a registration on, whatever the
+event's status, withdrawn registrations included, each with the event's status and the
+registration's (ADR-0109, superseding ADR-0044 decision 5). The halves still split by
+when the event ends, never by its status.
+
 Runs against ``db_session`` at ``now``: Wednesday 14 October 2026, 12:00 in Singapore.
 Events are saved, and registered for, in an order that is neither the expected one nor
 the order of their ids, so a list that isn't sorted can't pass by luck.
@@ -21,7 +26,7 @@ from sqlalchemy.orm import Session
 
 from app.common.errors import ValidationError
 from app.modules.events.models import EventRequest, EventRequestStatus
-from app.modules.registration.models import Registration
+from app.modules.registration.models import Registration, RegistrationStatus
 from app.modules.registration.schemas import MyEventsWindow
 from app.modules.registration.services import MyRegistration, list_my_registrations
 
@@ -34,6 +39,12 @@ MyRegistrations = Callable[..., list[MyRegistration]]
 ATTENDEE = 21
 TODAY = date(2026, 10, 14)
 EARLY_OCTOBER = date(2026, 10, 1)
+
+#: Every status but a draft, which no registration can be on: registering needs a
+#: confirmed event, and nothing turns one back into a draft.
+REGISTRABLE_THEN_ANY_STATUS = [
+    status for status in EventRequestStatus if status is not EventRequestStatus.DRAFT
+]
 
 
 def _names(rows: list[MyRegistration]) -> list[str]:
@@ -164,6 +175,69 @@ def test_a_cancelled_event_stays_listed_with_its_status(
     assert [(row.name, row.event_status) for row in rows] == [
         ("Going ahead", "confirmed"),
         ("Called off", "cancelled"),
+    ]
+
+
+# --------------------------------------------------------------------------
+# AC7 (26 Oct) — every event with a registration, whatever its status
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("status", REGISTRABLE_THEN_ANY_STATUS, ids=lambda status: status.value)
+def test_an_event_yet_to_end_is_listed_under_upcoming_whatever_its_status(
+    my_registrations: MyRegistrations,
+    make_open_event: MakeOpenEvent,
+    make_registration: MakeRegistration,
+    status: EventRequestStatus,
+) -> None:
+    make_registration(make_open_event(name="Ahead", status=status), ATTENDEE)
+
+    upcoming = my_registrations(ATTENDEE)
+    past = my_registrations(ATTENDEE, {"when": "past"})
+
+    assert [(row.name, row.event_status) for row in upcoming] == [("Ahead", status.value)]
+    assert past == []
+
+
+@pytest.mark.parametrize("status", REGISTRABLE_THEN_ANY_STATUS, ids=lambda status: status.value)
+def test_an_event_that_has_ended_is_listed_under_past_whatever_its_status(
+    my_registrations: MyRegistrations,
+    make_open_event: MakeOpenEvent,
+    make_registration: MakeRegistration,
+    status: EventRequestStatus,
+) -> None:
+    make_registration(make_open_event(name="Behind", day=EARLY_OCTOBER, status=status), ATTENDEE)
+
+    upcoming = my_registrations(ATTENDEE)
+    past = my_registrations(ATTENDEE, {"when": "past"})
+
+    assert upcoming == []
+    assert [(row.name, row.event_status) for row in past] == [("Behind", status.value)]
+
+
+def test_a_withdrawn_registration_is_listed_with_both_statuses(
+    now: datetime,
+    my_registrations: MyRegistrations,
+    save: Callable[..., None],
+    make_open_event: MakeOpenEvent,
+    make_registration: MakeRegistration,
+) -> None:
+    held = make_registration(make_open_event(name="Held"), ATTENDEE)
+    given_up = make_registration(
+        make_open_event(
+            name="Given up", day=date(2026, 10, 21), status=EventRequestStatus.APPROVED
+        ),
+        ATTENDEE,
+    )
+    given_up.status = RegistrationStatus.WITHDRAWN
+    given_up.withdrawn_at = now
+    save(held, given_up)
+
+    rows = my_registrations(ATTENDEE)
+
+    assert [(row.name, row.event_status, row.status) for row in rows] == [
+        ("Held", "confirmed", RegistrationStatus.REGISTERED),
+        ("Given up", "approved", RegistrationStatus.WITHDRAWN),
     ]
 
 

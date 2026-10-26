@@ -10,8 +10,9 @@ import { MOCK_ACCOUNTS, mockTokenFor } from '../fixtures/accounts'
  * The mock of an Attendee's own events, pinned to docs/adr/0044-attendee-events-list.md.
  * The fixture's "now" is Monday 2026-10-05 12:00 in Singapore. The mock attendee holds a
  * place at Startup Pitch Night (7 Oct) and at this morning's Sunrise Yoga, which has
- * ended, and registered earlier for an event that has taken place and one since called
- * off. The fresh attendee holds none.
+ * ended, and registered earlier for an event that has taken place, one since called off
+ * and one a change sent back to planning (Approved, 14 Oct). Every one is listed, whatever
+ * its status (SCRUM-24 AC7, docs/adr/0109). The fresh attendee holds none.
  */
 
 const MY_REGISTRATIONS = '/api/events/registrations'
@@ -32,6 +33,7 @@ describe('SCRUM-24 my events mock: upcoming and past', () => {
     expect(namesAndStatuses(list)).toEqual([
       ['Startup Pitch Night', 'confirmed'],
       ['Harbour Lights Run', 'cancelled'],
+      ['Rooftop Film Night', 'approved'],
     ])
     expect(list).not.toHaveProperty('message')
   })
@@ -51,6 +53,7 @@ describe('SCRUM-24 my events mock: upcoming and past', () => {
     expect(list.registrations.map((row) => row.name)).toEqual([
       'Startup Pitch Night',
       'Harbour Lights Run',
+      'Rooftop Film Night',
     ])
   })
 

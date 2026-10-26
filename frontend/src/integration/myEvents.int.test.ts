@@ -1,4 +1,4 @@
-import { fetchMyEvents, registerForEvent } from '@/features/catalogue/api'
+import { fetchMyEvents, registerForEvent, withdrawFromEvent } from '@/features/catalogue/api'
 import { MY_EVENTS_WHEN } from '@/features/catalogue/constants'
 import { apiRequest } from '@/lib/api'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
@@ -103,6 +103,26 @@ describe('SCRUM-24 my events contract (ADR-0044)', () => {
         name: event.name,
         event_status: 'confirmed',
         status: 'registered',
+      })
+    },
+  )
+
+  it.skipIf(!canRegister)(
+    'keeps a withdrawn registration listed, with the event’s status and its own (AC7, 26 Oct)',
+    async () => {
+      const event = await registrableEvent()
+      await signInAsNewAttendee()
+      await registerForEvent(event.id)
+      await withdrawFromEvent(event.id)
+
+      const { registrations } = await fetchMyEvents(MY_EVENTS_WHEN.UPCOMING)
+
+      expect(registrations).toHaveLength(1)
+      expect(registrations[0]).toMatchObject({
+        reference: event.reference,
+        event_status: 'confirmed',
+        status: 'withdrawn',
+        withdrawn_at: expect.any(String) as string,
       })
     },
   )
