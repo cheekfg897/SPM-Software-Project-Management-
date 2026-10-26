@@ -29,7 +29,7 @@ from app.modules.equipment.services import ReservationAsShown
 from app.modules.events import routes
 from app.modules.events.models import EventHistoryKind, EventRequest, EventRequestStatus
 from app.modules.events.services import (
-    EventRecord,
+    CoordinatorEventRecord,
     OrganiserEventRecord,
     SafetyOutcomeAsShown,
     get_event_record_for_organiser,
@@ -465,15 +465,18 @@ def test_the_route_sends_null_for_a_check_with_no_outcome_yet(
     assert (body["venue_arrangements"], body["equipment_reservations"]) == ([], [])
 
 
-def test_the_coordinators_record_route_is_unchanged(
+def test_the_coordinators_record_route_has_none_of_the_organisers_own_sections(
     call_route: Callable[..., Any],
     replace_services: Callable[..., Any],
     token_for: Callable[..., str],
     make_user: Callable[..., User],
     make_event_request: Callable[..., EventRequest],
 ) -> None:
-    """The coordinator works on the arrangements and the check from their own pages."""
-    record = EventRecord(
+    """The coordinator works on the notes, equipment and check from their own pages.
+
+    Their record lists the venue arrangements since SCRUM-93 AC5 (ADR-0105).
+    """
+    record = CoordinatorEventRecord(
         event_request=make_event_request(status=EventRequestStatus.CONFIRMED), coordinator=None
     )
     replace_services(routes, {"get_event_record_for_coordinator": record})
@@ -488,10 +491,5 @@ def test_the_coordinators_record_route_is_unchanged(
     )
 
     assert status == 200
-    organiser_only = {
-        "internal_planning_notes",
-        "venue_arrangements",
-        "equipment_reservations",
-        "safety_outcome",
-    }
+    organiser_only = {"internal_planning_notes", "equipment_reservations", "safety_outcome"}
     assert organiser_only.isdisjoint(response.get_json())

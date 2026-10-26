@@ -71,8 +71,8 @@ export function EventRecordView({ record }: { record: EventRecord }) {
     viewer?.role === ROLE.EVENT_ORGANISER &&
     record.status === EVENT_REQUEST_STATUS.AWAITING_CLARIFICATION
   // Only the organiser's record names each line's equipment and sends the rest of the record:
-  // everything on it, at every stage (ADR-0104). The coordinator works on the lines, venues and
-  // safety check from their own pages instead.
+  // everything on it, at every stage (ADR-0104). The coordinator works on the lines and the
+  // safety check from their own pages instead, and sees the venues listed here (ADR-0105).
   const recordLines = record.equipment_lines.filter(isRecordEquipmentLine)
   return (
     <PageContainer title={record.name}>

@@ -128,8 +128,8 @@ export interface RecordVenueArrangement
  * An event request's record: the request, the coordinator's note the organiser may see, who
  * the coordinator is (null until one is assigned), the decision (null until one is made), the
  * clarification exchange, oldest first (SCRUM-24 AC9, ADR-0026, ADR-0056), and the equipment
- * lines. The coordinator is sent each line as staff save it, and works on it from the Equipment
- * page (ADR-0098). The organiser is sent everything on the record, at every stage (SCRUM-24
+ * lines and every venue arrangement. The coordinator is sent each line as staff save it, and works
+ * on it from the Equipment page (ADR-0098). The organiser is sent everything on the record, at every stage (SCRUM-24
  * AC10, ADR-0104): each line with its outcome and reviewer, the planning notes, every venue
  * arrangement, the reservations and the current safety check.
  */
@@ -141,7 +141,7 @@ export interface EventRecord extends EventRequest {
   equipment_lines: (RecordEquipmentLine | SavedEquipmentLine)[]
   /** Only on the organiser's record (ADR-0104). */
   internal_planning_notes?: string | null
-  /** Only on the organiser's record: every arrangement, in any status (ADR-0104). */
+  /** Every arrangement, in any status (SCRUM-93 AC5, ADR-0104, ADR-0105). */
   venue_arrangements?: RecordVenueArrangement[]
   /** Only on the organiser's record (ADR-0104). */
   equipment_reservations?: StaffReservation[]

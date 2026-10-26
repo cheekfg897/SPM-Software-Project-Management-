@@ -2785,14 +2785,27 @@ def assign_coordinator_to_request(
     return event_request, coordinator
 
 
+@dataclass(frozen=True)
+class CoordinatorEventRecord(EventRecord):
+    """The record as the event's assigned coordinator sees it (SCRUM-24 AC9).
+
+    The sections every record shows, then every venue arrangement, in any status,
+    earliest period first, so the event page itself lists them with each hold's expiry
+    (SCRUM-93 AC5, ADR-0105).
+    """
+
+    venue_arrangements: tuple[ArrangementForRecord, ...] = ()
+
+
 def get_event_record_for_coordinator(
     coordinator_id: int | str, reference: str, *, session: Session | None = None
-) -> EventRecord:
+) -> CoordinatorEventRecord:
     """A request assigned to the coordinator, and its coordinator (SCRUM-24 AC9).
 
-    The same sections as the organiser's record. Only a request assigned to the
-    caller opens: the requests no coordinator has are the Event Coordinator Lead's
-    queue (SCRUM-24 AC2, SCRUM-95, ADR-0034), not any coordinator's.
+    The sections every record shows, and every venue arrangement with its status
+    (SCRUM-93 AC5). Only a request assigned to the caller opens: the requests no
+    coordinator has are the Event Coordinator Lead's queue (SCRUM-24 AC2, SCRUM-95,
+    ADR-0034), not any coordinator's.
 
     Args:
         coordinator_id: The caller's user id, taken from their token.
@@ -2800,16 +2813,27 @@ def get_event_record_for_coordinator(
         session: Database session; defaults to ``db.session``.
 
     Returns:
-        The request's record: the request, and its coordinator's name and email.
+        The request's record: the request, its coordinator's name and email, and every
+        venue arrangement.
 
     Raises:
         NotFoundError: 404 — no such request, or it isn't assigned to the caller.
     """
+    from app.modules.venue import services as venue_services  # circular at import time
+
     sess = resolve_session(session)
     event_request = _event_request_by_reference(
         reference, sess, belongs_to=_assigned_to(coordinator_id)
     )
-    return _event_record(event_request, sess)
+    record = _event_record(event_request, sess)
+    arrangements = venue_services.list_every_arrangement_for_record(event_request.id, session=sess)
+    return CoordinatorEventRecord(
+        event_request=record.event_request,
+        coordinator=record.coordinator,
+        decision=record.decision,
+        clarifications=record.clarifications,
+        venue_arrangements=tuple(arrangements),
+    )
 
 
 # --------------------------------------------------------------------------

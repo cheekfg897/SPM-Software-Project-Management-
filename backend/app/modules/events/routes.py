@@ -30,6 +30,7 @@ from app.modules.events.schemas import (
     EventRequestSchema,
     FieldChangeSchema,
     OrganiserRecordSectionsSchema,
+    RecordVenueArrangementSchema,
     RegistrationSettingsSchema,
     StaffEventRecordSectionsSchema,
     StaffEventRequestSchema,
@@ -86,6 +87,7 @@ _event_request_detail_schema = EventRequestDetailSchema()
 _equipment_line_schema = EquipmentLineSchema()
 _equipment_line_with_outcome_schema = EquipmentLineWithOutcomeSchema()
 _organiser_record_sections_schema = OrganiserRecordSectionsSchema()
+_record_venue_arrangement_schema = RecordVenueArrangementSchema()
 _equipment_event_schema = EventRequestSchema(only=EQUIPMENT_EVENT_FIELDS)
 _equipment_awaiting_action_schema = EquipmentAwaitingActionSchema()
 _awaiting_safety_review_schema = EventAwaitingSafetyReviewSchema()
@@ -342,7 +344,11 @@ def get_my_request(reference: str) -> tuple[Response, int]:
     """
     if Role(g.current_user_role) is Role.EVENT_COORDINATOR:
         record = get_event_record_for_coordinator(g.current_user_id, reference)
-        return jsonify(_event_record_body(record)), 200
+        body = _event_record_body(record)
+        body["venue_arrangements"] = _record_venue_arrangement_schema.dump(
+            record.venue_arrangements, many=True
+        )
+        return jsonify(body), 200
     organiser_record = get_event_record_for_organiser(g.current_user_id, reference)
     return jsonify(_organiser_event_record_body(organiser_record)), 200
 
