@@ -1,6 +1,6 @@
 # ADR-0051: The assigned coordinator confirms an event from Safety Review once every approval is in
 
-- **Status:** Accepted for the confirmation itself (SCRUM-49 AC1-AC8, AC12); decision 8 was deferred to SCRUM-92 and is now delivered by [ADR-0053](0053-flag-bookings-when-a-venue-becomes-unavailable.md) (the gate names each flagged active arrangement), decision 9 is built by [ADR-0093](0093-reject-an-event-during-planning.md), and decision 10 is superseded by [ADR-0099](0099-organiser-sees-a-confirmed-event.md), which shows the organiser a confirmed event's venues
+- **Status:** Accepted for the confirmation itself (SCRUM-49 AC1-AC8, AC12); decision 8 was deferred to SCRUM-92 and is now delivered by [ADR-0053](0053-flag-bookings-when-a-venue-becomes-unavailable.md) (the gate names each flagged active arrangement), decision 9 is built by [ADR-0093](0093-reject-an-event-during-planning.md), and decision 10 is superseded by [ADR-0099](0099-organiser-sees-a-confirmed-event.md), which shows the organiser a confirmed event's venues, itself superseded by [ADR-0104](0104-organiser-sees-everything-on-the-record.md): the organiser sees everything at every stage
 - **Date:** 2026-10-17
 - **Stories:** SCRUM-49 Confirm an event once its arrangements are in place
 
@@ -33,7 +33,7 @@ SCRUM-49 is the last step of the lifecycle ADR-0047 set up: `approved` → `safe
 
 ## Questions for the customer
 1. When an event is rejected during planning because an essential arrangement can't be fulfilled, should its venue bookings, holds and equipment reservations be released at once, as for a cancelled event? *(Answered yes by the Product Owner on 19 Oct (SCRUM-49 AC10); built in ADR-0093.)*
-2. Once an event is confirmed, what should the Event Organiser be able to see: every venue, the date and times, and which equipment was confirmed? Should they also see the Technical Support outcomes and the Safety Officer's decision? *(Partly answered by SCRUM-49 AC11, SCRUM-37 AC5 and SCRUM-48 AC5: every venue, the date, time and confirmed arrangements once confirmed (ADR-0099), and each equipment line's status and quantity provided (ADR-0098). The Product Owner answered the Safety Officer's part on 25 Oct: the organiser sees the officer's final decision on the confirmed event (ADR-0099 decision 10). Still open: whether the organiser sees any of it before the event is confirmed.)*
+2. Once an event is confirmed, what should the Event Organiser be able to see: every venue, the date and times, and which equipment was confirmed? Should they also see the Technical Support outcomes and the Safety Officer's decision? *(Partly answered by SCRUM-49 AC11, SCRUM-37 AC5 and SCRUM-48 AC5: every venue, the date, time and confirmed arrangements once confirmed (ADR-0099), and each equipment line's status and quantity provided (ADR-0098). The Product Owner answered the Safety Officer's part on 25 Oct: the organiser sees the officer's final decision on the confirmed event (ADR-0099 decision 10). Answered in full by the Product Owner on 25 Oct: the organiser sees everything on the record at every stage (SCRUM-24 AC10, SCRUM-49 AC13, ADR-0104).)*
 
 ## Consequences
 - An event can now reach `confirmed`, so registration (SCRUM-52), completion (SCRUM-68) and preparation (SCRUM-84/85) have events to work on.

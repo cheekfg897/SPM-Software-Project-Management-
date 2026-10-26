@@ -1,6 +1,6 @@
 # ADR-0098: The organiser's record shows each equipment line's type, quantity, status and quantity provided, and nothing internal
 
-- **Status:** Accepted for what the organiser sees and doesn't see (SCRUM-37 AC5, SCRUM-48 AC5 and both stories' organiser visibility clarifications); sending the quantity provided for every reviewed line, leaving the shortfall out, and the screen's wording are defaults to review
+- **Status:** Superseded by [ADR-0104](0104-organiser-sees-everything-on-the-record.md) for what the organiser sees: since the Product Owner's decision of 25 Oct the organiser's record sends each line in full, technical notes, outcome note, shortfall and reviewer included. The type by name (decision 1), the unchanged coordinator's record (decision 3) and the type guard (decision 8) still stand
 - **Date:** 2026-10-25
 - **Stories:** SCRUM-37 AC5; SCRUM-48 AC5
 - **Supersedes:** the organiser's part of [ADR-0040](0040-equipment-review-outcome.md) decision 9 (the organiser's record showed the staff line, without the outcome); [ADR-0056](0056-event-request-detail-page.md)'s and [ADR-0077](0077-equipment-outcome-screen.md)'s deferred organiser equipment view

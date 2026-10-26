@@ -1,6 +1,6 @@
 # ADR-0099: Once the event is confirmed, its organiser's record lists every approved venue arrangement and shows the Safety Officer's final decision
 
-- **Status:** Accepted for showing the confirmed event's venues, date, times and arrangements to its organiser (SCRUM-49 AC11) and the Safety Officer's final decision with when it was made (the Product Owner's decision of 25 Oct); showing none of it before the event is Confirmed, still showing it once it is Completed, and which details of an arrangement are shown are defaults pending the Product Owner; keeping the officer's name, the checklist notes and the reason hidden is a default to review
+- **Status:** Superseded by [ADR-0104](0104-organiser-sees-everything-on-the-record.md): since the Product Owner's decision of 25 Oct (SCRUM-49 AC13) the organiser sees every arrangement in full and the whole safety check at every stage, so the confirmed-only gate, the approved-only list and the hidden officer, checklist and reason are gone. Reading the current check's outcome (decision 10) and the mock's history store (decision 13) still stand
 - **Date:** 2026-10-25
 - **Stories:** SCRUM-49 AC11
 - **Supersedes:** [ADR-0051](0051-confirm-an-event.md) decision 10 (the organiser's record had no venues, and the venue module no organiser-facing read)
