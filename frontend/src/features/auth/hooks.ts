@@ -2,7 +2,7 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 
 import { selectSessionUser, signedIn, useAppDispatch, useAppSelector } from '@/store'
 
-import { authKeys, fetchCurrentUser, logIn, register } from './api'
+import { authKeys, fetchCurrentUser, logIn, logOut, register } from './api'
 import type { LoginResponse, Registration } from './api'
 
 /** Save the session a successful log-in returned. */
@@ -36,4 +36,13 @@ export function useSignUp() {
 export function useCurrentUser() {
   const sessionUser = useAppSelector(selectSessionUser)
   return useQuery({ queryKey: authKeys.me(sessionUser?.id), queryFn: fetchCurrentUser })
+}
+
+/**
+ * Ask the backend to revoke the session's token (SCRUM-89). The caller signs out here whatever
+ * the answer (ADR-0110), so `networkMode: 'always'` sends it even while the browser is offline:
+ * it fails at once rather than waiting to be online.
+ */
+export function useLogOut() {
+  return useMutation({ mutationFn: logOut, networkMode: 'always' })
 }

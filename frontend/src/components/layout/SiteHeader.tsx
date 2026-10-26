@@ -2,6 +2,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { flushSync } from 'react-dom'
 import { NavLink, useNavigate } from 'react-router'
 
+import { useLogOut } from '@/features/auth/hooks'
 import { NotificationBell } from '@/features/notifications/components/NotificationBell'
 import { Button, ButtonLink } from '@/components/ui'
 import { INTERNAL_ROLES, ROLE } from '@/config/roles'
@@ -28,6 +29,7 @@ function SessionActions() {
   const dispatch = useAppDispatch()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const { mutateAsync: revokeToken } = useLogOut()
 
   if (user === null) {
     return (
@@ -40,11 +42,14 @@ function SessionActions() {
     )
   }
 
-  // Logging out only forgets the token on this device; the backend can't revoke it yet (SCRUM-89).
-  // Forget the session first, then leave: the front page sends anyone still signed in to their
-  // home (SCRUM-6). A page only signed-in users may see starts sending them to log in as the
-  // session goes; the router keeps only the latest navigation, so the front page wins.
+  // The backend revokes the token first, while the session still holds it, so the request carries
+  // it (SCRUM-89). If that fails (offline, or the token had already expired), the user is signed
+  // out here all the same (ADR-0110). Then forget the session and leave: the front page sends
+  // anyone still signed in to their home (SCRUM-6). A page only signed-in users may see starts
+  // sending them to log in as the session goes; the router keeps only the latest navigation, so
+  // the front page wins.
   async function logOut() {
+    await revokeToken().catch(() => undefined)
     flushSync(() => dispatch(signedOut()))
     queryClient.clear()
     await navigate(ROUTES.HOME)
