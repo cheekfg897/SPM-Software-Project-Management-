@@ -1174,6 +1174,9 @@ def withdraw_safety_approval(
 
 #: Said when the change sent the event back to planning (SCRUM-33 AC9, ADR-0107).
 BACK_IN_PLANNING_DETAIL = "It is back in planning until it can be sent to Safety Review again."
+#: Fields a notice names other than by their API name in words: SCRUM-33 AC1 renamed
+#: the internal planning notes to planning notes on 25 Oct (ADR-0107).
+FIELD_NAMES_IN_NOTICES = {"internal_planning_notes": "planning notes"}
 
 
 def _notify_safety_officers(
@@ -1218,7 +1221,8 @@ def _tell_safety_officers_of_change(
     """
     field_words = []
     for field in changed_fields:
-        field_words.append(field.replace("_", " "))
+        words = FIELD_NAMES_IN_NOTICES.get(field, field.replace("_", " "))
+        field_words.append(words)
     detail = f"Changed: {', '.join(field_words)}."
     if event_request.status is EventRequestStatus.APPROVED:
         detail = f"{detail} {BACK_IN_PLANNING_DETAIL}"
