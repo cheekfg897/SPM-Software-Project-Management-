@@ -1,10 +1,10 @@
-"""SCRUM-63: attendees fill an event; one withdraws and registers again, via the API.
+"""SCRUM-63: an API-level end-to-end test of registration up to capacity.
 
-This is SCRUM-63's registration journey (and SCRUM-53's before it). It exercises these
-user stories and acceptance criteria (SCRUM-63 AC5):
+This is SCRUM-63's API-level end-to-end test of registration (extending SCRUM-53's
+journey). It exercises these user stories and acceptance criteria (SCRUM-63 AC5):
 
-- SCRUM-63 AC1: registration up to capacity, a refusal at capacity, a withdrawal and a
-  successful re-registration.
+- SCRUM-63 AC1: registration up to capacity, a refusal at capacity, a withdrawal, and a
+  different Attendee then registering successfully for the freed place (SCRUM-54).
 - SCRUM-69 AC1, AC2, AC4: the coordinator opens registration with a capacity, which is
   refused until the event is confirmed.
 - SCRUM-42 and SCRUM-43: a venue is booked and Venue Staff approve it.
@@ -25,27 +25,32 @@ registration yet. A venue is booked and approved, the Safety Officer approves th
 and the coordinator confirms it: the event reaches Confirmed through the real routes
 rather than being saved that way. The coordinator opens registration with two places.
 Alice and Bob fill them, the catalogue shows the event full with no places left, and
-Carol is turned away. Alice withdraws and Carol takes the freed place, so Alice,
-registering again, is turned away too: a withdrawn attendee has no claim on the place.
-Bob withdraws, and Alice registers again into his place, on her own registration once
-more (ADR-0032). Dan holds a place at a second confirmed event the whole time: it never
-counts against this event's places, and that event loses only his. Every call goes
-through the real routes with Flask's test client (ADR-0031).
+Carol is turned away. Alice withdraws, and Carol, a different Attendee, takes the freed
+place (SCRUM-63 AC1). Alice, registering again, is then turned away: a withdrawn
+attendee has no claim on the place. Bob withdraws, and Alice registers again into his
+place, on her own registration once more (ADR-0032). Dan holds a place at a second
+confirmed event the whole time: it never counts against this event's places, and that
+event loses only his. Every call goes through the real routes with Flask's test client
+(ADR-0031).
 
-SCRUM-63 AC2 (a confirmed event's date change flagging its bookings, through to Venue
-Staff reconfirming) and AC3 (a cancellation releasing them) are deferred until SCRUM-56
-to SCRUM-61 land; none of them is built yet. AC4 is met by CI's backend job, which runs
-every test under ``tests/`` with no marker filter, this one included; main's ruleset
-requires every CI check to pass before a merge (Product Owner, 20 Oct).
+SCRUM-63 AC2 (a confirmed event's date change flagging its venue booking and equipment
+reservation, through to Venue Staff reconfirming) waits for SCRUM-57, SCRUM-59 and
+SCRUM-60, and AC3 (the coordinator cancelling the event, releasing both) waits for
+SCRUM-61; none of them is built yet. AC4 is met by CI's backend job, which runs every
+test under ``tests/`` with no marker filter, this one included, and main's branch
+protection requires that job's check to pass before a merge (Product Owner, 20 Oct).
 
-Defaults settled in SCRUM-63's question pass:
+Settled in SCRUM-63's question pass and the Product Owner's clarification of 26 Oct:
 
-1. The journey runs through Flask's test client on the in-memory database, as ADR-0031
-   and SCRUM-51's journeys do, marked ``scrum_63`` and ``e2e``.
+1. It is an API-level end-to-end test: it runs from the backend, through Flask's test
+   client on the in-memory database, as ADR-0031 and SCRUM-51's journeys do, marked
+   ``scrum_63`` and ``e2e``.
 2. SCRUM-53's registration journey is extended rather than copied.
 3. "Up to capacity" is a capacity of two: two attendees fill it and a third is refused.
-4. "A successful re-registration" is the attendee who withdrew registering again into a
-   freed place, which reuses her registration (ADR-0032).
+4. The freed place is taken by a different Attendee, not the one who withdrew (Product
+   Owner, 26 Oct; the briefing says a released place may become available to another
+   Attendee). The attendee who withdrew registering again into a later freed place is
+   kept as a check on ADR-0032, not as AC1.
 5. The event reaches Confirmed through the real routes. It is saved as approved, with
    its coordinator; the request-to-approval journey is
    test_request_to_approval_journey.py. The second event is only a decoy for the
@@ -252,7 +257,7 @@ def decoy_event(
     return event_request.id
 
 
-def test_attendees_fill_an_event_and_one_who_withdrew_registers_again(
+def test_attendees_fill_an_event_and_a_different_attendee_takes_a_freed_place(
     client: FlaskClient,
     sign_in: SignIn,
     coordinator: Actor,
@@ -315,7 +320,8 @@ def test_attendees_fill_an_event_and_one_who_withdrew_registers_again(
     assert _my_registration_statuses(alice) == ["withdrawn"]
     assert _places(client, approved_event) == (1, False)
 
-    # --- Carol takes the freed place (SCRUM-54 AC3) ---
+    # --- Carol, a different Attendee, takes the freed place (SCRUM-63 AC1,
+    # --- SCRUM-54 AC3) ---
     assert _body(carol.post(registrations_path), 201)["status"] == "registered"
     assert _my_registration_statuses(carol) == ["registered"]
     assert _places(client, approved_event) == (0, True)
@@ -324,8 +330,8 @@ def test_attendees_fill_an_event_and_one_who_withdrew_registers_again(
     assert _refusal(alice.post(registrations_path)) == EVENT_FULL
     assert _my_registration_statuses(alice) == ["withdrawn"]
 
-    # --- Bob withdraws, and Alice registers again into his place (SCRUM-63 AC1,
-    # --- SCRUM-54 AC3, ADR-0032) ---
+    # --- Bob withdraws, and Alice registers again into his place (SCRUM-54 AC3,
+    # --- ADR-0032) ---
     assert _body(bob.delete(registrations_path), 200)["status"] == "withdrawn"
     assert _places(client, approved_event) == (1, False)
     registered_again = _body(alice.post(registrations_path), 201)
