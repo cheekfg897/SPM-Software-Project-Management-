@@ -1161,6 +1161,21 @@ describe('SCRUM-92 booking mock: raising a replacement for a flagged arrangement
     })
   })
 
+  // Only a venue that became unavailable locks the period (ADR-0108 decision 4): a change flag
+  // lets the replacement take the event's new time at another venue too.
+  it('accepts another venue at a new time as a change-flagged arrangement’s replacement', async () => {
+    const flagged = await changeFlaggedArrangement()
+    const newTime = { starts_at: '2026-11-10T13:00:00+08:00', ends_at: '2026-11-10T16:00:00+08:00' }
+
+    const created = await raise(BOOKED_EVENT.reference, { ...replacementFor(flagged), ...newTime })
+
+    expect(created).toMatchObject({
+      status: 'pending',
+      venue_id: TINY_VENUE.id,
+      replaces_request_id: flagged.id,
+    })
+  })
+
   it('refuses to approve a change-flagged arrangement’s replacement that overlaps it (409)', async () => {
     const flagged = await changeFlaggedArrangement()
     const replacement = await raise(BOOKED_EVENT.reference, {
