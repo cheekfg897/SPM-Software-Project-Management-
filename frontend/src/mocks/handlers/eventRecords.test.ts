@@ -98,6 +98,13 @@ const SAFETY_CHECKLIST = {
   crowd_movement: 'One-way flow at the doors.',
   venue_restrictions: 'No open flames.',
 }
+/** The Safety Officer's approval, for a test to add to an event's history. */
+const SAFETY_APPROVAL = {
+  kind: 'safety_outcome_recorded',
+  occurred_at: '2026-10-01T10:00:00+08:00',
+  actor_name: MOCK_ACCOUNTS.safetyOfficer.full_name,
+  details: { outcome: 'approved', checklist: SAFETY_CHECKLIST, reason: null },
+}
 
 function signInAs(account: MockAccount | null) {
   sendRequestsAs(account === null ? null : mockTokenFor(account))
@@ -500,16 +507,25 @@ describe('SCRUM-24 AC10 mock of everything on the organiser record, at every sta
     expect(record.safety_outcome).toBeNull()
   })
 
+  it('shows no outcome once a significant edit withdraws the approval (SCRUM-49 AC13)', async () => {
+    // Hana's Harbour Lights Concert, approved by the Safety Officer, in Sara's organisation.
+    const approved = 'EVR-PLAN0003'
+    addToHistory(approved, [SAFETY_APPROVAL])
+    signInAs(MOCK_ACCOUNTS.planningCoordinator)
+    await editEventRequest(approved, { expected_attendance: 100 })
+    signInAs(MOCK_ACCOUNTS.otherOrganiser)
+
+    const record = await fetchEventRequest(approved)
+
+    // The withdrawn approval stays in the history; the check has no outcome until the next one.
+    expect(record.status).toBe('approved')
+    expect(record.safety_outcome).toBeNull()
+  })
+
   it('keeps showing the outcome once the event is completed', async () => {
     // Hana's Autumn Book Fair, confirmed and already ended, in Sara's organisation.
     const ended = 'EVR-PLAN0005'
-    const approval = {
-      kind: 'safety_outcome_recorded',
-      occurred_at: '2026-10-01T10:00:00+08:00',
-      actor_name: MOCK_ACCOUNTS.safetyOfficer.full_name,
-      details: { outcome: 'approved', checklist: SAFETY_CHECKLIST, reason: null },
-    }
-    addToHistory(ended, [approval])
+    addToHistory(ended, [SAFETY_APPROVAL])
     signInAs(MOCK_ACCOUNTS.planningCoordinator)
     await completeEvent(ended)
     signInAs(MOCK_ACCOUNTS.otherOrganiser)
