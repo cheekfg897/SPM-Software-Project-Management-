@@ -401,13 +401,19 @@ describe('SCRUM-24 AC10 event record: everything an organiser sees, at every sta
     const requested = within(await section('Equipment')).getByRole('list', {
       name: 'Equipment requested',
     })
-    const [projectors, microphones] = within(requested).getAllByRole('listitem') as [
+    const [projectors, microphones, lectern] = within(requested).getAllByRole('listitem') as [
+      HTMLElement,
       HTMLElement,
       HTMLElement,
     ]
     expect(projectors).toHaveTextContent('Projector · 10 requested')
     expect(projectors).toHaveTextContent('Note: Two at the back of the hall.')
-    expect(projectors).toHaveTextContent('Technical Support: Partially fulfilled, 6 provided')
+    // The shortfall is drawn when there is one (SCRUM-24 AC10, 26 Oct), never when it is 0.
+    expect(projectors).toHaveTextContent(
+      'Technical Support: Partially fulfilled, 6 provided, 4 short',
+    )
+    expect(lectern).toHaveTextContent('Technical Support: Fulfilled, 1 provided')
+    expect(lectern).not.toHaveTextContent('short')
     expect(projectors).toHaveTextContent('Four are out for repair.')
     expect(projectors).toHaveTextContent('Reviewed by Tariq Hassan, 5 Oct, 11:00 am')
     expect(microphones).toHaveTextContent('Technical Support: Awaiting Technical Support')

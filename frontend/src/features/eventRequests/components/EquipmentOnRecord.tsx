@@ -15,13 +15,25 @@ function isReviewedLine(line: SafetyReviewEquipment): line is RecordEquipmentLin
   return 'reviewed_by' in line
 }
 
-/** Technical Support's answer: the outcome, with how many they will provide once decided. */
+/** How many short the line is, when the backend sends it and there is a shortfall. */
+function shortfallText(line: SafetyReviewEquipment): string {
+  const shortfall = isReviewedLine(line) ? line.shortfall : null
+  if (shortfall === null || shortfall === 0) {
+    return ''
+  }
+  return `, ${String(shortfall)} short`
+}
+
+/**
+ * Technical Support's answer: the outcome, with how many they will provide once decided and how
+ * many short that is (SCRUM-24 AC10, SCRUM-48 AC1).
+ */
 function outcomeOf(line: SafetyReviewEquipment): string {
   const label = EQUIPMENT_LINE_STATUS_LABELS[line.status]
   if (line.provided_quantity === null) {
     return label
   }
-  return `${label}, ${String(line.provided_quantity)} provided`
+  return `${label}, ${String(line.provided_quantity)} provided${shortfallText(line)}`
 }
 
 function RequestedEquipment({ lines }: { lines: SafetyReviewEquipment[] }) {
