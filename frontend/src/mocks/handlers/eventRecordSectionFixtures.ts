@@ -5,10 +5,10 @@ import type { EventHistoryEntry, Registrant } from '@/features/eventRequests/api
  * reference: their history (SCRUM-33) and who registered (SCRUM-55). An event with no entry
  * here has none of either yet, and no capacity.
  *
- * Each history is written as staff see it, oldest first; the mock leaves out of an organiser's
- * copy what the backend does. Partner Summit and Leadership Offsite are the mock organiser's,
- * so each holds entries an organiser must not see (an internal planning note; equipment and the
- * safety check), next to ones they must. The Year-End Town Hall, Chloe's confirmed event, has
+ * Each history is written oldest first, and staff and the event's organiser read all of it
+ * (SCRUM-24 AC10, ADR-0104). Partner Summit and Leadership Offsite are the mock organiser's, so
+ * each holds the entries organisers were once kept from (a planning notes change; equipment and
+ * the safety check), next to the ones they always saw. The Year-End Town Hall, Chloe's confirmed event, has
  * been through every step to confirmation, and three people registered for its 80 places.
  */
 

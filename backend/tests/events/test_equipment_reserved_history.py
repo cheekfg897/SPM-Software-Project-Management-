@@ -4,8 +4,8 @@ Reserving needs the event's id to link the reservation to (AC4) and whether the 
 still takes reservations: one that is completed, cancelled or rejected does not. It
 gets both from ``get_event_equipment_need`` rather than from the event models.
 ``record_equipment_reserved`` writes the audit entry, an ``equipment_reserved`` history
-entry, into the caller's transaction; internal staff see it in the event's history and
-organisers never do.
+entry, into the caller's transaction; internal staff and the event's organiser see it
+in the event's history (ADR-0104).
 """
 
 from __future__ import annotations

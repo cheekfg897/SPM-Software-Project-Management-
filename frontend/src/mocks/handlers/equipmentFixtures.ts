@@ -192,11 +192,10 @@ function linesOnStatusEvents(): MockEquipmentLine[] {
 
 /**
  * The Partner Summit's lines (EVR-7K2M9QXA, the mock organiser's event that Chloe coordinates),
- * for what its organiser sees of them (SCRUM-37 AC5, SCRUM-48 AC5, ADR-0098): six of ten
- * projectors, with technical notes, an outcome note and a reviewer the organiser must not see,
- * microphones not reviewed yet, and a lectern provided in full, whose outcome note (optional for
- * a fulfilled line, SCRUM-48 AC2) the organiser must not see either. That event isn't one the
- * equipment pages open.
+ * for what its organiser sees of them (SCRUM-37 AC5, SCRUM-48 AC5, ADR-0104): six of ten
+ * projectors, with technical notes, an outcome note and a reviewer, microphones not reviewed yet,
+ * and a lectern provided in full with an outcome note (optional for a fulfilled line, SCRUM-48
+ * AC2). The organiser sees all of it. That event isn't one the equipment pages open.
  */
 const PARTNER_SUMMIT_LINES: readonly MockEquipmentLine[] = [
   {
