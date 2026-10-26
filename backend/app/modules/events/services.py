@@ -4840,6 +4840,27 @@ def _safety_outcome_of(
     )
 
 
+def _staff_record_of(event_request: EventRequest, session: Session) -> StaffEventRecord:
+    """Every section of the event's read-only record, beside the request (ADR-0095).
+
+    The staff record's reader and the organiser's both build theirs from it, so the two
+    can't drift apart (ADR-0104, ADR-0105).
+    """
+    from app.modules.venue import services as venue_services  # circular at import time
+
+    return StaffEventRecord(
+        record=_event_record(event_request, session),
+        venue_arrangements=venue_services.list_every_arrangement_for_record(
+            event_request.id, session=session
+        ),
+        equipment_lines=_equipment_lines_on_record(event_request, session),
+        equipment_reservations=equipment_services.list_reservations_of_event(
+            event_request.id, session=session
+        ),
+        safety_outcome=_safety_outcome_of(event_request, session),
+    )
+
+
 def get_staff_event_record(reference: str, *, session: Session | None = None) -> StaffEventRecord:
     """Any submitted event's read-only record, for internal users (SCRUM-24 AC9, AC10).
 
@@ -4859,21 +4880,9 @@ def get_staff_event_record(reference: str, *, session: Session | None = None) ->
     Raises:
         NotFoundError: 404 — no such request, or it is still a draft (ADR-0024).
     """
-    from app.modules.venue import services as venue_services  # circular at import time
-
     sess = resolve_session(session)
     event_request = _event_request_for_staff(reference, sess)
-    return StaffEventRecord(
-        record=_event_record(event_request, sess),
-        venue_arrangements=venue_services.list_every_arrangement_for_record(
-            event_request.id, session=sess
-        ),
-        equipment_lines=_equipment_lines_on_record(event_request, sess),
-        equipment_reservations=equipment_services.list_reservations_of_event(
-            event_request.id, session=sess
-        ),
-        safety_outcome=_safety_outcome_of(event_request, sess),
-    )
+    return _staff_record_of(event_request, sess)
 
 
 # --------------------------------------------------------------------------
@@ -4927,22 +4936,18 @@ def get_event_record_for_organiser(
         NotFoundError: 404 — no such request in the caller's organisation, or the
             token names a user that no longer exists.
     """
-    from app.modules.venue import services as venue_services  # circular at import time
-
     sess = resolve_session(session)
     event_request = get_event_request_for_organiser(organiser_id, reference, session=sess)
-    record = _event_record(event_request, sess)
-    arrangements = venue_services.list_every_arrangement_for_record(event_request.id, session=sess)
-    reservations = equipment_services.list_reservations_of_event(event_request.id, session=sess)
+    sections = _staff_record_of(event_request, sess)
     return OrganiserEventRecord(
-        event_request=record.event_request,
-        coordinator=record.coordinator,
-        decision=record.decision,
-        clarifications=record.clarifications,
-        venue_arrangements=tuple(arrangements),
-        equipment_lines=tuple(_equipment_lines_on_record(event_request, sess)),
-        equipment_reservations=tuple(reservations),
-        safety_outcome=_safety_outcome_of(event_request, sess),
+        event_request=event_request,
+        coordinator=sections.record.coordinator,
+        decision=sections.record.decision,
+        clarifications=sections.record.clarifications,
+        venue_arrangements=tuple(sections.venue_arrangements),
+        equipment_lines=tuple(sections.equipment_lines),
+        equipment_reservations=tuple(sections.equipment_reservations),
+        safety_outcome=sections.safety_outcome,
     )
 
 
