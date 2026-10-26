@@ -539,8 +539,8 @@ export interface StaffEventRecord
   programme_notes: string | null
   internal_planning_notes: string | null
   venue_arrangements: StaffVenueArrangement[]
-  /** The equipment requested, by name, with Technical Support's outcome. */
-  equipment_lines: SafetyReviewEquipment[]
+  /** The equipment requested, by name, with Technical Support's outcome and reviewer. */
+  equipment_lines: RecordEquipmentLine[]
   equipment_reservations: StaffReservation[]
   safety_outcome: SafetyCheckOutcome | null
 }

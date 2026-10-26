@@ -29,9 +29,9 @@ from app.modules.events.services import (
     ClarificationAsShown,
     CoordinatorContact,
     DecisionAsShown,
+    EquipmentLineOnRecord,
     EventRecord,
     SafetyOutcomeAsShown,
-    SafetyReviewEquipment,
     StaffEventRecord,
 )
 from app.modules.venue.models import (
@@ -97,13 +97,16 @@ def staff_record(
             )
         ],
         equipment_lines=[
-            SafetyReviewEquipment(
+            EquipmentLineOnRecord(
                 equipment_type_name="Projector",
                 quantity=2,
                 notes="Needs HDMI",
                 status=EquipmentLineStatus.PARTIALLY_FULFILLED,
                 provided_quantity=1,
+                shortfall=1,
                 outcome_note="Only one is free that day.",
+                reviewed_by="Tess Tech",
+                reviewed_at=CHECKED_AT,
             )
         ],
         equipment_reservations=[
@@ -261,7 +264,10 @@ def test_the_record_shows_every_section_and_no_ids_or_registrants(
                 "notes": "Needs HDMI",
                 "status": "partially_fulfilled",
                 "provided_quantity": 1,
+                "shortfall": 1,
                 "outcome_note": "Only one is free that day.",
+                "reviewed_by": "Tess Tech",
+                "reviewed_at": "2026-10-02T10:00:00+08:00",
             }
         ],
         "equipment_reservations": [

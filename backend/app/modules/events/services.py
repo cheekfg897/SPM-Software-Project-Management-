@@ -4729,6 +4729,51 @@ class SafetyOutcomeAsShown:
 
 
 @dataclass(frozen=True)
+class EquipmentLineOnRecord:
+    """An equipment line with Technical Support's outcome, as the record shows it.
+
+    SCRUM-37 AC5 and SCRUM-48 AC5: the type by name, the quantity asked for, the
+    coordinator's technical notes, the outcome with the quantity provided and the
+    shortfall, the outcome note, and who reviewed it and when (ADR-0104). No ids: the
+    reviewer is shown by name, ``None`` once their account is gone.
+    """
+
+    equipment_type_name: str
+    quantity: int
+    notes: str | None
+    status: EquipmentLineStatus
+    provided_quantity: int | None
+    shortfall: int | None
+    outcome_note: str | None
+    reviewed_by: str | None
+    reviewed_at: datetime | None
+
+
+def _equipment_lines_on_record(
+    event_request: EventRequest, session: Session
+) -> list[EquipmentLineOnRecord]:
+    """The event's equipment lines in the order added, each with its type's name."""
+    type_names = _equipment_type_names(session)
+
+    shown = []
+    for line in equipment_lines_as_shown(event_request.equipment_lines, session=session):
+        shown.append(
+            EquipmentLineOnRecord(
+                equipment_type_name=type_names[line.equipment_type_id],
+                quantity=line.quantity,
+                notes=line.notes,
+                status=line.status,
+                provided_quantity=line.provided_quantity,
+                shortfall=line.shortfall,
+                outcome_note=line.outcome_note,
+                reviewed_by=line.reviewed_by,
+                reviewed_at=line.reviewed_at,
+            )
+        )
+    return shown
+
+
+@dataclass(frozen=True)
 class StaffEventRecord:
     """An event's read-only record for internal users other than its coordinator.
 
@@ -4741,7 +4786,8 @@ class StaffEventRecord:
     #: The sections the organiser's and coordinator's record shows too.
     record: EventRecord
     venue_arrangements: list[ArrangementForRecord]
-    equipment_lines: list[SafetyReviewEquipment]
+    #: Each equipment line with its outcome and who reviewed it (SCRUM-48 AC5).
+    equipment_lines: list[EquipmentLineOnRecord]
     equipment_reservations: list[ReservationAsShown]
     #: The outcome of the event's current safety check, or ``None`` until there is one.
     safety_outcome: SafetyOutcomeAsShown | None
@@ -4797,7 +4843,7 @@ def get_staff_event_record(reference: str, *, session: Session | None = None) ->
         venue_arrangements=venue_services.list_arrangements_for_record(
             event_request.id, session=sess
         ),
-        equipment_lines=_equipment_for_safety_review(event_request, sess),
+        equipment_lines=_equipment_lines_on_record(event_request, sess),
         equipment_reservations=equipment_services.list_reservations_of_event(
             event_request.id, session=sess
         ),
@@ -4808,27 +4854,6 @@ def get_staff_event_record(reference: str, *, session: Session | None = None) ->
 # --------------------------------------------------------------------------
 # SCRUM-24 AC10 — the organiser sees everything on their event's record
 # --------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class EquipmentLineOnRecord:
-    """An equipment line with Technical Support's outcome, as the record shows it.
-
-    SCRUM-37 AC5 and SCRUM-48 AC5: the type by name, the quantity asked for, the
-    coordinator's technical notes, the outcome with the quantity provided and the
-    shortfall, the outcome note, and who reviewed it and when (ADR-0104). No ids: the
-    reviewer is shown by name, ``None`` once their account is gone.
-    """
-
-    equipment_type_name: str
-    quantity: int
-    notes: str | None
-    status: EquipmentLineStatus
-    provided_quantity: int | None
-    shortfall: int | None
-    outcome_note: str | None
-    reviewed_by: str | None
-    reviewed_at: datetime | None
 
 
 @dataclass(frozen=True)
@@ -4849,30 +4874,6 @@ class OrganiserEventRecord(EventRecord):
     equipment_reservations: tuple[ReservationAsShown, ...] = ()
     #: The outcome of the event's current safety check, or ``None`` until there is one.
     safety_outcome: SafetyOutcomeAsShown | None = None
-
-
-def _equipment_lines_on_record(
-    event_request: EventRequest, session: Session
-) -> tuple[EquipmentLineOnRecord, ...]:
-    """The event's equipment lines in the order added, each with its type's name."""
-    type_names = _equipment_type_names(session)
-
-    shown = []
-    for line in equipment_lines_as_shown(event_request.equipment_lines, session=session):
-        shown.append(
-            EquipmentLineOnRecord(
-                equipment_type_name=type_names[line.equipment_type_id],
-                quantity=line.quantity,
-                notes=line.notes,
-                status=line.status,
-                provided_quantity=line.provided_quantity,
-                shortfall=line.shortfall,
-                outcome_note=line.outcome_note,
-                reviewed_by=line.reviewed_by,
-                reviewed_at=line.reviewed_at,
-            )
-        )
-    return tuple(shown)
 
 
 def get_event_record_for_organiser(
@@ -4914,7 +4915,7 @@ def get_event_record_for_organiser(
         decision=record.decision,
         clarifications=record.clarifications,
         venue_arrangements=tuple(arrangements),
-        equipment_lines=_equipment_lines_on_record(event_request, sess),
+        equipment_lines=tuple(_equipment_lines_on_record(event_request, sess)),
         equipment_reservations=tuple(reservations),
         safety_outcome=_safety_outcome_of(event_request, sess),
     )

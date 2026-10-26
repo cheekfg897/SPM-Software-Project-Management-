@@ -1,9 +1,21 @@
 import { updateBookingPreparation } from '@/features/booking/api'
+import { addEquipmentLine, recordEquipmentOutcome } from '@/features/equipment/api'
 import { fetchStaffEventRecord, saveDraftEventRequest } from '@/features/eventRequests/api'
+import { apiRequest } from '@/lib/api'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
 
-import { refusal, signInAs, signInAsNewAttendee, staffAccount } from './backend'
 import {
+  hasTechSupport,
+  refusal,
+  signInAs,
+  signInAsNewAttendee,
+  signInAsTechSupport,
+  staffAccount,
+  uniqueEmail,
+} from './backend'
+import type { Credentials } from './backend'
+import {
+  approvedEvent,
   CHECKLIST,
   LEAD,
   required,
@@ -54,6 +66,7 @@ const RECORD_KEYS = [
 
 const hasLead = LEAD !== null
 const canReachSafetyApproval = hasLead && VENUE_STAFF !== null && SAFETY_OFFICER !== null
+const canReviewForEveryReader = canReachSafetyApproval && hasTechSupport
 
 afterEach(() => sendRequestsAs(null))
 
@@ -140,6 +153,52 @@ describe('SCRUM-24 the read-only staff record against the backend', () => {
         })
         expect(record.coordinator?.email).toBe(staffAccount().email)
       }
+    },
+  )
+
+  it.skipIf(!canReviewForEveryReader)(
+    'shows every reader who reviewed a line and when (SCRUM-48 AC5, ADR-0105)',
+    async () => {
+      const event = await approvedEvent()
+      await signInAsTechSupport()
+      const type = await apiRequest<{ id: number }>('/api/equipment/types', {
+        method: 'POST',
+        body: {
+          name: `Integration Mic ${uniqueEmail('type')}`,
+          total_quantity: 10,
+          store_name: 'Integration store',
+        },
+      })
+      await signInAs(staffAccount())
+      const line = await addEquipmentLine(event.reference, {
+        equipment_type_id: type.id,
+        quantity: 4,
+      })
+      await signInAsTechSupport()
+      const recorded = await recordEquipmentOutcome(event.reference, {
+        lineId: line.id,
+        body: { provided_quantity: 3, note: 'One is out for repair.' },
+      })
+      const readers: (Credentials | null)[] = [VENUE_STAFF, SAFETY_OFFICER, LEAD]
+
+      for (const reader of readers) {
+        await signInAs(required(reader))
+        const record = await fetchStaffEventRecord(event.reference)
+
+        expect(record.equipment_lines).toEqual([
+          expect.objectContaining({
+            status: 'partially_fulfilled',
+            provided_quantity: 3,
+            shortfall: 1,
+            outcome_note: 'One is out for repair.',
+            reviewed_by: recorded.reviewed_by,
+            reviewed_at: recorded.reviewed_at,
+          }),
+        ])
+      }
+      await signInAsTechSupport()
+      const technicalSupportsCopy = await fetchStaffEventRecord(event.reference)
+      expect(technicalSupportsCopy.equipment_lines[0]?.reviewed_by).toEqual(expect.any(String))
     },
   )
 

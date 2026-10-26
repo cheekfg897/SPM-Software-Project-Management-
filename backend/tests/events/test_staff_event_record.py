@@ -34,8 +34,8 @@ from app.modules.events.models import (
 from app.modules.events.services import (
     CoordinatorContact,
     DecisionAsShown,
+    EquipmentLineOnRecord,
     SafetyOutcomeAsShown,
-    SafetyReviewEquipment,
     get_staff_event_record,
 )
 from app.modules.venue.models import (
@@ -225,21 +225,29 @@ def test_another_events_venue_arrangements_are_left_out(
 # --------------------------------------------------------------------------
 
 
-def test_the_record_holds_each_equipment_request_by_name_with_its_outcome(
+@pytest.mark.scrum_48
+def test_the_record_holds_each_equipment_request_with_its_outcome_and_reviewer(
     db_session: Session, saved_users: list[User], add_line: AddLine
 ) -> None:
-    add_line(2)
+    """SCRUM-48 AC5: who reviewed the line and when, by name (ADR-0105)."""
+    line = add_line(2)
+    line.reviewed_by = 5
+    line.reviewed_at = FIRST_CHECK_AT
+    db_session.commit()
 
     staff_record = get_staff_event_record(REFERENCE, session=db_session)
 
     assert staff_record.equipment_lines == [
-        SafetyReviewEquipment(
+        EquipmentLineOnRecord(
             equipment_type_name="Item 0",
             quantity=2,
             notes="Needs HDMI",
             status=EquipmentLineStatus.FULFILLED,
             provided_quantity=2,
+            shortfall=0,
             outcome_note=None,
+            reviewed_by="Alice Example",
+            reviewed_at=FIRST_CHECK_AT,
         )
     ]
 

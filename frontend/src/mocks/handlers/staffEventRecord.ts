@@ -5,6 +5,7 @@ import { ROLE, STAFF_RECORD_READER_ROLES } from '@/config/roles'
 import type {
   CoordinatorContact,
   EventRequest,
+  RecordEquipmentLine,
   StaffEventRecord,
   StaffVenueArrangement,
 } from '@/features/eventRequests/api'
@@ -14,7 +15,7 @@ import { errorResponse } from '../responses'
 
 import { arrangementsForRecord } from './booking'
 import { reservationsForRecord } from './equipment'
-import { equipmentLinesForRecord } from './equipmentLines'
+import { equipmentLinesForRecord, shortfallOf } from './equipmentLines'
 import { internalNotesOf } from './eventEdits'
 import { NOTHING_RECORDED } from './eventRequestFixtures'
 import type { MockCoordinator, MockRecordSections } from './eventRequestFixtures'
@@ -117,6 +118,22 @@ function safetyArrangementsOf(safetyEvent: MockSafetyEvent | undefined): StaffVe
   }))
 }
 
+/**
+ * The Safety Officer's mock's equipment as the record's lines: it keeps each line's outcome but
+ * not who reviewed it, so no reviewer is named.
+ */
+function safetyLinesOf(safetyEvent: MockSafetyEvent | undefined): RecordEquipmentLine[] {
+  if (safetyEvent === undefined) {
+    return []
+  }
+  return safetyEvent.equipment.map((line) => ({
+    ...line,
+    shortfall: shortfallOf(line),
+    reviewed_by: null,
+    reviewed_at: null,
+  }))
+}
+
 /** The whole record, each section from the mock that keeps it. */
 function recordOf(base: StaffRecordBase): StaffEventRecord {
   const { reference } = base.request
@@ -129,7 +146,7 @@ function recordOf(base: StaffRecordBase): StaffEventRecord {
     decision: base.sections.decision,
     clarifications: base.sections.clarifications,
     venue_arrangements: [...arrangementsForRecord(reference), ...safetyArrangementsOf(safetyEvent)],
-    equipment_lines: [...equipmentLinesForRecord(reference), ...(safetyEvent?.equipment ?? [])],
+    equipment_lines: [...equipmentLinesForRecord(reference), ...safetyLinesOf(safetyEvent)],
     equipment_reservations: reservationsForRecord(reference),
     safety_outcome: safetyEvent?.outcome ?? null,
   }

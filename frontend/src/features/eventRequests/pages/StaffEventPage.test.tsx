@@ -172,6 +172,22 @@ describe('SCRUM-24 AC9, AC10 the read-only staff record', () => {
     expect(reserved).toHaveTextContent('Preparation: Not started')
   })
 
+  it.each(READERS)(
+    'shows %s who reviewed each line and when, and nothing for a line not reviewed (SCRUM-48 AC5)',
+    async (_name, account) => {
+      openAs(account, WITH_EQUIPMENT)
+
+      const equipment = await section('Equipment')
+      const requested = within(equipment).getByRole('list', { name: 'Equipment requested' })
+      const [projectors, microphones] = within(requested).getAllByRole('listitem') as [
+        HTMLElement,
+        HTMLElement,
+      ]
+      expect(microphones).toHaveTextContent('Reviewed by Tariq Hassan, 5 Oct, 10:00 am')
+      expect(projectors).not.toHaveTextContent('Reviewed')
+    },
+  )
+
   it("shows the Safety Officer's outcome with each checklist note", async () => {
     openAs(MOCK_ACCOUNTS.venueStaff, SAFETY_APPROVED)
 
