@@ -49,7 +49,7 @@ from app.modules.notifications.services import (
     list_notifications_for_recipient,
 )
 from app.modules.venue.models import BookingRequestStatus, Venue, VenueBookingRequest
-from tests.conftest import approve_safety
+from tests.conftest import ReserveAndReview, approve_safety
 from tests.events.cases import DRAFT_REFERENCE, LEAD_ID, AddLine, Arrange, SaveArrangement
 
 #: Every role but the Lead, so a role added later is refused unless a test says not.
@@ -835,3 +835,11 @@ def add_line(
         return line
 
     return _add
+
+
+@pytest.fixture()
+def two_projectors(
+    equipment_type: EquipmentType, reserve_and_review: ReserveAndReview
+) -> EventEquipmentLine:
+    """Two of the ten projectors asked for, reserved and recorded fulfilled."""
+    return reserve_and_review(equipment_type, quantity=2, reserved=2, provided=2)
