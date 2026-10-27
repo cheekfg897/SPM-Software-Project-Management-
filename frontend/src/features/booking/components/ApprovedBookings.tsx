@@ -45,6 +45,7 @@ export function ApprovedBookings() {
       query={approved}
       loadingText="Loading approved bookings…"
       emptyText="No approved bookings to prepare."
+      itemKey={(request) => request.id}
     >
       {(booking) => <ApprovedBooking booking={booking} />}
     </BookingQueryList>
