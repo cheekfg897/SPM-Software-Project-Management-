@@ -46,6 +46,7 @@ describe('SCRUM-33 the kinds of history entry', () => {
       'venue_arrangement_changed',
       'venue_arrangement_withdrawn',
       'venue_booking_approved',
+      'venue_booking_reconfirmed',
       'venue_booking_rejected',
       'venue_booking_requested',
       'venue_preparation_updated',
@@ -273,6 +274,38 @@ describe('SCRUM-33 describing the venue arrangements', () => {
         ['Venue ID', '15'],
         ['Reason', 'Closed for repairs.'],
       ]),
+    )
+  })
+
+  it("gives a reconfirmation's period before and after, the occupancy and the reason (SCRUM-59)", () => {
+    const details = {
+      venue_booking_request_id: 4,
+      venue_id: 12,
+      status: 'approved',
+      previous_starts_at: '2026-11-10T01:00:00+00:00',
+      previous_ends_at: '2026-11-10T04:00:00+00:00',
+      starts_at: '2026-11-11T01:00:00+00:00',
+      ends_at: '2026-11-11T04:00:00+00:00',
+      previous_expected_occupancy: 80,
+      expected_occupancy: 120,
+      reason: 'Standing room agreed.',
+      flags: [{ kind: 'requires_reconfirmation', reason: "The event's date or time changed." }],
+    }
+
+    expect(described('venue_booking_reconfirmed', details)).toEqual(
+      plain('Venue booking reconfirmed', [
+        ['Venue ID', '12'],
+        ['Before', '10 Nov, 9:00 am – 12:00 pm'],
+        ['After', '11 Nov, 9:00 am – 12:00 pm'],
+        ['Expected occupancy', '80 → 120'],
+        ['Reason', 'Standing room agreed.'],
+      ]),
+    )
+  })
+
+  it('leaves out what a reconfirmation did not record', () => {
+    expect(described('venue_booking_reconfirmed', { venue_id: 12, reason: null })).toEqual(
+      plain('Venue booking reconfirmed', [['Venue ID', '12']]),
     )
   })
 
