@@ -290,6 +290,8 @@ describe('SCRUM-24 mock of the read-only staff record', () => {
       reason: null,
       recorded_by: 'Sana Iyer',
       recorded_at: '2026-10-05T12:00:00+08:00',
+      flagged_arrangement_count: 0,
+      reopened_line_count: 0,
     })
     expect(record.venue_arrangements.map((arrangement) => arrangement.venue_name)).toEqual([
       'Marina Ballroom',

@@ -463,3 +463,73 @@ describe('SCRUM-98 recording the safety check outcome', () => {
     ).toBeInTheDocument()
   })
 })
+
+describe('SCRUM-99 naming what to rework', () => {
+  const [ballroom] = MOCK_GALA.venues
+  const [, microphones] = MOCK_GALA.equipment
+  const BALLROOM_LABEL = 'Marina Ballroom, 4 Dec, 5:00 pm – 11:30 pm'
+  const MICROPHONES_LABEL = 'Wireless microphone, 6 requested'
+
+  it('lists each booked venue and equipment request to tick, under what to rework', async () => {
+    const { user } = renderList()
+    const gala = await openForm(user, GALA)
+
+    const rework = within(gala.getByRole('group', { name: 'What to rework' }))
+    expect(rework.getByRole('checkbox', { name: BALLROOM_LABEL })).not.toBeChecked()
+    expect(rework.getByRole('checkbox', { name: 'Projector, 2 requested' })).not.toBeChecked()
+    expect(rework.getByRole('checkbox', { name: MICROPHONES_LABEL })).not.toBeChecked()
+  })
+
+  it('sends the ticked venue and line with a request for changes, by id', async () => {
+    const requests = recordRequests()
+    const { user } = renderList()
+    const gala = await openForm(user, GALA)
+    await fillChecklist(user, gala)
+    await user.type(gala.getByLabelText('Reason'), 'Second exit is blocked.')
+    await user.click(gala.getByRole('checkbox', { name: BALLROOM_LABEL }))
+    await user.click(gala.getByRole('checkbox', { name: MICROPHONES_LABEL }))
+
+    await user.click(gala.getByRole('button', { name: `Request changes ${GALA}` }))
+
+    await waitFor(() => expect(outcomePosts(requests)).toHaveLength(1))
+    expect(await outcomePosts(requests)[0]?.json()).toEqual({
+      outcome: 'changes_requested',
+      checklist: SENT_CHECKLIST,
+      reason: 'Second exit is blocked.',
+      flagged_arrangement_ids: [ballroom?.id],
+      reopened_line_ids: [microphones?.id],
+    })
+  })
+
+  it('sends only what is still ticked after one is ticked and unticked', async () => {
+    const requests = recordRequests()
+    const { user } = renderList()
+    const gala = await openForm(user, GALA)
+    await fillChecklist(user, gala)
+    await user.type(gala.getByLabelText('Reason'), 'Second exit is blocked.')
+    await user.click(gala.getByRole('checkbox', { name: 'Projector, 2 requested' }))
+    await user.click(gala.getByRole('checkbox', { name: 'Projector, 2 requested' }))
+    await user.click(gala.getByRole('checkbox', { name: MICROPHONES_LABEL }))
+
+    await user.click(gala.getByRole('button', { name: `Reject ${GALA}` }))
+
+    await waitFor(() => expect(outcomePosts(requests)).toHaveLength(1))
+    const body: unknown = await outcomePosts(requests)[0]?.json()
+    expect(body).toMatchObject({ reopened_line_ids: [microphones?.id] })
+    expect(body).not.toHaveProperty('flagged_arrangement_ids')
+  })
+
+  it("shows the backend's message under what to rework when an approval names something", async () => {
+    const { user } = renderList()
+    const gala = await openForm(user, GALA)
+    await fillChecklist(user, gala)
+    await user.click(gala.getByRole('checkbox', { name: BALLROOM_LABEL }))
+
+    await user.click(gala.getByRole('button', { name: `Approve ${GALA}` }))
+
+    expect(
+      await gala.findByText('Only a rejection or a request for changes can name what to rework.'),
+    ).toBeInTheDocument()
+    expect(gala.getByRole('checkbox', { name: BALLROOM_LABEL })).toBeInvalid()
+  })
+})

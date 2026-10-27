@@ -4,10 +4,13 @@ import { Button, ErrorAlert, TextAreaField } from '@/components/ui'
 import { useFocusFirstError } from '@/features/eventRequests/useFocusFirstError'
 import { fieldErrorsOf } from '@/lib/api'
 
-import type { SafetyChecklist } from '../api'
+import type { AwaitingSafetyReview, RecordSafetyOutcomeInput, SafetyChecklist } from '../api'
 import { CHECKLIST, OUTCOME_ACTION_LABELS, SAFETY_OUTCOME } from '../constants'
 import type { SafetyOutcome } from '../constants'
 import { useRecordSafetyOutcome } from '../hooks'
+
+import { ReworkChoices } from './ReworkChoices'
+import type { Rework } from './ReworkChoices'
 
 /** The three outcomes in SCRUM-98 AC1's order; Approve is the main action. */
 const OUTCOME_BUTTONS = [
@@ -26,29 +29,53 @@ const EMPTY_CHECKLIST: SafetyChecklist = {
   venue_restrictions: '',
 }
 
-interface SafetyOutcomeFormProps {
-  reference: string
-  /** The event's name, so the form and its buttons say which event they belong to. */
-  name: string
+const NOTHING_TO_REWORK: Rework = { flagged_arrangement_ids: [], reopened_line_ids: [] }
+
+/**
+ * What to send for `outcome`: the checklist, the reason when one was typed, and what was ticked to
+ * rework, each list left out when nothing on it is ticked (SCRUM-99 AC2).
+ */
+function outcomeInput(
+  reference: string,
+  outcome: SafetyOutcome,
+  { notes, reason, rework }: { notes: SafetyChecklist; reason: string; rework: Rework },
+): RecordSafetyOutcomeInput {
+  const input: RecordSafetyOutcomeInput = { reference, outcome, checklist: notes }
+  if (reason !== '') {
+    input.reason = reason
+  }
+  if (rework.flagged_arrangement_ids.length > 0) {
+    input.flagged_arrangement_ids = rework.flagged_arrangement_ids
+  }
+  if (rework.reopened_line_ids.length > 0) {
+    input.reopened_line_ids = rework.reopened_line_ids
+  }
+  return input
 }
 
 /**
- * The safety check for one event (SCRUM-98): a note on each checklist item, a reason, and one
- * button per outcome. What is required, and when, is the backend's to say: its messages appear
- * under the fields they are about, and any other refusal above the buttons.
+ * The safety check for one event (SCRUM-98): a note on each checklist item, a reason, what to
+ * rework (SCRUM-99), and one button per outcome. What is required, and when, is the backend's to
+ * say: its messages appear under the fields they are about, and any other refusal above the
+ * buttons.
  */
-export function SafetyOutcomeForm({ reference, name }: SafetyOutcomeFormProps) {
+export function SafetyOutcomeForm({ awaiting }: { awaiting: AwaitingSafetyReview }) {
+  const { reference, name } = awaiting.event
   const [notes, setNotes] = useState<SafetyChecklist>(EMPTY_CHECKLIST)
   const [reason, setReason] = useState('')
+  const [rework, setRework] = useState<Rework>(NOTHING_TO_REWORK)
   const record = useRecordSafetyOutcome()
   const formRef = useRef<HTMLFormElement>(null)
   useFocusFirstError(formRef, record.error)
   const fieldErrors = fieldErrorsOf(record.error)
   const hasFieldErrors = Object.keys(fieldErrors).length > 0
+  const reworkErrors = [
+    ...(fieldErrors.flagged_arrangement_ids ?? []),
+    ...(fieldErrors.reopened_line_ids ?? []),
+  ]
 
   function send(outcome: SafetyOutcome) {
-    const input = { reference, outcome, checklist: notes }
-    record.mutate(reason === '' ? input : { ...input, reason })
+    record.mutate(outcomeInput(reference, outcome, { notes, reason, rework }))
   }
 
   return (
@@ -76,6 +103,13 @@ export function SafetyOutcomeForm({ reference, name }: SafetyOutcomeFormProps) {
         value={reason}
         onChange={(event) => setReason(event.target.value)}
         errors={fieldErrors.reason}
+      />
+      <ReworkChoices
+        venues={awaiting.venues}
+        equipment={awaiting.equipment}
+        rework={rework}
+        onChange={setRework}
+        errors={reworkErrors}
       />
       {!hasFieldErrors && <ErrorAlert error={record.error} />}
       <div className="flex flex-wrap gap-3">

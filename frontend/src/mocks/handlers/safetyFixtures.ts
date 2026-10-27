@@ -39,6 +39,7 @@ export const MOCK_GALA: MockSafetyEvent = {
   },
   venues: [
     {
+      id: 9201,
       name: 'Marina Ballroom',
       capacity: 500,
       layouts: ['banquet', 'theatre'],
@@ -50,6 +51,7 @@ export const MOCK_GALA: MockSafetyEvent = {
   ],
   equipment: [
     {
+      id: 9301,
       equipment_type_name: 'Projector',
       quantity: 2,
       notes: 'Ceiling mount',
@@ -58,6 +60,7 @@ export const MOCK_GALA: MockSafetyEvent = {
       outcome_note: null,
     },
     {
+      id: 9302,
       equipment_type_name: 'Wireless microphone',
       quantity: 6,
       notes: null,
@@ -85,6 +88,7 @@ export const MOCK_FAIR: MockSafetyEvent = {
   },
   venues: [
     {
+      id: 9202,
       name: 'Atrium Hall',
       capacity: 300,
       layouts: ['exhibition'],
@@ -114,6 +118,7 @@ export const MOCK_TOWN_HALL: MockSafetyEvent = {
   },
   venues: [
     {
+      id: 9203,
       name: 'Riverside Auditorium',
       capacity: 150,
       layouts: ['theatre'],
@@ -125,6 +130,7 @@ export const MOCK_TOWN_HALL: MockSafetyEvent = {
   ],
   equipment: [
     {
+      id: 9303,
       equipment_type_name: 'Lectern',
       quantity: 1,
       notes: null,
@@ -159,6 +165,8 @@ export const MOCK_APPROVED_LAUNCH: MockSafetyEvent = {
     reason: null,
     recorded_by: 'Sana Iyer',
     recorded_at: '2026-10-02T15:00:00+08:00',
+    flagged_arrangement_count: 0,
+    reopened_line_count: 0,
   },
 }
 
@@ -184,6 +192,8 @@ export const MOCK_RETURNED_SUMMIT: MockSafetyEvent = {
     reason: 'Add a second fire exit to the plan.',
     recorded_by: 'Sana Iyer',
     recorded_at: '2026-10-01T11:00:00+08:00',
+    flagged_arrangement_count: 0,
+    reopened_line_count: 0,
   },
 }
 
