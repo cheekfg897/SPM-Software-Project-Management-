@@ -165,6 +165,23 @@ class EquipmentReservationSchema(Schema):
     preparation_notes = fields.String(dump_only=True, allow_none=True)
 
 
+class ReservationReassessmentSchema(Schema):
+    """An equipment type's reservations awaiting reassessment (SCRUM-60 AC2, ADR-0114).
+
+    Each reservation is shown as the event record shows it, with the period it still
+    holds; ``starts_at`` and ``ends_at`` are the event's period now, in business time.
+    """
+
+    equipment_type_id = fields.Integer(dump_only=True)
+    equipment_type_name = fields.String(dump_only=True)
+    reservations = fields.Nested(EquipmentReservationSchema, many=True, dump_only=True)
+    reserved_quantity = fields.Integer(dump_only=True)
+    starts_at = BusinessDateTime(dump_only=True)
+    ends_at = BusinessDateTime(dump_only=True)
+    available = fields.Integer(dump_only=True)
+    shortfall = fields.Integer(dump_only=True)
+
+
 class MarkOutOfServiceSchema(Schema):
     """Units of an equipment type to take out of service, and why (SCRUM-47 AC1).
 

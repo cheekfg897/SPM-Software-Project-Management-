@@ -107,6 +107,29 @@ class OutOfServiceAsShown:
     resolved_at: datetime | None
 
 
+@dataclass(frozen=True)
+class ReservationReassessment:
+    """One equipment type's reservations marked for reassessment (SCRUM-60 AC2).
+
+    What Technical Support review: the reservations, still held for their own period
+    (AC6), against what is free for the event's period now (ADR-0114).
+    """
+
+    equipment_type_id: int
+    equipment_type_name: str
+    #: The marked reservations, oldest first, each with the period it holds.
+    reservations: list[ReservationAsShown]
+    #: Units the marked reservations hold between them.
+    reserved_quantity: int
+    #: The event's period now, which confirming moves them to (AC3).
+    starts_at: datetime
+    ends_at: datetime
+    #: Units free for that period, leaving the marked reservations out of the count.
+    available: int
+    #: Reserved units the period can't give; 0 when it can give them all.
+    shortfall: int
+
+
 def _check_venue(venue_id: int | None, session: Session) -> None:
     """Reject a venue id that isn't in the catalogue (ADR-0014). ``None`` means a store.
 
@@ -502,6 +525,65 @@ def mark_type_reservations_for_reassessment(
     _mark_for_reassessment(statement, resolve_session(session))
 
 
+def _reservations_to_reassess(event_id: int, session: Session) -> list[EquipmentReservation]:
+    """The event's reservations marked for reassessment, oldest first."""
+    statement = (
+        select(EquipmentReservation)
+        .where(
+            EquipmentReservation.event_id == event_id,
+            EquipmentReservation.needs_reassessment.is_(True),
+        )
+        .options(joinedload(EquipmentReservation.equipment_type))
+        .order_by(EquipmentReservation.created_at, EquipmentReservation.id)
+    )
+    return list(session.scalars(statement))
+
+
+def _free_for_reassessment(
+    equipment_type: EquipmentType, need: events_services.EventEquipmentNeed, session: Session
+) -> int:
+    """Units of the type free for the event's period, its marked reservations aside.
+
+    SCRUM-45's count (ADR-0037), rechecked for the new period (SCRUM-60 AC2), except
+    that the event's own marked reservations of the type are not counted as taken:
+    they are the units being reassessed, and they may still sit in an old period that
+    overlaps the new one. Any other reservation, the event's own included, is.
+    """
+    being_reassessed = (EquipmentReservation.event_id == need.event_id) & (
+        EquipmentReservation.needs_reassessment.is_(True)
+    )
+    statement = select(func.coalesce(func.sum(EquipmentReservation.quantity), 0)).where(
+        EquipmentReservation.equipment_type_id == equipment_type.id,
+        _overlapping(need.starts_at, need.ends_at),
+        ~being_reassessed,
+    )
+    taken = session.scalar(statement)
+    return max(_units_in_service(equipment_type, session) - taken, 0)
+
+
+def _reassessment_of(
+    reservations: list[EquipmentReservation],
+    need: events_services.EventEquipmentNeed,
+    session: Session,
+) -> ReservationReassessment:
+    """The marked ``reservations`` of one type, rechecked for the event's period."""
+    equipment_type = reservations[0].equipment_type
+    reserved = 0
+    for reservation in reservations:
+        reserved += reservation.quantity
+    available = _free_for_reassessment(equipment_type, need, session)
+    return ReservationReassessment(
+        equipment_type_id=equipment_type.id,
+        equipment_type_name=equipment_type.name,
+        reservations=_as_shown(reservations, session),
+        reserved_quantity=reserved,
+        starts_at=need.starts_at,
+        ends_at=need.ends_at,
+        available=available,
+        shortfall=max(reserved - available, 0),
+    )
+
+
 def list_reservations_to_reassess(
     event_id: int, *, session: Session | None = None
 ) -> list[ReservationAsShown]:
@@ -515,16 +597,75 @@ def list_reservations_to_reassess(
         session: Database session; defaults to ``db.session``.
     """
     sess = resolve_session(session)
-    statement = (
-        select(EquipmentReservation)
-        .where(
-            EquipmentReservation.event_id == event_id,
-            EquipmentReservation.needs_reassessment.is_(True),
-        )
-        .options(joinedload(EquipmentReservation.equipment_type))
-        .order_by(EquipmentReservation.created_at, EquipmentReservation.id)
+    return _as_shown(_reservations_to_reassess(event_id, sess), sess)
+
+
+def list_reassessments(
+    need: events_services.EventEquipmentNeed, *, session: Session | None = None
+) -> list[ReservationReassessment]:
+    """The event's marked reservations, by equipment type name, with any shortfall.
+
+    SCRUM-60 AC2: each type's marked reservations are rechecked together for the
+    event's period, as one line's reservation (ADR-0092), so Technical Support see
+    what they hold, the period they would move to and how much of it is free.
+
+    Args:
+        need: The event's id and period, from the events module.
+        session: Database session; defaults to ``db.session``.
+    """
+    sess = resolve_session(session)
+    by_type: dict[int, list[EquipmentReservation]] = {}
+    for reservation in _reservations_to_reassess(need.event_id, sess):
+        by_type.setdefault(reservation.equipment_type_id, []).append(reservation)
+    reassessments = []
+    for equipment_type in list_equipment_types(session=sess):
+        if equipment_type.id in by_type:
+            reassessments.append(_reassessment_of(by_type[equipment_type.id], need, sess))
+    return reassessments
+
+
+def list_reassessments_for_event(
+    viewer_id: int | str, reference: str, *, viewer_role: Role, session: Session | None = None
+) -> list[ReservationReassessment]:
+    """What of an event's equipment awaits reassessment, for its record (SCRUM-60 AC2).
+
+    Technical Support Staff may read any event's; a coordinator only an event assigned
+    to them, as with the event's reservations (ADR-0019, ADR-0037).
+
+    Args:
+        viewer_id: The caller's user id, taken from their token.
+        reference: The event's ``EVR-…`` reference.
+        viewer_role: The caller's role.
+        session: Database session; defaults to ``db.session``.
+
+    Raises:
+        NotFoundError: 404 — no such event, a draft, or for a coordinator, not one of
+            their own.
+        EventPeriodIncompleteError: 409 — the event has no complete date and times.
+    """
+    sess = resolve_session(session)
+    need = events_services.get_event_equipment_need_for_viewer(
+        viewer_id, reference, viewer_role=viewer_role, session=sess
     )
-    return _as_shown(list(sess.scalars(statement)), sess)
+    return list_reassessments(need, session=sess)
+
+
+def list_equipment_types_to_reassess(*, session: Session | None = None) -> list[tuple[int, int]]:
+    """Each (event id, equipment type id) with a reservation marked for reassessment.
+
+    For Technical Support's list of requests awaiting action (SCRUM-60 AC6): the line
+    of each is listed again, whatever its outcome. Each pair appears once.
+    """
+    statement = (
+        select(EquipmentReservation.event_id, EquipmentReservation.equipment_type_id)
+        .where(EquipmentReservation.needs_reassessment.is_(True))
+        .distinct()
+        .order_by(EquipmentReservation.event_id, EquipmentReservation.equipment_type_id)
+    )
+    pairs = []
+    for event_id, equipment_type_id in resolve_session(session).execute(statement):
+        pairs.append((event_id, equipment_type_id))
+    return pairs
 
 
 def create_equipment_type(

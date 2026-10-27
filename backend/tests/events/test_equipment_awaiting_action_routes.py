@@ -47,8 +47,15 @@ def _open_the_list(call_route: CallRoute, token: str | None) -> Any:
 def list_service(
     replace_services: ReplaceServices, shown_event: EventRequest, shown_line: EventEquipmentLine
 ) -> MagicMock:
-    """Replace the service with a mock listing ``shown_event``, 30 days away."""
-    awaiting = [EquipmentAwaitingAction(shown_event, [shown_line], days_remaining=30)]
+    """Replace the service with a mock listing ``shown_event``, 30 days away.
+
+    Its line's reservation awaits reassessment (SCRUM-60 AC6).
+    """
+    awaiting = [
+        EquipmentAwaitingAction(
+            shown_event, [shown_line], days_remaining=30, equipment_type_ids_to_reassess=[1]
+        )
+    ]
     mocks = replace_services(routes, {"list_equipment_requests_awaiting_action": awaiting})
     return mocks["list_equipment_requests_awaiting_action"]
 
@@ -110,7 +117,12 @@ def test_the_list_route_shows_each_request_with_its_event_lines_and_days_remaini
     assert status == 200
     assert response.get_json() == {
         "equipment_requests": [
-            {"event": event_as_shown, "equipment_lines": [line_as_shown], "days_remaining": 30}
+            {
+                "event": event_as_shown,
+                "equipment_lines": [line_as_shown],
+                "days_remaining": 30,
+                "equipment_type_ids_to_reassess": [1],
+            }
         ]
     }
     list_service.assert_called_once_with()
