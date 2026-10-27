@@ -502,6 +502,31 @@ def mark_type_reservations_for_reassessment(
     _mark_for_reassessment(statement, resolve_session(session))
 
 
+def list_reservations_to_reassess(
+    event_id: int, *, session: Session | None = None
+) -> list[ReservationAsShown]:
+    """The event's reservations marked for reassessment, oldest first (SCRUM-60 AC5).
+
+    While any is listed, the event can't enter Safety Review or be confirmed; the
+    refusal names each one (ADR-0114).
+
+    Args:
+        event_id: The event request's id.
+        session: Database session; defaults to ``db.session``.
+    """
+    sess = resolve_session(session)
+    statement = (
+        select(EquipmentReservation)
+        .where(
+            EquipmentReservation.event_id == event_id,
+            EquipmentReservation.needs_reassessment.is_(True),
+        )
+        .options(joinedload(EquipmentReservation.equipment_type))
+        .order_by(EquipmentReservation.created_at, EquipmentReservation.id)
+    )
+    return _as_shown(list(sess.scalars(statement)), sess)
+
+
 def create_equipment_type(
     payload: Mapping[str, Any] | None, *, session: Session | None = None
 ) -> EquipmentType:
