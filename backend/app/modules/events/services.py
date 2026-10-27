@@ -2240,19 +2240,28 @@ RESERVATIONS_CLOSED_MESSAGE = (
 class EquipmentAwaitingAction:
     """One event's equipment still to arrange, and how long is left (SCRUM-38 AC2).
 
-    ``equipment_lines`` holds only the lines still ``requested``, in the order added.
-    ``days_remaining`` counts whole days from today to the event's date: 0 on the day.
+    ``equipment_lines`` holds only the lines still ``requested``, or whose reservation
+    awaits reassessment, in the order added. ``days_remaining`` counts whole days from
+    today to the event's date: 0 on the day.
     """
 
     event_request: EventRequest
     equipment_lines: list[EventEquipmentLine]
     days_remaining: int
+    #: The equipment types whose reservations for the event are marked for
+    #: reassessment (SCRUM-60 AC6, ADR-0114).
+    equipment_type_ids_to_reassess: list[int]
 
 
 def _group_lines_by_event(
-    rows: Iterable[Row[tuple[EventRequest, EventEquipmentLine]]], today: date
+    rows: Iterable[Row[tuple[EventRequest, EventEquipmentLine]]],
+    today: date,
+    to_reassess: list[tuple[int, int]],
 ) -> list[EquipmentAwaitingAction]:
-    """One entry per event, in the order the events first appear in ``rows``."""
+    """One entry per event, in the order the events first appear in ``rows``.
+
+    ``to_reassess`` holds each (event id, equipment type id) with a marked reservation.
+    """
     events: list[EventRequest] = []
     lines_by_event: dict[int, list[EventEquipmentLine]] = {}
     for event_request, line in rows:
@@ -2266,11 +2275,16 @@ def _group_lines_by_event(
         # The query above keeps only events with a proposed_date (SCRUM-38 AC1); only a
         # draft has none, and a draft never reaches this list (SCRUM-20, ADR-0024).
         days_remaining = (event_request.proposed_date - today).days  # type: ignore[operator]
+        type_ids_to_reassess = []
+        for event_id, equipment_type_id in to_reassess:
+            if event_id == event_request.id:
+                type_ids_to_reassess.append(equipment_type_id)
         awaiting.append(
             EquipmentAwaitingAction(
                 event_request=event_request,
                 equipment_lines=lines_by_event[event_request.id],
                 days_remaining=days_remaining,
+                equipment_type_ids_to_reassess=type_ids_to_reassess,
             )
         )
     return awaiting
@@ -2282,10 +2296,11 @@ def list_equipment_requests_awaiting_action(
     """The equipment Technical Support still have to arrange, soonest event first.
 
     SCRUM-38 AC1-AC4, ADR-0022. An event is listed while at least one of its lines is
-    still ``requested``, its proposed date is today or later, and it isn't completed,
-    cancelled or rejected. Each entry holds only the lines still ``requested``, so an
-    event drops off once none is. Events are ordered by date, then start time, then
-    as submitted. One list for all Technical Support Staff.
+    still ``requested``, or has a reservation marked for reassessment (SCRUM-60 AC6),
+    its proposed date is today or later, and it isn't completed, cancelled or
+    rejected. Each entry holds only those lines, so an event drops off once none is.
+    Events are ordered by date, then start time, then as submitted. One list for all
+    Technical Support Staff.
 
     Args:
         session: Database session; defaults to ``db.session``.
@@ -2298,13 +2313,24 @@ def list_equipment_requests_awaiting_action(
     sess = resolve_session(session)
     if today is None:
         today = local_today()
+    # A line whose reservation is marked awaits action whatever its outcome.
+    # Reservations hold no line id, so it is found by its event and type (ADR-0092).
+    to_reassess = equipment_services.list_equipment_types_to_reassess(session=sess)
+    awaiting_action = [EventEquipmentLine.status == EquipmentLineStatus.REQUESTED]
+    for event_id, equipment_type_id in to_reassess:
+        awaiting_action.append(
+            and_(
+                EventEquipmentLine.event_request_id == event_id,
+                EventEquipmentLine.equipment_type_id == equipment_type_id,
+            )
+        )
     # One query for the lines themselves: the event's ``equipment_lines`` would load
     # the lines already arranged too, and query once per event.
     stmt = (
         select(EventRequest, EventEquipmentLine)
         .join(EventEquipmentLine, EventEquipmentLine.event_request_id == EventRequest.id)
         .where(
-            EventEquipmentLine.status == EquipmentLineStatus.REQUESTED,
+            or_(*awaiting_action),
             EventRequest.proposed_date >= today,
             EventRequest.status.not_in(EQUIPMENT_NOT_NEEDED_STATUSES),
         )
@@ -2315,7 +2341,7 @@ def list_equipment_requests_awaiting_action(
             EventEquipmentLine.id,
         )
     )
-    return _group_lines_by_event(sess.execute(stmt), today)
+    return _group_lines_by_event(sess.execute(stmt), today, to_reassess)
 
 
 # --------------------------------------------------------------------------
