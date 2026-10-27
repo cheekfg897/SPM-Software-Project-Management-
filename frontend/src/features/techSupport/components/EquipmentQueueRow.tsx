@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui'
 import { eventEquipmentPath } from '@/config/routes'
 import { formatSchedule } from '@/features/eventRequests/formatSchedule'
 
-import type { EquipmentAwaitingAction, EquipmentLine } from '../api'
+import type { EquipmentAwaitingAction } from '../api'
 
 interface EquipmentQueueRowProps {
   item: EquipmentAwaitingAction
@@ -23,16 +23,20 @@ function daysLeft(days: number): string {
   return `${days} days left`
 }
 
+/** Said after a line whose reservation a change marked for reassessment (SCRUM-60 AC6). */
+const TO_REASSESS = ' (reservation to reassess)'
+
 /**
- * e.g. "Projector × 2, Microphone × 4". A type the catalogue doesn't list yet is named by its id,
- * so its line still shows (ADR-0061).
+ * e.g. "Projector × 2, Microphone × 4 (reservation to reassess)". A type the catalogue doesn't
+ * list yet is named by its id, so its line still shows (ADR-0061).
  */
-function equipmentOf(lines: EquipmentLine[], typeNames: ReadonlyMap<number, string>): string {
+function equipmentOf(item: EquipmentAwaitingAction, typeNames: ReadonlyMap<number, string>) {
   const named: string[] = []
-  for (const line of lines) {
+  for (const line of item.equipment_lines) {
     const typeName =
       typeNames.get(line.equipment_type_id) ?? `Equipment type ${line.equipment_type_id}`
-    named.push(`${typeName} × ${line.quantity}`)
+    const toReassess = item.equipment_type_ids_to_reassess.includes(line.equipment_type_id)
+    named.push(`${typeName} × ${line.quantity}${toReassess ? TO_REASSESS : ''}`)
   }
   return named.join(', ')
 }
@@ -55,7 +59,7 @@ export function EquipmentQueueRow({ item, typeNames }: EquipmentQueueRowProps) {
             {event.name}
           </h3>
           <p className="text-ink-muted mt-1 text-sm">
-            {event.reference} · {equipmentOf(item.equipment_lines, typeNames)}
+            {event.reference} · {equipmentOf(item, typeNames)}
           </p>
         </div>
         <Badge>{daysLeft(item.days_remaining)}</Badge>
