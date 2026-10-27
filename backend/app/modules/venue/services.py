@@ -2261,25 +2261,34 @@ def _release_replaced(
     )
 
 
-def _category_labels(arrangement: VenueBookingRequest) -> str:
-    """Each category that flagged the arrangement, once, in flag order (AC9).
+def _category_labels(arrangement: VenueBookingRequest, session: Session | None) -> str:
+    """Each category that ever flagged the arrangement, once, oldest first (AC9).
 
-    For example ``"maintenance, safety concern"``.
+    For example ``"maintenance, safety concern"``, or ``""`` if its venue never became
+    unavailable. Read from the event's history rather than the flags, which are deleted
+    once the venue is available again (ADR-0111).
     """
+    from app.modules.events import services as event_services  # circular at import time
+
+    values = event_services.list_unavailability_categories(
+        arrangement.event_id, arrangement.id, session=session
+    )
     labels: list[str] = []
-    for flag in arrangement.flags:
-        if flag.category.label not in labels:
-            labels.append(flag.category.label)
+    for value in values:
+        label = UnavailabilityCategory(value).label
+        if label not in labels:
+            labels.append(label)
     return ", ".join(labels)
 
 
 def _tell_organiser_of_replacement(approved: VenueBookingRequest, session: Session | None) -> None:
     """Tell the organiser a replacement venue was approved, after the commit (AC9).
 
-    Only for a replacement of an arrangement whose venue became unavailable, which
-    keeps its unavailability flags once released; one flagged only after a change is
-    SCRUM-33's. The events module tells the organiser only if a venue sent the event
-    back from Confirmed (ADR-0108).
+    Only for a replacement of an arrangement whose venue became unavailable; one
+    flagged only after a change is SCRUM-33's. That includes a venue available again
+    before the replacement was approved: the original is released all the same, so the
+    organiser hears of it (ADR-0111). The events module tells the organiser only if a
+    venue sent the event back from Confirmed (ADR-0108).
     """
     from app.modules.events import services as event_services  # circular at import time
 
@@ -2287,13 +2296,14 @@ def _tell_organiser_of_replacement(approved: VenueBookingRequest, session: Sessi
         return
     sess = resolve_session(session)
     replaced = sess.get(VenueBookingRequest, approved.replaces_request_id)
-    if not replaced.flags:
+    categories = _category_labels(replaced, session)
+    if not categories:
         return
     event_services.notify_organiser_replacement_approved(
         approved.event_id,
         unavailable_venue=sess.get(Venue, replaced.venue_id).name,
         replacement_venue=sess.get(Venue, approved.venue_id).name,
-        category=_category_labels(replaced),
+        category=categories,
         session=session,
     )
 

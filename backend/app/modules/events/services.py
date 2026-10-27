@@ -1351,6 +1351,30 @@ def record_alternative_venue_needed(
     return returned_to_planning
 
 
+def list_unavailability_categories(
+    event_id: int, venue_booking_request_id: int, *, session: Session | None = None
+) -> list[str]:
+    """Each time the arrangement's venue became unavailable, by category, oldest first.
+
+    SCRUM-92 AC9: read from the event's history, which keeps each flag's category after
+    the venue is available again and its flags are deleted (ADR-0111). Empty when the
+    venue never became unavailable for it.
+    """
+    stmt = (
+        select(EventHistoryEntry)
+        .where(
+            EventHistoryEntry.event_request_id == event_id,
+            EventHistoryEntry.kind == EventHistoryKind.ALTERNATIVE_VENUE_NEEDED,
+        )
+        .order_by(EventHistoryEntry.occurred_at, EventHistoryEntry.id)
+    )
+    categories = []
+    for entry in resolve_session(session).scalars(stmt):
+        if entry.details["venue_booking_request_id"] == venue_booking_request_id:
+            categories.append(entry.details["category"])
+    return categories
+
+
 def record_venue_booking_requested(
     event_id: int,
     *,
