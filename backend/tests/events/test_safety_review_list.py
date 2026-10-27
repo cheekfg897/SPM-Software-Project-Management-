@@ -158,8 +158,8 @@ def test_a_multi_venue_event_shows_each_venue_its_accessibility_needs_and_equipm
     )
     retired = make_venue(name="Old Hall")
     save(main_hall, annex, retired)
-    arrange(event_request, main_hall)
-    arrange(event_request, annex)
+    main_hall_arrangement = arrange(event_request, main_hall)
+    annex_arrangement = arrange(event_request, annex)
     arrange(event_request, retired, BookingRequestStatus.WITHDRAWN)
     projector = make_equipment_type(name="Projector")
     microphone = make_equipment_type(name="Microphone")
@@ -179,6 +179,7 @@ def test_a_multi_venue_event_shows_each_venue_its_accessibility_needs_and_equipm
     assert shown.event_request.accessibility_needs == "Step-free entrance and a hearing loop"
     assert shown.venues == [
         ArrangedVenue(
+            id=main_hall_arrangement.id,
             name="Main Hall",
             capacity=100,
             layouts=["theatre", "classroom"],
@@ -188,6 +189,7 @@ def test_a_multi_venue_event_shows_each_venue_its_accessibility_needs_and_equipm
             ends_at=datetime(2026, 11, 1, 10, tzinfo=timezone.utc),
         ),
         ArrangedVenue(
+            id=annex_arrangement.id,
             name="Annex",
             capacity=40,
             layouts=["boardroom"],
@@ -199,6 +201,7 @@ def test_a_multi_venue_event_shows_each_venue_its_accessibility_needs_and_equipm
     ]
     assert shown.equipment == [
         SafetyReviewEquipment(
+            id=fulfilled.id,
             equipment_type_name="Projector",
             quantity=2,
             notes="Needs HDMI",
@@ -207,6 +210,7 @@ def test_a_multi_venue_event_shows_each_venue_its_accessibility_needs_and_equipm
             outcome_note=None,
         ),
         SafetyReviewEquipment(
+            id=partial.id,
             equipment_type_name="Microphone",
             quantity=4,
             notes=None,

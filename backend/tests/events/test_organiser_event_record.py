@@ -268,6 +268,8 @@ def test_the_organiser_sees_the_safety_check_with_its_checklist_and_comments(
         reason="Keep aisles clear.",
         recorded_by="Sam Safety",
         recorded_at=APPROVED_AT,
+        flagged_arrangement_count=0,
+        reopened_line_count=0,
     )
 
 
@@ -365,6 +367,8 @@ def _everything_on_record(make_event_request: Callable[..., EventRequest]) -> Or
         reason="Keep aisles clear.",
         recorded_by="Sam Safety",
         recorded_at=APPROVED_AT,
+        flagged_arrangement_count=0,
+        reopened_line_count=0,
     )
     return OrganiserEventRecord(
         event_request=event_request,
@@ -450,6 +454,8 @@ def test_the_route_sends_the_reservations_and_the_safety_check_as_the_staff_reco
         "reason": "Keep aisles clear.",
         "recorded_by": "Sam Safety",
         "recorded_at": "2026-10-23T12:30:00+08:00",
+        "flagged_arrangement_count": 0,
+        "reopened_line_count": 0,
     }
 
 
@@ -472,9 +478,10 @@ def test_the_coordinators_record_route_has_none_of_the_organisers_own_sections(
     make_user: Callable[..., User],
     make_event_request: Callable[..., EventRequest],
 ) -> None:
-    """The coordinator works on the notes, equipment and check from their own pages.
+    """The coordinator works on the notes and equipment from their own pages.
 
-    Their record lists the venue arrangements since SCRUM-93 AC5 (ADR-0105).
+    Their record lists the venue arrangements since SCRUM-93 AC5 (ADR-0105), and the
+    safety outcome since SCRUM-99 AC4 (ADR-0113), which the SCRUM-99 tests check.
     """
     record = CoordinatorEventRecord(
         event_request=make_event_request(status=EventRequestStatus.CONFIRMED), coordinator=None
@@ -491,5 +498,5 @@ def test_the_coordinators_record_route_has_none_of_the_organisers_own_sections(
     )
 
     assert status == 200
-    organiser_only = {"internal_planning_notes", "equipment_reservations", "safety_outcome"}
+    organiser_only = {"internal_planning_notes", "equipment_reservations"}
     assert organiser_only.isdisjoint(response.get_json())
