@@ -39,8 +39,9 @@ function EquipmentProbe() {
       <button onClick={() => reserve.mutate({ equipment_type_id: PROJECTOR_ID, quantity: 4 })}>
         Reserve four
       </button>
-      <button onClick={() => reserve.mutate({ equipment_type_id: PROJECTOR_ID, quantity: 9 })}>
-        Reserve nine
+      {/* Seven: more than the six free, and within the eight the line asks for (SCRUM-60 AC9). */}
+      <button onClick={() => reserve.mutate({ equipment_type_id: PROJECTOR_ID, quantity: 7 })}>
+        Reserve seven
       </button>
     </div>
   )
@@ -87,7 +88,7 @@ describe('SCRUM-46 reserving equipment', () => {
     const { user } = renderWithProviders(<EquipmentProbe />, { session: SESSION })
     await screen.findByText('Projector available: 6')
 
-    await user.click(screen.getByRole('button', { name: 'Reserve nine' }))
+    await user.click(screen.getByRole('button', { name: 'Reserve seven' }))
 
     expect(
       await screen.findByText('Quantity errors: Only 6 available for this period.'),
@@ -114,7 +115,7 @@ describe('SCRUM-46 reserving equipment', () => {
       ),
     )
 
-    await user.click(screen.getByRole('button', { name: 'Reserve nine' }))
+    await user.click(screen.getByRole('button', { name: 'Reserve seven' }))
 
     expect(await screen.findByText('Projector available: 1')).toBeInTheDocument()
   })

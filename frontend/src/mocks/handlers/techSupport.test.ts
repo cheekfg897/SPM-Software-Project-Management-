@@ -54,10 +54,13 @@ describe('SCRUM-38 mock of the equipment awaiting action', () => {
 
     // Left out: yesterday's event, the cancelled, completed and rejected ones dated just after
     // today, the event whose lines are all dealt with, and the event with no equipment.
-    // On 10 November an earlier start comes first, then the lower id (AC3, ADR-0022).
+    // On 10 November an earlier start comes first, then the lower id (AC3, ADR-0022). The moved
+    // event, with nothing requested but a reservation to reassess, shares the showcase's date and
+    // start with a higher id (SCRUM-60 AC6).
     expect(queue.equipment_requests.map((row) => row.event.reference)).toEqual([
       'EVR-TECH0001',
       'EVR-MOCK0001',
+      'EVR-MOCK0004',
       'EVR-TECH0002',
       'EVR-TECH0003',
       'EVR-TECH0004',
@@ -72,7 +75,7 @@ describe('SCRUM-38 mock of the equipment awaiting action', () => {
     const queue = await fetchEquipmentAwaitingAction()
 
     expect(queue.equipment_requests.map((row) => row.days_remaining)).toEqual([
-      0, 7, 25, 29, 36, 36, 36,
+      0, 7, 7, 25, 29, 36, 36, 36,
     ])
   })
 
@@ -81,7 +84,7 @@ describe('SCRUM-38 mock of the equipment awaiting action', () => {
 
     const queue = await fetchEquipmentAwaitingAction()
 
-    const careersFair = queue.equipment_requests[5]
+    const careersFair = queue.equipment_requests[6]
     expect(careersFair).toEqual({
       event: {
         reference: 'EVR-BOOK0101',
@@ -96,6 +99,7 @@ describe('SCRUM-38 mock of the equipment awaiting action', () => {
         { id: 292, equipment_type_id: 2, quantity: 6, notes: null, status: 'requested' },
       ],
       days_remaining: 36,
+      equipment_type_ids_to_reassess: [],
     })
   })
 
@@ -163,6 +167,7 @@ describe('SCRUM-24 AC5 mock of the events with equipment', () => {
       'EVR-TECH0003',
       'EVR-TECH0002',
       'EVR-BOOK0102',
+      'EVR-MOCK0004',
     ])
     expect(list).not.toHaveProperty('message')
   })
