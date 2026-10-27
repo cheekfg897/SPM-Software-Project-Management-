@@ -156,6 +156,12 @@ def _replace(flagged: Flagged, session: Session, **overrides: Any) -> VenueBooki
     )
 
 
+def _lift_the_block(flagged: Flagged, session: Session) -> None:
+    """Lift the block that flagged the original: its venue is available again (AC8)."""
+    [venue_block] = services.list_venue_blocks(flagged.original.venue_id, session=session)
+    services.remove_venue_block(flagged.original.venue_id, venue_block.id, session=session)
+
+
 def _set_event_status(session: Session, event: EventRequest, status: EventRequestStatus) -> None:
     event.status = status
     session.commit()
@@ -560,8 +566,7 @@ def test_a_replacement_approved_after_the_flag_cleared_still_releases_the_origin
     To keep the original once its venue is free again, they withdraw the replacement.
     """
     replacement = _replace(flagged, db_session)
-    [venue_block] = services.list_venue_blocks(flagged.original.venue_id, session=db_session)
-    services.remove_venue_block(flagged.original.venue_id, venue_block.id, session=db_session)
+    _lift_the_block(flagged, db_session)
     assert reload_request(db_session, flagged.original.id).needs_alternative_venue is False
 
     decide(replacement.id, "approved", db_session)
@@ -702,6 +707,45 @@ def test_the_notice_names_each_category_that_flagged_the_original_once(
             sent_back.event.id,
             ORGANISER_TOLD.format(category="maintenance, safety concern"),
         )
+    ]
+
+
+def test_a_replacement_approved_after_the_venue_is_available_again_still_tells_the_organiser(
+    db_session: Session, sent_back: Flagged
+) -> None:
+    """The original is released, so the organiser hears of it (AC9, ADR-0111).
+
+    The block is lifted while the replacement waits, so the organiser was told the
+    original stands; approving the replacement then moves the event to the Breakout
+    room. Lifting the block deleted the flags, so the category comes from the history.
+    """
+    replacement = _replace(sent_back, db_session)
+    _lift_the_block(sent_back, db_session)
+
+    decide(replacement.id, "approved", db_session)
+
+    assert _replacement_notices(db_session) == [
+        (ORGANISER_ID, sent_back.event.id, ORGANISER_TOLD.format(category="maintenance"))
+    ]
+
+
+def test_the_notice_names_only_what_flagged_the_replaced_arrangement(
+    db_session: Session,
+    sent_back: Flagged,
+    make_venue: Callable[..., Venue],
+    save: Callable[..., None],
+) -> None:
+    """Another of the event's venues, blocked for a safety concern, isn't named."""
+    annex = make_venue(name="Annex")
+    save(annex)
+    decide(raise_booking(annex, sent_back.event, db_session).id, "approved", db_session)
+    block(annex, at(10), at(11), db_session, category="safety_concern", reason="Wiring.")
+    replacement = _replace(sent_back, db_session)
+
+    decide(replacement.id, "approved", db_session)
+
+    assert _replacement_notices(db_session) == [
+        (ORGANISER_ID, sent_back.event.id, ORGANISER_TOLD.format(category="maintenance"))
     ]
 
 
