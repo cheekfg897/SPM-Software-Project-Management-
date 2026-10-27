@@ -1517,6 +1517,29 @@ def record_venue_hold_expired(
     )
 
 
+def record_venue_booking_reconfirmed(
+    event_id: int,
+    *,
+    actor_id: int,
+    details: dict[str, Any],
+    session: Session | None = None,
+) -> EventHistoryEntry:
+    """Add the history entry for a reconfirmed booking, without committing (SCRUM-59).
+
+    The entry rides in the caller's transaction, so it is saved with the reconfirmation
+    it records or not at all (ADR-0018). It also marks when the arrangement's period was
+    last set (:func:`get_event_when_arranged`).
+    """
+    event_request = resolve_session(session).get(EventRequest, event_id)
+    return record_event_history(
+        event_request,
+        EventHistoryKind.VENUE_BOOKING_RECONFIRMED,
+        actor_id=actor_id,
+        details=details,
+        session=session,
+    )
+
+
 #: The history kinds that set an arrangement's period: raising it (SCRUM-42) and
 #: reconfirming it (SCRUM-59). Approving it books the period it already had.
 _PERIOD_SETTING_KINDS = frozenset(

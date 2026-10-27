@@ -564,6 +564,31 @@ class UpdatePreparationSchema(PreparationNotesSchema):
     )
 
 
+class ReconfirmBookingSchema(TimeRangeSchema):
+    """Payload for ``POST /api/venues/booking-requests/<id>/reconfirm`` (SCRUM-59).
+
+    The new period, which the queue pre-fills and Venue Staff may adjust; the service
+    checks it lies within the event (AC2). ``reason`` is needed only when the venue is
+    too small for the booking's occupancy, which the service checks (AC4). A blank one
+    counts as missing, so it is trimmed and loaded as ``None``.
+    """
+
+    start_field = "starts_at"
+    end_field = "ends_at"
+
+    starts_at = fields.DateTime(required=True)
+    ends_at = fields.DateTime(required=True)
+    reason = fields.String(load_default=None)
+
+    @post_load
+    def _blank_reason_as_missing(self, data: dict[str, Any], **_: Any) -> dict[str, Any]:
+        if data["reason"] is not None:
+            data["reason"] = data["reason"].strip()
+        if data["reason"] == "":
+            data["reason"] = None
+        return data
+
+
 class HoldBookingRequestSchema(Schema):
     """Payload for placing a hold or changing its expiry (SCRUM-75 AC3, AC4).
 
