@@ -19,7 +19,6 @@ the Breakout room (capacity 40) holds 30.
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import date
 from typing import Any
 
 import pytest
@@ -43,9 +42,12 @@ from tests.venue.conftest import (
     VENUE_STAFF_ID,
     SavedEvent,
     approve_safety,
+    approved_arrangement,
     at,
     block,
     decide,
+    edit_event,
+    flags_on,
     raise_booking,
     reload_event,
     reload_request,
@@ -53,8 +55,6 @@ from tests.venue.conftest import (
 
 pytestmark = pytest.mark.scrum_33
 
-#: The day the edits are made, for the edit's "not in the past" rule.
-EDIT_DAY = date(2026, 10, 1)
 TIMING_REASON = "The event's date or time changed."
 REQUIREMENTS_REASON = "The event's venue requirements changed."
 CAPACITY_REASON = "Expected attendance of 150 exceeds the venue's capacity of 100."
@@ -81,21 +81,6 @@ LIVE_STATUSES = [
 UNFLAGGED_STATUSES = [status for status in BookingRequestStatus if status not in LIVE_STATUSES]
 
 
-def _edit(session: Session, event: EventRequest, payload: dict[str, Any]) -> None:
-    """Edit ``event`` as its coordinator (SCRUM-33)."""
-    event_services.update_event_request(
-        COORDINATOR_ID, event.reference, payload, session=session, today=EDIT_DAY
-    )
-
-
-def _flags(session: Session, request_id: int) -> list[tuple[str, str]]:
-    """The arrangement's reassessment flags as (kind, reason), oldest first."""
-    rows = []
-    for flag in reload_request(session, request_id).reassessment_flags:
-        rows.append((flag.kind.value, flag.reason))
-    return rows
-
-
 def _venue_staff_notices() -> list[tuple[int, str | None]]:
     """What Venue Staff were told about significant changes, as (event id, detail)."""
     rows = []
@@ -105,32 +90,10 @@ def _venue_staff_notices() -> list[tuple[int, str | None]]:
     return sorted(rows)
 
 
-def _approved(venue: Venue, event: EventRequest, session: Session, **overrides: Any) -> int:
-    """Raise a request for ``event`` at ``venue`` and approve it; return its id."""
-    request = raise_booking(venue, event, session, **overrides)
-    return decide(request.id, "approved", session).id
-
-
 def _set_status(session: Session, request_id: int, status: BookingRequestStatus) -> None:
     """Put the arrangement straight into ``status``, whatever the flow allows."""
     reload_request(session, request_id).status = status
     session.commit()
-
-
-@pytest.fixture()
-def auditorium(make_venue: Callable[..., Venue], save: Callable[..., None]) -> Venue:
-    """A venue that holds 100."""
-    saved = make_venue(name="Auditorium", capacity=100)
-    save(saved)
-    return saved
-
-
-@pytest.fixture()
-def breakout_room(make_venue: Callable[..., Venue], save: Callable[..., None]) -> Venue:
-    """A venue that holds 40."""
-    saved = make_venue(name="Breakout room", capacity=40)
-    save(saved)
-    return saved
 
 
 @pytest.fixture()
@@ -142,13 +105,15 @@ def event(saved_users: list[User], saved_event: SavedEvent) -> EventRequest:
 @pytest.fixture()
 def main_id(db_session: Session, auditorium: Venue, event: EventRequest) -> int:
     """The approved Auditorium arrangement, for the event's whole audience of 80."""
-    return _approved(auditorium, event, db_session)
+    return approved_arrangement(auditorium, event, db_session)
 
 
 @pytest.fixture()
 def breakout_id(db_session: Session, breakout_room: Venue, event: EventRequest) -> int:
     """The approved Breakout room arrangement, in the afternoon, for 30 of them."""
-    return _approved(breakout_room, event, db_session, expected_occupancy=30, **SECOND_PERIOD)
+    return approved_arrangement(
+        breakout_room, event, db_session, expected_occupancy=30, **SECOND_PERIOD
+    )
 
 
 # --------------------------------------------------------------------------
@@ -173,10 +138,10 @@ def test_a_date_or_time_change_flags_every_arrangement_for_reconfirmation(
     breakout_id: int,
     payload: dict[str, Any],
 ) -> None:
-    _edit(db_session, event, payload)
+    edit_event(db_session, event, payload)
 
-    assert _flags(db_session, main_id) == [(RECONFIRM, TIMING_REASON)]
-    assert _flags(db_session, breakout_id) == [(RECONFIRM, TIMING_REASON)]
+    assert flags_on(db_session, main_id) == [(RECONFIRM, TIMING_REASON)]
+    assert flags_on(db_session, breakout_id) == [(RECONFIRM, TIMING_REASON)]
 
 
 def test_an_event_in_safety_review_goes_back_to_approved_with_its_arrangements_flagged(
@@ -191,10 +156,10 @@ def test_an_event_in_safety_review_goes_back_to_approved_with_its_arrangements_f
     event.status = EventRequestStatus.SAFETY_REVIEW
     approve_safety(event, db_session)
 
-    _edit(db_session, event, {"end_time": "18:00"})
+    edit_event(db_session, event, {"end_time": "18:00"})
 
     assert reload_event(db_session, event.id).status is EventRequestStatus.APPROVED
-    assert _flags(db_session, main_id) == [(RECONFIRM, TIMING_REASON)]
+    assert flags_on(db_session, main_id) == [(RECONFIRM, TIMING_REASON)]
 
 
 # --------------------------------------------------------------------------
@@ -205,50 +170,50 @@ def test_an_event_in_safety_review_goes_back_to_approved_with_its_arrangements_f
 def test_attendance_above_capacity_flags_only_the_arrangement_holding_everyone(
     db_session: Session, event: EventRequest, main_id: int, breakout_id: int
 ) -> None:
-    _edit(db_session, event, {"expected_attendance": 150})
+    edit_event(db_session, event, {"expected_attendance": 150})
 
-    assert _flags(db_session, main_id) == [(UNSUITABLE, CAPACITY_REASON)]
-    assert _flags(db_session, breakout_id) == []
+    assert flags_on(db_session, main_id) == [(UNSUITABLE, CAPACITY_REASON)]
+    assert flags_on(db_session, breakout_id) == []
 
 
 def test_attendance_rising_within_capacity_asks_for_reconfirmation(
     db_session: Session, event: EventRequest, main_id: int, breakout_id: int
 ) -> None:
-    _edit(db_session, event, {"expected_attendance": 90})
+    edit_event(db_session, event, {"expected_attendance": 90})
 
-    assert _flags(db_session, main_id) == [(RECONFIRM, RISE_REASON)]
-    assert _flags(db_session, breakout_id) == []
+    assert flags_on(db_session, main_id) == [(RECONFIRM, RISE_REASON)]
+    assert flags_on(db_session, breakout_id) == []
 
 
 def test_a_fall_in_attendance_flags_nothing(
     db_session: Session, event: EventRequest, main_id: int, breakout_id: int
 ) -> None:
-    _edit(db_session, event, {"expected_attendance": 60})
+    edit_event(db_session, event, {"expected_attendance": 60})
 
-    assert _flags(db_session, main_id) == []
-    assert _flags(db_session, breakout_id) == []
+    assert flags_on(db_session, main_id) == []
+    assert flags_on(db_session, breakout_id) == []
 
 
 def test_an_arrangement_still_holding_everyone_after_a_fall_is_judged_on_the_next_rise(
     db_session: Session, event: EventRequest, main_id: int, breakout_id: int
 ) -> None:
-    _edit(db_session, event, {"expected_attendance": 60})
+    edit_event(db_session, event, {"expected_attendance": 60})
 
-    _edit(db_session, event, {"expected_attendance": 150})
+    edit_event(db_session, event, {"expected_attendance": 150})
 
-    assert _flags(db_session, main_id) == [(UNSUITABLE, CAPACITY_REASON)]
-    assert _flags(db_session, breakout_id) == []
+    assert flags_on(db_session, main_id) == [(UNSUITABLE, CAPACITY_REASON)]
+    assert flags_on(db_session, breakout_id) == []
 
 
 @pytest.mark.parametrize("attendance", [95, 100], ids=["below-its-occupancy", "at-it"])
 def test_an_arrangement_booked_for_more_than_the_audience_stands_while_it_holds_everyone(
     db_session: Session, auditorium: Venue, event: EventRequest, attendance: int
 ) -> None:
-    roomy_id = _approved(auditorium, event, db_session, expected_occupancy=100)
+    roomy_id = approved_arrangement(auditorium, event, db_session, expected_occupancy=100)
 
-    _edit(db_session, event, {"expected_attendance": attendance})
+    edit_event(db_session, event, {"expected_attendance": attendance})
 
-    assert _flags(db_session, roomy_id) == []
+    assert flags_on(db_session, roomy_id) == []
 
 
 # --------------------------------------------------------------------------
@@ -259,27 +224,27 @@ def test_an_arrangement_booked_for_more_than_the_audience_stands_while_it_holds_
 def test_a_venue_requirements_change_flags_every_arrangement_for_reconfirmation(
     db_session: Session, event: EventRequest, main_id: int, breakout_id: int
 ) -> None:
-    _edit(db_session, event, {"venue_requirements": "Stage and step-free access"})
+    edit_event(db_session, event, {"venue_requirements": "Stage and step-free access"})
 
-    assert _flags(db_session, main_id) == [(RECONFIRM, REQUIREMENTS_REASON)]
-    assert _flags(db_session, breakout_id) == [(RECONFIRM, REQUIREMENTS_REASON)]
+    assert flags_on(db_session, main_id) == [(RECONFIRM, REQUIREMENTS_REASON)]
+    assert flags_on(db_session, breakout_id) == [(RECONFIRM, REQUIREMENTS_REASON)]
 
 
 def test_one_change_gives_each_arrangement_only_the_reasons_that_apply_to_it(
     db_session: Session, event: EventRequest, main_id: int, breakout_id: int
 ) -> None:
-    _edit(
+    edit_event(
         db_session,
         event,
         {"end_time": "18:00", "venue_requirements": "Stage", "expected_attendance": 150},
     )
 
-    assert _flags(db_session, main_id) == [
+    assert flags_on(db_session, main_id) == [
         (RECONFIRM, TIMING_REASON),
         (RECONFIRM, REQUIREMENTS_REASON),
         (UNSUITABLE, CAPACITY_REASON),
     ]
-    assert _flags(db_session, breakout_id) == [
+    assert flags_on(db_session, breakout_id) == [
         (RECONFIRM, TIMING_REASON),
         (RECONFIRM, REQUIREMENTS_REASON),
     ]
@@ -301,10 +266,10 @@ def test_a_change_touching_no_venue_detail_leaves_every_arrangement_untouched(
     breakout_id: int,
     payload: dict[str, Any],
 ) -> None:
-    _edit(db_session, event, payload)
+    edit_event(db_session, event, payload)
 
-    assert _flags(db_session, main_id) == []
-    assert _flags(db_session, breakout_id) == []
+    assert flags_on(db_session, main_id) == []
+    assert flags_on(db_session, breakout_id) == []
     assert _venue_staff_notices() == []
 
 
@@ -325,10 +290,10 @@ def test_a_pending_arrangement_is_flagged_and_a_rejected_one_is_not(
     )
     decide(rejected.id, "rejected", db_session, reason="Closed that day.")
 
-    _edit(db_session, event, {"end_time": "18:00"})
+    edit_event(db_session, event, {"end_time": "18:00"})
 
-    assert _flags(db_session, pending.id) == [(RECONFIRM, TIMING_REASON)]
-    assert _flags(db_session, rejected.id) == []
+    assert flags_on(db_session, pending.id) == [(RECONFIRM, TIMING_REASON)]
+    assert flags_on(db_session, rejected.id) == []
 
 
 @pytest.mark.parametrize("status", LIVE_STATUSES, ids=lambda status: status.value)
@@ -341,9 +306,9 @@ def test_every_live_arrangement_is_flagged_and_named_to_venue_staff(
 ) -> None:
     _set_status(db_session, breakout_id, status)
 
-    _edit(db_session, event, {"end_time": "18:00"})
+    edit_event(db_session, event, {"end_time": "18:00"})
 
-    assert _flags(db_session, breakout_id) == [(RECONFIRM, TIMING_REASON)]
+    assert flags_on(db_session, breakout_id) == [(RECONFIRM, TIMING_REASON)]
     assert (
         event.id,
         f"Venue arrangement {breakout_id} at Breakout room: {TIMING_REASON}",
@@ -361,9 +326,9 @@ def test_an_arrangement_in_any_other_status_is_neither_flagged_nor_named_to_venu
     """The live arrangement beside it is the decoy that shows the edit did reassess."""
     _set_status(db_session, breakout_id, status)
 
-    _edit(db_session, event, {"end_time": "18:00"})
+    edit_event(db_session, event, {"end_time": "18:00"})
 
-    assert _flags(db_session, breakout_id) == []
+    assert flags_on(db_session, breakout_id) == []
     assert _venue_staff_notices() == [
         (event.id, f"Venue arrangement {main_id} at Auditorium: {TIMING_REASON}")
     ]
@@ -373,7 +338,7 @@ def test_a_flagged_arrangement_counts_as_flagged_only_while_it_is_live(
     db_session: Session, auditorium: Venue, event: EventRequest
 ) -> None:
     pending = raise_booking(auditorium, event, db_session)
-    _edit(db_session, event, {"end_time": "18:00"})
+    edit_event(db_session, event, {"end_time": "18:00"})
     flagged_while_pending = reload_request(db_session, pending.id).is_flagged_after_change
 
     decide(pending.id, "rejected", db_session, reason="Closed that day.")
@@ -385,11 +350,11 @@ def test_a_flagged_arrangement_counts_as_flagged_only_while_it_is_live(
 def test_the_flags_are_saved_with_the_edit(
     db_session: Session, event: EventRequest, main_id: int
 ) -> None:
-    _edit(db_session, event, {"end_time": "18:00"})
+    edit_event(db_session, event, {"end_time": "18:00"})
 
     db_session.rollback()
 
-    assert _flags(db_session, main_id) == [(RECONFIRM, TIMING_REASON)]
+    assert flags_on(db_session, main_id) == [(RECONFIRM, TIMING_REASON)]
 
 
 # --------------------------------------------------------------------------
@@ -400,7 +365,7 @@ def test_the_flags_are_saved_with_the_edit(
 def test_venue_staff_are_told_about_each_arrangement_flagged_and_why(
     db_session: Session, event: EventRequest, main_id: int, breakout_id: int
 ) -> None:
-    _edit(db_session, event, {"end_time": "18:00", "expected_attendance": 150})
+    edit_event(db_session, event, {"end_time": "18:00", "expected_attendance": 150})
 
     assert _venue_staff_notices() == [
         (
@@ -420,7 +385,7 @@ def test_safety_review_is_refused_naming_only_the_arrangement_flagged(
     db_session: Session, event: EventRequest, main_id: int, breakout_id: int
 ) -> None:
     """SCRUM-97 shares the venue check with confirmation (ADR-0051)."""
-    _edit(db_session, event, {"expected_attendance": 150})
+    edit_event(db_session, event, {"expected_attendance": 150})
 
     with pytest.raises(event_services.SafetyReviewNotAllowedError) as refusal:
         event_services.submit_for_safety_review(COORDINATOR_ID, event.reference, session=db_session)
@@ -435,7 +400,7 @@ def test_safety_review_is_refused_naming_only_the_arrangement_flagged(
 def test_safety_review_names_every_reason_each_arrangement_was_flagged(
     db_session: Session, event: EventRequest, main_id: int, breakout_id: int
 ) -> None:
-    _edit(db_session, event, {"end_time": "18:00", "expected_attendance": 150})
+    edit_event(db_session, event, {"end_time": "18:00", "expected_attendance": 150})
 
     with pytest.raises(event_services.SafetyReviewNotAllowedError) as refusal:
         event_services.submit_for_safety_review(COORDINATOR_ID, event.reference, session=db_session)
@@ -453,7 +418,7 @@ def test_safety_review_names_every_reason_each_arrangement_was_flagged(
 def test_confirmation_is_refused_while_an_arrangement_is_flagged(
     db_session: Session, event: EventRequest, main_id: int, breakout_id: int
 ) -> None:
-    _edit(db_session, event, {"end_time": "18:00"})
+    edit_event(db_session, event, {"end_time": "18:00"})
     event.status = EventRequestStatus.SAFETY_REVIEW
     approve_safety(event, db_session)
 
@@ -511,7 +476,7 @@ def test_a_change_flagged_arrangement_is_replaced_at_its_own_venue_at_a_new_time
     event's own venue at its new time is accepted, and approving it releases the
     original.
     """
-    _edit(db_session, event, {"end_time": "18:00"})
+    edit_event(db_session, event, {"end_time": "18:00"})
 
     replacement = raise_booking(
         auditorium, event, db_session, replaces_request_id=main_id, **SECOND_PERIOD
@@ -532,7 +497,7 @@ def test_a_replacement_at_its_own_venue_is_refused_once_that_venue_is_unavailabl
     a block over the original leaves that venue unavailable, so it is refused on
     ``venue_id`` and nothing is raised.
     """
-    _edit(db_session, event, {"end_time": "18:00"})
+    edit_event(db_session, event, {"end_time": "18:00"})
     block(auditorium, at(10), at(11), db_session)
 
     with pytest.raises(ValidationError) as refusal:
@@ -560,7 +525,7 @@ def test_a_replacement_at_another_venue_keeps_the_period_once_the_venue_is_unava
     The change flag alone would let the replacement take the new time, but a block
     over the original makes it a replacement for a venue that became unavailable.
     """
-    _edit(db_session, event, {"end_time": "18:00"})
+    edit_event(db_session, event, {"end_time": "18:00"})
     block(auditorium, at(10), at(11), db_session)
     great_hall = make_venue(name="Great Hall", capacity=200)
     save(great_hall)
@@ -588,7 +553,7 @@ def test_a_change_flagged_replacement_at_another_venue_may_take_a_new_period(
     The event's new time is what flagged it, so its replacement takes the new time at
     another venue, as it may at its own.
     """
-    _edit(db_session, event, {"end_time": "18:00"})
+    edit_event(db_session, event, {"end_time": "18:00"})
     great_hall = make_venue(name="Great Hall", capacity=200)
     save(great_hall)
 
@@ -621,7 +586,7 @@ def test_a_change_flagged_replacement_tells_the_organiser_nothing_though_the_eve
     event.status = EventRequestStatus.CONFIRMED
     db_session.commit()
     block(breakout_room, at(13), at(14), db_session)
-    _edit(db_session, event, {"end_time": "18:00"})
+    edit_event(db_session, event, {"end_time": "18:00"})
     replacement = raise_booking(
         auditorium, event, db_session, replaces_request_id=main_id, **DAY_AFTER
     )
@@ -641,7 +606,7 @@ def test_a_change_flagged_replacement_overlapping_its_own_booking_is_refused_at_
     So an overlapping replacement at the same venue clashes with it (ADR-0045,
     ADR-0094 "Not covered here"), and the original stands, still flagged.
     """
-    _edit(db_session, event, {"end_time": "18:00"})
+    edit_event(db_session, event, {"end_time": "18:00"})
     overlapping = {
         "starts_at": "2026-11-01T10:00:00+08:00",
         "ends_at": "2026-11-01T13:00:00+08:00",
@@ -666,7 +631,7 @@ def test_a_replacement_releases_an_arrangement_flagged_after_a_change(
     main_id: int,
     breakout_id: int,
 ) -> None:
-    _edit(db_session, event, {"expected_attendance": 150})
+    edit_event(db_session, event, {"expected_attendance": 150})
     great_hall = make_venue(name="Great Hall", capacity=200)
     save(great_hall)
 
