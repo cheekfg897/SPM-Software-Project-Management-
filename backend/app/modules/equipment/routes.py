@@ -121,6 +121,20 @@ def list_event_reassessments(reference: str) -> tuple[Response, int]:
     return jsonify(_reassessment_schema.dump(reassessments, many=True)), 200
 
 
+@bp.post("/events/<reference>/reassessments/<int:equipment_type_id>/confirm")
+@requires_role(Role.TECHNICAL_SUPPORT_STAFF)
+def confirm_reassessment(reference: str, equipment_type_id: int) -> tuple[Response, int]:
+    """Confirm a marked reservation for the event's period now (SCRUM-60 AC3).
+
+    Technical Support Staff only. The body is not read: the event and the type are in
+    the URL, and the period is the event's.
+    """
+    confirmed = services.confirm_reservation_move(
+        reference, equipment_type_id, confirmed_by=g.current_user_id
+    )
+    return jsonify(_reservation_schema.dump(confirmed, many=True)), 200
+
+
 @bp.post("/types/<int:equipment_type_id>/out-of-service")
 @requires_role(Role.TECHNICAL_SUPPORT_STAFF)
 def mark_out_of_service(equipment_type_id: int) -> tuple[Response, int]:

@@ -43,6 +43,14 @@ from app.modules.venue.services import get_venue
 
 EQUIPMENT_TYPE_NOT_FOUND_MESSAGE = "Equipment type not found."
 RESERVATION_NOT_FOUND_MESSAGE = "Equipment reservation not found."
+NOTHING_TO_REASSESS_MESSAGE = (
+    "This event has no reservation of that equipment type awaiting reassessment."
+)
+#: SCRUM-60 AC8, AC12: a reopened line's outcome is its review, and settles it.
+RECORD_THE_OUTCOME_MESSAGE = (
+    "This equipment's request has no current outcome. Record its outcome instead: that"
+    " settles the reservation."
+)
 
 
 class EquipmentNotReservableError(AppError):
@@ -744,6 +752,71 @@ def settle_reassessment(
         )
     _keep_oldest_first(reservations, keep, need, sess)
     return keep
+
+
+def confirm_reservation_move(
+    reference: str,
+    equipment_type_id: int,
+    *,
+    confirmed_by: int | str,
+    session: Session | None = None,
+) -> list[ReservationAsShown]:
+    """Confirm the event's marked reservations of a type for its period now (SCRUM-60).
+
+    AC3: when every reserved unit is free for the event's period, confirming moves the
+    reservations there and unmarks them; it is the review, so no outcome is recorded.
+    The period is the event's now, so after several changes the latest wins (ADR-0114
+    decision 1). Preparation details are kept (AC11). A safety approval is withdrawn
+    (AC10). Once saved, the coordinator is told once (ADR-0015).
+
+    Args:
+        reference: The event's ``EVR-…`` reference.
+        equipment_type_id: The equipment type whose reservations are confirmed.
+        confirmed_by: The caller's user id, taken from their token (a string there).
+        session: Database session; defaults to ``db.session``.
+
+    Returns:
+        The event's reservations of the type, as the event record shows them.
+
+    Raises:
+        NotFoundError: 404 — no such event, a draft, or none of its reservations of
+            the type awaits reassessment.
+        EventPeriodIncompleteError: 409 — the event has no complete date and times.
+        EquipmentNotReservableError: 409 — the event is completed, cancelled or
+            rejected.
+        ConflictError: 409 — the type's line has no current outcome, so recording one
+            settles the reservations instead (AC8, AC12).
+        ReservationCannotMoveError: 409 — fewer units are free for the event's period
+            than are reserved, so an outcome settles them instead (AC4).
+    """
+    sess = resolve_session(session)
+    need = events_services.get_event_equipment_need(reference, session=sess)
+    if not need.accepts_reservations:
+        raise EquipmentNotReservableError(events_services.RESERVATIONS_CLOSED_MESSAGE)
+    if not has_reservations_to_reassess(need.event_id, equipment_type_id, session=sess):
+        raise NotFoundError(NOTHING_TO_REASSESS_MESSAGE)
+    provided = events_services.provided_quantity_of_line(
+        need.event_id, equipment_type_id, session=sess
+    )
+    if provided is None:
+        raise ConflictError(RECORD_THE_OUTCOME_MESSAGE)
+
+    kept = settle_reassessment(need, equipment_type_id, provided, session=sess)
+    equipment_type = get_equipment_type(equipment_type_id, session=sess)
+    events_services.withdraw_safety_approval(
+        need.event_id,
+        actor_id=int(confirmed_by),
+        details={"equipment_type_name": equipment_type.name, "reservation_reassessed": True},
+        session=sess,
+    )
+    sess.commit()
+    detail = f"{equipment_type.name}: {kept} reserved, confirmed for the event's new date and time."
+    events_services.notify_coordinator_reservation_confirmed(need.event_id, detail, session=sess)
+    confirmed = []
+    for shown in list_reservations_of_event(need.event_id, session=sess):
+        if shown.equipment_type_id == equipment_type_id:
+            confirmed.append(shown)
+    return confirmed
 
 
 def list_equipment_types_to_reassess(*, session: Session | None = None) -> list[tuple[int, int]]:
