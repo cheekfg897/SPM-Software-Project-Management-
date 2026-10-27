@@ -5,8 +5,10 @@ import { selectSessionUser, useAppSelector } from '@/store'
 
 import {
   addEquipmentLine,
+  confirmReassessment,
   equipmentKeys,
   fetchEventAvailability,
+  fetchEventReassessments,
   fetchEventEquipmentLines,
   fetchEventReservations,
   recordEquipmentOutcome,
@@ -38,6 +40,14 @@ export function useEventReservations(reference: string) {
   })
 }
 
+/** What a change left to reassess of the event's reservations (SCRUM-60 AC2). */
+export function useEventReassessments(reference: string) {
+  return useQuery({
+    queryKey: equipmentKeys.reassessments(reference),
+    queryFn: () => fetchEventReassessments(reference),
+  })
+}
+
 /** The event's equipment lines, read for whoever is signed in. */
 export function useEventEquipmentLines(reference: string) {
   const viewer = useAppSelector(selectSessionUser)
@@ -49,9 +59,10 @@ export function useEventEquipmentLines(reference: string) {
 
 /**
  * Read all of the event's equipment again: its lines, availability (whose "requested" is the
- * lines' quantities) and reservations. Used after a change, refused or not: a refusal such as
- * "Only N available" or "already has a line for that equipment type" means someone else
- * changed it meanwhile, so the screen shows what the backend has now rather than a guess.
+ * lines' quantities), reservations and what awaits reassessment. Used after a change, refused or
+ * not: a refusal such as "Only N available" or "already has a line for that equipment type" means
+ * someone else changed it meanwhile, so the screen shows what the backend has now rather than a
+ * guess.
  */
 function useRefreshEventEquipment(reference: string) {
   const queryClient = useQueryClient()
@@ -63,6 +74,15 @@ export function useReserveEquipment(reference: string) {
   const refresh = useRefreshEventEquipment(reference)
   return useMutation({
     mutationFn: (body: ReserveEquipmentBody) => reserveEquipment(reference, body),
+    onSettled: refresh,
+  })
+}
+
+/** Confirm one type's marked reservations for the event's period now (SCRUM-60 AC3). */
+export function useConfirmReassessment(reference: string) {
+  const refresh = useRefreshEventEquipment(reference)
+  return useMutation({
+    mutationFn: (equipmentTypeId: number) => confirmReassessment(reference, equipmentTypeId),
     onSettled: refresh,
   })
 }

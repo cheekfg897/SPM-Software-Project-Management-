@@ -1,7 +1,11 @@
 import type { EventListRow } from '@/features/eventRequests/api'
 import type { EquipmentLine } from '@/features/techSupport/api'
 
-import { MOCK_CLOSED_EVENT_REFERENCE, MOCK_OPEN_EVENT_REFERENCE } from './equipmentFixtures'
+import {
+  MOCK_CLOSED_EVENT_REFERENCE,
+  MOCK_MOVED_EVENT_REFERENCE,
+  MOCK_OPEN_EVENT_REFERENCE,
+} from './equipmentFixtures'
 
 /**
  * The events Technical Support's two lists are read from (SCRUM-38, SCRUM-24 AC5; ADR-0061),
@@ -18,10 +22,16 @@ export interface MockEquipmentEvent {
   /** Always dated, with a start: a draft, the only request without, never has equipment. */
   event: EventListRow & { proposed_date: string; start_time: string }
   lines: EquipmentLine[]
+  /**
+   * The equipment types whose reservations a change marked for reassessment (SCRUM-60 AC6), when
+   * there are any: their lines are queued whatever their outcome.
+   */
+  equipmentTypeIdsToReassess?: number[]
 }
 
 const PROJECTOR = 1
 const MICROPHONE = 2
+const LECTERN = 3
 
 /** A line still waiting for Technical Support. Ids are the event's id and the line's place. */
 function requested(id: number, equipmentTypeId: number, quantity: number): EquipmentLine {
@@ -178,6 +188,21 @@ export const MOCK_EQUIPMENT_EVENTS: readonly MockEquipmentEvent[] = [
       { ...requested(212, MICROPHONE, 9), status: 'unavailable' },
       { ...requested(213, PROJECTOR, 1), status: 'fulfilled' },
     ],
+  },
+  {
+    // Its date changed after its equipment was reserved (SCRUM-60): the projectors, provided in
+    // full, wait on their reservation; the lecterns' line was reopened (AC12). It shares the
+    // showcase's date and start, with a higher id, and is the oldest event with equipment.
+    id: 53,
+    createdAt: '2026-09-26T00:00:00+00:00',
+    event: {
+      reference: MOCK_MOVED_EVENT_REFERENCE,
+      name: 'Leadership Offsite',
+      status: 'approved',
+      ...on('2026-10-12', '19:30:00', '22:00:00'),
+    },
+    lines: [{ ...requested(71, PROJECTOR, 3), status: 'fulfilled' }, requested(72, LECTERN, 2)],
+    equipmentTypeIdsToReassess: [PROJECTOR, LECTERN],
   },
   {
     id: 50,

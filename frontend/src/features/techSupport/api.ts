@@ -25,13 +25,19 @@ export interface EquipmentLine {
 }
 
 /**
- * One event's equipment still awaiting Technical Support: only its lines still `requested`, and
- * the whole days until the event, 0 on the day (SCRUM-38 AC2, ADR-0022).
+ * One event's equipment still awaiting Technical Support: only its lines still `requested` or
+ * whose reservation awaits reassessment, and the whole days until the event, 0 on the day
+ * (SCRUM-38 AC2, ADR-0022).
  */
 export interface EquipmentAwaitingAction {
   event: EquipmentEvent
   equipment_lines: EquipmentLine[]
   days_remaining: number
+  /**
+   * The equipment types whose reservations a change marked for reassessment: their lines are
+   * listed whatever their outcome (SCRUM-60 AC6, ADR-0114).
+   */
+  equipment_type_ids_to_reassess: number[]
 }
 
 /** The queue, soonest event first. Unlike the event lists, an empty one has no message. */

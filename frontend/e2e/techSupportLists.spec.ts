@@ -23,7 +23,7 @@ test('SCRUM-38: Technical Support log in, find the soonest equipment and open it
   const queue = page.getByRole('list', { name: 'Equipment awaiting action' })
   // In mock mode the app mounts once the mock worker starts: wait for a row before reading them.
   await expect(queue.getByRole('heading', { name: 'Sunrise Wellness Walk' })).toBeVisible()
-  await expect(queue.getByRole('listitem')).toHaveCount(7)
+  await expect(queue.getByRole('listitem')).toHaveCount(8)
   const showcase = queue.getByRole('link', { name: /Evening Product Showcase/ })
   await expect(showcase).toContainText('Projector × 2, Microphone × 4')
   await expect(showcase).toContainText('7 days left')

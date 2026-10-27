@@ -43,6 +43,7 @@ describe('SCRUM-24 AC5 Staff home: the events with equipment, for Technical Supp
       'Charity Fun Run',
       'Data Science Meetup',
       'Year-End Town Hall',
+      'Leadership Offsite',
     ])
   })
 

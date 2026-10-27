@@ -15,19 +15,31 @@ import {
   eventNotFound,
   hasSafetyApproval,
   resetMockEquipmentEvents,
+  withdrawSafetyApproval,
 } from './equipmentAccess'
+import { idFromPath, routeNotFound } from './equipmentCatalogue'
 import { MOCK_EQUIPMENT_TYPES, MOCK_EVENT_PERIOD } from './equipmentFixtures'
 import type { MockEquipmentType } from './equipmentFixtures'
-import { equipmentLineHandlers, requestedQuantity, resetMockEquipmentLines } from './equipmentLines'
+import {
+  equipmentLineHandlers,
+  lineOfType,
+  requestedQuantity,
+  resetMockEquipmentLines,
+} from './equipmentLines'
 import { resetMockOutOfService } from './equipmentOutOfServiceEntries'
 import {
   asShown,
   availableQuantity,
   eventOfReservation,
+  hasReservationsToReassess,
+  reassessmentsOf,
+  refusalToSettle,
   reservationsOfEvent,
   reservationWithId,
   resetMockReservations,
   saveReservation,
+  settleReassessment,
+  unitsReservedForEvent,
 } from './equipmentReservations'
 import {
   EQUIPMENT_TYPE_ID_RANGE_MESSAGE,
@@ -46,10 +58,17 @@ import {
  * availability, SCRUM-46 reservations, SCRUM-85 preparation), and the events module's equipment
  * lines (SCRUM-37, equipmentLines.ts). Units out of service (SCRUM-47) are answered in
  * equipmentOutOfService.ts and count here; the catalogue's types are answered in
- * equipmentCatalogue.ts. Reservations are kept in equipmentReservations.ts.
+ * equipmentCatalogue.ts. Reservations are kept in equipmentReservations.ts. What a change left
+ * to reassess is answered here, and confirmed (SCRUM-60, ADR-0114).
  */
 
 const EVENT_PATH = '/api/equipment/events/:reference'
+const RESERVATIONS_CLOSED_MESSAGE =
+  "Equipment can't be reserved for an event that is completed, cancelled or rejected."
+const NOTHING_TO_REASSESS_MESSAGE =
+  'This event has no reservation of that equipment type awaiting reassessment.'
+const RECORD_THE_OUTCOME_MESSAGE =
+  "This equipment's request has no current outcome. Record its outcome instead: that settles the reservation."
 
 /** Forget every reservation, line change and unit out of service. Runs after every test. */
 export function resetMockEquipment(): void {
@@ -77,6 +96,22 @@ function availabilityRows(reference: string) {
       shortfall: Math.max(requested - available, 0),
     }
   })
+}
+
+/**
+ * Why reserving `quantity` more of the type would take the event past its line, in the backend's
+ * words, or undefined when it wouldn't or the event has no line of the type (SCRUM-60 AC9).
+ */
+function overTheLine(reference: string, equipmentTypeId: number, quantity: number) {
+  const line = lineOfType(reference, equipmentTypeId)
+  if (line === undefined) {
+    return undefined
+  }
+  const already = unitsReservedForEvent(reference, equipmentTypeId)
+  if (already + quantity <= line.quantity) {
+    return undefined
+  }
+  return `The event asks for ${String(line.quantity)} of these, and ${String(already)} are already reserved.`
 }
 
 /** Problems with the reservation body, by field, in the backend's wording (EquipmentUnitsSchema). */
@@ -140,11 +175,7 @@ export const equipmentHandlers: RequestHandler[] = [
       return eventNotFound()
     }
     if (EQUIPMENT_NOT_NEEDED_STATUSES.includes(event.status)) {
-      return errorResponse(
-        409,
-        'equipment_not_reservable',
-        "Equipment can't be reserved for an event that is completed, cancelled or rejected.",
-      )
+      return errorResponse(409, 'equipment_not_reservable', RESERVATIONS_CLOSED_MESSAGE)
     }
 
     // bodyErrors has just checked both are whole numbers.
@@ -155,6 +186,10 @@ export const equipmentHandlers: RequestHandler[] = [
     const type = MOCK_EQUIPMENT_TYPES.find((candidate) => candidate.id === typeId)
     if (type === undefined) {
       return validationError({ equipment_type_id: ['Equipment type not found.'] })
+    }
+    const pastTheLine = overTheLine(event.reference, type.id, quantity)
+    if (pastTheLine !== undefined) {
+      return validationError({ quantity: [pastTheLine] })
     }
     const available = availableQuantity(type.id, type.free)
     if (quantity > available) {
@@ -172,6 +207,56 @@ export const equipmentHandlers: RequestHandler[] = [
       preparation_notes: null,
     })
     return HttpResponse.json(asShown(reservation), { status: 201 })
+  }),
+
+  http.get(`${EVENT_PATH}/reassessments`, ({ request, params }) => {
+    const caller = callerOrRefusal(request, EQUIPMENT_READER_ROLES)
+    if (caller instanceof Response) {
+      return caller
+    }
+    const event = eventForReader(caller, String(params.reference))
+    if (event === undefined) {
+      return eventNotFound()
+    }
+    return HttpResponse.json(reassessmentsOf(event.reference))
+  }),
+
+  // Technical Support only. The backend's order: the path, the event, whether it will still run,
+  // something marked, the line's outcome, then what is free for the period now (SCRUM-60 AC3).
+  http.post(`${EVENT_PATH}/reassessments/:equipmentTypeId/confirm`, ({ request, params }) => {
+    const equipmentTypeId = idFromPath(params.equipmentTypeId)
+    if (equipmentTypeId === null) {
+      return routeNotFound()
+    }
+    const caller = callerOrRefusal(request, [ROLE.TECHNICAL_SUPPORT_STAFF])
+    if (caller instanceof Response) {
+      return caller
+    }
+    const event = eventForStaff(String(params.reference))
+    if (event === undefined) {
+      return eventNotFound()
+    }
+    if (EQUIPMENT_NOT_NEEDED_STATUSES.includes(event.status)) {
+      return errorResponse(409, 'equipment_not_reservable', RESERVATIONS_CLOSED_MESSAGE)
+    }
+    if (!hasReservationsToReassess(event.reference, equipmentTypeId)) {
+      return errorResponse(404, 'not_found', NOTHING_TO_REASSESS_MESSAGE)
+    }
+    const provided = lineOfType(event.reference, equipmentTypeId)?.provided_quantity ?? null
+    if (provided === null) {
+      return errorResponse(409, 'conflict', RECORD_THE_OUTCOME_MESSAGE)
+    }
+    const cannotMove = refusalToSettle(event.reference, equipmentTypeId, provided)
+    if (cannotMove !== undefined) {
+      return errorResponse(409, 'reservation_cannot_move', cannotMove)
+    }
+
+    settleReassessment(event.reference, equipmentTypeId, provided)
+    withdrawSafetyApproval(event.reference)
+    const confirmed = reservationsOfEvent(event.reference).filter(
+      (reservation) => reservation.equipment_type_id === equipmentTypeId,
+    )
+    return HttpResponse.json(confirmed.map(asShown))
   }),
 
   // The backend's order: the body, then the reservation, then the event's safety approval.
