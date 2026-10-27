@@ -38,6 +38,7 @@ REFUSED_ROLES = sorted(set(Role) - {Role.VENUE_STAFF}, key=lambda role: role.val
 REQUEST_ID = 11
 FLAGGED_PATH = "/api/venues/booking-requests/flagged"
 RECONFIRM_PATH = f"/api/venues/booking-requests/{REQUEST_ID}/reconfirm"
+REJECT_PATH = f"/api/venues/booking-requests/{REQUEST_ID}/reject"
 # (endpoint, HTTP method, path, view kwargs, the service function it calls)
 ROUTES = [
     ("venue.list_flagged_bookings", "GET", FLAGGED_PATH, {}, "list_flagged_bookings"),
@@ -47,6 +48,13 @@ ROUTES = [
         RECONFIRM_PATH,
         {"request_id": REQUEST_ID},
         "reconfirm_flagged_booking",
+    ),
+    (
+        "venue.reject_flagged_booking",
+        "POST",
+        REJECT_PATH,
+        {"request_id": REQUEST_ID},
+        "reject_flagged_booking",
     ),
 ]
 ROUTE_IDS = [route[0] for route in ROUTES]
@@ -69,7 +77,11 @@ def mock_services(
 ) -> dict[str, MagicMock]:
     return replace_services(
         services,
-        {"list_flagged_bookings": [flagged], "reconfirm_flagged_booking": flagged.shown},
+        {
+            "list_flagged_bookings": [flagged],
+            "reconfirm_flagged_booking": flagged.shown,
+            "reject_flagged_booking": flagged.shown,
+        },
     )
 
 
@@ -164,4 +176,25 @@ def test_reconfirming_passes_the_body_and_the_caller_on_and_returns_200(
     assert response.get_json()["id"] == REQUEST_ID
     mock_services["reconfirm_flagged_booking"].assert_called_once_with(
         REQUEST_ID, body, reconfirmed_by=VENUE_STAFF_ID
+    )
+
+
+def test_rejecting_passes_the_body_and_the_caller_on_and_returns_200(
+    call_route: CallRoute, mock_services: dict[str, MagicMock], venue_staff_token: str
+) -> None:
+    body = {"reason": "The hall is booked for exams that day."}
+
+    response, status = call_route(
+        "venue.reject_flagged_booking",
+        "POST",
+        REJECT_PATH,
+        {"request_id": REQUEST_ID},
+        venue_staff_token,
+        body=body,
+    )
+
+    assert status == 200
+    assert response.get_json()["id"] == REQUEST_ID
+    mock_services["reject_flagged_booking"].assert_called_once_with(
+        REQUEST_ID, body, rejected_by=VENUE_STAFF_ID
     )
