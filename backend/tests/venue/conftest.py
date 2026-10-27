@@ -12,6 +12,7 @@ from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Session
 
 from app.common.clock import app_timezone, local_today
+from app.modules.events import services as event_services
 from app.modules.events.models import (
     EventHistoryEntry,
     EventHistoryKind,
@@ -466,3 +467,50 @@ def pin_now(monkeypatch: pytest.MonkeyPatch) -> Callable[[datetime], None]:
         monkeypatch.setattr(services, "_utc_now", lambda: moment)
 
     return _pin
+
+
+# --------------------------------------------------------------------------
+# SCRUM-59 — Venue Staff reconfirm or reject a booking flagged after a change
+# --------------------------------------------------------------------------
+
+#: The day SCRUM-59's tests edit the event, for the edit's "not in the past" rule.
+EDIT_DAY = date(2026, 10, 1)
+
+
+def edit_event(session: Session, event: EventRequest, payload: dict[str, Any]) -> None:
+    """Edit ``event`` as its coordinator (SCRUM-33), which flags its arrangements."""
+    event_services.update_event_request(
+        COORDINATOR_ID, event.reference, payload, session=session, today=EDIT_DAY
+    )
+
+
+def flags_on(session: Session, request_id: int) -> list[tuple[str, str]]:
+    """The arrangement's reassessment flags as (kind, reason), oldest first."""
+    rows = []
+    for flag in reload_request(session, request_id).reassessment_flags:
+        rows.append((flag.kind.value, flag.reason))
+    return rows
+
+
+def approved_arrangement(
+    venue: Venue, event: EventRequest, session: Session, **overrides: Any
+) -> int:
+    """Raise a request for ``event`` at ``venue`` and approve it; return its id."""
+    request = raise_booking(venue, event, session, **overrides)
+    return decide(request.id, "approved", session).id
+
+
+@pytest.fixture()
+def auditorium(make_venue: Callable[..., Venue], save: Callable[..., None]) -> Venue:
+    """A saved venue that holds 100."""
+    saved = make_venue(name="Auditorium", capacity=100)
+    save(saved)
+    return saved
+
+
+@pytest.fixture()
+def breakout_room(make_venue: Callable[..., Venue], save: Callable[..., None]) -> Venue:
+    """A saved venue that holds 40."""
+    saved = make_venue(name="Breakout room", capacity=40)
+    save(saved)
+    return saved
