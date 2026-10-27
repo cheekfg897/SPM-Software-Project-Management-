@@ -102,6 +102,17 @@ describe('SCRUM-38 Staff home: the equipment awaiting action, for Technical Supp
     expect(showcase).toHaveTextContent('7 days left')
   })
 
+  it('marks each line whose reservation a change left to reassess (SCRUM-60 AC6)', async () => {
+    openStaffHome(MOCK_ACCOUNTS.technicalSupport)
+
+    const offsite = within(await queue()).getAllByRole('listitem')[2]
+    expect(offsite).toHaveTextContent(
+      'EVR-MOCK0004 · Projector × 3 (reservation to reassess), Lectern × 2 (reservation to reassess)',
+    )
+    const showcase = within(await queue()).getAllByRole('listitem')[1]
+    expect(showcase).not.toHaveTextContent('reassess')
+  })
+
   it.each([
     [0, 'Today'],
     [1, '1 day left'],
