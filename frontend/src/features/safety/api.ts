@@ -26,6 +26,8 @@ export interface SafetyReviewEventDetails {
 
 /** A venue the event has booked, with what the Safety Officer reviews (SCRUM-97 AC6). */
 export interface SafetyReviewVenue {
+  /** The arrangement's id, which the officer names to flag it (SCRUM-99 AC2). */
+  id: number
   name: string
   capacity: number
   /** The room layouts the venue supports, e.g. "theatre". */
@@ -42,6 +44,8 @@ export type EquipmentStatus = 'requested' | 'fulfilled' | 'partially_fulfilled' 
 
 /** An equipment request with Technical Support's outcome. */
 export interface SafetyReviewEquipment {
+  /** The line's id, which the officer names to reopen it (SCRUM-99 AC2). */
+  id: number
   equipment_type_name: string
   quantity: number
   notes: string | null
@@ -72,6 +76,12 @@ export interface RecordSafetyOutcomeInput {
   checklist: SafetyChecklist
   /** Required unless approving; the backend says so when it is missing. */
   reason?: string
+  /**
+   * What to rework, on a Reject or Request Changes (SCRUM-99 AC2): venue arrangements to flag for
+   * Venue Staff and equipment lines to reopen for Technical Support, by id. Left out when none.
+   */
+  flagged_arrangement_ids?: number[]
+  reopened_line_ids?: number[]
 }
 
 /**

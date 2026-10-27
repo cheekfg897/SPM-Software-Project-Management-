@@ -234,10 +234,10 @@ function ownDraftOrRefusal(organiser: MockAccount, organisationId: number, refer
 
 /**
  * A request's record as the backend shows it to `viewerRole`: the coordinator by name and email,
- * no ids, the equipment lines as that role sees them (ADR-0098), and every venue arrangement
- * (SCRUM-93 AC5, ADR-0105). The organiser's holds everything else on the record too, whatever the
- * event's status (SCRUM-24 AC10, ADR-0104): the planning notes, the reservations and the current
- * safety check, each read from the mock that keeps it.
+ * no ids, the equipment lines as that role sees them (ADR-0098), every venue arrangement (SCRUM-93
+ * AC5, ADR-0105) and the current safety check (SCRUM-99 AC4, ADR-0113). The organiser's holds
+ * everything else on the record too, whatever the event's status (SCRUM-24 AC10, ADR-0104): the
+ * planning notes and the reservations, each read from the mock that keeps it.
  */
 function recordOf(stored: MockEventRequest, viewerRole: Role) {
   const { coordinator } = stored
@@ -250,6 +250,7 @@ function recordOf(stored: MockEventRequest, viewerRole: Role) {
     coordinator: contact,
     equipment_lines: recordLinesOf(reference, viewerRole),
     venue_arrangements: everyArrangementForRecord(reference),
+    safety_outcome: currentSafetyCheckOf(reference),
   }
   if (viewerRole !== ROLE.EVENT_ORGANISER) {
     return record
@@ -258,7 +259,6 @@ function recordOf(stored: MockEventRequest, viewerRole: Role) {
     ...record,
     internal_planning_notes: internalNotesOf(reference),
     equipment_reservations: reservationsForRecord(reference),
-    safety_outcome: currentSafetyCheckOf(reference),
   }
 }
 

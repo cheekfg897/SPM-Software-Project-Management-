@@ -51,6 +51,16 @@ const ARRANGEMENT_IN_FULL: RecordVenueArrangement = {
  * The Partner Summit's record with one of everything the organiser is sent on it (ADR-0104): a
  * held, an expired and a flagged arrangement, a reviewed line and the Safety Officer's outcome.
  */
+const SAFETY_CHECKLIST = {
+  attendance_vs_capacity: '250 expected in a hall for 300.',
+  venue_layout: 'Theatre layout with two aisles.',
+  emergency_access: 'Both fire exits are clear.',
+  accessibility: 'Ramp at the side entrance.',
+  equipment_placement: 'Cables taped down along the stage.',
+  crowd_movement: 'One-way flow at the doors.',
+  venue_restrictions: 'No open flames.',
+}
+
 const EVERYTHING_RECORDED: EventRecord = {
   reference: 'EVR-7K2M9QXA',
   status: 'approved',
@@ -119,18 +129,12 @@ const EVERYTHING_RECORDED: EventRecord = {
   equipment_reservations: [],
   safety_outcome: {
     outcome: 'approved',
-    checklist: {
-      attendance_vs_capacity: '250 expected in a hall for 300.',
-      venue_layout: 'Theatre layout with two aisles.',
-      emergency_access: 'Both fire exits are clear.',
-      accessibility: 'Ramp at the side entrance.',
-      equipment_placement: 'Cables taped down along the stage.',
-      crowd_movement: 'One-way flow at the doors.',
-      venue_restrictions: 'No open flames.',
-    },
+    checklist: SAFETY_CHECKLIST,
     reason: 'Keep the aisles clear.',
     recorded_by: 'Sana Iyer',
     recorded_at: '2026-10-04T14:00:00+08:00',
+    flagged_arrangement_count: 0,
+    reopened_line_count: 0,
   },
 }
 
@@ -453,8 +457,11 @@ describe('SCRUM-24 AC10 event record: everything an organiser sees, at every sta
 
     const safety = await section('Safety check')
     expect(within(safety).getByText('Changes requested')).toBeInTheDocument()
+    // It named nothing to rework, so the reason sits on the event itself (SCRUM-99 AC4).
     expect(
-      within(safety).getByText('Keep the terrace exit clear during the dinner.'),
+      within(safety).getByText(
+        'Flagged by the Safety Officer: Keep the terrace exit clear during the dinner.',
+      ),
     ).toBeInTheDocument()
   })
 
@@ -462,9 +469,96 @@ describe('SCRUM-24 AC10 event record: everything an organiser sees, at every sta
     openAsCoordinator('EVR-7K2M9QXA')
 
     await section('About the event')
-    for (const name of ['Planning notes', 'Equipment', 'Safety check']) {
+    // The safety check is the coordinator's too since SCRUM-99 AC4, checked below.
+    for (const name of ['Planning notes', 'Equipment']) {
       expect(screen.queryByRole('heading', { level: 2, name })).not.toBeInTheDocument()
     }
+  })
+})
+
+describe('SCRUM-99 AC4 the safety check on the coordinator page', () => {
+  /** The coordinator's record, as the backend sends it, with this safety outcome. */
+  function coordinatorRecordWith(safetyOutcome: EventRecord['safety_outcome']) {
+    server.use(
+      http.get('/api/events/requests/:reference', () =>
+        HttpResponse.json({
+          ...EVERYTHING_RECORDED,
+          internal_planning_notes: undefined,
+          equipment_reservations: undefined,
+          safety_outcome: safetyOutcome,
+        }),
+      ),
+    )
+    return openAsCoordinator('EVR-7K2M9QXA')
+  }
+
+  const CHANGES_REQUESTED = {
+    outcome: 'changes_requested',
+    checklist: SAFETY_CHECKLIST,
+    reason: 'The east fire exit is blocked by the stage.',
+    recorded_by: 'Sana Iyer',
+    recorded_at: '2026-10-04T14:00:00+08:00',
+  } as const
+
+  it('says the Safety Officer has recorded nothing yet', async () => {
+    coordinatorRecordWith(null)
+
+    expect(await section('Safety check')).toHaveTextContent(
+      "The Safety Officer hasn't recorded an outcome on the current check.",
+    )
+  })
+
+  it('shows the reason on the event itself when the officer named nothing', async () => {
+    coordinatorRecordWith({
+      ...CHANGES_REQUESTED,
+      flagged_arrangement_count: 0,
+      reopened_line_count: 0,
+    })
+
+    const safety = await section('Safety check')
+    expect(
+      within(safety).getByText(
+        'Flagged by the Safety Officer: The east fire exit is blocked by the stage.',
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('says how much the officer named, each flagged arrangement showing why below', async () => {
+    coordinatorRecordWith({
+      ...CHANGES_REQUESTED,
+      flagged_arrangement_count: 1,
+      reopened_line_count: 2,
+    })
+
+    const safety = await section('Safety check')
+    expect(
+      within(safety).getByText('The east fire exit is blocked by the stage.'),
+    ).toBeInTheDocument()
+    expect(
+      within(safety).getByText('Named to rework: 1 venue arrangement and 2 equipment lines.'),
+    ).toBeInTheDocument()
+    expect(within(safety).queryByText(/^Flagged by the Safety Officer/)).not.toBeInTheDocument()
+  })
+
+  it('names one line and several arrangements in the singular and plural', async () => {
+    coordinatorRecordWith({
+      ...CHANGES_REQUESTED,
+      flagged_arrangement_count: 2,
+      reopened_line_count: 1,
+    })
+
+    expect(await section('Safety check')).toHaveTextContent(
+      'Named to rework: 2 venue arrangements and 1 equipment line.',
+    )
+  })
+
+  it('shows an approval with no rework', async () => {
+    coordinatorRecordWith(EVERYTHING_RECORDED.safety_outcome)
+
+    const safety = await section('Safety check')
+    expect(within(safety).getByText('Keep the aisles clear.')).toBeInTheDocument()
+    expect(within(safety).queryByText(/Flagged by the Safety Officer/)).not.toBeInTheDocument()
+    expect(within(safety).queryByText(/Named to rework/)).not.toBeInTheDocument()
   })
 })
 

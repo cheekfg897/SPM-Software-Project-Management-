@@ -58,9 +58,13 @@ const EVERY_RECORD_KEY = [
   'clarifications',
   'equipment_lines',
   'venue_arrangements',
+  'safety_outcome',
 ]
-/** What only the organiser's record sends: everything else on it (SCRUM-24 AC10, ADR-0104). */
-const ORGANISERS_OWN_KEYS = ['internal_planning_notes', 'equipment_reservations', 'safety_outcome']
+/**
+ * What only the organiser's record sends: everything else on it (SCRUM-24 AC10, ADR-0104), but the
+ * safety outcome, which the coordinator's sends too (SCRUM-99 AC4, ADR-0113).
+ */
+const ORGANISERS_OWN_KEYS = ['internal_planning_notes', 'equipment_reservations']
 /** A Harbour Gala arrangement as the booking mock saves it, before its own details. */
 const GALA_ARRANGEMENT = {
   expected_occupancy: 10,
@@ -236,13 +240,12 @@ describe('SCRUM-24 mock of an event record', () => {
     const coordinatorsView = await fetchEventRequest(COORDINATORS_UNDER_REVIEW)
 
     // Each sees the equipment their own way, and only the organiser is sent the rest of the
-    // record: all checked below.
+    // record: all checked below. Both see the safety check (SCRUM-99 AC4).
     expect({ ...coordinatorsView, equipment_lines: [] }).toEqual({
       ...organisersView,
       equipment_lines: [],
       internal_planning_notes: undefined,
       equipment_reservations: undefined,
-      safety_outcome: undefined,
     })
   })
 
@@ -479,6 +482,35 @@ describe('SCRUM-24 AC10 mock of everything on the organiser record, at every sta
       reason: null,
       recorded_by: 'Sana Iyer',
       recorded_at: '2026-10-04T14:00:00+08:00',
+      flagged_arrangement_count: 0,
+      reopened_line_count: 0,
+    })
+  })
+
+  it('counts what the officer named to rework, and shows the coordinator the outcome (SCRUM-99 AC4)', async () => {
+    // Chloe's EVR-BOOK0101, sent back with changes.
+    const careersFair = 'EVR-BOOK0101'
+    addToHistory(careersFair, [
+      {
+        ...SAFETY_APPROVAL,
+        details: {
+          ...SAFETY_APPROVAL.details,
+          outcome: 'changes_requested',
+          reason: 'Clear the east exit.',
+          flagged_arrangement_ids: [4],
+          reopened_line_ids: [7, 8],
+        },
+      },
+    ])
+    signInAs(MOCK_ACCOUNTS.coordinator)
+
+    const record = await fetchEventRequest(careersFair)
+
+    expect(record.safety_outcome).toMatchObject({
+      outcome: 'changes_requested',
+      reason: 'Clear the east exit.',
+      flagged_arrangement_count: 1,
+      reopened_line_count: 2,
     })
   })
 

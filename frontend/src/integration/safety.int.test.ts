@@ -238,6 +238,8 @@ describe('SCRUM-98 recording a safety outcome against the backend', () => {
       })
       expect(listed?.venues).toEqual([
         {
+          // The booking's id, which the officer names to flag it (SCRUM-99 AC2).
+          id: expect.any(Number) as unknown,
           name: expect.stringMatching(/^Integration Hall /) as unknown,
           capacity: 300,
           layouts: ['theatre'],
