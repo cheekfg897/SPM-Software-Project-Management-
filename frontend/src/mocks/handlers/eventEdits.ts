@@ -292,18 +292,43 @@ function withdrawnSafetyApproval(
   ]
 }
 
+/** When an event starts, as milliseconds, from its date ("2026-11-12") and time ("09:00:00"). */
+function startInstant(date: unknown, time: unknown): number {
+  return Date.parse(`${String(date)}T${withSeconds(String(time))}+08:00`)
+}
+
+/**
+ * How far `changes` moved the event's start, in milliseconds, which the booking mock moves the
+ * flagged bookings' pre-filled period by (SCRUM-59 AC2). `request` already holds the new values.
+ */
+function startMovedBy(changes: FieldChange[], request: MockEventRequest['request']): number {
+  let dateBefore: unknown = request.proposed_date
+  let timeBefore: unknown = request.start_time
+  for (const change of changes) {
+    if (change.field === 'proposed_date') {
+      dateBefore = change.previous_value
+    }
+    if (change.field === 'start_time') {
+      timeBefore = change.previous_value
+    }
+  }
+  const startsNow = startInstant(request.proposed_date, request.start_time)
+  return startsNow - startInstant(dateBefore, timeBefore)
+}
+
 /** What `changes` did to the event's venue arrangements, as `_flag_venue_arrangements` sees it. */
 function significantChangeOf(
   changes: FieldChange[],
   previousAttendance: number,
-  newAttendance: number,
+  stored: MockEventRequest,
 ): SignificantChange {
   const changedFields = changes.map((change) => change.field)
   return {
     timingChanged: changedFields.some((field) => TIMING_FIELDS.includes(field)),
     venueRequirementsChanged: changedFields.includes('venue_requirements'),
     previousAttendance,
-    newAttendance,
+    newAttendance: Number(stored.request.expected_attendance),
+    startMovedByMs: startMovedBy(changes, stored.request),
   }
 }
 
@@ -368,11 +393,7 @@ export const eventEditHandlers: RequestHandler[] = [
 
     const attendanceBefore = Number(stored.request.expected_attendance)
     const changes = applyChanges(stored, values)
-    const change = significantChangeOf(
-      changes,
-      attendanceBefore,
-      Number(stored.request.expected_attendance),
-    )
+    const change = significantChangeOf(changes, attendanceBefore, stored)
     const flaggedAny = flagPlannedArrangements(stored, change)
     flagArrangementsAfterChange(stored.request.reference, change)
     addToHistory(stored.request.reference, [
