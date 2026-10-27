@@ -139,7 +139,7 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
   autonumber
-  participant GHA as GitHub Actions
+  participant GHA as Hourly scheduler
   participant CLI as flask expire-holds
   participant Ve as venue services
   participant DB as PostgreSQL

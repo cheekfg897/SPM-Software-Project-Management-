@@ -63,7 +63,7 @@ flowchart TB
   classDef shared fill:#c9def2,stroke:#8fb4d9,color:#0b2a4a
 
   web["<b>Web App</b><br/>[React 19]<br/>Venue search, booking and<br/>Venue Staff screens"]:::container
-  job["<b>Hold-expiry job</b><br/>[flask expire-holds]<br/>Hourly, run by GitHub Actions"]:::container
+  job["<b>Hold-expiry job</b><br/>[flask expire-holds]<br/>Runs hourly"]:::container
   common["<b>common</b><br/>[Python package]<br/>requires_auth, requires_role,<br/>errors, clock"]:::shared
   db[("<b>Database</b><br/>[PostgreSQL 16]<br/>venues, bookings, venue_booking_requests<br/>and 4 related tables")]:::container
 

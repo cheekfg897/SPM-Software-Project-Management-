@@ -5,8 +5,8 @@ All diagrams are Mermaid, so GitHub renders them directly from the `.md` files. 
 
 | File | Contents |
 |---|---|
-| `01-c4-context.md` | C4 level 1: users, the system, GitHub Actions, Telegram |
-| `02-c4-containers.md` | C4 level 2: web app, backend API, database, hold-expiry job, delivery tooling |
+| `01-c4-context.md` | C4 level 1: how users interact with the system |
+| `02-c4-containers.md` | C4 level 2: web app, backend API, database, hold-expiry job |
 | `03-c4-components.md` | C4 level 3: module dependencies, and layering inside the venue module |
 | `04-uml-class-diagrams.md` | UML classes: event planning domain, venue and equipment domain |
 | `05-er-diagram.md` | Database tables, split into three views |

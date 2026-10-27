@@ -1,8 +1,8 @@
 # C4 level 1: system context
 
-Who uses ConnectSphere, and what it touches outside itself. Roles come from the `Role` enum in
+Who uses ConnectSphere, and how they interact with it. Roles come from the `Role` enum in
 `backend/app/modules/auth/permissions.py`. Notifications are in-app only, so there is no email or SMS
-system on this diagram.
+system on this diagram. Only people appear here; delivery tooling is left out.
 
 The C4 diagrams in this folder are drawn as Mermaid flowcharts that follow C4 conventions (person, system,
 container and component boxes, with the technology in square brackets). Mermaid's own `C4Context` syntax is
@@ -25,8 +25,6 @@ flowchart LR
 
   cs["<b>ConnectSphere</b><br/>[Software system]<br/>Event requests, venue booking,<br/>equipment reservation, registration<br/>and in-app notifications"]:::system
 
-  gha["<b>GitHub Actions</b><br/>[External system]<br/>CI and the hourly<br/>hold-expiry job"]:::ext
-  telegram["<b>Telegram group chat</b><br/>[External system]<br/>Receives the standup prompt"]:::ext
 
   organiser -->|"submits requests,<br/>answers clarifications"| cs
   attendee -->|"registers, withdraws"| cs
@@ -35,10 +33,4 @@ flowchart LR
   venuestaff -->|"approves, rejects, holds"| cs
   tech -->|"reserves, records outcomes"| cs
   safety -->|"records outcome"| cs
-  gha -.-> cs
-  gha -->|"posts reminder"| telegram
 ```
-
-**Not part of the running system.** GitHub Actions and Telegram are delivery tooling. The hourly
-`expire-holds` workflow is wired up but does nothing until a `DATABASE_URL` repository secret exists
-(there is no deployed database yet).
