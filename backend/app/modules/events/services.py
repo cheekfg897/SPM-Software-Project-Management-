@@ -4673,11 +4673,18 @@ def _venue_gaps(event_id: int, session: Session) -> list[str]:
 def _equipment_gaps(event_id: int, session: Session) -> list[str]:
     """Each equipment request still waiting on Technical Support (SCRUM-97 AC1, AC2).
 
-    An event with no equipment requests has none waiting, so it passes (AC2).
+    An event with no equipment requests has none waiting, so it passes (AC2). Nor
+    does a reservation marked for reassessment, named in the refusal (SCRUM-60 AC5).
     """
     gaps = []
     for line in lines_without_outcome(event_id, session=session):
         gaps.append(f"Equipment request {line.id} has no outcome from Technical Support.")
+    to_reassess = equipment_services.list_reservations_to_reassess(event_id, session=session)
+    for reservation in to_reassess:
+        gaps.append(
+            f"Equipment reservation {reservation.id} ({reservation.equipment_type_name})"
+            " is awaiting reassessment by Technical Support."
+        )
     return gaps
 
 
