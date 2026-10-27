@@ -5,6 +5,7 @@ import { ROLE } from '@/config/roles'
 import type {
   BookingRequest,
   BookingRequestStatus,
+  FlaggedBooking,
   ReassessmentFlag,
   Unavailability,
 } from '@/features/booking/api'
@@ -24,11 +25,25 @@ import {
   MOCK_ARRANGEMENTS,
   MOCK_BOOKING_EVENTS,
   MOCK_BOOKING_VENUES,
+  MOCK_FLAGGED_DRIFTS,
   MOCK_PENDING_DECISIONS,
   MOCK_SAFETY_APPROVED_EVENT_IDS,
 } from './bookingFixtures'
 import type { MockBookingEvent } from './bookingFixtures'
 import { MOCK_NOW } from './catalogueFixtures'
+import {
+  capacityReasonMessage,
+  driftAfter,
+  NOT_FLAGGED_AFTER_CHANGE_MESSAGE,
+  noticeTime,
+  outsideEventErrors,
+  reasonOf,
+  reconfirmationOf,
+  reconfirmErrors,
+  rejectErrors,
+  SETTLED_BY_REPLACEMENT_MESSAGE,
+} from './flaggedBookingRules'
+import type { Drift } from './flaggedBookingRules'
 import {
   PREPARATION_NEEDS_SAFETY_APPROVAL_MESSAGE,
   preparationErrors,
@@ -58,6 +73,10 @@ const HOLD_PATH = `${PENDING_PATH}/:requestId/hold`
 /** Venue Staff's approved bookings, and recording one's preparation (SCRUM-84, ADR-0080). */
 const APPROVED_PATH = `${PENDING_PATH}/approved`
 const PREPARATION_PATH = `${PENDING_PATH}/:requestId/preparation`
+/** The bookings a change flagged, and reconfirming or rejecting one (SCRUM-59). */
+const FLAGGED_PATH = `${PENDING_PATH}/flagged`
+const RECONFIRM_PATH = `${PENDING_PATH}/:requestId/reconfirm`
+const REJECT_PATH = `${PENDING_PATH}/:requestId/reject`
 const REQUIRED_FIELDS = ['venue_id', 'starts_at', 'ends_at', 'purpose'] as const
 /** Every field RaiseBookingRequestSchema declares; anything else is an "Unknown field." */
 const RAISE_FIELDS = [
@@ -97,23 +116,12 @@ const NOT_FLAGGED_MESSAGE = 'This venue arrangement does not need an alternative
  * another venue (SCRUM-92 AC6, ADR-0100).
  */
 const SAME_VENUE_MESSAGE = 'A replacement must be at a different venue from the one it replaces.'
-/** Business time is UTC+8 all year (BUSINESS_UTC_OFFSET), as milliseconds. */
-const BUSINESS_OFFSET_MS = 8 * 60 * 60_000
-
-/** An instant as the backend's notices and messages write it, in business time: "2026-11-26 13:00". */
-function noticeTime(value: string): string {
-  return new Date(Date.parse(value) + BUSINESS_OFFSET_MS)
-    .toISOString()
-    .slice(0, 16)
-    .replace('T', ' ')
-}
-
 /**
  * The backend's LOCKED_PERIOD_MESSAGE: a replacement for a venue that became unavailable keeps the
  * flagged arrangement's date and times (SCRUM-92 AC6, Product Owner 25 Oct, ADR-0108).
  */
 function lockedPeriodMessage(replaced: BookingRequest): string {
-  return `A replacement keeps the date and times of the booking it replaces: ${noticeTime(replaced.starts_at)} to ${noticeTime(replaced.ends_at)}.`
+  return `A replacement keeps the date and times of the booking it replaces: ${noticeTime(Date.parse(replaced.starts_at))} to ${noticeTime(Date.parse(replaced.ends_at))}.`
 }
 /**
  * As the backend's REPLACEMENT_BOOKING_STATUSES (events/services.py): a flag leaves an event that
@@ -157,10 +165,12 @@ const LAYOUT_ERROR_MESSAGE = `Must be one of: ${LAYOUT_OPTIONS.map((option) => o
 const events: MockBookingEvent[] = Object.values(MOCK_BOOKING_EVENTS)
 const venues = Object.values(MOCK_BOOKING_VENUES)
 let requests: BookingRequest[] = []
+/** What changed under each arrangement since its period was set, by its id (SCRUM-59). */
+let drifts = new Map<number, Drift>()
 
 /**
  * Forget the requests raised since, and put back the waiting ones and the decided
- * arrangements. Runs after every test.
+ * arrangements, with what changed under the flagged ones. Runs after every test.
  */
 export function resetMockBooking(): void {
   const startingRequests: readonly BookingRequest[] = [
@@ -168,6 +178,9 @@ export function resetMockBooking(): void {
     ...Object.values(MOCK_ARRANGEMENTS),
   ]
   requests = startingRequests.map((existing) => ({ ...existing }))
+  drifts = new Map(
+    Object.entries(MOCK_FLAGGED_DRIFTS).map(([id, drift]) => [Number(id), { ...drift }]),
+  )
 }
 
 resetMockBooking()
@@ -580,6 +593,8 @@ export function flagArrangementsAfterChange(reference: string, change: Significa
     if (!isLive) {
       return existing
     }
+    // The backend reads every change since the period was set back from the history (SCRUM-59).
+    drifts.set(existing.id, driftAfter(drifts.get(existing.id), change))
     const venueCapacity = venues.find((venue) => venue.id === existing.venue_id)?.capacity ?? 0
     const size = { expectedOccupancy: existing.expected_occupancy, venueCapacity }
     const flags = reassessmentFlagsFor(size, change)
@@ -718,6 +733,101 @@ function changeFieldErrors(body: Record<string, unknown>): FieldErrors {
     }
   }
   return errors
+}
+
+/**
+ * The bookings a change flagged that Venue Staff settle (`_bookings_to_reassess`, SCRUM-59 AC1):
+ * one needing an alternative venue is settled by a replacement instead. Earliest event first.
+ */
+function flaggedBookings(): FlaggedBooking[] {
+  return requests
+    .filter((existing) => existing.flagged_after_change && !existing.needs_alternative_venue)
+    .sort(byEventDate)
+    .map((booking) => ({
+      booking,
+      reconfirm_with: reconfirmationOf(booking, drifts.get(booking.id)),
+    }))
+}
+
+/**
+ * The flagged booking Venue Staff named, or the response to send: 404 for none, 409 for one with
+ * no open flag from a change or one needing an alternative venue (`_flagged_booking`).
+ */
+function flaggedOrRefusal(requestId: unknown): BookingRequest | Response {
+  const booking = findRequest(requestId)
+  if (booking === undefined) {
+    return notFound(BOOKING_REQUEST_NOT_FOUND_MESSAGE)
+  }
+  if (!booking.flagged_after_change) {
+    return errorResponse(409, 'conflict', NOT_FLAGGED_AFTER_CHANGE_MESSAGE)
+  }
+  if (booking.needs_alternative_venue) {
+    return errorResponse(409, 'conflict', SETTLED_BY_REPLACEMENT_MESSAGE)
+  }
+  return booking
+}
+
+/** A replacement for the booking still waiting for a decision (AC6), if there is one. */
+function waitingReplacementOf(booking: BookingRequest): BookingRequest | undefined {
+  return requests.find(
+    (existing) => existing.replaces_request_id === booking.id && isDecidable(existing),
+  )
+}
+
+/**
+ * Why the moved booking can't be reconfirmed for `moved`'s period, or null (AC3, AC4, AC6): the
+ * backend's order, from a replacement waiting to the event's other arrangements at the venue. The
+ * mock knows no venue hours or blocks, and leaves out setup and turnaround, as it does for an
+ * approval.
+ */
+function reconfirmRefusal(booking: BookingRequest, moved: BookingRequest, reason: string | null) {
+  const replacement = waitingReplacementOf(booking)
+  if (replacement !== undefined) {
+    return errorResponse(
+      409,
+      'conflict',
+      `Cannot reconfirm: replacement request #${String(replacement.id)} for this booking is still waiting for a decision.`,
+    )
+  }
+  const outside = outsideEventErrors(
+    booking,
+    Date.parse(moved.starts_at),
+    Date.parse(moved.ends_at),
+  )
+  if (Object.keys(outside).length > 0) {
+    return validationError(outside)
+  }
+  const capacity = venues.find((venue) => venue.id === booking.venue_id)?.capacity ?? 0
+  if (moved.expected_occupancy > capacity && reason === null) {
+    return validationError({ reason: [capacityReasonMessage(capacity, moved.expected_occupancy)] })
+  }
+  const others = requests.filter((existing) => existing.id !== booking.id)
+  const clash = others.find(
+    (existing) =>
+      (existing.status === 'approved' || existing.status === 'on_hold') &&
+      overlapsAtSameVenue(existing, moved),
+  )
+  if (clash !== undefined) {
+    return errorResponse(
+      409,
+      'conflict',
+      `Cannot reconfirm: booking #${String(clash.id)} holds this venue from ${noticeTime(Date.parse(clash.starts_at))} to ${noticeTime(Date.parse(clash.ends_at))}, setup and turnaround included.`,
+    )
+  }
+  const sameEvent = others.find(
+    (existing) =>
+      existing.event_id === booking.event_id &&
+      UNAVAILABILITY_FLAGGABLE_STATUSES.includes(existing.status) &&
+      overlapsAtSameVenue(existing, moved),
+  )
+  if (sameEvent !== undefined) {
+    return errorResponse(
+      409,
+      'conflict',
+      `Cannot reconfirm: the new period overlaps venue arrangement #${String(sameEvent.id)} of the same event at this venue.`,
+    )
+  }
+  return null
 }
 
 export const bookingHandlers: RequestHandler[] = [
@@ -1010,6 +1120,77 @@ export const bookingHandlers: RequestHandler[] = [
     // preparationErrors has just checked the status is one of the three.
     booking.preparation_status = body.status as BookingRequest['preparation_status']
     booking.preparation_notes = savedNotes(body)
+    return HttpResponse.json(booking)
+  }),
+
+  http.get(FLAGGED_PATH, ({ request }) => {
+    const refusal = checkVenueStaff(request)
+    return refusal ?? HttpResponse.json(flaggedBookings())
+  }),
+
+  // The backend's order: the booking, then the body, then the period's checks.
+  http.post(RECONFIRM_PATH, async ({ request, params }) => {
+    const refusal = checkVenueStaff(request)
+    if (refusal !== null) {
+      return refusal
+    }
+    const booking = flaggedOrRefusal(params.requestId)
+    if (booking instanceof Response) {
+      return booking
+    }
+    const body = await readBody(request)
+    const errors = reconfirmErrors(body)
+    if (Object.keys(errors).length > 0) {
+      return validationError(errors)
+    }
+    const reason = reasonOf(body)
+    const moved: BookingRequest = {
+      ...booking,
+      // reconfirmErrors has just checked both are date-times.
+      starts_at: String(body.starts_at),
+      ends_at: String(body.ends_at),
+      expected_occupancy: reconfirmationOf(booking, drifts.get(booking.id)).expected_occupancy,
+    }
+    const refused = reconfirmRefusal(booking, moved, reason)
+    if (refused !== null) {
+      return refused
+    }
+
+    Object.assign(booking, moved, { reassessment_flags: [] })
+    if (reason !== null) {
+      booking.decision_reason = reason
+    }
+    // Moved clear of every booking, a Conflicting request no longer clashes (AC10).
+    moveTo(booking, booking.status === 'conflicting' ? 'pending' : booking.status)
+    if (booking.status === 'approved') {
+      markClashingRequestsConflicting(booking)
+    }
+    drifts.delete(booking.id)
+    return HttpResponse.json(booking)
+  }),
+
+  http.post(REJECT_PATH, async ({ request, params }) => {
+    const refusal = checkVenueStaff(request)
+    if (refusal !== null) {
+      return refusal
+    }
+    const booking = flaggedOrRefusal(params.requestId)
+    if (booking instanceof Response) {
+      return booking
+    }
+    const body = await readBody(request)
+    const errors = rejectErrors(body)
+    if (Object.keys(errors).length > 0) {
+      return validationError(errors)
+    }
+    const reason = reasonOf(body)
+    if (reason === null) {
+      return validationError({ reason: [REJECTION_REASON_REQUIRED_MESSAGE] })
+    }
+
+    // Rejecting cancels an approved booking's venue booking: the venue is free again (AC5).
+    moveTo(booking, 'rejected')
+    booking.decision_reason = reason
     return HttpResponse.json(booking)
   }),
 ]

@@ -70,6 +70,11 @@ describe('SCRUM-84 booking mock: the approved bookings', () => {
 
     expect(listed.map((booking) => booking.id)).toEqual([
       SAFETY_APPROVED_BOOKING.id,
+      // The moved event's three approved ones, flagged after a change but still approved until
+      // Venue Staff reconfirm or reject them (SCRUM-59), by id.
+      MOCK_ARRANGEMENTS.movedHall.id,
+      MOCK_ARRANGEMENTS.movedStage.id,
+      MOCK_ARRANGEMENTS.movedAnnex.id,
       MOCK_ARRANGEMENTS.exhibitionHall.id,
       AWAITING_SAFETY_BOOKING.id,
       // Flagged as needing an alternative venue, but still approved until a replacement is (SCRUM-92).
