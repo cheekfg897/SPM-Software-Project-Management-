@@ -606,6 +606,11 @@ class SafetyChecklistSchema(Schema):
         return trimmed
 
 
+#: The fields the Safety Officer names what to rework in (SCRUM-99 AC2).
+NAMED_FOR_REWORK_FIELDS = ("flagged_arrangement_ids", "reopened_line_ids")
+NAMED_ON_APPROVAL_MESSAGE = "Only a rejection or a request for changes can name what to rework."
+
+
 class RecordSafetyOutcomeSchema(Schema):
     """Payload for ``POST .../<reference>/safety-outcome`` (SCRUM-98 AC1, AC2, AC4).
 
@@ -622,6 +627,10 @@ class RecordSafetyOutcomeSchema(Schema):
     )
     checklist = fields.Nested(SafetyChecklistSchema, required=True)
     reason = fields.String(allow_none=True, load_default=None, validate=not_blank)
+    #: What to rework (SCRUM-99 AC2): venue arrangements to flag and equipment lines to
+    #: reopen, by id; the service checks each is the event's.
+    flagged_arrangement_ids = fields.List(PositiveId("flagged_arrangement_ids"), load_default=list)
+    reopened_line_ids = fields.List(PositiveId("reopened_line_ids"), load_default=list)
 
     @validates_schema
     def _reason_unless_approved(self, data: dict[str, Any], **_: Any) -> None:
@@ -630,10 +639,31 @@ class RecordSafetyOutcomeSchema(Schema):
         if data.get("reason") is None:
             raise MarshmallowValidationError(SAFETY_REASON_REQUIRED_MESSAGE, field_name="reason")
 
+    @validates_schema
+    def _names_nothing_when_approving(self, data: dict[str, Any], **_: Any) -> None:
+        if data.get("outcome") is not SafetyOutcome.APPROVED:
+            return
+        errors = {}
+        for field in NAMED_FOR_REWORK_FIELDS:
+            if data.get(field):
+                errors[field] = [NAMED_ON_APPROVAL_MESSAGE]
+        if errors:
+            raise MarshmallowValidationError(errors)
+
     @post_load
     def _trim_reason(self, data: dict[str, Any], **_: Any) -> dict[str, Any]:
         if data["reason"] is not None:
             data["reason"] = data["reason"].strip()
+        return data
+
+    @post_load
+    def _each_named_once(self, data: dict[str, Any], **_: Any) -> dict[str, Any]:
+        for field in NAMED_FOR_REWORK_FIELDS:
+            unique_ids = []
+            for named_id in data[field]:
+                if named_id not in unique_ids:
+                    unique_ids.append(named_id)
+            data[field] = unique_ids
         return data
 
 
@@ -798,6 +828,8 @@ class SafetyReviewVenueSchema(Schema):
     (ADR-0009).
     """
 
+    #: The arrangement's id, which the Safety Officer names to flag it (SCRUM-99 AC2).
+    id = fields.Integer(dump_only=True)
     name = fields.String(dump_only=True)
     capacity = fields.Integer(dump_only=True)
     layouts = fields.List(fields.String(), dump_only=True)
@@ -810,6 +842,8 @@ class SafetyReviewVenueSchema(Schema):
 class SafetyReviewEquipmentSchema(Schema):
     """An equipment request and Technical Support's outcome, for the Safety Officer."""
 
+    #: The line's id, which the Safety Officer names to reopen it (SCRUM-99 AC2).
+    id = fields.Integer(dump_only=True)
     equipment_type_name = fields.String(dump_only=True)
     quantity = fields.Integer(dump_only=True)
     notes = fields.String(dump_only=True, allow_none=True)
@@ -914,6 +948,9 @@ class SafetyOutcomeSchema(Schema):
     reason = fields.String(dump_only=True, allow_none=True)
     recorded_by = fields.String(dump_only=True, allow_none=True)
     recorded_at = BusinessDateTime(dump_only=True)
+    #: How many arrangements it flagged and lines it reopened (SCRUM-99 AC4).
+    flagged_arrangement_count = fields.Integer(dump_only=True)
+    reopened_line_count = fields.Integer(dump_only=True)
 
 
 class RecordUnavailabilitySchema(Schema):

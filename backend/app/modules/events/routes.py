@@ -32,6 +32,7 @@ from app.modules.events.schemas import (
     OrganiserRecordSectionsSchema,
     RecordVenueArrangementSchema,
     RegistrationSettingsSchema,
+    SafetyOutcomeSchema,
     StaffEventRecordSectionsSchema,
     StaffEventRequestSchema,
     UnassignedRequestSchema,
@@ -88,6 +89,7 @@ _equipment_line_schema = EquipmentLineSchema()
 _equipment_line_with_outcome_schema = EquipmentLineWithOutcomeSchema()
 _organiser_record_sections_schema = OrganiserRecordSectionsSchema()
 _record_venue_arrangement_schema = RecordVenueArrangementSchema()
+_safety_outcome_schema = SafetyOutcomeSchema()
 _equipment_event_schema = EventRequestSchema(only=EQUIPMENT_EVENT_FIELDS)
 _equipment_awaiting_action_schema = EquipmentAwaitingActionSchema()
 _awaiting_safety_review_schema = EventAwaitingSafetyReviewSchema()
@@ -348,6 +350,8 @@ def get_my_request(reference: str) -> tuple[Response, int]:
         body["venue_arrangements"] = _record_venue_arrangement_schema.dump(
             record.venue_arrangements, many=True
         )
+        # What the Safety Officer asked to rework, if anything (SCRUM-99 AC4).
+        body["safety_outcome"] = _shown_or_none(_safety_outcome_schema, record.safety_outcome)
         return jsonify(body), 200
     organiser_record = get_event_record_for_organiser(g.current_user_id, reference)
     return jsonify(_organiser_event_record_body(organiser_record)), 200
