@@ -743,8 +743,7 @@ def test_a_booking_that_needs_an_alternative_venue_is_refused(
         _reconfirm(db_session, main_id, at(9, day=2), at(12, day=2))
 
     assert excinfo.value.message == (
-        "This booking needs an alternative venue, which a replacement settles, not a"
-        " reconfirmation."
+        "This booking needs an alternative venue, which only a replacement settles."
     )
 
 

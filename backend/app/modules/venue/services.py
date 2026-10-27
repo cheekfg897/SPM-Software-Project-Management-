@@ -59,6 +59,7 @@ from app.modules.venue.schemas import (
     DecideBookingRequestSchema,
     EditVenueSchema,
     FlaggedBookingAsShown,
+    FlaggedBookingReasonSchema,
     HoldBookingRequestSchema,
     RaiseBookingRequestSchema,
     Reconfirmation,
@@ -3072,7 +3073,7 @@ NOT_FLAGGED_AFTER_CHANGE_MESSAGE = (
 )
 #: AC1: a booking that needs an alternative venue is settled under SCRUM-92.
 SETTLED_BY_REPLACEMENT_MESSAGE = (
-    "This booking needs an alternative venue, which a replacement settles, not a reconfirmation."
+    "This booking needs an alternative venue, which only a replacement settles."
 )
 REPLACEMENT_PENDING_MESSAGE = (
     "Cannot reconfirm: replacement request #{id} for this booking is still waiting for a decision."
@@ -3472,6 +3473,65 @@ def reconfirm_flagged_booking(
         event,
         NotificationKind.VENUE_BOOKING_RECONFIRMED,
         detail=_reconfirmed_detail(arrangement, venue, previous_occupancy, reason),
+        session=session,
+    )
+    return show_booking_request(arrangement, event)
+
+
+def reject_flagged_booking(
+    request_id: int,
+    payload: Mapping[str, Any] | None,
+    *,
+    rejected_by: int,
+    session: Session | None = None,
+) -> BookingRequestAsShown:
+    """Reject a booking a change flagged, with a reason (SCRUM-59 AC5, ADR-0112).
+
+    Any flagged booking, not only one that is no longer suitable (decision 2). An
+    approved booking's venue booking is cancelled, so the venue is available for that
+    period again. The booking shows as Rejected, with the reason, and keeps its flags as
+    the record of why; it stays active, holding back Safety Review and confirmation,
+    until the coordinator withdraws or replaces it (SCRUM-93). A request Venue Staff
+    haven't decided is rejected as the queue rejects one (AC10). The event stays
+    Approved, its other bookings are untouched (AC8), and the history entry is saved in
+    the same commit. The event's current coordinator is told the reason in a second
+    (ADR-0015).
+
+    Args:
+        request_id: The booking request's own id, as the queue lists it.
+        payload: Decoded JSON body: ``reason``.
+        rejected_by: The Venue Staff user's id, taken from their token.
+        session: Database session; defaults to ``db.session``.
+
+    Returns:
+        The rejected booking, with its event's details beside it.
+
+    Raises:
+        NotFoundError: 404 — no such booking.
+        ConflictError: 409 — not flagged after a change, or needing an alternative
+            venue, which SCRUM-92 settles.
+        ValidationError: 400 — payload invalid, or no reason.
+    """
+    arrangement = _flagged_booking(request_id, session)
+    reason = load_or_raise(FlaggedBookingReasonSchema(), payload)["reason"]
+    if reason is None:
+        raise ValidationError(
+            "Invalid request.", details={"reason": [REJECTION_REASON_REQUIRED_MESSAGE]}
+        )
+
+    event = _event_of(arrangement, session)
+    own_booking = _own_booking(arrangement, session)
+    if own_booking is not None:
+        own_booking.status = BookingStatus.CANCELLED
+    arrangement.decision_reason = reason
+    _save_decision(
+        arrangement, BookingDecision.REJECTED, None, decided_by=rejected_by, session=session
+    )
+    _notify_about_booking(
+        [event.coordinator_id],
+        event,
+        NotificationKind.VENUE_BOOKING_REJECTED,
+        detail=reason,
         session=session,
     )
     return show_booking_request(arrangement, event)
