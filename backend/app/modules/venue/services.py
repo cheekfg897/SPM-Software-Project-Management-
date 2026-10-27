@@ -14,7 +14,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
 from flask import current_app
-from sqlalchemy import ColumnElement, and_, delete, not_, or_, select
+from sqlalchemy import ColumnElement, Select, and_, delete, not_, or_, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -62,6 +62,7 @@ from app.modules.venue.schemas import (
     HoldBookingRequestSchema,
     RaiseBookingRequestSchema,
     Reconfirmation,
+    ReconfirmBookingSchema,
     UnavailabilitySchema,
     UpdatePreparationSchema,
     VenueSearchSchema,
@@ -2079,18 +2080,25 @@ def _lock_venue(venue_id: int, session: Session | None) -> Venue:
     return resolve_session(session).scalars(locked).one()
 
 
+def _live_bookings_clashing(
+    venue: Venue, starts_at: datetime, ends_at: datetime
+) -> Select[tuple[Booking]]:
+    """SQL: the venue's bookings and live holds too close to the period, earliest first.
+
+    The rule an approval (ADR-0045) and a reconfirmation (SCRUM-59 AC3) both check.
+    """
+    return (
+        select(Booking)
+        .where(_booking_is_live(_utc_now()), _booking_clash(venue, starts_at, ends_at))
+        .order_by(Booking.start_time, Booking.id)
+    )
+
+
 def _clashing_booking(
     venue: Venue, request: VenueBookingRequest, session: Session | None
 ) -> Booking | None:
     """The earliest booking or live hold that ``request`` clashes with (ADR-0045)."""
-    earliest_clash = (
-        select(Booking)
-        .where(
-            _booking_is_live(_utc_now()),
-            _booking_clash(venue, request.starts_at, request.ends_at),
-        )
-        .order_by(Booking.start_time, Booking.id)
-    )
+    earliest_clash = _live_bookings_clashing(venue, request.starts_at, request.ends_at)
     return resolve_session(session).scalars(earliest_clash).first()
 
 
@@ -3059,6 +3067,44 @@ def list_booked_venues(event_id: int, *, session: Session | None = None) -> list
 # SCRUM-59 — Venue Staff reconfirm or reject a booking flagged after a change
 # --------------------------------------------------------------------------
 
+NOT_FLAGGED_AFTER_CHANGE_MESSAGE = (
+    "This booking is not flagged after a change, so there is nothing to reconfirm or reject."
+)
+#: AC1: a booking that needs an alternative venue is settled under SCRUM-92.
+SETTLED_BY_REPLACEMENT_MESSAGE = (
+    "This booking needs an alternative venue, which a replacement settles, not a reconfirmation."
+)
+REPLACEMENT_PENDING_MESSAGE = (
+    "Cannot reconfirm: replacement request #{id} for this booking is still waiting for a decision."
+)
+OUTSIDE_EVENT_MESSAGE = "The period must lie within the event's start and end: {starts} to {ends}."
+CAPACITY_REASON_REQUIRED_MESSAGE = (
+    "A reason is required because the venue's capacity of {capacity} is below the booking's"
+    " expected occupancy of {occupancy}."
+)
+RECONFIRM_BOOKING_CLASH_MESSAGE = (
+    "Cannot reconfirm: booking #{booking_id} holds this venue from {starts} to {ends},"
+    " setup and turnaround included."
+)
+RECONFIRM_BLOCK_MESSAGE = (
+    "Cannot reconfirm: the venue is blocked from {starts} to {ends} ({category})."
+)
+RECONFIRM_SAME_EVENT_MESSAGE = (
+    "Cannot reconfirm: the new period overlaps venue arrangement #{id} of the same event at"
+    " this venue."
+)
+#: What the coordinator is told (AC2, AC4, AC10, ADR-0112), in business time.
+RECONFIRMED_DETAIL = "Venue arrangement {id} at {venue} is reconfirmed for {starts} to {ends}."
+MOVED_DETAIL = (
+    "Venue arrangement {id} at {venue} moved to {starts} to {ends} and waits for Venue"
+    " Staff's decision."
+)
+OCCUPANCY_RAISED_DETAIL = " Expected occupancy is now {occupancy}."
+REASON_DETAIL = " Reason: {reason}"
+
+#: A period as two UTC instants, start then end.
+Span = tuple[datetime, datetime]
+
 
 def _reconfirmation_of(
     arrangement: VenueBookingRequest, event: EventForBooking, session: Session | None
@@ -3120,3 +3166,312 @@ def list_flagged_bookings(*, session: Session | None = None) -> list[FlaggedBook
         reconfirmation = _reconfirmation_of(arrangement, event, session)
         flagged.append(FlaggedBookingAsShown(shown=shown, reconfirm_with=reconfirmation))
     return flagged
+
+
+def _flagged_booking(request_id: int, session: Session | None) -> VenueBookingRequest:
+    """The booking ``request_id`` names, read under a row lock, if a change flagged it.
+
+    Locked as a decision locks its request (ADR-0045), so two Venue Staff can't settle
+    the same booking at once.
+
+    Raises:
+        NotFoundError: 404 — no such booking.
+        ConflictError: 409 — no open flag from a change (none, or the booking is no
+            longer live), or it needs an alternative venue, which SCRUM-92 settles.
+    """
+    arrangement = _locked_request(request_id, session)
+    if not arrangement.is_flagged_after_change:
+        raise ConflictError(NOT_FLAGGED_AFTER_CHANGE_MESSAGE)
+    if arrangement.needs_alternative_venue:
+        raise ConflictError(SETTLED_BY_REPLACEMENT_MESSAGE)
+    return arrangement
+
+
+def _refuse_while_replacement_pending(
+    arrangement: VenueBookingRequest, session: Session | None
+) -> None:
+    """Refuse to reconfirm while a replacement for the booking awaits a decision (AC6).
+
+    Raises:
+        ConflictError: 409 — a replacement is Pending, Conflicting or On Hold; the
+            message names it.
+    """
+    stmt = (
+        select(VenueBookingRequest)
+        .where(
+            VenueBookingRequest.replaces_request_id == arrangement.id,
+            VenueBookingRequest.status.in_(DECIDABLE_REQUEST_STATUSES),
+        )
+        .order_by(VenueBookingRequest.id)
+    )
+    replacement = resolve_session(session).scalars(stmt).first()
+    if replacement is not None:
+        raise ConflictError(REPLACEMENT_PENDING_MESSAGE.format(id=replacement.id))
+
+
+def _event_ends_at(event: EventForBooking) -> datetime:
+    """When the event ends, in UTC; the event stores it in business time.
+
+    An event past its draft always has an end date
+    (``ck_event_requests_details_unless_draft``), and only an approved one has bookings.
+    """
+    return as_utc(datetime.combine(event.end_date, event.end_time))  # type: ignore[arg-type]
+
+
+def _require_within_event(event: EventForBooking, period: Span) -> None:
+    """Refuse a period that doesn't lie within the event's start and end (AC2).
+
+    Raises:
+        ValidationError: 400 — on ``starts_at`` if it starts before the event, on
+            ``ends_at`` if it ends after it; the message gives the event's times.
+    """
+    starts_at, ends_at = period
+    event_starts_at = _event_starts_at(event)
+    event_ends_at = _event_ends_at(event)
+    message = OUTSIDE_EVENT_MESSAGE.format(
+        starts=_notice_time(event_starts_at), ends=_notice_time(event_ends_at)
+    )
+    details = {}
+    if starts_at < event_starts_at:
+        details["starts_at"] = [message]
+    if ends_at > event_ends_at:
+        details["ends_at"] = [message]
+    if details:
+        raise ValidationError("Invalid request.", details=details)
+
+
+def _require_reason_if_too_small(venue: Venue, occupancy: int, reason: str | None) -> None:
+    """A venue too small for the booking's occupancy needs a reason (AC4, AC9).
+
+    Capacity is the one thing checked; layout, facilities and accessibility are left to
+    Venue Staff's judgement.
+
+    Raises:
+        ValidationError: 400 — on ``reason``, naming the capacity and the occupancy.
+    """
+    if _capacity_shortfall(venue, occupancy) is None or reason is not None:
+        return
+    message = CAPACITY_REASON_REQUIRED_MESSAGE.format(capacity=venue.capacity, occupancy=occupancy)
+    raise ValidationError("Invalid request.", details={"reason": [message]})
+
+
+def _own_booking(arrangement: VenueBookingRequest, session: Session | None) -> Booking | None:
+    """The booking an approved arrangement holds its venue through, if it has one yet.
+
+    A Pending or Conflicting request has no booking of its own yet (AC10).
+    """
+    if arrangement.status is not BookingRequestStatus.APPROVED:
+        return None
+    return _booking_holding_venue(arrangement, session)
+
+
+def _refuse_booking_clash(
+    venue: Venue, period: Span, own_booking: Booking | None, session: Session | None
+) -> None:
+    """Refuse a period that runs into another booking or a live hold (AC3).
+
+    With the venue's setup and turnaround, as an approval checks (SCRUM-44). The
+    booking being reconfirmed never conflicts with itself.
+
+    Raises:
+        ConflictError: 409 — naming the booking and the period it holds the venue.
+    """
+    earliest_clash = _live_bookings_clashing(venue, *period)
+    if own_booking is not None:
+        earliest_clash = earliest_clash.where(Booking.id != own_booking.id)
+    booking = resolve_session(session).scalars(earliest_clash).first()
+    if booking is None:
+        return
+    held_from, held_until = _occupied(venue, booking.start_time, booking.end_time)
+    message = RECONFIRM_BOOKING_CLASH_MESSAGE.format(
+        booking_id=booking.id, starts=_notice_time(held_from), ends=_notice_time(held_until)
+    )
+    raise ConflictError(message, details={"booking_id": booking.id})
+
+
+def _refuse_block(venue: Venue, period: Span, session: Session | None) -> None:
+    """Refuse a period that, with setup and turnaround, overlaps a block (AC3).
+
+    The block itself isn't padded (ADR-0011, ADR-0016).
+
+    Raises:
+        ConflictError: 409 — naming the block's period and category.
+    """
+    held_from, held_until = _occupied(venue, *period)
+    stmt = (
+        select(VenueBlock)
+        .where(VenueBlock.venue_id == venue.id, _overlaps(VenueBlock, held_from, held_until))
+        .order_by(VenueBlock.start_time, VenueBlock.id)
+    )
+    blocked = resolve_session(session).scalars(stmt).first()
+    if blocked is None:
+        return
+    message = RECONFIRM_BLOCK_MESSAGE.format(
+        starts=_notice_time(blocked.start_time),
+        ends=_notice_time(blocked.end_time),
+        category=blocked.category.label,
+    )
+    raise ConflictError(message)
+
+
+def _refuse_same_event_overlap(
+    arrangement: VenueBookingRequest, venue: Venue, period: Span, session: Session | None
+) -> None:
+    """Refuse a period that overlaps another of the event's arrangements at the venue.
+
+    AC3. Any live one, padded as a booking is; an approved or held one is already
+    refused as a booking.
+
+    Raises:
+        ConflictError: 409 — naming the other arrangement.
+    """
+    window_start, window_end = _clash_window(venue, *period)
+    stmt = (
+        select(VenueBookingRequest)
+        .where(
+            VenueBookingRequest.event_id == arrangement.event_id,
+            VenueBookingRequest.venue_id == venue.id,
+            VenueBookingRequest.id != arrangement.id,
+            VenueBookingRequest.status.in_(UNAVAILABILITY_FLAGGABLE_STATUSES),
+            VenueBookingRequest.starts_at < window_end,
+            VenueBookingRequest.ends_at > window_start,
+        )
+        .order_by(VenueBookingRequest.starts_at, VenueBookingRequest.id)
+    )
+    other = resolve_session(session).scalars(stmt).first()
+    if other is not None:
+        raise ConflictError(RECONFIRM_SAME_EVENT_MESSAGE.format(id=other.id))
+
+
+def _flags_as_recorded(arrangement: VenueBookingRequest) -> list[dict[str, str]]:
+    """The arrangement's flags as its history entry records them, oldest first."""
+    recorded = []
+    for flag in arrangement.reassessment_flags:
+        recorded.append({"kind": flag.kind.value, "reason": flag.reason})
+    return recorded
+
+
+def _reconfirmed_detail(
+    arrangement: VenueBookingRequest, venue: Venue, previous_occupancy: int, reason: str | None
+) -> str:
+    """What the coordinator is told about the reconfirmation (AC2, AC4, AC10).
+
+    An undecided request was only moved, so its notice says it still waits for Venue
+    Staff. A raised occupancy and any reason are added.
+    """
+    template = RECONFIRMED_DETAIL
+    if arrangement.status is BookingRequestStatus.PENDING:
+        template = MOVED_DETAIL
+    detail = template.format(
+        id=arrangement.id,
+        venue=venue.name,
+        starts=_notice_time(arrangement.starts_at),
+        ends=_notice_time(arrangement.ends_at),
+    )
+    if arrangement.expected_occupancy != previous_occupancy:
+        detail += OCCUPANCY_RAISED_DETAIL.format(occupancy=arrangement.expected_occupancy)
+    if reason is not None:
+        detail += REASON_DETAIL.format(reason=reason)
+    return detail
+
+
+def reconfirm_flagged_booking(
+    request_id: int,
+    payload: Mapping[str, Any] | None,
+    *,
+    reconfirmed_by: int,
+    session: Session | None = None,
+) -> BookingRequestAsShown:
+    """Reconfirm a booking a change flagged, for its new period (SCRUM-59, ADR-0112).
+
+    The period, which the queue pre-fills, must lie within the event (AC2) and inside
+    the venue's hours, and, with the venue's setup and turnaround, clear of other
+    bookings, live holds, blocks and the event's other arrangements at the venue (AC3).
+    A booking that held everyone takes the new attendance as its occupancy (AC9), and a
+    venue too small for it needs a reason, which is kept as Venue Staff's reason (AC4).
+
+    The booking moves, with its venue booking, and its flags are cleared; preparation
+    details are kept, and the event's other bookings are untouched (AC8). A request
+    Venue Staff haven't decided only moves, and waits in the queue as Pending (AC10).
+    Other Pending requests the new period clashes with are marked Conflicting, as an
+    approval marks them (SCRUM-44). The history entry is saved in the same commit, and
+    the event's current coordinator is told in a second (ADR-0015).
+
+    Args:
+        request_id: The booking request's own id, as the queue lists it.
+        payload: Decoded JSON body: ``starts_at``, ``ends_at`` and an optional
+            ``reason``.
+        reconfirmed_by: The Venue Staff user's id, taken from their token.
+        session: Database session; defaults to ``db.session``.
+
+    Returns:
+        The reconfirmed booking, with its event's details beside it.
+
+    Raises:
+        NotFoundError: 404 — no such booking.
+        ConflictError: 409 — not flagged after a change, needing an alternative venue,
+            a replacement waiting for a decision (AC6), or a conflict, which is named.
+        ValidationError: 400 — payload invalid, a period outside the event or the
+            venue's hours, or no reason for a venue too small.
+    """
+    from app.modules.events import services as event_services  # circular at import time
+
+    arrangement = _flagged_booking(request_id, session)
+    data = load_or_raise(ReconfirmBookingSchema(), payload)
+    reason = data["reason"]
+    period = (data["starts_at"], data["ends_at"])
+    _refuse_while_replacement_pending(arrangement, session)
+    event = _event_of(arrangement, session)
+    _require_within_event(event, period)
+    venue = _lock_venue(arrangement.venue_id, session)
+    _require_within_opening_hours(venue, *period)
+    occupancy = _reconfirmation_of(arrangement, event, session).expected_occupancy
+    _require_reason_if_too_small(venue, occupancy, reason)
+    own_booking = _own_booking(arrangement, session)
+    _refuse_booking_clash(venue, period, own_booking, session)
+    _refuse_block(venue, period, session)
+    _refuse_same_event_overlap(arrangement, venue, period, session)
+
+    details = {
+        "venue_booking_request_id": arrangement.id,
+        "venue_id": arrangement.venue_id,
+        "previous_starts_at": as_utc(arrangement.starts_at).isoformat(),
+        "previous_ends_at": as_utc(arrangement.ends_at).isoformat(),
+        "previous_expected_occupancy": arrangement.expected_occupancy,
+        "flags": _flags_as_recorded(arrangement),
+    }
+    previous_occupancy = arrangement.expected_occupancy
+    arrangement.starts_at, arrangement.ends_at = period
+    if own_booking is not None:
+        own_booking.start_time, own_booking.end_time = period
+    arrangement.expected_occupancy = occupancy
+    if reason is not None:
+        arrangement.decision_reason = reason
+    # Moved clear of every booking, a Conflicting request no longer clashes (AC10).
+    if arrangement.status is BookingRequestStatus.CONFLICTING:
+        arrangement.status = BookingRequestStatus.PENDING
+    arrangement.reassessment_flags.clear()
+    if arrangement.status is BookingRequestStatus.APPROVED:
+        _mark_clashing_requests_conflicting(arrangement, session)
+    event_services.record_venue_booking_reconfirmed(
+        arrangement.event_id,
+        actor_id=reconfirmed_by,
+        details={
+            **details,
+            "status": arrangement.status.value,
+            "starts_at": as_utc(arrangement.starts_at).isoformat(),
+            "ends_at": as_utc(arrangement.ends_at).isoformat(),
+            "expected_occupancy": arrangement.expected_occupancy,
+            "reason": reason,
+        },
+        session=session,
+    )
+    resolve_session(session).commit()
+    _notify_about_booking(
+        [event.coordinator_id],
+        event,
+        NotificationKind.VENUE_BOOKING_RECONFIRMED,
+        detail=_reconfirmed_detail(arrangement, venue, previous_occupancy, reason),
+        session=session,
+    )
+    return show_booking_request(arrangement, event)

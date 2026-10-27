@@ -37,9 +37,17 @@ REFUSED_ROLES = sorted(set(Role) - {Role.VENUE_STAFF}, key=lambda role: role.val
 
 REQUEST_ID = 11
 FLAGGED_PATH = "/api/venues/booking-requests/flagged"
+RECONFIRM_PATH = f"/api/venues/booking-requests/{REQUEST_ID}/reconfirm"
 # (endpoint, HTTP method, path, view kwargs, the service function it calls)
 ROUTES = [
     ("venue.list_flagged_bookings", "GET", FLAGGED_PATH, {}, "list_flagged_bookings"),
+    (
+        "venue.reconfirm_flagged_booking",
+        "POST",
+        RECONFIRM_PATH,
+        {"request_id": REQUEST_ID},
+        "reconfirm_flagged_booking",
+    ),
 ]
 ROUTE_IDS = [route[0] for route in ROUTES]
 
@@ -59,7 +67,10 @@ def flagged(shown: BookingRequestAsShown) -> FlaggedBookingAsShown:
 def mock_services(
     replace_services: ReplaceServices, flagged: FlaggedBookingAsShown
 ) -> dict[str, MagicMock]:
-    return replace_services(services, {"list_flagged_bookings": [flagged]})
+    return replace_services(
+        services,
+        {"list_flagged_bookings": [flagged], "reconfirm_flagged_booking": flagged.shown},
+    )
 
 
 @pytest.fixture()
@@ -133,3 +144,24 @@ def test_the_flagged_list_returns_200_with_each_booking_and_its_reconfirmation(
         "expected_occupancy": 90,
     }
     mock_services["list_flagged_bookings"].assert_called_once_with()
+
+
+def test_reconfirming_passes_the_body_and_the_caller_on_and_returns_200(
+    call_route: CallRoute, mock_services: dict[str, MagicMock], venue_staff_token: str
+) -> None:
+    body = {"starts_at": "2026-11-02T09:00:00+08:00", "ends_at": "2026-11-02T12:00:00+08:00"}
+
+    response, status = call_route(
+        "venue.reconfirm_flagged_booking",
+        "POST",
+        RECONFIRM_PATH,
+        {"request_id": REQUEST_ID},
+        venue_staff_token,
+        body=body,
+    )
+
+    assert status == 200
+    assert response.get_json()["id"] == REQUEST_ID
+    mock_services["reconfirm_flagged_booking"].assert_called_once_with(
+        REQUEST_ID, body, reconfirmed_by=VENUE_STAFF_ID
+    )
