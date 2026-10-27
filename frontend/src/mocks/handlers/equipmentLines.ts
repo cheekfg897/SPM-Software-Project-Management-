@@ -28,6 +28,12 @@ import {
 } from './equipmentFixtures'
 import type { MockEquipmentLine, MockEquipmentLineStatus, MockEvent } from './equipmentFixtures'
 import {
+  hasReservationsToReassess,
+  markReservationsOfType,
+  refusalToSettle,
+  settleReassessment,
+} from './equipmentReservations'
+import {
   EQUIPMENT_TYPE_ID_RANGE_MESSAGE,
   MISSING_MESSAGE,
   positiveWholeNumberError,
@@ -98,11 +104,19 @@ function equipmentTypeName(equipmentTypeId: number): string {
   return type?.name ?? `Equipment type ${String(equipmentTypeId)}`
 }
 
-/** How many units of the type the event asks for: its line's quantity, or 0 without one. */
-export function requestedQuantity(reference: string, equipmentTypeId: number): number {
-  const line = linesOfEvent(reference).find(
+/** The event's line of the type, or undefined: one line per type (ADR-0019). */
+export function lineOfType(
+  reference: string,
+  equipmentTypeId: number,
+): MockEquipmentLine | undefined {
+  return linesOfEvent(reference).find(
     (candidate) => candidate.equipment_type_id === equipmentTypeId,
   )
+}
+
+/** How many units of the type the event asks for: its line's quantity, or 0 without one. */
+export function requestedQuantity(reference: string, equipmentTypeId: number): number {
+  const line = lineOfType(reference, equipmentTypeId)
   return line === undefined ? 0 : line.quantity
 }
 
@@ -450,7 +464,12 @@ export const equipmentLineHandlers: RequestHandler[] = [
       return duplicateLine()
     }
 
-    Object.assign(line, asksForNewEquipment(line, changed) ? withoutOutcome(changed) : changed)
+    const asksForNew = asksForNewEquipment(line, changed)
+    // A new quantity on the same type marks its reservations for reassessment (SCRUM-60 AC8).
+    if (asksForNew && changed.equipment_type_id === line.equipment_type_id) {
+      markReservationsOfType(event.reference, line.equipment_type_id)
+    }
+    Object.assign(line, asksForNew ? withoutOutcome(changed) : changed)
     return HttpResponse.json(savedLine(line))
   }),
 
@@ -471,9 +490,10 @@ export const equipmentLineHandlers: RequestHandler[] = [
     return new HttpResponse(null, { status: 204 })
   }),
 
-  // Technical Support only. The body, the event, whether it will still run, the line, then what
-  // the line asked for. Every call overwrites the outcome, so a revision is recording again
-  // (SCRUM-48 AC6), and it withdraws a safety approval (AC7).
+  // Technical Support only. The body, the event, whether it will still run, the line, what the
+  // line asked for, then what its marked reservations can keep. Every call overwrites the outcome,
+  // so a revision is recording again (SCRUM-48 AC6), and it withdraws a safety approval (AC7). It
+  // settles the line's marked reservations, which also withdraws one (SCRUM-60 AC4, AC10).
   http.post(OUTCOME_PATH, async ({ request, params }) => {
     const caller = callerOrRefusal(request, OUTCOME_RECORDER_ROLES)
     if (caller instanceof Response) {
@@ -504,6 +524,10 @@ export const equipmentLineHandlers: RequestHandler[] = [
     if (refused !== undefined) {
       return refused
     }
+    const cannotMove = refusalToSettle(event.reference, line.equipment_type_id, provided)
+    if (cannotMove !== undefined) {
+      return errorResponse(409, 'reservation_cannot_move', cannotMove)
+    }
 
     const isRevision = line.provided_quantity !== null
     const status = outcomeStatus(line.quantity, provided)
@@ -516,6 +540,10 @@ export const equipmentLineHandlers: RequestHandler[] = [
     // A revision withdraws the event's safety approval (AC7); this mock's event in Safety Review
     // is still waiting for the Safety Officer, so it has none to lose.
     if (isRevision) {
+      withdrawSafetyApproval(event.reference)
+    }
+    if (hasReservationsToReassess(event.reference, line.equipment_type_id)) {
+      settleReassessment(event.reference, line.equipment_type_id, provided)
       withdrawSafetyApproval(event.reference)
     }
     return HttpResponse.json(shownLine(line))

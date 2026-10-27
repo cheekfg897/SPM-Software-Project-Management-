@@ -18,6 +18,9 @@ function linesPath(reference: string): string {
 const EQUIPMENT_PATHS = {
   AVAILABILITY: (reference: string) => `${eventPath(reference)}/availability`,
   RESERVATIONS: (reference: string) => `${eventPath(reference)}/reservations`,
+  REASSESSMENTS: (reference: string) => `${eventPath(reference)}/reassessments`,
+  CONFIRM_REASSESSMENT: (reference: string, equipmentTypeId: number) =>
+    `${eventPath(reference)}/reassessments/${equipmentTypeId}/confirm`,
   LINES: linesPath,
   LINE: (reference: string, lineId: number) => `${linesPath(reference)}/${lineId}`,
   OUTCOME: (reference: string, lineId: number) => `${linesPath(reference)}/${lineId}/outcome`,
@@ -53,6 +56,24 @@ export interface EquipmentReservation {
   /** Technical Support's progress in preparing the units, and their notes (SCRUM-85). */
   preparation_status: PreparationStatus
   preparation_notes: string | null
+}
+
+/**
+ * One equipment type's reservations marked for reassessment after the event's date, time or line
+ * quantity changed (SCRUM-60 AC2, ADR-0114): what they hold, still for their own period, against
+ * what is free for the event's period now. The shortfall is what that period can't give.
+ */
+export interface ReservationReassessment {
+  equipment_type_id: number
+  equipment_type_name: string
+  /** The marked reservations, oldest first, each with the period it still holds. */
+  reservations: EquipmentReservation[]
+  reserved_quantity: number
+  /** The event's period now, which confirming moves them to (ISO date-times with an offset). */
+  starts_at: string
+  ends_at: string
+  available: number
+  shortfall: number
 }
 
 export interface ReserveEquipmentBody {
@@ -134,6 +155,8 @@ export const equipmentKeys = {
   event: (reference: string) => [...equipmentKeys.all, 'event', reference] as const,
   availability: (reference: string) => [...equipmentKeys.event(reference), 'availability'] as const,
   reservations: (reference: string) => [...equipmentKeys.event(reference), 'reservations'] as const,
+  reassessments: (reference: string) =>
+    [...equipmentKeys.event(reference), 'reassessments'] as const,
   /** A coordinator reads only their own event's lines, so the answer depends on who asks. */
   lines: (reference: string, viewerId: number | null) =>
     [...equipmentKeys.event(reference), 'lines', viewerId] as const,
@@ -145,6 +168,25 @@ export function fetchEventAvailability(reference: string): Promise<EquipmentAvai
 
 export function fetchEventReservations(reference: string): Promise<EquipmentReservation[]> {
   return apiRequest<EquipmentReservation[]>(EQUIPMENT_PATHS.RESERVATIONS(reference))
+}
+
+/** What a change left to reassess of the event's reservations (SCRUM-60). */
+export function fetchEventReassessments(reference: string): Promise<ReservationReassessment[]> {
+  return apiRequest<ReservationReassessment[]>(EQUIPMENT_PATHS.REASSESSMENTS(reference))
+}
+
+/**
+ * Confirm one type's marked reservations for the event's period now (SCRUM-60 AC3). Technical
+ * Support Staff only. Answers the type's reservations as they now stand.
+ */
+export function confirmReassessment(
+  reference: string,
+  equipmentTypeId: number,
+): Promise<EquipmentReservation[]> {
+  return apiRequest<EquipmentReservation[]>(
+    EQUIPMENT_PATHS.CONFIRM_REASSESSMENT(reference, equipmentTypeId),
+    { method: 'POST' },
+  )
 }
 
 /** Reserve units of one equipment type for the event. Technical Support Staff only. */

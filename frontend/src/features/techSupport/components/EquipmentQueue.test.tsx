@@ -49,6 +49,7 @@ function queued(name: string, daysRemaining: number, typeId = 1): EquipmentAwait
       },
     ],
     days_remaining: daysRemaining,
+    equipment_type_ids_to_reassess: [],
   }
 }
 
@@ -72,6 +73,7 @@ describe('SCRUM-38 Staff home: the equipment awaiting action, for Technical Supp
     expect(headings.map((heading) => heading.textContent)).toEqual([
       'Sunrise Wellness Walk',
       'Evening Product Showcase',
+      'Leadership Offsite',
       'Data Science Meetup',
       'Charity Fun Run',
       'Board Breakfast Briefing',

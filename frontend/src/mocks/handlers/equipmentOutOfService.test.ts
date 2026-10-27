@@ -10,6 +10,7 @@ import type { MockAccount } from '../fixtures/accounts'
 import {
   MOCK_BACK_IN_SERVICE_AT,
   MOCK_OPEN_EVENT_REFERENCE,
+  MOCK_OTHER_COORDINATORS_EVENT_REFERENCE,
   MOCK_OUT_OF_SERVICE_RECORDED_AT,
   mockStatusEventReference,
 } from './equipmentFixtures'
@@ -115,6 +116,15 @@ function reserveFor(reference: string, equipmentTypeId: number, quantity: number
 
 function reserve(equipmentTypeId: number, quantity: number) {
   return reserveFor(MOCK_OPEN_EVENT_REFERENCE, equipmentTypeId, quantity)
+}
+
+/**
+ * Reserve every microphone: the two the Confirmed event's line asks for, and the other ten for an
+ * event with no microphone line, since a reservation can't pass its line (SCRUM-60 AC9).
+ */
+async function reserveEveryMicrophoneWithTheConfirmedEvent() {
+  await reserveFor(CONFIRMED_EVENT_REFERENCE, MICROPHONE_ID, 2)
+  await reserveFor(MOCK_OTHER_COORDINATORS_EVENT_REFERENCE, MICROPHONE_ID, 10)
 }
 
 /** Record that preparing the reservation has started, which needs the event's safety approval. */
@@ -329,7 +339,7 @@ describe('SCRUM-47 equipment mock: availability and reservations', () => {
 
   it("leaves another event's flagged reservation off this event's list", async () => {
     await reserve(PROJECTOR_ID, 2)
-    await reserveFor(CONFIRMED_EVENT_REFERENCE, MICROPHONE_ID, 12)
+    await reserveEveryMicrophoneWithTheConfirmedEvent()
 
     await takeOut(MICROPHONE_ID, { quantity: 1, reason: 'damaged' })
 
@@ -362,7 +372,7 @@ describe('SCRUM-47 equipment mock: a reservation left short needs a new safety c
 
   it('keeps the approval while the type has units to spare, or only another type is left short', async () => {
     const projectors = await reserve(PROJECTOR_ID, 2)
-    await reserveFor(CONFIRMED_EVENT_REFERENCE, MICROPHONE_ID, 12)
+    await reserveEveryMicrophoneWithTheConfirmedEvent()
 
     await takeOut(PROJECTOR_ID, { quantity: 4, reason: 'damaged' })
     await takeOut(MICROPHONE_ID, { quantity: 1, reason: 'damaged' })
@@ -373,7 +383,7 @@ describe('SCRUM-47 equipment mock: a reservation left short needs a new safety c
   })
 
   it('sends a Confirmed event it leaves short back to Approved, so its coordinator can plan again', async () => {
-    await reserveFor(CONFIRMED_EVENT_REFERENCE, MICROPHONE_ID, 12)
+    await reserveEveryMicrophoneWithTheConfirmedEvent()
     signInAs(MOCK_ACCOUNTS.coordinator)
     await expect(addEquipmentLine(CONFIRMED_EVENT_REFERENCE, LECTERN_LINE)).rejects.toMatchObject({
       status: 409,

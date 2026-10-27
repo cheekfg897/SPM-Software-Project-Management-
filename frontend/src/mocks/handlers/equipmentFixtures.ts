@@ -14,6 +14,11 @@ export const MOCK_OPEN_EVENT_REFERENCE = 'EVR-MOCK0001'
 export const MOCK_CLOSED_EVENT_REFERENCE = 'EVR-MOCK0002'
 /** An event assigned to a coordinator other than the mock one, who is refused it. */
 export const MOCK_OTHER_COORDINATORS_EVENT_REFERENCE = 'EVR-MOCK0003'
+/**
+ * The mock coordinator's event whose date has changed since its equipment was reserved, so its
+ * reservations await reassessment (SCRUM-60, ADR-0114).
+ */
+export const MOCK_MOVED_EVENT_REFERENCE = 'EVR-MOCK0004'
 /** That other coordinator. No mock account signs in as them. */
 const OTHER_COORDINATOR_ID = 15
 /**
@@ -21,11 +26,22 @@ const OTHER_COORDINATOR_ID = 15
  * (SCRUM-85 AC5). The open event stands in for one; every other event, including the one in
  * Safety Review, is still waiting for that approval.
  */
-export const MOCK_SAFETY_APPROVED_EVENT_REFERENCES: readonly string[] = [MOCK_OPEN_EVENT_REFERENCE]
+export const MOCK_SAFETY_APPROVED_EVENT_REFERENCES: readonly string[] = [
+  MOCK_OPEN_EVENT_REFERENCE,
+  // Approved again after its date changed, as a change request could leave it (SCRUM-57), so
+  // settling its reservations has an approval to withdraw (SCRUM-60 AC10).
+  MOCK_MOVED_EVENT_REFERENCE,
+]
 
 export const MOCK_EVENT_PERIOD = {
   starts_at: '2026-10-12T19:30:00+08:00',
   ends_at: '2026-10-12T22:00:00+08:00',
+}
+
+/** The moved event's old period, which its reservations still hold (SCRUM-60 AC6). */
+export const MOCK_OLD_EVENT_PERIOD = {
+  starts_at: '2026-10-09T19:30:00+08:00',
+  ends_at: '2026-10-09T22:00:00+08:00',
 }
 
 /** When the mock records any outcome (SCRUM-48): a fixed moment, so tests can name it. */
@@ -133,6 +149,12 @@ export const MOCK_EVENTS: readonly MockEvent[] = [
     status: EVENT_REQUEST_STATUS.SUBMITTED,
     coordinator_id: OTHER_COORDINATOR_ID,
   },
+  {
+    reference: MOCK_MOVED_EVENT_REFERENCE,
+    name: 'Leadership Offsite',
+    status: EVENT_REQUEST_STATUS.APPROVED,
+    coordinator_id: MOCK_ACCOUNTS.coordinator.id,
+  },
   ...eventsInEveryStatus(),
 ]
 
@@ -237,9 +259,42 @@ const PARTNER_SUMMIT_LINES: readonly MockEquipmentLine[] = [
 ]
 
 /**
+ * The moved event's lines (SCRUM-60): three projectors provided in full, whose reservation awaits
+ * reassessment, and two lecterns, partially provided until the date change reopened the line
+ * (AC12), whose one reserved lectern is still held (ADR-0114 decision 2).
+ */
+const MOVED_EVENT_LINES: readonly MockEquipmentLine[] = [
+  {
+    id: 71,
+    event_reference: MOCK_MOVED_EVENT_REFERENCE,
+    equipment_type_id: 1,
+    quantity: 3,
+    notes: null,
+    status: 'fulfilled',
+    provided_quantity: 3,
+    outcome_note: null,
+    reviewed_by: MOCK_ACCOUNTS.technicalSupport.full_name,
+    reviewed_at: '2026-10-02T10:00:00+08:00',
+  },
+  {
+    id: 72,
+    event_reference: MOCK_MOVED_EVENT_REFERENCE,
+    equipment_type_id: 3,
+    quantity: 2,
+    notes: null,
+    status: 'requested',
+    provided_quantity: null,
+    outcome_note: null,
+    reviewed_by: null,
+    reviewed_at: null,
+  },
+]
+
+/**
  * The open event's lines. Projectors first, though "Microphone" sorts before it: the backend
  * keeps the order the lines were added. The microphones have been reviewed and will all be
- * provided. Then one line on each event in another status, and the Partner Summit's.
+ * provided. Then one line on each event in another status, the Partner Summit's and the moved
+ * event's.
  */
 export const MOCK_EQUIPMENT_LINES: readonly MockEquipmentLine[] = [
   {
@@ -268,4 +323,56 @@ export const MOCK_EQUIPMENT_LINES: readonly MockEquipmentLine[] = [
   },
   ...linesOnStatusEvents(),
   ...PARTNER_SUMMIT_LINES,
+  ...MOVED_EVENT_LINES,
+]
+
+/** A reservation the mock starts with: units held for an event (SCRUM-46). */
+export interface MockSeededReservation {
+  id: number
+  event_reference: string
+  equipment_type_id: number
+  equipment_type_name: string
+  quantity: number
+  starts_at: string
+  ends_at: string
+  reserved_by: string
+  created_at: string
+  /** As config/preparation's PreparationStatus, written out: that file imports with `@/`. */
+  preparation_status: 'not_started' | 'in_progress' | 'ready'
+  preparation_notes: string | null
+  /** A change marked it for Technical Support to reassess (SCRUM-60 AC1, AC8). */
+  needs_reassessment: boolean
+}
+
+/**
+ * The moved event's reservations, still held for its old period and marked for reassessment
+ * (SCRUM-60 AC1, AC6). Their ids are past any the mock gives a new reservation in a test.
+ */
+export const MOCK_SEEDED_RESERVATIONS: readonly MockSeededReservation[] = [
+  {
+    id: 901,
+    event_reference: MOCK_MOVED_EVENT_REFERENCE,
+    equipment_type_id: 1,
+    equipment_type_name: 'Projector',
+    quantity: 3,
+    ...MOCK_OLD_EVENT_PERIOD,
+    reserved_by: MOCK_ACCOUNTS.technicalSupport.full_name,
+    created_at: '2026-10-02T09:00:00+08:00',
+    preparation_status: 'in_progress',
+    preparation_notes: 'Bulbs checked.',
+    needs_reassessment: true,
+  },
+  {
+    id: 902,
+    event_reference: MOCK_MOVED_EVENT_REFERENCE,
+    equipment_type_id: 3,
+    equipment_type_name: 'Lectern',
+    quantity: 1,
+    ...MOCK_OLD_EVENT_PERIOD,
+    reserved_by: MOCK_ACCOUNTS.technicalSupport.full_name,
+    created_at: '2026-10-02T09:05:00+08:00',
+    preparation_status: 'not_started',
+    preparation_notes: null,
+    needs_reassessment: true,
+  },
 ]
