@@ -37,6 +37,12 @@ const UNKNOWN_OUTCOME_MESSAGE = 'Outcome must be approved, rejected or changes_r
 const NOT_AN_OBJECT_FIELD_MESSAGE = 'Invalid input type.'
 
 const OUTCOMES: readonly unknown[] = Object.values(SAFETY_OUTCOME)
+/** The fields the officer names what to rework in (SCRUM-99 AC2, NAMED_FOR_REWORK_FIELDS). */
+const NAMED_FIELDS = ['flagged_arrangement_ids', 'reopened_line_ids'] as const
+const NAMED_ON_APPROVAL_MESSAGE =
+  'Only a rejection or a request for changes can name what to rework.'
+const NOT_A_LIST_MESSAGE = 'Not a valid list.'
+const NOT_AN_INTEGER_MESSAGE = 'Not a valid integer.'
 
 let events: MockSafetyEvent[] = []
 
@@ -130,9 +136,47 @@ function reasonError(reason: unknown): string | null {
   return textFieldError(reason)
 }
 
+/** PositiveId's messages for each id in a list of named ids, by place, or null when all are fine. */
+function namedIdsErrors(field: string, value: unknown): string[] | FieldErrors | null {
+  if (value === undefined) {
+    return null
+  }
+  if (value === null) {
+    return [NULL_MESSAGE]
+  }
+  if (!Array.isArray(value)) {
+    return [NOT_A_LIST_MESSAGE]
+  }
+  const errors: FieldErrors = {}
+  value.forEach((id: unknown, index) => {
+    if (typeof id !== 'number' || !Number.isInteger(id)) {
+      errors[index] = [NOT_AN_INTEGER_MESSAGE]
+    } else if (id < 1) {
+      errors[index] = [`${field} must be a positive number.`]
+    }
+  })
+  return Object.keys(errors).length > 0 ? errors : null
+}
+
+/** The ids named in `field`, each once, in the order sent; none when left out. */
+function namedIds(body: Record<string, unknown>, field: (typeof NAMED_FIELDS)[number]): number[] {
+  const ids: number[] = []
+  const sent = body[field]
+  if (!Array.isArray(sent)) {
+    return ids
+  }
+  for (const id of sent) {
+    if (typeof id === 'number' && !ids.includes(id)) {
+      ids.push(id)
+    }
+  }
+  return ids
+}
+
 /**
  * RecordSafetyOutcomeSchema's answer to the body: every field's messages, and only when the
- * fields are all valid, the reason a Reject or Request Changes needs.
+ * fields are all valid, the reason a Reject or Request Changes needs, and that an approval names
+ * nothing to rework (SCRUM-99 AC2).
  */
 function bodyErrors(body: Record<string, unknown>): Record<string, string[] | FieldErrors> {
   const errors: Record<string, string[] | FieldErrors> = {}
@@ -148,12 +192,54 @@ function bodyErrors(body: Record<string, unknown>): Record<string, string[] | Fi
   if (reason !== null) {
     errors.reason = [reason]
   }
+  for (const field of NAMED_FIELDS) {
+    const named = namedIdsErrors(field, body[field])
+    if (named !== null) {
+      errors[field] = named
+    }
+  }
   const fieldsAreValid = Object.keys(errors).length === 0
   const needsReason = body.outcome !== SAFETY_OUTCOME.APPROVED
   if (fieldsAreValid && needsReason && (body.reason === undefined || body.reason === null)) {
     errors.reason = [REASON_REQUIRED_MESSAGE]
   }
+  if (fieldsAreValid && !needsReason) {
+    for (const field of NAMED_FIELDS) {
+      if (namedIds(body, field).length > 0) {
+        errors[field] = [NAMED_ON_APPROVAL_MESSAGE]
+      }
+    }
+  }
   return errors
+}
+
+/**
+ * The backend's refusal of a named line that isn't one of the event's, then of a named arrangement
+ * that isn't one of its approved ones (SCRUM-99 AC2), or null. The mock's venues are all approved,
+ * as an event's must be to be in Safety Review.
+ */
+function unknownNamedErrors(found: MockSafetyEvent, body: Record<string, unknown>) {
+  const lineIds = found.equipment.map((line) => line.id)
+  const unknownLines = namedIds(body, 'reopened_line_ids').filter((id) => !lineIds.includes(id))
+  if (unknownLines.length > 0) {
+    return {
+      reopened_line_ids: unknownLines.map(
+        (id) => `Equipment line ${String(id)} is not one of this event's lines.`,
+      ),
+    }
+  }
+  const venueIds = found.venues.map((venue) => venue.id)
+  const unknownVenues = namedIds(body, 'flagged_arrangement_ids').filter(
+    (id) => !venueIds.includes(id),
+  )
+  if (unknownVenues.length > 0) {
+    return {
+      flagged_arrangement_ids: unknownVenues.map(
+        (id) => `Venue arrangement ${String(id)} is not one of this event's approved arrangements.`,
+      ),
+    }
+  }
+  return null
 }
 
 /** The checklist as the backend saves it: each item's note, trimmed. Checked by bodyErrors first. */
@@ -205,6 +291,11 @@ export const safetyHandlers: RequestHandler[] = [
       return errorResponse(409, 'safety_outcome_not_allowed', ALREADY_APPROVED_MESSAGE)
     }
 
+    const unknownNamed = unknownNamedErrors(found, body)
+    if (unknownNamed !== null) {
+      return validationError(unknownNamed)
+    }
+
     const outcome = body.outcome as SafetyOutcome // checked against the outcomes above
     const approved = outcome === SAFETY_OUTCOME.APPROVED
     found.safety_approved = approved
@@ -215,6 +306,10 @@ export const safetyHandlers: RequestHandler[] = [
       reason: typeof body.reason === 'string' ? body.reason.trim() : null,
       recorded_by: accountForRequest(request)?.full_name ?? null,
       recorded_at: MOCK_NOW,
+      // The flags and reopened lines themselves are the booking and equipment mocks', which keep
+      // their own events (ADR-0113); the record counts what was named (SCRUM-99 AC4).
+      flagged_arrangement_count: namedIds(body, 'flagged_arrangement_ids').length,
+      reopened_line_count: namedIds(body, 'reopened_line_ids').length,
     }
     found.event.status = approved ? 'safety_review' : 'approved'
     // Reduced on purpose: the real route sends the whole EventRequestSchema dump, which

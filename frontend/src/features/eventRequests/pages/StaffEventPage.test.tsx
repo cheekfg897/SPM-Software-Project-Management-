@@ -215,7 +215,12 @@ describe('SCRUM-24 AC9, AC10 the read-only staff record', () => {
 
     const safety = await section('Safety check')
     expect(within(safety).getByText('Changes requested')).toBeInTheDocument()
-    expect(within(safety).getByText('Add a second fire exit to the plan.')).toBeInTheDocument()
+    // It named nothing to rework, so the reason sits on the event itself (SCRUM-99 AC4).
+    expect(
+      within(safety).getByText(
+        'Flagged by the Safety Officer: Add a second fire exit to the plan.',
+      ),
+    ).toBeInTheDocument()
   })
 
   it("shows the coordinator's decision and the clarification exchange, as their record does", async () => {
