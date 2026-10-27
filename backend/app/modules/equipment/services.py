@@ -183,6 +183,43 @@ def _reserved_quantity(
     return session.scalar(statement)
 
 
+def _event_reserved_quantity(event_id: int, equipment_type_id: int, session: Session) -> int:
+    """Units of the type the event's reservations hold between them, whatever period."""
+    statement = select(func.coalesce(func.sum(EquipmentReservation.quantity), 0)).where(
+        EquipmentReservation.event_id == event_id,
+        EquipmentReservation.equipment_type_id == equipment_type_id,
+    )
+    return session.scalar(statement)
+
+
+def _check_within_the_line(
+    need: events_services.EventEquipmentNeed,
+    equipment_type_id: int,
+    quantity: int,
+    session: Session,
+) -> None:
+    """Refuse a reservation that would hold more than the event's line asks for.
+
+    SCRUM-60 AC9: the event's reservations of a type are its line's (ADR-0092), so a
+    new one may only make up what the line still lacks. One already held may be larger
+    than a lowered line until Technical Support act; nothing more is added to it. A
+    type the event has no line for is not limited here (ADR-0114).
+
+    Raises:
+        ValidationError: 400 on ``quantity`` — with what the line asks for and what is
+            already reserved.
+    """
+    line_quantity = need.requested.get(equipment_type_id)
+    if line_quantity is None:
+        return
+    already = _event_reserved_quantity(need.event_id, equipment_type_id, session)
+    if already + quantity > line_quantity:
+        message = (
+            f"The event asks for {line_quantity} of these, and {already} are already reserved."
+        )
+        raise ValidationError(message, details={"quantity": [message]})
+
+
 def _out_of_service_quantity(equipment_type_id: int, session: Session) -> int:
     """Units of the type recorded as damaged or under maintenance and not yet back."""
     statement = select(func.coalesce(func.sum(EquipmentOutOfService.quantity), 0)).where(
@@ -921,7 +958,8 @@ def reserve_equipment(
     Up to what is free for the period may be reserved (AC1); asking for more is
     refused with how many are free (AC3). The reservation holds the event's exact
     start and end, so overlapping events see that many fewer and others none fewer
-    (AC2). Each call adds a reservation; several for one event and type add up. The
+    (AC2). Each call adds a reservation; several for one event and type add up, and
+    together they may not exceed the event's line for the type (SCRUM-60 AC9). The
     reservation and its entry in the event's history are saved in one commit. Nobody is
     notified: the coordinator hears once, when the outcome is recorded (AC5, SCRUM-48,
     ADR-0102).
@@ -936,8 +974,9 @@ def reserve_equipment(
         The saved reservation, as the event record shows it.
 
     Raises:
-        ValidationError: 400 — invalid fields, an unknown equipment type, or more
-            units than are free, with how many are free.
+        ValidationError: 400 — invalid fields, an unknown equipment type, more units
+            than are free, with how many are free, or more than the event's line asks
+            for (SCRUM-60 AC9).
         NotFoundError: 404 — no such event, or it is still a draft.
         EventPeriodIncompleteError: 409 — the event has no complete date and times.
         EquipmentNotReservableError: 409 — the event is completed, cancelled or
@@ -953,6 +992,7 @@ def reserve_equipment(
     # Lock, then count. Counting first would miss a reservation committed while this
     # one waited for the lock (Review Focus 3).
     equipment_type = _locked_equipment_type(data["equipment_type_id"], sess)
+    _check_within_the_line(need, equipment_type.id, data["quantity"], sess)
     available = available_quantity(equipment_type.id, need.starts_at, need.ends_at, session=sess)
     if data["quantity"] > available:
         message = f"Only {available} available for this period."
