@@ -34,7 +34,7 @@ export function instantOf(value: unknown): number | null {
 }
 
 /** The field as an instant, or null with its message added to `errors`. */
-function instantField(
+export function instantField(
   body: Record<string, unknown>,
   field: string,
   errors: FieldErrors,

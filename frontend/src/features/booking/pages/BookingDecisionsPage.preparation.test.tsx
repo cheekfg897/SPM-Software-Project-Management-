@@ -50,10 +50,14 @@ describe("SCRUM-84 Venue Staff record a booking's preparation", () => {
       .getAllByRole('heading', { level: 3 })
       .map((entry) => entry.textContent)
 
-    // The Auditorium is flagged as needing an alternative venue but still approved (SCRUM-92).
-    // The confirmed gala's two come last, by id, as they share its date and start.
+    // The Auditorium is flagged as needing an alternative venue but still approved (SCRUM-92),
+    // and so are the moved event's three a change flagged (SCRUM-59), by id. The confirmed gala's
+    // two come last, by id, as they share its date and start.
     expect(purposes).toEqual([
       'Grand ballroom',
+      'Plenary hall',
+      'Stage',
+      'Annex',
       'Exhibition hall',
       'Main hall',
       'Auditorium',

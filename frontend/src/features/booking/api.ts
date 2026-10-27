@@ -2,7 +2,10 @@ import type { PreparationStatus, PreparationUpdate } from '@/config/preparation'
 import type { UnavailabilityCategory } from '@/config/unavailabilityCategories'
 import { apiRequest } from '@/lib/api'
 
-/** The venue module's booking request endpoints (SCRUM-42, SCRUM-43, SCRUM-93, SCRUM-75, SCRUM-84). */
+/**
+ * The venue module's booking request endpoints (SCRUM-42, SCRUM-43, SCRUM-93, SCRUM-75, SCRUM-84,
+ * SCRUM-59).
+ */
 const BOOKING_PATHS = {
   EVENT_REQUESTS: (reference: string) => `/api/venues/events/${reference}/booking-requests`,
   /** One of the event's requests, which SCRUM-93 calls a venue arrangement. */
@@ -19,6 +22,10 @@ const BOOKING_PATHS = {
   /** Every approved booking, for Venue Staff to prepare (ADR-0080). */
   APPROVED: '/api/venues/booking-requests/approved',
   preparationFor: (requestId: number) => `/api/venues/booking-requests/${requestId}/preparation`,
+  /** Every booking a change flagged, with what reconfirming it gives it (SCRUM-59). */
+  FLAGGED: '/api/venues/booking-requests/flagged',
+  reconfirmFor: (requestId: number) => `/api/venues/booking-requests/${requestId}/reconfirm`,
+  rejectFor: (requestId: number) => `/api/venues/booking-requests/${requestId}/reject`,
 } as const
 
 /** What the backend accepts when a coordinator raises a request. */
@@ -135,11 +142,43 @@ export interface BookingRequest {
   accessibility_needs: string | null
 }
 
+/**
+ * What reconfirming a flagged booking gives it unless Venue Staff adjust the period (SCRUM-59 AC2,
+ * AC9): the period moved by as much as the event's start moved, in business time, and the expected
+ * occupancy, raised to the new attendance when the booking held the whole audience.
+ */
+export interface Reconfirmation {
+  starts_at: string
+  ends_at: string
+  expected_occupancy: number
+}
+
+/** A booking a change flagged, as Venue Staff's queue lists it (SCRUM-59 AC1). */
+export interface FlaggedBooking {
+  booking: BookingRequest
+  reconfirm_with: Reconfirmation
+}
+
+/** What the backend accepts to reconfirm a flagged booking (SCRUM-59 AC2, AC4). */
+export interface ReconfirmBooking {
+  /** ISO date-times with an offset, in business time, within the event's start and end. */
+  starts_at: string
+  ends_at: string
+  /** Required by the backend when the venue is too small for the occupancy; left out otherwise. */
+  reason?: string
+}
+
+/** What the backend accepts to reject a flagged booking: a reason, which it requires (AC5). */
+export interface RejectFlaggedBooking {
+  reason: string
+}
+
 export const bookingKeys = {
   all: ['booking'] as const,
   forEvent: (reference: string) => [...bookingKeys.all, 'event', reference] as const,
   pending: () => [...bookingKeys.all, 'pending'] as const,
   approved: () => [...bookingKeys.all, 'approved'] as const,
+  flagged: () => [...bookingKeys.all, 'flagged'] as const,
 }
 
 export function fetchBookingRequests(reference: string): Promise<BookingRequest[]> {
@@ -233,5 +272,35 @@ export function updateBookingPreparation(
   return apiRequest<BookingRequest>(BOOKING_PATHS.preparationFor(requestId), {
     method: 'PUT',
     body: update,
+  })
+}
+
+/** Every booking a change flagged, ordered by the backend: earliest event first (SCRUM-59). */
+export function fetchFlaggedBookings(): Promise<FlaggedBooking[]> {
+  return apiRequest<FlaggedBooking[]>(BOOKING_PATHS.FLAGGED)
+}
+
+/**
+ * Reconfirm a flagged booking for a period (SCRUM-59 AC2): an approved one is booked for it, and
+ * one Venue Staff haven't decided only moves to it (AC10).
+ */
+export function reconfirmFlaggedBooking(
+  requestId: number,
+  reconfirmation: ReconfirmBooking,
+): Promise<BookingRequest> {
+  return apiRequest<BookingRequest>(BOOKING_PATHS.reconfirmFor(requestId), {
+    method: 'POST',
+    body: reconfirmation,
+  })
+}
+
+/** Reject a flagged booking with a reason, freeing its venue (SCRUM-59 AC5). */
+export function rejectFlaggedBooking(
+  requestId: number,
+  rejection: RejectFlaggedBooking,
+): Promise<BookingRequest> {
+  return apiRequest<BookingRequest>(BOOKING_PATHS.rejectFor(requestId), {
+    method: 'POST',
+    body: rejection,
   })
 }

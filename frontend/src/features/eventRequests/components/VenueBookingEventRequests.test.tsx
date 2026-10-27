@@ -47,9 +47,11 @@ function rowFor(list: HTMLElement, reference: string): HTMLElement {
 /**
  * Every booking mock event with an active venue arrangement, in the order the backend sends them
  * (ADR-0085). EVR-BOOK0111, in Safety Review, has its flagged auditorium (SCRUM-92), and
- * EVR-BOOK0112 is confirmed with two venues booked (SCRUM-49 AC11).
+ * EVR-BOOK0112 is confirmed with two venues booked (SCRUM-49 AC11). EVR-BOOK0113's bookings
+ * were flagged when it moved (SCRUM-59).
  */
 const LISTED_REFERENCES = [
+  'EVR-BOOK0113',
   'EVR-BOOK0112',
   'EVR-BOOK0111',
   'EVR-BOOK0110',
