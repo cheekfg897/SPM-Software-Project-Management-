@@ -1796,8 +1796,9 @@ def _reopen_changed_line(
 
     Called before ``data`` is applied to the line, and without committing: withdraws
     any safety approval, records the line before and after the change, releases the
-    old type's reservations if the line moves to another type (ADR-0092), and clears
-    its outcome, which sends an event in Safety Review back to Approved (SCRUM-33 AC9).
+    old type's reservations if the line moves to another type (ADR-0092) or marks them
+    for reassessment if only its quantity changes (SCRUM-60 AC8), and clears its
+    outcome, which sends an event in Safety Review back to Approved (SCRUM-33 AC9).
     """
     _withdraw_safety_approval_for_line(coordinator_id, line, "changed", session)
     _return_to_approved(event_request)
@@ -1812,6 +1813,12 @@ def _reopen_changed_line(
     )
     if new_equipment_type_id != line.equipment_type_id:
         equipment_services.release_reservations(
+            line.event_request_id, line.equipment_type_id, session=session
+        )
+    else:
+        # A new quantity: the reservation stays, for Technical Support to reassess
+        # with the line's new outcome (SCRUM-60 AC8, ADR-0114).
+        equipment_services.mark_type_reservations_for_reassessment(
             line.event_request_id, line.equipment_type_id, session=session
         )
     _clear_outcome(line)
@@ -2409,6 +2416,11 @@ def _affects_equipment(changes: list[FieldChange]) -> bool:
     return any(change.field in EQUIPMENT_AFFECTING_FIELDS for change in changes)
 
 
+def _changes_timing(changes: list[FieldChange]) -> bool:
+    """Whether any of ``changes`` is to the event's date or time (SCRUM-60 AC1)."""
+    return any(change.field in _TIMING_FIELDS for change in changes)
+
+
 def _reassess_arrangements(
     event_request: EventRequest, changes: list[FieldChange], session: Session
 ) -> None:
@@ -2499,6 +2511,58 @@ def _tell_venue_staff_of_flags(
     venue_services.tell_venue_staff_of_flags(_for_booking(event_request), notices, session=session)
 
 
+#: Outcomes Technical Support decided against the event's old period. A date or time
+#: change reopens a line recorded with one, so a fresh outcome is decided for the new
+#: period (SCRUM-60 AC12, ADR-0114). A fulfilled line keeps its outcome: its
+#: reservation is reassessed instead (AC1).
+OUTCOMES_REOPENED_BY_TIMING_CHANGE: frozenset[EquipmentLineStatus] = frozenset(
+    {EquipmentLineStatus.UNAVAILABLE, EquipmentLineStatus.PARTIALLY_FULFILLED}
+)
+
+
+def _reopen_lines_short_of_their_request(event_request: EventRequest) -> int:
+    """Clear the outcome of each line recorded unavailable or partially fulfilled.
+
+    SCRUM-60 AC12: each is back on Technical Support's list with no current outcome,
+    and its earlier outcome stays in the event's history (as SCRUM-37 AC4). Any
+    reservation it has stays, held for its old period (ADR-0114 decision 2).
+
+    Returns:
+        How many lines it reopened.
+    """
+    reopened = 0
+    for line in event_request.equipment_lines:
+        if line.status in OUTCOMES_REOPENED_BY_TIMING_CHANGE:
+            _clear_outcome(line)
+            reopened += 1
+    return reopened
+
+
+def reassess_equipment_after_timing_change(
+    event_id: int, *, session: Session | None = None
+) -> None:
+    """Hand the event's equipment back to Technical Support, without committing.
+
+    SCRUM-60 AC1 and AC12, for any saved change to the event's date or time: the
+    coordinator's direct edit (SCRUM-33) calls it, and so must an approved change
+    request (SCRUM-57), in its own commit, telling Technical Support afterwards as the
+    edit does. Every reservation is marked for reassessment and stays held for its old
+    period until Technical Support act (AC6); every line recorded unavailable or
+    partially fulfilled is reopened. An event in Safety Review left with either goes
+    back to Approved (SCRUM-33 AC9, ADR-0107). See ADR-0114.
+
+    Args:
+        event_id: The event request's id.
+        session: Database session; defaults to ``db.session``.
+    """
+    sess = resolve_session(session)
+    event_request = sess.get(EventRequest, event_id)
+    marked = equipment_services.mark_event_reservations_for_reassessment(event_id, session=sess)
+    reopened = _reopen_lines_short_of_their_request(event_request)
+    if marked > 0 or reopened > 0:
+        _return_to_approved(event_request)
+
+
 def update_event_request(
     coordinator_id: int | str,
     reference: str,
@@ -2517,7 +2581,9 @@ def update_event_request(
     withdraws a safety approval in the same commit, naming the significant fields
     (AC7, :func:`withdraw_safety_approval`), and flags only the venue arrangements
     it affects, each reassessed on its own (AC6, ADR-0094); Venue Staff are told
-    about each one flagged once the edit is saved. In Safety Review, a significant
+    about each one flagged once the edit is saved. A date or time change hands the
+    equipment back to Technical Support in the same commit
+    (:func:`reassess_equipment_after_timing_change`). In Safety Review, a significant
     change that flags an arrangement sends the event back to Approved in the same
     commit, and every Safety Officer is told, naming the fields changed, once it is
     saved (AC9, ADR-0107). An edit that changes nothing writes and commits nothing.
@@ -2567,6 +2633,8 @@ def update_event_request(
     venue_notices = _flag_venue_arrangements(event_request, changes, attendance_before, sess)
     if venue_notices:
         _return_to_approved(event_request)
+    if _changes_timing(changes):
+        reassess_equipment_after_timing_change(event_request.id, session=sess)
     sess.commit()
     _reassess_arrangements(event_request, changes, sess)
     _tell_venue_staff_of_flags(event_request, venue_notices, sess)

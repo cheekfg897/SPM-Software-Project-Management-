@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import ColumnElement, delete, func, select
+from sqlalchemy import ColumnElement, Select, delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
@@ -441,6 +441,65 @@ def release_reservations(
         EquipmentReservation.equipment_type_id == equipment_type_id,
     )
     resolve_session(session).execute(statement)
+
+
+# --------------------------------------------------------------------------
+# SCRUM-60 — mark reservations for reassessment after a change
+# --------------------------------------------------------------------------
+
+
+def _mark_for_reassessment(statement: Select[tuple[EquipmentReservation]], session: Session) -> int:
+    """Mark the reservations ``statement`` selects for reassessment; how many it marked.
+
+    Nothing else changes: each stays held for its own period until Technical Support
+    act (SCRUM-60 AC6, ADR-0114).
+    """
+    marked = 0
+    for reservation in session.scalars(statement):
+        reservation.needs_reassessment = True
+        marked += 1
+    return marked
+
+
+def mark_event_reservations_for_reassessment(
+    event_id: int, *, session: Session | None = None
+) -> int:
+    """Mark every reservation for the event for reassessment, without committing.
+
+    For a change to the event's date or time (SCRUM-60 AC1): the units stay held for
+    each reservation's own period, so nothing is released before Technical Support
+    act (AC6). The caller commits, with the change that marks them.
+
+    Args:
+        event_id: The event request's id.
+        session: Database session; defaults to ``db.session``.
+
+    Returns:
+        How many reservations it marked; 0 when the event has none.
+    """
+    statement = select(EquipmentReservation).where(EquipmentReservation.event_id == event_id)
+    return _mark_for_reassessment(statement, resolve_session(session))
+
+
+def mark_type_reservations_for_reassessment(
+    event_id: int, equipment_type_id: int, *, session: Session | None = None
+) -> None:
+    """Mark the event's reservations of one equipment type, without committing.
+
+    For a new quantity on that type's line (SCRUM-60 AC8): reservations hold no line
+    id, and an event has one line per type (ADR-0019, ADR-0092), so the line's
+    reservations are the event's reservations of its type.
+
+    Args:
+        event_id: The event request's id.
+        equipment_type_id: The line's equipment type.
+        session: Database session; defaults to ``db.session``.
+    """
+    statement = select(EquipmentReservation).where(
+        EquipmentReservation.event_id == event_id,
+        EquipmentReservation.equipment_type_id == equipment_type_id,
+    )
+    _mark_for_reassessment(statement, resolve_session(session))
 
 
 def create_equipment_type(

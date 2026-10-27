@@ -24,6 +24,7 @@ from alembic.operations import Operations
 from alembic.runtime.migration import MigrationContext
 from flask import Flask
 from flask_jwt_extended import create_access_token
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 from werkzeug.security import generate_password_hash
 
@@ -32,7 +33,8 @@ from app.common.decorators import ROLE_CLAIM
 from app.extensions import db
 from app.modules.auth.models import RevokedToken, User
 from app.modules.auth.permissions import Role
-from app.modules.equipment.models import EquipmentType
+from app.modules.equipment.models import EquipmentReservation, EquipmentType
+from app.modules.equipment.services import reserve_equipment
 from app.modules.events.models import (
     EquipmentLineStatus,
     EventEquipmentLine,
@@ -41,6 +43,7 @@ from app.modules.events.models import (
     EventRequest,
     EventRequestStatus,
 )
+from app.modules.events.services import record_equipment_outcome
 from app.modules.notifications.services import list_notifications_for_recipient
 from app.modules.venue.models import (
     Booking,
@@ -53,6 +56,11 @@ from app.modules.venue.models import (
 )
 
 MIGRATIONS_DIR = Path(__file__).resolve().parents[1] / "migrations" / "versions"
+
+#: The ``reserve_and_review`` fixture's callable, and a row of ``reservation_rows``:
+#: (equipment type id, quantity, starts at, ends at, needs reassessment) (SCRUM-60).
+ReserveAndReview = Callable[..., EventEquipmentLine]
+ReservationRow = tuple[int, int, datetime, datetime, bool]
 
 
 def approve_safety(event: EventRequest, save: Callable[..., None]) -> None:
@@ -655,3 +663,55 @@ def assert_in_order() -> Callable[[str, list[str]], None]:
         assert positions == sorted(positions)
 
     return _assert
+
+
+@pytest.fixture()
+def reserve_and_review(
+    saved_users: list[User],
+    saved_event_request: EventRequest,
+    make_equipment_line: Callable[..., EventEquipmentLine],
+    save: Callable[..., None],
+) -> ReserveAndReview:
+    """Save a line on ``saved_event_request``, reserve for it and record its outcome.
+
+    The line asks for ``quantity`` of ``equipment_type``; Technical Support user 5
+    reserves ``reserved`` units for the event's period (none when 0) and records that
+    they will provide ``provided``, with a note when that is short (SCRUM-46, SCRUM-48).
+    """
+
+    def _reserve_and_review(
+        equipment_type: EquipmentType, *, quantity: int, reserved: int, provided: int
+    ) -> EventEquipmentLine:
+        line = make_equipment_line(saved_event_request, equipment_type, quantity=quantity)
+        save(line)
+        if reserved > 0:
+            units = {"equipment_type_id": equipment_type.id, "quantity": reserved}
+            reserve_equipment(saved_event_request.reference, units, reserved_by=5)
+        outcome = {"provided_quantity": provided, "note": "Only some in stock"}
+        record_equipment_outcome(5, saved_event_request.reference, line.id, outcome)
+        return line
+
+    return _reserve_and_review
+
+
+@pytest.fixture()
+def reservation_rows(db_session: Session) -> Callable[[], list[ReservationRow]]:
+    """Every reservation as saved, by id: type, quantity, period and whether marked."""
+
+    def _rows() -> list[ReservationRow]:
+        db_session.expire_all()
+        statement = select(EquipmentReservation).order_by(EquipmentReservation.id)
+        rows = []
+        for reservation in db_session.scalars(statement):
+            rows.append(
+                (
+                    reservation.equipment_type_id,
+                    reservation.quantity,
+                    reservation.starts_at,
+                    reservation.ends_at,
+                    reservation.needs_reassessment,
+                )
+            )
+        return rows
+
+    return _rows
