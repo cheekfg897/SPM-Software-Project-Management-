@@ -3264,6 +3264,29 @@ def _notify_assigned_coordinator(
     )
 
 
+def notify_coordinator_reservation_confirmed(
+    event_id: int, detail: str, *, session: Session | None = None
+) -> None:
+    """Tell the event's coordinator a reservation was confirmed for its new period.
+
+    For the equipment module, after the confirmation's own commit (SCRUM-60 AC3,
+    ADR-0015). It reuses SCRUM-48's outcome kind: confirming is Technical Support's
+    review, and the coordinator hears once for it, with ``detail`` saying what was
+    confirmed (ADR-0114).
+
+    Args:
+        event_id: The event request's id.
+        detail: What was confirmed, e.g. "Projector: 3 reserved, confirmed for the
+            event's new date and time."
+        session: Database session; defaults to ``db.session``.
+    """
+    sess = resolve_session(session)
+    event_request = sess.get(EventRequest, event_id)
+    _notify_assigned_coordinator(
+        event_request, NotificationKind.EQUIPMENT_OUTCOME_RECORDED, sess, detail=detail
+    )
+
+
 EQUIPMENT_SHORT_DETAIL = (
     "Equipment reserved for this event is no longer all available: "
     "some units were taken out of service."
@@ -4118,6 +4141,22 @@ def lines_without_outcome(
         .order_by(EventEquipmentLine.id)
     )
     return list(resolve_session(session).scalars(query).all())
+
+
+def provided_quantity_of_line(
+    event_id: int, equipment_type_id: int, *, session: Session | None = None
+) -> int | None:
+    """How many units the event's line of a type will be provided (SCRUM-60 AC3).
+
+    ``None`` while the line has no current outcome, or when the event has no line of
+    the type. For the equipment module, which confirms a marked reservation only for
+    a line with an outcome (ADR-0114).
+    """
+    statement = select(EventEquipmentLine.provided_quantity).where(
+        EventEquipmentLine.event_request_id == event_id,
+        EventEquipmentLine.equipment_type_id == equipment_type_id,
+    )
+    return resolve_session(session).scalar(statement)
 
 
 def all_outcomes_recorded(event_id: int, *, session: Session | None = None) -> bool:

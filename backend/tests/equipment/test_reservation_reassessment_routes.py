@@ -2,7 +2,8 @@
 
 An event's reservations awaiting reassessment are read as its reservations are: by
 Technical Support Staff, and by Event Coordinators, whose events the services scope
-(AC2; ADR-0019, ADR-0037). Every other role is refused. The *registered* view functions
+(AC2; ADR-0019, ADR-0037). Only Technical Support Staff confirm one (AC3). Every other
+role is refused. The *registered* view functions
 are called inside a request context, so the real decorators run; the services are
 replaced with mocks, so a refused request is shown to stop before any service call.
 """
@@ -48,6 +49,15 @@ ROUTES = [
         "list_reassessments_for_event",
         200,
         EQUIPMENT_READERS,
+    ),
+    (
+        "equipment.confirm_reassessment",
+        "POST",
+        f"{BASE_PATH}/2/confirm",
+        {"reference": REFERENCE, "equipment_type_id": 2},
+        "confirm_reservation_move",
+        200,
+        {Role.TECHNICAL_SUPPORT_STAFF},
     ),
 ]
 ROUTE_PARAMS = ("endpoint", "method", "path", "view_kwargs", "service", "status", "allowed")
@@ -116,7 +126,13 @@ REASSESSMENT_JSON = {
 @pytest.fixture()
 def mock_services(replace_services: ReplaceServices) -> dict[str, MagicMock]:
     """Replace every equipment service these routes call with a mock."""
-    return replace_services(services, {"list_reassessments_for_event": [REASSESSMENT]})
+    return replace_services(
+        services,
+        {
+            "list_reassessments_for_event": [REASSESSMENT],
+            "confirm_reservation_move": [SHOWN_RESERVATION],
+        },
+    )
 
 
 def _assert_no_service_called(mock_services: dict[str, MagicMock]) -> None:
@@ -237,4 +253,21 @@ def test_the_list_route_returns_each_type_to_reassess_for_the_caller(
     assert response.get_json() == [REASSESSMENT_JSON]
     mock_services["list_reassessments_for_event"].assert_called_once_with(
         CALLER_ID, REFERENCE, viewer_role=Role.EVENT_COORDINATOR
+    )
+
+
+def test_the_confirm_route_confirms_the_type_for_the_caller_and_returns_its_reservations(
+    call_route: CallRoute, token_for: TokenFor, mock_services: dict[str, MagicMock]
+) -> None:
+    response, _ = call_route(
+        "equipment.confirm_reassessment",
+        "POST",
+        f"{BASE_PATH}/2/confirm",
+        {"reference": REFERENCE, "equipment_type_id": 2},
+        token_for(role=Role.TECHNICAL_SUPPORT_STAFF),
+    )
+
+    assert response.get_json() == [RESERVATION_JSON]
+    mock_services["confirm_reservation_move"].assert_called_once_with(
+        REFERENCE, 2, confirmed_by=CALLER_ID
     )
