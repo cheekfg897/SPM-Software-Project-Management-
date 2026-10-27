@@ -48,6 +48,7 @@ export function PendingDecisionQueue() {
       query={queue}
       loadingText="Loading booking requests…"
       emptyText="No booking requests are waiting for a decision."
+      itemKey={(request) => request.id}
     >
       {(request) => <WaitingRequest request={request} />}
     </BookingQueryList>
