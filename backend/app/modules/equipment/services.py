@@ -52,6 +52,13 @@ class EquipmentNotReservableError(AppError):
     error_code = "equipment_not_reservable"
 
 
+class ReservationCannotMoveError(AppError):
+    """Fewer units are free for the event's period than a reassessment keeps (409)."""
+
+    status_code = 409
+    error_code = "reservation_cannot_move"
+
+
 @dataclass(frozen=True)
 class EquipmentAvailability:
     """One equipment type's availability for an event, with any shortfall (AC3)."""
@@ -539,6 +546,17 @@ def _reservations_to_reassess(event_id: int, session: Session) -> list[Equipment
     return list(session.scalars(statement))
 
 
+def _type_reservations_to_reassess(
+    event_id: int, equipment_type_id: int, session: Session
+) -> list[EquipmentReservation]:
+    """The event's reservations of one type marked for reassessment, oldest first."""
+    of_type = []
+    for reservation in _reservations_to_reassess(event_id, session):
+        if reservation.equipment_type_id == equipment_type_id:
+            of_type.append(reservation)
+    return of_type
+
+
 def _free_for_reassessment(
     equipment_type: EquipmentType, need: events_services.EventEquipmentNeed, session: Session
 ) -> int:
@@ -582,6 +600,31 @@ def _reassessment_of(
         available=available,
         shortfall=max(reserved - available, 0),
     )
+
+
+def _keep_oldest_first(
+    reservations: list[EquipmentReservation],
+    keep: int,
+    need: events_services.EventEquipmentNeed,
+    session: Session,
+) -> None:
+    """Keep ``keep`` units of the reservations for the event's period; free the rest.
+
+    The oldest reservation is kept first; the one that straddles ``keep`` is trimmed,
+    and those after it are deleted, so their units are free again (SCRUM-60 AC4, AC9).
+    A kept reservation moves to the event's period and is no longer marked, its
+    preparation details untouched (AC11).
+    """
+    left_to_keep = keep
+    for reservation in reservations:
+        if left_to_keep == 0:
+            session.delete(reservation)
+            continue
+        reservation.quantity = min(reservation.quantity, left_to_keep)
+        left_to_keep -= reservation.quantity
+        reservation.starts_at = need.starts_at
+        reservation.ends_at = need.ends_at
+        reservation.needs_reassessment = False
 
 
 def list_reservations_to_reassess(
@@ -648,6 +691,59 @@ def list_reassessments_for_event(
         viewer_id, reference, viewer_role=viewer_role, session=sess
     )
     return list_reassessments(need, session=sess)
+
+
+def has_reservations_to_reassess(
+    event_id: int, equipment_type_id: int, *, session: Session | None = None
+) -> bool:
+    """Whether the event has a reservation of this type marked for reassessment."""
+    sess = resolve_session(session)
+    return len(_type_reservations_to_reassess(event_id, equipment_type_id, sess)) > 0
+
+
+def settle_reassessment(
+    need: events_services.EventEquipmentNeed,
+    equipment_type_id: int,
+    provided_quantity: int,
+    *,
+    session: Session | None = None,
+) -> int:
+    """Move, trim or release the event's marked reservations of a type, uncommitted.
+
+    For the review that settles them (SCRUM-60 AC3, AC4, AC9): they keep as many of
+    their units as the line's outcome provides, never more than they hold, for the
+    event's period, oldest first, and release the rest. Unavailable releases them all.
+    The type is locked first, so the units kept are counted as free after any other
+    reservation of the type has committed (as reserving does). The caller commits.
+
+    Args:
+        need: The event's id and period, from the events module.
+        equipment_type_id: The line's equipment type.
+        provided_quantity: How many units the line's outcome provides.
+        session: Database session; defaults to ``db.session``.
+
+    Returns:
+        How many units the event's reservations of the type now hold.
+
+    Raises:
+        ReservationCannotMoveError: 409 — fewer units are free for the event's period
+            than would be kept; the message says how many are.
+    """
+    sess = resolve_session(session)
+    equipment_type = _locked_equipment_type(equipment_type_id, sess)
+    reservations = _type_reservations_to_reassess(need.event_id, equipment_type_id, sess)
+    reserved = 0
+    for reservation in reservations:
+        reserved += reservation.quantity
+    keep = min(provided_quantity, reserved)
+    available = _free_for_reassessment(equipment_type, need, sess)
+    if keep > available:
+        raise ReservationCannotMoveError(
+            f"{equipment_type.name}: only {available} free for the event's period, not the"
+            f" {keep} to keep. Record an outcome that provides no more than {available}."
+        )
+    _keep_oldest_first(reservations, keep, need, sess)
+    return keep
 
 
 def list_equipment_types_to_reassess(*, session: Session | None = None) -> list[tuple[int, int]]:
