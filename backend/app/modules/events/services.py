@@ -4124,6 +4124,34 @@ def _outcome_notice_detail(line: EventEquipmentLine, equipment_name: str) -> str
     return f"{detail} Note: {line.outcome_note}"
 
 
+def _settle_reservations_to_reassess(
+    event_request: EventRequest, line: EventEquipmentLine, provided_quantity: int, session: Session
+) -> bool:
+    """Settle the line's reservations marked for reassessment, if it has any (SCRUM-60).
+
+    Recording the outcome is the review (AC4, AC8, AC12): the reservations keep what
+    the outcome provides for the event's period and release the rest (ADR-0114).
+    Called before the outcome is applied, so a refusal leaves the line as it was.
+
+    Returns:
+        Whether the line had any to settle.
+
+    Raises:
+        ReservationCannotMoveError: 409 — fewer units are free than would be kept.
+    """
+    event_id = event_request.id
+    equipment_type_id = line.equipment_type_id
+    if not equipment_services.has_reservations_to_reassess(
+        event_id, equipment_type_id, session=session
+    ):
+        return False
+    need = _equipment_need_of(event_request)
+    equipment_services.settle_reassessment(
+        need, equipment_type_id, provided_quantity, session=session
+    )
+    return True
+
+
 def record_equipment_outcome(
     reviewer_id: int | str,
     reference: str,
@@ -4141,7 +4169,9 @@ def record_equipment_outcome(
     already had an outcome, also withdraws a safety approval (AC7, ADR-0087). Both are
     saved with the outcome; the event's coordinator is told afterwards (ADR-0015), with
     the equipment, the outcome and the note (SCRUM-50 AC4, ADR-0055). An event that
-    won't run takes no outcome at all, first or revised (AC8).
+    won't run takes no outcome at all, first or revised (AC8). The line's reservations
+    marked for reassessment keep what it provides, for the event's period, and release
+    the rest, which also withdraws a safety approval (SCRUM-60 AC4, AC9, AC10).
 
     Args:
         reviewer_id: The Technical Support user's id, taken from their token.
@@ -4160,6 +4190,8 @@ def record_equipment_outcome(
         NotFoundError: 404 — no such request, or no such line on it.
         ConflictError: 409 — the event is completed, cancelled or rejected; the
             message names its status (AC8).
+        ReservationCannotMoveError: 409 — the line's marked reservations would keep
+            more than is free for the event's period (SCRUM-60).
     """
     outcome = load_or_raise(RecordEquipmentOutcomeSchema(), payload)
     sess = resolve_session(session)
@@ -4173,6 +4205,9 @@ def record_equipment_outcome(
     _check_outcome_is_possible(line, outcome)
     equipment_type = equipment_services.get_equipment_type(line.equipment_type_id, session=sess)
     previous_provided_quantity = line.provided_quantity
+    settled_reservations = _settle_reservations_to_reassess(
+        event_request, line, outcome["provided_quantity"], sess
+    )
 
     line.provided_quantity = outcome["provided_quantity"]
     line.status = outcome_status_for(line.quantity, line.provided_quantity)
@@ -4206,6 +4241,13 @@ def record_equipment_outcome(
                 "equipment_type_name": equipment_type.name,
                 "previous_provided_quantity": previous_provided_quantity,
             },
+            session=sess,
+        )
+    if settled_reservations:
+        withdraw_safety_approval(
+            event_request.id,
+            actor_id=reviewer,
+            details={"equipment_type_name": equipment_type.name, "reservation_reassessed": True},
             session=sess,
         )
     sess.commit()
