@@ -349,3 +349,13 @@ def reconfirm_flagged_booking(request_id: int) -> tuple[Response, int]:
         request_id, request.get_json(silent=True), reconfirmed_by=int(g.current_user_id)
     )
     return jsonify(_booking_request_schema.dump(shown)), 200
+
+
+@bp.post("/booking-requests/<int:request_id>/reject")
+@requires_role(Role.VENUE_STAFF)
+def reject_flagged_booking(request_id: int) -> tuple[Response, int]:
+    """Reject a flagged booking with a reason, freeing its venue (AC5)."""
+    shown = services.reject_flagged_booking(
+        request_id, request.get_json(silent=True), rejected_by=int(g.current_user_id)
+    )
+    return jsonify(_booking_request_schema.dump(shown)), 200

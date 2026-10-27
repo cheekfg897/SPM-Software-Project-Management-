@@ -564,20 +564,14 @@ class UpdatePreparationSchema(PreparationNotesSchema):
     )
 
 
-class ReconfirmBookingSchema(TimeRangeSchema):
-    """Payload for ``POST /api/venues/booking-requests/<id>/reconfirm`` (SCRUM-59).
+class FlaggedBookingReasonSchema(Schema):
+    """Payload for ``POST /api/venues/booking-requests/<id>/reject`` (SCRUM-59 AC5).
 
-    The new period, which the queue pre-fills and Venue Staff may adjust; the service
-    checks it lies within the event (AC2). ``reason`` is needed only when the venue is
-    too small for the booking's occupancy, which the service checks (AC4). A blank one
-    counts as missing, so it is trimmed and loaded as ``None``.
+    Venue Staff's ``reason``, which the service requires to reject a flagged booking,
+    and to reconfirm one whose venue is too small (AC4). A blank one counts as missing,
+    so it is trimmed and loaded as ``None``.
     """
 
-    start_field = "starts_at"
-    end_field = "ends_at"
-
-    starts_at = fields.DateTime(required=True)
-    ends_at = fields.DateTime(required=True)
     reason = fields.String(load_default=None)
 
     @post_load
@@ -587,6 +581,21 @@ class ReconfirmBookingSchema(TimeRangeSchema):
         if data["reason"] == "":
             data["reason"] = None
         return data
+
+
+class ReconfirmBookingSchema(TimeRangeSchema, FlaggedBookingReasonSchema):
+    """Payload for ``POST /api/venues/booking-requests/<id>/reconfirm`` (SCRUM-59).
+
+    The new period, which the queue pre-fills and Venue Staff may adjust; the service
+    checks it lies within the event (AC2). The ``reason`` is needed only when the venue
+    is too small for the booking's occupancy, which the service checks (AC4).
+    """
+
+    start_field = "starts_at"
+    end_field = "ends_at"
+
+    starts_at = fields.DateTime(required=True)
+    ends_at = fields.DateTime(required=True)
 
 
 class HoldBookingRequestSchema(Schema):
