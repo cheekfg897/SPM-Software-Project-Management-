@@ -501,6 +501,28 @@ class BookingRequestAsShown:
         return self.request.hold_expires_at
 
 
+@dataclass(frozen=True)
+class Reconfirmation:
+    """What reconfirming a flagged booking gives it (SCRUM-59 AC2, AC9, ADR-0112).
+
+    The period, moved by as much as the event's start moved, which Venue Staff may
+    adjust, and the expected occupancy, raised to the new attendance when the booking
+    held the whole audience. Times are in UTC.
+    """
+
+    starts_at: datetime
+    ends_at: datetime
+    expected_occupancy: int
+
+
+@dataclass(frozen=True)
+class FlaggedBookingAsShown:
+    """A booking a change flagged, as Venue Staff's queue lists it (SCRUM-59 AC1)."""
+
+    shown: BookingRequestAsShown
+    reconfirm_with: Reconfirmation
+
+
 class DecideBookingRequestSchema(Schema):
     """Payload for ``POST /api/venues/booking-requests/<id>/decision`` (SCRUM-43 AC3).
 
@@ -624,3 +646,22 @@ class VenueBookingRequestSchema(Schema):
     event_start_time = fields.Time(attribute="start_time", dump_only=True)
     event_end_time = fields.Time(attribute="end_time", dump_only=True)
     accessibility_needs = fields.String(dump_only=True)
+
+
+class ReconfirmationSchema(Schema):
+    """What reconfirming a flagged booking gives it, in business time (SCRUM-59)."""
+
+    starts_at = BusinessDateTime(dump_only=True)
+    ends_at = BusinessDateTime(dump_only=True)
+    expected_occupancy = fields.Integer(dump_only=True)
+
+
+class FlaggedBookingSchema(Schema):
+    """A booking a change flagged, as Venue Staff's queue lists it (SCRUM-59 AC1).
+
+    The booking as every other list shows it, with its flags and their reasons, and
+    what reconfirming it gives it, which the reconfirm form starts from (AC2, AC9).
+    """
+
+    booking = fields.Nested(VenueBookingRequestSchema, attribute="shown", dump_only=True)
+    reconfirm_with = fields.Nested(ReconfirmationSchema, dump_only=True)

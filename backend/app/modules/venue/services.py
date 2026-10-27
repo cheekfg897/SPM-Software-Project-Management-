@@ -58,8 +58,10 @@ from app.modules.venue.schemas import (
     ChangeArrangementSchema,
     DecideBookingRequestSchema,
     EditVenueSchema,
+    FlaggedBookingAsShown,
     HoldBookingRequestSchema,
     RaiseBookingRequestSchema,
+    Reconfirmation,
     UnavailabilitySchema,
     UpdatePreparationSchema,
     VenueSearchSchema,
@@ -1968,24 +1970,32 @@ def _events_of(
     return event_services.get_events_for_booking(event_ids, session=session)
 
 
-def _requests_by_event_date(
-    statuses: Iterable[BookingRequestStatus], session: Session | None
-) -> list[BookingRequestAsShown]:
-    """Every request with one of ``statuses``, the earliest event first, with its event.
+def _by_event_date(
+    requests: list[VenueBookingRequest], session: Session | None
+) -> list[tuple[EventForBooking, VenueBookingRequest]]:
+    """Each of ``requests`` beside its event, the earliest event first.
 
     The order is the event's date, then its start time, then the request's id, so a list
     read twice is in the same order. The events are read through the events service and
     the ordering is done here, because the date lives in the events module and this
     module may not join across it.
     """
+    events = _events_of(requests, session)
+    listed = [(events[request.event_id], request) for request in requests]
+    listed.sort(key=lambda pair: (pair[0].proposed_date, pair[0].start_time, pair[1].id))
+    return listed
+
+
+def _requests_by_event_date(
+    statuses: Iterable[BookingRequestStatus], session: Session | None
+) -> list[BookingRequestAsShown]:
+    """Every request with one of ``statuses``, earliest event first, with its event."""
     requests = list(
         resolve_session(session).scalars(
             select(VenueBookingRequest).where(VenueBookingRequest.status.in_(statuses))
         )
     )
-    events = _events_of(requests, session)
-    listed = [(events[request.event_id], request) for request in requests]
-    listed.sort(key=lambda pair: (pair[0].proposed_date, pair[0].start_time, pair[1].id))
+    listed = _by_event_date(requests, session)
     return [show_booking_request(request, event) for event, request in listed]
 
 
@@ -2520,6 +2530,11 @@ def _expiry_error(message: str) -> ValidationError:
     return ValidationError("Invalid request.", details={"expires_at": [message]})
 
 
+def _event_starts_at(event: EventForBooking) -> datetime:
+    """When the event starts, in UTC; the event stores it in business time."""
+    return as_utc(datetime.combine(event.proposed_date, event.start_time))
+
+
 def _require_valid_expiry(expires_at: datetime, event: EventForBooking) -> None:
     """The expiry must be in the future and before the event starts (SCRUM-75 AC3).
 
@@ -2530,8 +2545,7 @@ def _require_valid_expiry(expires_at: datetime, event: EventForBooking) -> None:
     """
     if expires_at <= _utc_now():
         raise _expiry_error(EXPIRY_NOT_FUTURE_MESSAGE)
-    event_starts_at = as_utc(datetime.combine(event.proposed_date, event.start_time))
-    if expires_at >= event_starts_at:
+    if expires_at >= _event_starts_at(event):
         raise _expiry_error(EXPIRY_NOT_BEFORE_EVENT_MESSAGE)
 
 
@@ -2856,6 +2870,18 @@ class SignificantChange:
     new_attendance: int
 
 
+def _outgrown(occupancy: int, attendance_before: int, attendance_now: int) -> bool:
+    """Whether an arrangement that held the whole audience no longer does (ADR-0094).
+
+    It held everyone when its occupancy covered the attendance before; the attendance
+    outgrew it when it is now above that occupancy. A smaller arrangement, such as a
+    breakout room, is never outgrown: it is not judged against the event's attendance
+    (SCRUM-58 AC5, SCRUM-93 AC3).
+    """
+    held_everyone = occupancy >= attendance_before
+    return held_everyone and attendance_now > occupancy
+
+
 def _attendance_flag(
     arrangement: VenueBookingRequest, venue: Venue, change: SignificantChange
 ) -> ReassessmentFlag | None:
@@ -2870,9 +2896,7 @@ def _attendance_flag(
     Venue Staff reconfirm it for the larger audience.
     """
     occupancy = arrangement.expected_occupancy
-    holds_everyone = occupancy >= change.previous_attendance
-    outgrown = change.new_attendance > occupancy
-    if not holds_everyone or not outgrown:
+    if not _outgrown(occupancy, change.previous_attendance, change.new_attendance):
         return None
 
     shortfall = _capacity_shortfall(venue, change.new_attendance)
@@ -3029,3 +3053,70 @@ def list_booked_venues(event_id: int, *, session: Session | None = None) -> list
         venue = get_venue(arrangement.venue_id, session=sess)
         booked.append(BookedVenue(name=venue.name, location=venue.location))
     return booked
+
+
+# --------------------------------------------------------------------------
+# SCRUM-59 — Venue Staff reconfirm or reject a booking flagged after a change
+# --------------------------------------------------------------------------
+
+
+def _reconfirmation_of(
+    arrangement: VenueBookingRequest, event: EventForBooking, session: Session | None
+) -> Reconfirmation:
+    """What reconfirming the arrangement gives it, before Venue Staff adjust it.
+
+    AC2: the period moves by as much as the event's start has moved since the
+    arrangement's period was last set, raised or reconfirmed, however many edits that
+    took (ADR-0112 decision 1). A change that didn't move the start leaves it where it
+    is. The move is worked out in UTC, which is the same as in business time because
+    Singapore has no daylight saving. AC9: an arrangement that held the whole audience,
+    and that the attendance has since outgrown, is reconfirmed for the attendance as it
+    is now.
+    """
+    from app.modules.events import services as event_services  # circular at import time
+
+    when_arranged = event_services.get_event_when_arranged(
+        arrangement.event_id, arrangement.id, session=session
+    )
+    moved_by = _event_starts_at(event) - when_arranged.starts_at
+    occupancy = arrangement.expected_occupancy
+    if _outgrown(occupancy, when_arranged.expected_attendance, event.expected_attendance):
+        occupancy = event.expected_attendance
+    return Reconfirmation(
+        starts_at=as_utc(arrangement.starts_at) + moved_by,
+        ends_at=as_utc(arrangement.ends_at) + moved_by,
+        expected_occupancy=occupancy,
+    )
+
+
+def _bookings_to_reassess(session: Session | None) -> list[VenueBookingRequest]:
+    """Every live arrangement a change flagged, for Venue Staff to settle (AC1).
+
+    One that also needs an alternative venue is left out: that flag clears only under
+    SCRUM-92, by a replacement or the venue becoming available again.
+    """
+    stmt = select(VenueBookingRequest).where(
+        VenueBookingRequest.status.in_(FLAGGABLE_REQUEST_STATUSES),
+        VenueBookingRequest.reassessment_flags.any(),
+    )
+    to_reassess = []
+    for arrangement in resolve_session(session).scalars(stmt):
+        if not arrangement.needs_alternative_venue:
+            to_reassess.append(arrangement)
+    return to_reassess
+
+
+def list_flagged_bookings(*, session: Session | None = None) -> list[FlaggedBookingAsShown]:
+    """Every booking a change flagged, the earliest event first (SCRUM-59 AC1).
+
+    Approved bookings and requests Venue Staff haven't decided yet (AC10), each with
+    its flags and their reasons, and with the period and occupancy reconfirming it
+    gives it (AC2, AC9). Any Venue Staff member sees all of them, as for the queue
+    (ADR-0035 decision 1).
+    """
+    flagged = []
+    for event, arrangement in _by_event_date(_bookings_to_reassess(session), session):
+        shown = show_booking_request(arrangement, event)
+        reconfirmation = _reconfirmation_of(arrangement, event, session)
+        flagged.append(FlaggedBookingAsShown(shown=shown, reconfirm_with=reconfirmation))
+    return flagged
