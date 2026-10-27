@@ -1,7 +1,6 @@
 import { http, HttpResponse } from 'msw'
 import type { RequestHandler } from 'msw'
 
-import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
 import { EQUIPMENT_READER_ROLES, ROLE } from '@/config/roles'
 import type { PreparationStatus } from '@/config/preparation'
 import { isRecord } from '@/lib/isRecord'
@@ -20,7 +19,16 @@ import {
 import { MOCK_EQUIPMENT_TYPES, MOCK_EVENT_PERIOD } from './equipmentFixtures'
 import type { MockEquipmentType } from './equipmentFixtures'
 import { equipmentLineHandlers, requestedQuantity, resetMockEquipmentLines } from './equipmentLines'
-import { outOfServiceQuantity, resetMockOutOfService } from './equipmentOutOfServiceEntries'
+import { resetMockOutOfService } from './equipmentOutOfServiceEntries'
+import {
+  asShown,
+  availableQuantity,
+  eventOfReservation,
+  reservationsOfEvent,
+  reservationWithId,
+  resetMockReservations,
+  saveReservation,
+} from './equipmentReservations'
 import {
   EQUIPMENT_TYPE_ID_RANGE_MESSAGE,
   MISSING_MESSAGE,
@@ -38,124 +46,22 @@ import {
  * availability, SCRUM-46 reservations, SCRUM-85 preparation), and the events module's equipment
  * lines (SCRUM-37, equipmentLines.ts). Units out of service (SCRUM-47) are answered in
  * equipmentOutOfService.ts and count here; the catalogue's types are answered in
- * equipmentCatalogue.ts. Reservations live in memory until resetMockEquipment.
+ * equipmentCatalogue.ts. Reservations are kept in equipmentReservations.ts.
  */
 
 const EVENT_PATH = '/api/equipment/events/:reference'
 
-interface MockReservation {
-  id: number
-  equipment_type_id: number
-  equipment_type_name: string
-  quantity: number
-  starts_at: string
-  ends_at: string
-  reserved_by: string
-  created_at: string
-  preparation_status: PreparationStatus
-  preparation_notes: string | null
-}
-
-let reservations: MockReservation[] = []
-/** The event each reservation is for, by reservation id: the backend's foreign key. */
-let reservationEvents = new Map<number, string>()
-
 /** Forget every reservation, line change and unit out of service. Runs after every test. */
 export function resetMockEquipment(): void {
-  reservations = []
-  reservationEvents = new Map()
+  resetMockReservations()
   resetMockEquipmentLines()
   resetMockEquipmentEvents()
   resetMockOutOfService()
 }
 
-/**
- * The event, rejected during planning, gives back its equipment as the backend's
- * release_event_reservations does (SCRUM-49 AC10, ADR-0093): its reservations go, and its
- * status closes its open lines to outcomes and reservations (EQUIPMENT_NOT_NEEDED_STATUSES).
- */
-export function rejectEventEquipment(reference: string): void {
-  const event = eventForStaff(reference)
-  if (event === undefined) {
-    return
-  }
-  event.status = EVENT_REQUEST_STATUS.REJECTED
-  reservations = reservations.filter(
-    (reservation) => reservationEvents.get(reservation.id) !== reference,
-  )
-}
-
 /** Every equipment type, by name, as the backend lists the catalogue. */
 function equipmentTypesByName(): MockEquipmentType[] {
   return [...MOCK_EQUIPMENT_TYPES].sort((first, second) => first.name.localeCompare(second.name))
-}
-
-function reservedQuantity(equipmentTypeId: number): number {
-  let total = 0
-  for (const reservation of reservations) {
-    if (reservation.equipment_type_id === equipmentTypeId) {
-      total += reservation.quantity
-    }
-  }
-  return total
-}
-
-/** What is left of `free` once this mock's reservations and the units out of service are taken. */
-function unreservedQuantity(equipmentTypeId: number, free: number): number {
-  return free - reservedQuantity(equipmentTypeId) - outOfServiceQuantity(equipmentTypeId)
-}
-
-function availableQuantity(equipmentTypeId: number, free: number): number {
-  return Math.max(unreservedQuantity(equipmentTypeId, free), 0)
-}
-
-/** Whether the type has fewer units in service than are reserved for the period (SCRUM-47). */
-export function isTypeShort(equipmentTypeId: number): boolean {
-  const type = MOCK_EQUIPMENT_TYPES.find((candidate) => candidate.id === equipmentTypeId)
-  return type !== undefined && unreservedQuantity(type.id, type.free) < 0
-}
-
-/** The events holding a reservation of the type, by reference, each once. */
-export function eventsReservingType(equipmentTypeId: number): string[] {
-  const references: string[] = []
-  for (const reservation of reservations) {
-    const reference = reservationEvents.get(reservation.id)
-    const reservesType = reservation.equipment_type_id === equipmentTypeId
-    if (reservesType && reference !== undefined && !references.includes(reference)) {
-      references.push(reference)
-    }
-  }
-  return references
-}
-
-/**
- * The reservation with its flag (SCRUM-47 AC3): units out of service have left fewer in service
- * than are reserved for the period. Every mock event shares one period, so every reservation of
- * that type is flagged, and the mock does not compare the period with today. The backend saves
- * the flag when units go out or come back; reserving can't leave a type short, so working it out
- * here gives the same answer.
- */
-function asShown(reservation: MockReservation) {
-  return { ...reservation, needs_attention: isTypeShort(reservation.equipment_type_id) }
-}
-
-/**
- * The event's reservations, oldest first, as the read-only staff record shows them: no ids, and
- * Technical Support's preparation on each (list_reservations_of_event, SCRUM-85 AC2, ADR-0095).
- */
-export function reservationsForRecord(reference: string) {
-  const held = reservations.filter(
-    (reservation) => reservationEvents.get(reservation.id) === reference,
-  )
-  return held.map((reservation) => ({
-    equipment_type_name: reservation.equipment_type_name,
-    quantity: reservation.quantity,
-    starts_at: reservation.starts_at,
-    ends_at: reservation.ends_at,
-    reserved_by: reservation.reserved_by,
-    preparation_status: reservation.preparation_status,
-    preparation_notes: reservation.preparation_notes,
-  }))
 }
 
 /** One row per equipment type, by name, against what this event's lines ask for. */
@@ -215,10 +121,7 @@ export const equipmentHandlers: RequestHandler[] = [
     if (event === undefined) {
       return eventNotFound()
     }
-    const ofEvent = reservations.filter(
-      (reservation) => reservationEvents.get(reservation.id) === event.reference,
-    )
-    return HttpResponse.json(ofEvent.map(asShown))
+    return HttpResponse.json(reservationsOfEvent(event.reference).map(asShown))
   }),
 
   http.post(`${EVENT_PATH}/reservations`, async ({ request, params }) => {
@@ -258,8 +161,7 @@ export const equipmentHandlers: RequestHandler[] = [
       return validationError({ quantity: [`Only ${available} available for this period.`] })
     }
 
-    const reservation: MockReservation = {
-      id: reservations.length + 1,
+    const reservation = saveReservation(event.reference, {
       equipment_type_id: type.id,
       equipment_type_name: type.name,
       quantity,
@@ -268,9 +170,7 @@ export const equipmentHandlers: RequestHandler[] = [
       created_at: MOCK_EVENT_PERIOD.starts_at,
       preparation_status: 'not_started',
       preparation_notes: null,
-    }
-    reservations.push(reservation)
-    reservationEvents.set(reservation.id, event.reference)
+    })
     return HttpResponse.json(asShown(reservation), { status: 201 })
   }),
 
@@ -287,12 +187,11 @@ export const equipmentHandlers: RequestHandler[] = [
       if (Object.keys(errors).length > 0) {
         return validationError(errors)
       }
-      const reservation = reservations.find((saved) => saved.id === Number(params.reservationId))
+      const reservation = reservationWithId(Number(params.reservationId))
       if (reservation === undefined) {
         return errorResponse(404, 'not_found', 'Equipment reservation not found.')
       }
-      const eventReference = reservationEvents.get(reservation.id) ?? ''
-      if (!hasSafetyApproval(eventReference)) {
+      if (!hasSafetyApproval(eventOfReservation(reservation))) {
         return errorResponse(409, 'conflict', PREPARATION_NEEDS_SAFETY_APPROVAL_MESSAGE)
       }
 
