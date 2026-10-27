@@ -11,7 +11,7 @@ import { errorResponse, validationError } from '../responses'
 
 import { releaseEventArrangements } from './booking'
 import { MOCK_NOW } from './catalogueFixtures'
-import { rejectEventEquipment } from './equipment'
+import { rejectEventEquipment } from './equipmentReservations'
 import { NOTHING_PLANNED } from './eventPlanningFixtures'
 import type { MockArrangement, MockArrangementStatus, MockPlanning } from './eventPlanningFixtures'
 import { loadRegistrationChanges } from './eventPlanningRules'

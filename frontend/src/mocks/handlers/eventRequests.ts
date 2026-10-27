@@ -14,7 +14,7 @@ import { errorResponse, notAllowed, notAuthenticated, validationError } from '..
 import { accountForRequest } from './auth'
 import { everyArrangementForRecord, hasActiveArrangement } from './booking'
 import { MOCK_NOW } from './catalogueFixtures'
-import { reservationsForRecord } from './equipment'
+import { reservationsForRecord } from './equipmentReservations'
 import { recordLinesOf } from './equipmentLines'
 import { internalNotesOf } from './eventEdits'
 import { currentSafetyCheckOf } from './eventHistoryStore'

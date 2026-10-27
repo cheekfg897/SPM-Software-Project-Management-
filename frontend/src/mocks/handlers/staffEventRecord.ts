@@ -14,7 +14,7 @@ import { MOCK_ACCOUNTS } from '../fixtures/accounts'
 import { errorResponse } from '../responses'
 
 import { everyArrangementForRecord } from './booking'
-import { reservationsForRecord } from './equipment'
+import { reservationsForRecord } from './equipmentReservations'
 import { equipmentLinesForRecord, shortfallOf } from './equipmentLines'
 import { internalNotesOf } from './eventEdits'
 import { NOTHING_RECORDED } from './eventRequestFixtures'
