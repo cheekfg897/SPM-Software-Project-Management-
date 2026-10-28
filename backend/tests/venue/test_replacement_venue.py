@@ -902,3 +902,27 @@ def test_the_event_can_pass_a_new_safety_check_after_the_withdrawal(
     assert sent.status is EventRequestStatus.SAFETY_REVIEW
     latest = history_entries(db_session, flagged.event.id)[-1]
     assert latest.kind is EventHistoryKind.SAFETY_REVIEW_REQUESTED
+
+
+# --------------------------------------------------------------------------
+# AC13 (the last criterion) — approving a replacement doesn't re-check registration
+# --------------------------------------------------------------------------
+
+
+def test_a_replacement_smaller_than_the_registration_capacity_is_approved_as_it_stands(
+    db_session: Session, flagged: Flagged
+) -> None:
+    """Registration capacity is the organiser's call, not the venue's (SCRUM-69).
+
+    The event takes 500 registrations and the Breakout room holds 100, yet the
+    replacement is approved and the capacity is left as the organiser set it.
+    """
+    flagged.event.registration_enabled = True
+    flagged.event.registration_capacity = 500
+    db_session.commit()
+    replacement = _replace(flagged, db_session)
+
+    decide(replacement.id, "approved", db_session)
+
+    assert reload_request(db_session, replacement.id).status is BookingRequestStatus.APPROVED
+    assert reload_event(db_session, flagged.event.id).registration_capacity == 500
