@@ -10,9 +10,7 @@ token's ``jti``, whose token it was and when it expires. Every protected request
 it. The unique ``jti`` keeps each token once, whatever the service checks; the index on
 ``expires_at`` serves each logout's deletion of the rows that have run out.
 
-Revises 0047 (PR #145, SCRUM-92), which itself revises 0046 (PR #143, SCRUM-33); both
-merge first. Until they do, this branch has no 0047 and can't be upgraded on its own.
-If another migration takes 0047's place first, re-point ``down_revision``.
+Revises 0047 (PR #145, SCRUM-92), the newest migration on main when this one was added.
 """
 
 from __future__ import annotations
