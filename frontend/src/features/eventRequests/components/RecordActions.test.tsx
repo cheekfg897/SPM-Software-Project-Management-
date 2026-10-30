@@ -203,16 +203,26 @@ describe('SCRUM-68 marking an event completed', () => {
 })
 
 describe('SCRUM-69 registration settings', () => {
+  const NO_CUT_OFF = 'No withdrawal cut-off: withdrawals close when the event starts.'
+
   /** The registration card, once the page has loaded. */
   function registrationCard() {
     return findRegion('Registration settings')
   }
 
-  /** The body of the change the page sent. */
+  /** The bodies of the changes the page sent, in order. */
+  async function changesSent(requests: Request[]): Promise<unknown[]> {
+    const sent = requests.filter((request) => request.method === 'PATCH')
+    for (const request of sent) {
+      expect(request.url).toMatch(/\/api\/events\/requests\/EVR-PLAN000[56]\/registration$/)
+    }
+    return Promise.all(sent.map((request) => request.json()))
+  }
+
+  /** The body of the first change the page sent. */
   async function sentChange(requests: Request[]): Promise<unknown> {
-    const sent = requests.find((request) => request.method === 'PATCH')
-    expect(sent?.url).toMatch(/\/api\/events\/requests\/EVR-PLAN000[56]\/registration$/)
-    return sent?.json()
+    const [first] = await changesSent(requests)
+    return first
   }
 
   it.each([
@@ -231,6 +241,8 @@ describe('SCRUM-69 registration settings', () => {
       expect(within(card).getByRole('radio', { name: 'Open' })).not.toBeChecked()
       expect(within(card).getByRole('radio', { name: 'Closed' })).not.toBeChecked()
       expect(within(card).getByLabelText('Capacity')).toHaveValue(null)
+      expect(within(card).getByLabelText('Withdrawal cut-off')).toHaveValue('')
+      expect(within(card).getByRole('checkbox', { name: 'Remove the cut-off' })).not.toBeChecked()
       expect(within(card).getByRole('button', { name: 'Save registration' })).toBeDisabled()
     },
   )
@@ -314,14 +326,15 @@ describe('SCRUM-69 registration settings', () => {
     })
   })
 
-  it('says only that registration is closed when the event has no capacity', async () => {
+  it('says registration is closed with no capacity or cut-off when the event has neither', async () => {
     const { user } = openAsHana(CONFIRMED_NOT_ENDED)
     const card = await registrationCard()
 
     await user.click(within(card).getByRole('radio', { name: 'Closed' }))
     await user.click(within(card).getByRole('button', { name: 'Save registration' }))
 
-    expect(await within(card).findByRole('status')).toHaveTextContent(/^Registration is closed\.$/)
+    const saved = await within(card).findByRole('status')
+    expect(saved.textContent).toBe(`Registration is closed. ${NO_CUT_OFF}`)
   })
 
   it('stops saying what was saved once a later save is refused', async () => {
@@ -414,6 +427,143 @@ describe('SCRUM-69 registration settings', () => {
 
     expect(save).toBeDisabled()
     expect(save).toHaveAttribute('aria-busy', 'true')
+  })
+
+  describe('the withdrawal cut-off (AC6, AC7)', () => {
+    /** EVR-PLAN0005 starts on 5 Oct at 10:00 am, Singapore time, and is open for 50. */
+    const STARTS_5_OCT_10AM = CONFIRMED_AND_ENDED
+    const CUT_OFF_HINT =
+      'In Singapore time, before the event starts. Leave empty to keep the current cut-off.'
+    const NOT_BEFORE_START = 'The withdrawal cut-off must be before the event starts.'
+    const RECORDED = '2026-10-04T17:45:00+08:00'
+
+    function cutOffBox(card: HTMLElement) {
+      return within(card).getByLabelText('Withdrawal cut-off')
+    }
+
+    function removeBox(card: HTMLElement) {
+      return within(card).getByRole('checkbox', { name: 'Remove the cut-off' })
+    }
+
+    function saveButton(card: HTMLElement) {
+      return within(card).getByRole('button', { name: 'Save registration' })
+    }
+
+    /** Open `reference` as Hana, type `cutOff` as a date-time box holds it, and save. */
+    async function recordCutOff(reference: string, cutOff: string) {
+      const page = openAsHana(reference)
+      const card = await registrationCard()
+      await page.user.type(cutOffBox(card), cutOff)
+      await page.user.click(saveButton(card))
+      return { ...page, card }
+    }
+
+    /** Record 4 Oct, 5:45 pm on EVR-PLAN0005, and wait for the card to say it was saved. */
+    async function recordedCutOff() {
+      const page = await recordCutOff(STARTS_5_OCT_10AM, '2026-10-04T17:45')
+      await within(page.card).findByText(/Withdrawal cut-off: 4 Oct, 5:45 pm\./)
+      return page
+    }
+
+    it('records a cut-off typed in Singapore time, sending only it, and says it once saved', async () => {
+      const requests = recordRequests()
+
+      const { card } = await recordCutOff(STARTS_5_OCT_10AM, '2026-10-04T17:45')
+
+      expect(await within(card).findByRole('status')).toHaveTextContent(
+        'Registration is open. Capacity: 50. Withdrawal cut-off: 4 Oct, 5:45 pm.',
+      )
+      expect(await changesSent(requests)).toEqual([{ withdrawal_cut_off: RECORDED }])
+    })
+
+    it("refuses one at the start under the box, in the backend's words, and moves to it", async () => {
+      const { card } = await recordCutOff(STARTS_5_OCT_10AM, '2026-10-05T10:00')
+
+      expect(await within(card).findByRole('alert')).toHaveTextContent('Invalid request.')
+      expect(cutOffBox(card)).toHaveAccessibleDescription(NOT_BEFORE_START)
+      expect(cutOffBox(card)).toHaveFocus()
+      expect(within(card).getByLabelText('Capacity')).toHaveAccessibleDescription(
+        'How many places attendees can take. Leave empty to keep the current number.',
+      )
+      expect(within(card).queryByRole('status')).not.toBeInTheDocument()
+    })
+
+    it('takes one a minute before the start, and stops showing the earlier refusal', async () => {
+      const { card, user } = await recordCutOff(STARTS_5_OCT_10AM, '2026-10-05T10:00')
+      await within(card).findByRole('alert')
+
+      await user.clear(cutOffBox(card))
+      await user.type(cutOffBox(card), '2026-10-05T09:59')
+      await user.click(saveButton(card))
+
+      expect(await within(card).findByRole('status')).toHaveTextContent(
+        'Withdrawal cut-off: 5 Oct, 9:59 am.',
+      )
+      expect(cutOffBox(card)).toHaveAccessibleDescription(CUT_OFF_HINT)
+      expect(within(card).queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('removes a recorded cut-off by sending null, whatever is still in the box', async () => {
+      const requests = recordRequests()
+      const { card, user } = await recordedCutOff()
+
+      await user.click(removeBox(card))
+      expect(cutOffBox(card)).toBeDisabled()
+      await user.click(saveButton(card))
+
+      expect(await within(card).findByRole('status')).toHaveTextContent(NO_CUT_OFF)
+      expect(await changesSent(requests)).toEqual([
+        { withdrawal_cut_off: RECORDED },
+        { withdrawal_cut_off: null },
+      ])
+    })
+
+    it('has something to save once Remove is ticked, and nothing again once it is unticked', async () => {
+      const { user } = openAsHana(STARTS_5_OCT_10AM)
+      const card = await registrationCard()
+
+      await user.click(removeBox(card))
+      expect(saveButton(card)).toBeEnabled()
+      await user.click(removeBox(card))
+
+      expect(saveButton(card)).toBeDisabled()
+      expect(cutOffBox(card)).toBeEnabled()
+    })
+
+    it('asks for a capacity under Capacity when only a cut-off is sent to an event with none', async () => {
+      const { card } = await recordCutOff(CONFIRMED_NOT_ENDED, '2026-10-03T18:00')
+
+      await within(card).findByRole('alert')
+      expect(within(card).getByLabelText('Capacity')).toHaveAccessibleDescription(
+        'A capacity is required to enable registration.',
+      )
+      expect(cutOffBox(card)).toHaveAccessibleDescription(CUT_OFF_HINT)
+    })
+
+    it('shows the change once in the history, with who made it, though the same cut-off is sent again', async () => {
+      const requests = recordRequests()
+      const { card, user } = await recordedCutOff()
+
+      await user.click(within(card).getByRole('radio', { name: 'Closed' }))
+      await user.click(saveButton(card))
+
+      const history = await findRegion('History')
+      await within(history).findByText('Registration enabled changed')
+      const cutOffChanges = within(history)
+        .getAllByRole('listitem')
+        .filter((entry) => within(entry).queryByText('Withdrawal cut-off changed') !== null)
+      expect(cutOffChanges).toHaveLength(1)
+      const [change] = cutOffChanges as [HTMLElement]
+      expect(within(change).getByText('Before').nextElementSibling).toHaveTextContent('Not set')
+      expect(within(change).getByText('After').nextElementSibling).toHaveTextContent(
+        '4 Oct, 5:45 pm',
+      )
+      expect(change).toHaveTextContent('Hana Yusof')
+      expect(await changesSent(requests)).toEqual([
+        { withdrawal_cut_off: RECORDED },
+        { registration_enabled: false, withdrawal_cut_off: RECORDED },
+      ])
+    })
   })
 })
 
