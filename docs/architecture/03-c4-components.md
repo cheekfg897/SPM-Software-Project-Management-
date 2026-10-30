@@ -29,7 +29,7 @@ flowchart LR
   web -->|"JSON over HTTP, Bearer JWT"| api
   api -->|"SQLAlchemy"| db
 
-  auth <--> orgs
+  auth --> orgs
   events <--> venue
   events <--> equipment
   events <--> registration
@@ -44,7 +44,8 @@ flowchart LR
 **What the arrows say about the design**
 
 - `events` is the hub: `venue`, `equipment` and `registration` all depend on it, and it calls back into each of
-  them and into `notifications`. `organisations` only talks to `auth`.
+  them and into `notifications`. `auth` calls `organisations` to read a user's client organisation;
+  `organisations` imports only auth's role constants, like every module, so that arrow points one way.
 - The pairs `events` and `venue`, `events` and `equipment`, `events` and `registration` import each other.
   The code resolves this with function-local imports and marks them `# circular at import time`.
   It works, but it is the main place a change in one module can break another.
