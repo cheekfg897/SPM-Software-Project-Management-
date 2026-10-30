@@ -448,12 +448,12 @@ def register_for_event(
 
 
 def _withdrawal_closes_at(event: EventHeading) -> datetime:
-    """When the attendees of ``event`` can no longer withdraw (SCRUM-53 AC2, AC3, AC6).
+    """When the attendees of ``event`` can no longer withdraw (SCRUM-53 AC2, AC3, AC5).
 
     The withdrawal cut-off the coordinator recorded (SCRUM-69 AC6), or the event's start
     when there is none. A cut-off left after the start, because the event has since
     moved earlier, gives way to the start (ADR-0086). An event that has started cannot
-    be withdrawn from, so a completed one cannot either (AC6).
+    be withdrawn from, so a completed one cannot either (AC5).
     """
     if event.withdrawal_cut_off is None:
         return event.starts_at
@@ -470,8 +470,8 @@ def withdraw_registration(
     """Withdraw an attendee's place at an event, freeing it for someone else (SCRUM-53).
 
     The row is kept with status ``withdrawn``; only held places are counted, so the
-    place returns to the event's capacity (AC5). A refusal once withdrawals have closed
-    says when they closed, in business time (AC4).
+    place returns to the event's capacity (AC4). A refusal once withdrawals have closed
+    says when they closed, in business time (AC3).
 
     Args:
         attendee_id: The caller's user id, taken from their token.

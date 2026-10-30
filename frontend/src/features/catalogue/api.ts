@@ -95,7 +95,7 @@ export interface MyRegisteredEvent {
   status: RegistrationStatus
   registered_at: string
   withdrawn_at: string | null
-  /** The cut-off the coordinator recorded, or the start when there is none (SCRUM-53 AC3). */
+  /** The cut-off the coordinator recorded, or the start when there is none (SCRUM-53 AC2). */
   withdrawals_close_at: string
   /** Whether the Attendee may withdraw now: the backend decides (SCRUM-53). */
   can_withdraw: boolean

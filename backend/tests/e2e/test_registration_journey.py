@@ -15,7 +15,7 @@ journey). It exercises these user stories and acceptance criteria (SCRUM-63 AC5)
   account and see the event in their list.
 - SCRUM-54 AC1, AC2, AC3: the event fills and is shown full, a further registration is
   refused, and a withdrawal frees a place that a further registration takes.
-- SCRUM-53 AC1, AC2, AC5: attendees see each registration's status, withdraw, and the
+- SCRUM-53 AC1, AC2, AC4: attendees see each registration's status, withdraw, and the
   place goes back to the event's capacity.
 - SCRUM-55 AC2, AC3, AC4: the coordinator's list of registrants shows each status and
   the count against the capacity.
@@ -314,7 +314,7 @@ def test_attendees_fill_an_event_and_a_different_attendee_takes_a_freed_place(
     assert _places(client, approved_event) == (0, True)
 
     # --- Alice withdraws; the row stays, and the place is free (SCRUM-63 AC1,
-    # --- SCRUM-53 AC1, AC2, AC5) ---
+    # --- SCRUM-53 AC1, AC2, AC4) ---
     withdrawn = _body(alice.delete(registrations_path), 200)
     assert withdrawn["status"] == "withdrawn"
     assert _my_registration_statuses(alice) == ["withdrawn"]

@@ -1,12 +1,12 @@
 """Unit tests for SCRUM-53 "See and withdraw my registration".
 
 AC1: an attendee sees each registration with its status, withdrawn ones included. AC2:
-they can withdraw from an event that has not taken place, until its withdrawal cut-off.
-AC3: the cut-off is optional, recorded by the coordinator (SCRUM-69 AC6); with none,
-withdrawals close when the event starts (ADR-0032, ADR-0086). AC4: a refusal says when
-withdrawals closed. AC5: a withdrawn place returns to the event's capacity. AC6: nobody
-withdraws from an event already completed. A withdrawal sets the row's status, nothing
-is deleted, and registering again sets the same row back (ADR-0032).
+they can withdraw until the event's withdrawal cut-off, or until it starts when none is
+set; the cut-off is optional and recorded by the coordinator (SCRUM-69 AC6, ADR-0032,
+ADR-0086). AC3: a refusal says when withdrawals closed. AC4: a withdrawn place returns
+to the event's capacity. AC5: nobody withdraws from an event already completed. AC6:
+the Event Organiser sees the withdrawal. A withdrawal sets the row's status, nothing is
+deleted, and registering again sets the same row back (ADR-0032).
 
 Runs against ``db_session``, so the counts are real SQL.
 """
@@ -181,7 +181,7 @@ def test_withdrawing_touches_only_that_event_and_that_attendee(
 
 
 # --------------------------------------------------------------------------
-# AC2-AC4 and AC6 — withdrawals close at the cut-off, or when the event starts
+# AC2, AC3 and AC5 — withdrawals close at the cut-off, or when the event starts
 # --------------------------------------------------------------------------
 
 
@@ -268,7 +268,7 @@ def test_a_cut_off_left_after_the_start_by_a_change_of_date_closes_at_the_start(
 
 
 # --------------------------------------------------------------------------
-# AC5 — a withdrawn place returns to the event's capacity
+# AC4 — a withdrawn place returns to the event's capacity
 # --------------------------------------------------------------------------
 
 
@@ -411,7 +411,7 @@ def test_the_catalogue_stops_showing_a_withdrawn_attendee_as_registered(
 
 
 # --------------------------------------------------------------------------
-# AC7 — the Event Organiser sees the withdrawal in the event's registration list
+# AC6 — the Event Organiser sees the withdrawal in the event's registration list
 # --------------------------------------------------------------------------
 
 
