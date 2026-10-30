@@ -19,14 +19,16 @@ stateDiagram-v2
     awaiting_clarification --> under_review : organiser resubmits
   }
 
-  awaiting --> approved : approve
+  submitted --> approved : approve
+  under_review --> approved : approve
   awaiting --> rejected : reject
 
+  approved --> rejected : decision changed, or rejected during planning
+  rejected --> approved : decision changed
   approved --> safety_review : coordinator submits for safety check
-  safety_review --> approved : Safety Officer rejects or asks for changes
+  safety_review --> approved : Safety Officer rejects or asks for changes,<br/>or a change sends it back to planning
   safety_review --> confirmed : coordinator confirms
-  confirmed --> approved : a change withdraws the safety approval
-  approved --> rejected : rejected during planning
+  confirmed --> approved : a change withdraws the safety approval,<br/>or a venue becomes unavailable
   safety_review --> rejected : rejected during planning
   confirmed --> completed : event has ended
 
@@ -39,8 +41,13 @@ stateDiagram-v2
   class cancelled planned
 ```
 
-- A request can be decided only while it is submitted, under review or awaiting clarification, and the
-  decision can still be re-made while it is approved or rejected (ADR-0028).
+- A request can be decided only while it is submitted, under review or awaiting clarification. One awaiting
+  clarification can be rejected but not approved until the organiser answers (ADR-0029).
+- An approved or rejected request can be decided again, with a reason, until the event has an equipment request
+  or a venue arrangement (ADR-0028). A rejection during planning is final (ADR-0106).
+- Back to approved from safety review or confirmed: a Safety Officer's rejection or request for changes
+  (ADR-0047), a change that withdraws the safety approval (ADR-0087) or leaves an arrangement unsettled
+  (ADR-0107), and, from confirmed only, a venue becoming unavailable (SCRUM-92, ADR-0053).
 - Confirming needs the Safety Officer's approval, every active venue arrangement approved and every equipment
   line given an outcome (ADR-0051).
 - `cancelled` exists in the enum and counts as a closed status, but nothing moves an event there yet. That is
