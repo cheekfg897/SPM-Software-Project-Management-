@@ -145,6 +145,30 @@ describe('SCRUM-33 AC4 describing a changed field', () => {
     ])
   })
 
+  it('names the withdrawal cut-off and shows it as a day and time in Singapore (SCRUM-69 AC7)', () => {
+    const recorded = {
+      field: 'withdrawal_cut_off',
+      previous_value: null,
+      new_value: '2026-10-04T18:00:00+08:00',
+    }
+    const moved = {
+      field: 'withdrawal_cut_off',
+      previous_value: '2026-10-04T18:00:00+08:00',
+      new_value: '2026-10-03T01:30:00Z',
+    }
+
+    expect(described('field_changed', recorded)).toEqual(
+      plain('Withdrawal cut-off changed', [
+        ['Before', 'Not set'],
+        ['After', '4 Oct, 6:00 pm'],
+      ]),
+    )
+    expect(described('field_changed', moved).facts.map((fact) => fact.value)).toEqual([
+      '4 Oct, 6:00 pm',
+      '3 Oct, 9:30 am',
+    ])
+  })
+
   it('says a value was not set, and gives a yes or no for a setting', () => {
     const notes = { field: 'internal_planning_notes', previous_value: null, new_value: 'Call AV.' }
     const setting = { field: 'registration_enabled', previous_value: false, new_value: true }
