@@ -29,7 +29,7 @@ building it.
 | Added | Points | Why it couldn't wait |
 |---|---|---|
 | SCRUM-110 Coordinator edits event details and equipment only once the request is approved | 3 | SCRUM-56 and 57 assume the new edit window, so it comes first |
-| SCRUM-111 Cancel one approved venue booking while the event is being planned | 3 | Split out of SCRUM-61 AC7: no story owned it (`cancel_all_arrangements` says so in the code) |
+| SCRUM-111 Cancel one approved venue booking while the event is being planned | 3 | Split out of SCRUM-61's old AC7: no story owned it (`cancel_all_arrangements` says so in the code) |
 
 SCRUM-112 (coordinator asks the Lead to cancel a Confirmed event, 5 points) was added on
 29 Oct and dropped on 30 Oct (decision 7); it stays in the backlog, outside the sprint. Existing estimates were **not** changed mid-sprint, so the burndown stays
@@ -49,10 +49,10 @@ comparable. Estimates for the new stories are relative to SCRUM-67, 75, 87 (3) a
 | D | Raising, deciding, withdrawing, cancelling and the event's own decisions lock the event row | Two actions in the same second can't both win | SCRUM-57 technical note |
 | E | The Organiser can withdraw a Pending change request. A cancelled event's Pending request closes as Withdrawn | Needed because of A | SCRUM-56 AC8, AC9 |
 | 5 | A venue that becomes unavailable stays with SCRUM-92 (Done). No new story | 92 already returns a Confirmed event to Approved and notifies the Organiser | — |
-| 6 | The Organiser cancels directly, in any status from Submitted to Confirmed, after a confirmation screen. **Replaces the 26 Oct decision** that cancellation is a change request | Cancelling is the Organiser's right ("may postpone or cancel the event"), and SCRUM-61's release steps leave the coordinator nothing to decide | SCRUM-61 AC1, AC2 struck, SCRUM-56 AC2 |
+| 6 | The Organiser cancels directly, in any status from Submitted to Confirmed, after a confirmation screen. **Replaces the 26 Oct decision** that cancellation is a change request | Cancelling is the Organiser's right ("may postpone or cancel the event"), and SCRUM-61's release steps leave the coordinator nothing to decide | SCRUM-61 AC1 rewritten, AC2 removed; SCRUM-56 AC2 |
 | 7 | A coordinator never cancels (30 Oct, replacing the Lead route of 29 Oct). A business-side stop is a rejection with a reason (SCRUM-31, or SCRUM-49 during planning); a Confirmed event whose venue goes first returns to Approved (SCRUM-92). A Confirmed event that can't run for a reason the system doesn't track (e.g. weather) is cancelled by the Organiser after the coordinator contacts them | Cancelled means the Organiser withdrew, Rejected means we couldn't or wouldn't run it. Every business-side reason already reaches Approved, where rejecting is built, so the Lead route guarded almost nothing | SCRUM-61 PO note; SCRUM-112 dropped |
 | 8 | SCRUM-58 rewritten: "significant" defined, one-line ACs, an AC5 table, and the return to Approved moved to a new AC7. Numbers and rules kept | The story was too long to read, and "approved" had three meanings | SCRUM-58 |
-| 9 | End-to-end tests move into the stories they test (SCRUM-58 AC8, SCRUM-61 AC11). No new test story | A test story fails the V in INVEST and waits on everything else | SCRUM-58, 61, 63 |
+| 9 | End-to-end tests move into the stories they test (SCRUM-58 AC8, SCRUM-61 AC9). No new test story | A test story fails the V in INVEST and waits on everything else | SCRUM-58, 61, 63 |
 
 ### Customer statements read narrowly
 
@@ -66,6 +66,17 @@ these are the ones to revisit:
 - Week 4: "every edit goes through the Coordinator". Decision 6 treats cancelling as not an
   edit. If overturned, cancellation goes back to being a change request in SCRUM-56/57.
 
+## Later decisions (30–31 Oct)
+
+Made after this session, on the same INVEST grounds. The refinement doc's 30 and 31 Oct rows
+hold the detail.
+
+| # | Decision | Why | Ticket |
+|---|---|---|---|
+| 10 | SCRUM-53's old AC3 (who sets the withdrawal cut-off) removed; its no-cut-off rule moved into AC2. Old AC4–AC7 are now AC3–AC6 | It repeated SCRUM-69 AC6 and made 53 wait for 69's settings screen | SCRUM-53 (Jira comment) |
+| 11 | SCRUM-44's old AC11 (a request overlapping an active hold shown as Conflicting) dropped, with no new story. Old AC12 is now AC11 | Customer change #4 is met without it: held venues are hidden from search, and a clashing request is refused while the hold is active and can be approved once it ends. "Conflicting" means a clash with a confirmed booking | SCRUM-44 (Jira comment) |
+| 12 | A removed AC is deleted from the story, not struck through, and the AC numbers cited in code and tests are updated to match. SCRUM-61's AC2 and AC7 and SCRUM-63's AC2 and AC3 were deleted on 31 Oct | A struck AC still reads as part of the story; Jira history and the refinement doc keep the record. ADRs and merged migrations keep the numbers they were written with | SCRUM-61, 63 (Jira comments); docs PR for the citations |
+
 ## Changes made in Jira
 
 | Ticket | Change |
@@ -76,8 +87,8 @@ these are the ones to revisit:
 | SCRUM-56 | AC1 widened; AC2 loses cancellation; AC3 and AC4 reworded so they can be tested within 56; AC6–AC9 added; notes replaced |
 | SCRUM-57 | AC6–AC9 added; technical note on the row lock |
 | SCRUM-58 | Retitled "Reassess venue bookings after an approved change request" and rewritten; AC7, AC8 added |
-| SCRUM-61 | Now the Organiser's story; AC1 rewritten; AC2 and AC7 struck with pointers; AC11 added; "already built" note; only the Organiser cancels (30 Oct) |
-| SCRUM-63 | AC2 and AC3 struck, moved to SCRUM-58 and 61; can close on AC1, AC4, AC5 (PR #148) |
+| SCRUM-61 | Now the Organiser's story; AC1 rewritten; AC2 and AC7 removed (deleted 31 Oct, decision 12, so the end-to-end journey added here is now AC9); "already built" note; only the Organiser cancels (30 Oct) |
+| SCRUM-63 | AC2 and AC3 moved to SCRUM-58 and 61, then deleted (31 Oct, decision 12); can close on its three remaining ACs (PR #148) |
 | SCRUM-37 | Note: the window starts at Approved (SCRUM-110); reservation trimming is SCRUM-60 AC9 |
 | SCRUM-54 | AC5 marked as restating SCRUM-69 AC3; note that AC1–AC4 are built |
 | SCRUM-32, 33 | Comments pointing at SCRUM-110 (32's also records its unbuilt 17 Oct rework) |
@@ -108,14 +119,15 @@ two Alembic heads.
 | Finish SCRUM-32's 17 Oct rework: the coordinator records the response, and remove the Organiser's `/resubmit` | Seth |
 | New ADR for SCRUM-110, superseding ADR-0101 decision 1 | SCRUM-110 owner |
 | ADR-0094 decision 11 should cite SCRUM-58 AC7 | SCRUM-58 owner |
-| Point the docstring in `tests/e2e/test_registration_journey.py` at SCRUM-58 and 61 | SCRUM-58 / 61 owners |
+| Point the docstring in `tests/e2e/test_registration_journey.py` at SCRUM-58 and 61 | Done in the 31 Oct docs PR |
 
 ## Still open
 
 - **Q3:** when a change to "equipment requirements" is approved, does it edit the equipment
   lines (SCRUM-37) or the free-text field? It decides how SCRUM-57 applies the change.
 - **Clusters 3 and 4** of the review, with the team: notifications (28, 39, 62) and venue
-  holds (44, 94).
+  holds (94; 44 was settled on 30 Oct, decision 11). SCRUM-94 AC1 ("with no user action")
+  needs a decision: reword it, or add a local scheduled expiry job.
 - **Cluster 5, decided 29 Oct:** SCRUM-70 and 90 need no AC change (5-01). SCRUM-90's "record
   this in a new ADR" is now subtask SCRUM-113. The stale "This story is To Do, so nothing is
   built yet" line was deleted from SCRUM-59, and still has to be deleted by hand from SCRUM-60
