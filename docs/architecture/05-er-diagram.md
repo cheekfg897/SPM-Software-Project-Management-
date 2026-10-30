@@ -1,10 +1,12 @@
 # Entity-relationship diagrams
 
-The 17 tables created by the Alembic migrations (latest `0045`), split into three views so each stays readable.
+The 18 tables created by the Alembic migrations (latest `0048`), split into three views so each stays readable.
 Only keys and the columns that explain a relationship are shown. A table shown with just its key is a stub: it
 appears in full in another view. `bookings.event_id` has no foreign key, so it is a plain column with no line.
 
 ## 5a. People, events, registration and notifications
+
+`revoked_tokens` holds one row per access token logged out before it expired (SCRUM-89, ADR-0110).
 
 ```mermaid
 erDiagram
@@ -21,6 +23,7 @@ erDiagram
   EVENT_REQUESTS ||--o{ NOTIFICATIONS : "about"
   EVENT_REQUESTS ||--o{ REGISTRATIONS : "has"
   USERS ||--o{ REGISTRATIONS : "attends"
+  USERS ||--o{ REVOKED_TOKENS : "logged out"
 
   CLIENT_ORGANISATIONS {
     int id PK
@@ -69,6 +72,12 @@ erDiagram
     int event_request_id FK
     int attendee_id FK
     string status
+  }
+  REVOKED_TOKENS {
+    int id PK
+    string jti UK
+    int user_id FK
+    datetime expires_at
   }
   EQUIPMENT_TYPES {
     int id PK

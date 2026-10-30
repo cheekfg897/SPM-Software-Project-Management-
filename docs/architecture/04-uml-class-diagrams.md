@@ -76,8 +76,14 @@ classDiagram
     +string name
     +int total_quantity
   }
+  class RevokedToken {
+    +int id
+    +string jti
+    +datetime expires_at
+  }
 
   ClientOrganisation "0..1" <-- "0..*" User : belongs to
+  User "1" <-- "0..*" RevokedToken : logged out
   User "1" <-- "0..*" EventRequest : organiser
   User "0..1" <-- "0..*" EventRequest : coordinator
   ClientOrganisation "0..1" <-- "0..*" EventRequest : client of
@@ -100,7 +106,7 @@ classDiagram
 | `EquipmentLineStatus` | requested, fulfilled, partially_fulfilled, unavailable |
 | `RegistrationStatus` | registered, withdrawn |
 
-`EventHistoryKind` (23 kinds) and `NotificationKind` (28 kinds) are enumerations too. They are left off the
+`EventHistoryKind` (23 kinds) and `NotificationKind` (30 kinds) are enumerations too. They are left off the
 diagram because their value lists are long. See `events/models.py` and `notifications/models.py`.
 
 ## 4b. Venues, bookings and equipment

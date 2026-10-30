@@ -1,6 +1,7 @@
 # ConnectSphere architecture
 
-C4 and UML diagrams of ConnectSphere as it stands on `main` and in Jira (statuses read 27 Oct 2026).
+C4 and UML diagrams of ConnectSphere as it stands on `main` and in Jira (statuses read 27 Oct 2026; checked
+again against `main` on 31 Oct, up to migration `0048`).
 All diagrams are Mermaid, so GitHub renders them directly from the `.md` files. PNG copies are in `rendered/` for slides and the submission zip.
 
 | File | Contents |

@@ -17,12 +17,12 @@ flowchart LR
 
   subgraph api["Backend API [Flask 3.1]"]
     direction LR
-    auth["<b>auth</b><br/>/api/auth, 4 routes<br/>Sign-up, log-in, JWT, roles"]:::comp
+    auth["<b>auth</b><br/>/api/auth, 5 routes<br/>Sign-up, log-in, log-out, JWT, roles"]:::comp
     orgs["<b>organisations</b><br/>/api/organisations, 2 routes<br/>Client organisations"]:::comp
     events["<b>events</b><br/>/api/events, 34 routes<br/>Requests, review, assignment,<br/>safety review, confirmation"]:::hub
     venue["<b>venue</b><br/>/api/venues, 23 routes<br/>Catalogue, search, bookings,<br/>holds, flags"]:::comp
     equipment["<b>equipment</b><br/>/api/equipment, 11 routes<br/>Catalogue, reservation,<br/>out-of-service"]:::comp
-    registration["<b>registration</b><br/>/api/events, 5 routes<br/>Register, withdraw, registrants"]:::comp
+    registration["<b>registration</b><br/>/api/events, 6 routes<br/>Register, withdraw, registrants,<br/>the attendee's own event"]:::comp
     notifications["<b>notifications</b><br/>/api/notifications, 3 routes<br/>Notify, list, mark read"]:::comp
   end
 
@@ -36,6 +36,7 @@ flowchart LR
   events --> notifications
   venue --> notifications
   equipment --> venue
+  registration --> venue
 
   style api fill:none,stroke:#888888,stroke-dasharray:5 3
 ```
