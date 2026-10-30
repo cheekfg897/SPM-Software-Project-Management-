@@ -1,7 +1,7 @@
 """Unit tests for SCRUM-49 AC10 — releasing an event's venues when it is rejected.
 
 When the assigned coordinator rejects an event during planning, its venue bookings and
-holds are released, as for a cancelled event (SCRUM-61 AC3, AC8, ADR-0093).
+holds are released, as for a cancelled event (SCRUM-61 AC2, AC6, ADR-0093).
 ``release_event_arrangements`` does the venue module's part without committing: an
 arrangement Venue Staff haven't approved is withdrawn as the coordinator would withdraw
 it (SCRUM-93), and one that holds the venue, Approved or On Hold, is Released with its
@@ -147,7 +147,7 @@ def test_a_booking_made_from_a_hold_is_cancelled_too(
 def test_the_venue_is_free_for_the_period_again(
     db_session: Session, event: EventRequest, venue: Venue, saved_event: SavedEvent
 ) -> None:
-    """SCRUM-61 AC3: another event can now be booked into the released period."""
+    """SCRUM-61 AC2: another event can now be booked into the released period."""
     arrangement = raise_booking(venue, event, db_session)
     decide(arrangement.id, "approved", db_session)
     other_event = saved_event()

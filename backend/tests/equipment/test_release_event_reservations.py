@@ -1,7 +1,7 @@
 """Unit tests for SCRUM-49 AC10 — returning a rejected event's equipment.
 
 When the assigned coordinator rejects an event during planning, its reserved equipment
-returns to the available quantity, as a cancelled event's does (SCRUM-61 AC4, ADR-0093).
+returns to the available quantity, as a cancelled event's does (SCRUM-61 AC3, ADR-0093).
 ``release_event_reservations`` does the equipment module's part without committing.
 Runs against ``db_session``, so availability is really counted.
 """

@@ -435,7 +435,7 @@ def test_its_reserved_equipment_returns_to_stock(
 def test_its_open_equipment_requests_are_closed(
     db_session: Session, approved: EventRequest, add_line: AddLine
 ) -> None:
-    """SCRUM-61 AC9: off Technical Support's list, and no outcome can be recorded."""
+    """SCRUM-61 AC7: off Technical Support's list, and no outcome can be recorded."""
     waiting = add_line(None)
     today = approved.proposed_date
     assert len(list_equipment_requests_awaiting_action(session=db_session, today=today)) == 1

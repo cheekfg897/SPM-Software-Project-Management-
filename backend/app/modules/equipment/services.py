@@ -791,7 +791,7 @@ def release_event_reservations(event_id: int, *, session: Session | None = None)
     """Return every unit reserved for the event to stock, without committing.
 
     SCRUM-49 AC10: an event rejected during planning gives its equipment back, as a
-    cancelled event does (SCRUM-61 AC4, ADR-0093). Availability counts every
+    cancelled event does (SCRUM-61 AC3, ADR-0093). Availability counts every
     reservation row (SCRUM-45), so the event's rows are deleted and their units are
     free for the period at once. Each reservation's ``equipment_reserved`` history
     entry stays, so the event's record still says what was set aside. The caller
