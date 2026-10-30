@@ -17,7 +17,7 @@ sequenceDiagram
 
   Org->>Web: Fill in the request
   Web->>API: POST /api/events/requests
-  API->>DB: Insert event request (submitted) and history entry
+  API->>DB: Insert event request (submitted, no coordinator yet)
   API->>DB: Notify every Lead (request_queued_for_lead)
   API-->>Web: 201 reference
 
@@ -71,6 +71,7 @@ sequenceDiagram
   else Venue Staff hold first
     VS->>API: POST /api/venues/booking-requests/:id/hold
     API->>DB: Request on_hold, tentative booking with an expiry
+    API->>DB: Notify the coordinator (venue_hold_placed)
   end
 
   Coord->>API: POST /api/events/requests/:reference/equipment
