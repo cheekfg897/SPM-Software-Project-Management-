@@ -376,6 +376,29 @@ describe('SCRUM-69 registration settings', () => {
     )
   })
 
+  it('reads the event again after a refused save, in case it moved on', async () => {
+    const requests = recordRequests()
+    const { user } = openAsHana(CONFIRMED_AND_ENDED)
+    const card = await registrationCard()
+
+    await user.type(within(card).getByLabelText('Capacity'), '20')
+    await user.click(within(card).getByRole('button', { name: 'Save registration' }))
+
+    await within(card).findByRole('alert')
+    await waitFor(() => {
+      const methods = requests.map(
+        (request) => `${request.method} ${new URL(request.url).pathname}`,
+      )
+      const refused = methods.indexOf(
+        `PATCH /api/events/requests/${CONFIRMED_AND_ENDED}/registration`,
+      )
+      expect(refused).toBeGreaterThanOrEqual(0)
+      expect(
+        methods.lastIndexOf(`GET /api/events/requests/${CONFIRMED_AND_ENDED}`),
+      ).toBeGreaterThan(refused)
+    })
+  })
+
   it('says it is busy while the settings are being saved', async () => {
     server.use(
       http.patch(`/api/events/requests/${CONFIRMED_NOT_ENDED}/registration`, () =>
