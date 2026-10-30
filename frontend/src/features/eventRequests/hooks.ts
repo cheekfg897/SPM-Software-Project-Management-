@@ -177,12 +177,16 @@ export function useCompleteEvent(reference: string) {
   return useMutation({ mutationFn: () => completeEvent(reference), onSuccess: refresh })
 }
 
-/** Open or close registration for an event assigned to the coordinator, or set its capacity. */
+/**
+ * Change the registration settings of an event assigned to the coordinator (SCRUM-69).
+ * Afterwards, saved or refused, the record and its history are read again: a refusal may mean
+ * the event has moved on, such as out of Confirmed.
+ */
 export function useUpdateRegistration(reference: string) {
   const refresh = useRefreshEventRequests()
   return useMutation({
     mutationFn: (changes: RegistrationChanges) => updateRegistrationSettings(reference, changes),
-    onSuccess: refresh,
+    onSettled: refresh,
   })
 }
 
