@@ -132,7 +132,7 @@ after it, whose organiser asked for registration).
 - SCRUM-69 AC3 no longer limits the capacity to the booked venue's (customer answer A74,
   ADR-0043), so the form has no venue refusal to show. SCRUM-69 AC6's withdrawal cut-off
   (ADR-0086) has no input on the form yet: listed under Tickets to open on the SCRUM-69 pull
-  request.
+  request. *(Added by [ADR-0115](0115-withdrawal-cut-off-on-the-registration-form.md).)*
 - SCRUM-49 AC11 (what the organiser sees once confirmed) has no backend yet (ADR-0051 decision
   10), so the page has nothing to offer for it. AC9 and AC10 (rejecting an event during
   planning) are on the page since ADR-0093.

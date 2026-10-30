@@ -30,11 +30,11 @@ The ACs leave open the cut-off's form (an instant or a lead time before the star
 9. **The frontend's contract.** The registration mock (`mocks/handlers/eventPlanning.ts`, `eventPlanningRules.ts`) takes `withdrawal_cut_off` with the backend's checks, messages and history entries, and answers it in business time. The withdraw mock (`mocks/handlers/catalogue.ts`, from SCRUM-53's screen) closes at the earlier of the cut-off and the start, with the cut-offs as mock-only data in `MOCK_WITHDRAWAL_CUT_OFFS`, since the catalogue doesn't send them. The screen reads `details.withdrawal_closed_at` from the refusal rather than working the time out, so it shows the cut-off with no change of its own.
 
 ## Consequences
-- SCRUM-53 AC2-AC4 are met by the backend. The coordinator's registration form on the event page has no cut-off input yet, so SCRUM-69 AC6 can be done through the API but not yet on screen; that is a follow-up (see the pull request's *Tickets to open*).
+- SCRUM-53 AC2-AC4 are met by the backend. The coordinator's registration form on the event page has no cut-off input yet, so SCRUM-69 AC6 can be done through the API but not yet on screen; that is a follow-up (see the pull request's *Tickets to open*). *(The form gained the input with [ADR-0115](0115-withdrawal-cut-off-on-the-registration-form.md).)*
 - `EventHeading` gains `withdrawal_cut_off`, so every reader of `list_event_headings` gets it; the attendee's own list doesn't show it (no AC asks).
 - The migration adds one nullable column; downgrading drops it with any cut-offs recorded since.
 - Tests: `tests/events/test_registration_settings.py` (AC6 and AC7 sections), `test_registration_settings_routes.py`, `test_withdrawal_cut_off_migration.py` (marker `scrum_69`), and `tests/registration/test_withdraw_registration.py` (marker `scrum_53`).
 
 ## Revisit when
 - The Product Owner rules on a cut-off already in the past, or on an event moved earlier than its cut-off (decisions 3 and 4).
-- The coordinator's registration form gains the cut-off input: it should send `null` to clear it.
+- ~~The coordinator's registration form gains the cut-off input: it should send `null` to clear it.~~ Done by [ADR-0115](0115-withdrawal-cut-off-on-the-registration-form.md): "Remove the cut-off" sends `null`.
