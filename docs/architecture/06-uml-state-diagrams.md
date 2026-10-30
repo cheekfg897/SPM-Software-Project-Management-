@@ -78,8 +78,10 @@ stateDiagram-v2
   rejected --> withdrawn : coordinator withdraws
   expired --> withdrawn : coordinator withdraws
 
-  approved --> released : event rejected during planning
-  on_hold --> released : event rejected during planning
+  approved --> released : event rejected during planning, or replaced
+  on_hold --> released : event rejected during planning, or replaced
+  pending --> released : replaced
+  conflicting --> released : replaced
 
   withdrawn --> [*]
   released --> [*]
@@ -89,5 +91,10 @@ stateDiagram-v2
   `conflicting`. Setup and turnaround time count towards the clash (ADR-0011, ADR-0045).
 - A hold has an expiry that Venue Staff set. The job warns the coordinator 24 hours before and expires the
   hold when the time passes (ADR-0052).
+- *Replaced*: when Venue Staff approve a replacement for an arrangement whose venue became unavailable, the
+  arrangement it replaces is released, whether it was pending, conflicting, on hold or approved (SCRUM-92 AC7, ADR-0053,
+  ADR-0100).
+- Rejecting the event during planning withdraws its pending, conflicting, rejected and expired requests, as the
+  coordinator would, and releases the approved and on-hold ones (ADR-0093).
 - A rejected, expired or conflicting request stays on the event until the coordinator withdraws it. A
   rejected arrangement still blocks confirmation (see `docs/sprint-3-open-decisions.md`, section 1.1).
