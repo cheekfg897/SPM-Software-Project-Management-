@@ -75,7 +75,7 @@ hold the detail.
 |---|---|---|---|
 | 10 | SCRUM-53's old AC3 (who sets the withdrawal cut-off) removed; its no-cut-off rule moved into AC2. Old AC4–AC7 are now AC3–AC6 | It repeated SCRUM-69 AC6 and made 53 wait for 69's settings screen | SCRUM-53 (Jira comment) |
 | 11 | SCRUM-44's old AC11 (a request overlapping an active hold shown as Conflicting) dropped, with no new story. Old AC12 is now AC11 | Customer change #4 is met without it: held venues are hidden from search, and a clashing request is refused while the hold is active and can be approved once it ends. "Conflicting" means a clash with a confirmed booking | SCRUM-44 (Jira comment) |
-| 12 | A removed AC is deleted from the story, not struck through, and the AC numbers cited in code and tests are updated to match. SCRUM-61's AC2 and AC7 and SCRUM-63's AC2 and AC3 were deleted on 31 Oct | A struck AC still reads as part of the story; Jira history and the refinement doc keep the record. ADRs and merged migrations keep the numbers they were written with | SCRUM-61, 63 (Jira comments); docs PR for the citations |
+| 12 | A removed AC is deleted from the story, not struck through, and the AC numbers cited in code and tests are updated to match. SCRUM-61's AC2 and AC7 and SCRUM-63's AC2 and AC3 were deleted on 31 Oct | A struck AC still reads as part of the story; Jira history and the refinement doc keep the record. ADRs and merged migrations keep the numbers they were written with | SCRUM-61, 63 (Jira comments); PR #156 for the citations |
 
 ## Changes made in Jira
 
@@ -119,7 +119,7 @@ two Alembic heads.
 | Finish SCRUM-32's 17 Oct rework: the coordinator records the response, and remove the Organiser's `/resubmit` | Seth |
 | New ADR for SCRUM-110, superseding ADR-0101 decision 1 | SCRUM-110 owner |
 | ADR-0094 decision 11 should cite SCRUM-58 AC7 | SCRUM-58 owner |
-| Point the docstring in `tests/e2e/test_registration_journey.py` at SCRUM-58 and 61 | Done in the 31 Oct docs PR |
+| Point the docstring in `tests/e2e/test_registration_journey.py` at SCRUM-58 and 61 | Done in PR #156 |
 
 ## Still open
 
