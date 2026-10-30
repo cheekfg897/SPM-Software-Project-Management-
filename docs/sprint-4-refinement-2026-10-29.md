@@ -5,7 +5,7 @@ records **why** the Sprint 4 tickets changed on 29 Oct, the sprint scope change,
 follow-ups that belong to people rather than tickets. Read each story's ACs in Jira before
 building it.
 
-- **Who:** Ernest Tan, Product Owner.
+- **Who:** Gyaltsen Chee, Product Owner.
 - **Scope:** every Sprint 4 story not Done, checked against the code on `main @ 5080409d`.
   Clusters 0–2 of the review were decided and applied. Clusters 3 (notifications) and 4
   (venue holds) are with the rest of the team. Cluster 5 (housekeeping) has no owner yet.
