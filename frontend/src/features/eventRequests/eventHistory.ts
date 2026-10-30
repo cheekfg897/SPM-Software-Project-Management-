@@ -1,5 +1,5 @@
 import { preparationStatusLabel } from '@/config/preparation'
-import { formatShortDate, formatTimeRange } from '@/lib/formatDate'
+import { formatDateTime, formatShortDate, formatTimeRange } from '@/lib/formatDate'
 import { isRecord } from '@/lib/isRecord'
 
 import type { EventHistoryEntry } from './api'
@@ -59,6 +59,8 @@ const NOT_SET = 'Not set'
 /** The fields whose values the backend stores as dates ("2026-11-12") or times ("09:00:00"). */
 const DATE_FIELDS: readonly string[] = ['proposed_date', 'end_date']
 const TIME_FIELDS: readonly string[] = ['start_time', 'end_time']
+/** The fields the backend stores as instants and sends in business time (ADR-0086). */
+const DATE_TIME_FIELDS: readonly string[] = ['withdrawal_cut_off']
 
 /** `details[key]` if it is text; anything else, or nothing, is null. */
 function textIn(details: Details, key: string): string | null {
@@ -87,7 +89,7 @@ function entry(title: string, pairs: [string, string | null][] = []): DescribedE
   return { title, isSignificant: false, facts: factsOf(pairs) }
 }
 
-/** A field's value as the record would show it: a day, a time, yes or no, or as written. */
+/** A field's value as the record would show it: a day, a time, both, yes or no, or as written. */
 function shownValue(field: string, value: unknown): string {
   if (value === null || value === undefined) {
     return NOT_SET
@@ -101,6 +103,9 @@ function shownValue(field: string, value: unknown): string {
   if (typeof value === 'string' && TIME_FIELDS.includes(field)) {
     return formatTime(value)
   }
+  if (typeof value === 'string' && DATE_TIME_FIELDS.includes(field)) {
+    return formatDateTime(value)
+  }
   if (typeof value === 'string' || typeof value === 'number') {
     return String(value)
   }
@@ -109,10 +114,11 @@ function shownValue(field: string, value: unknown): string {
 
 /**
  * Fields whose name on screen isn't their key in words: the planning notes were once called
- * internal (SCRUM-33 AC1, ADR-0104).
+ * internal (SCRUM-33 AC1, ADR-0104), and the cut-off is written with its hyphen (SCRUM-69 AC7).
  */
 const FIELD_LABELS: Partial<Record<string, string>> = {
   internal_planning_notes: 'Planning notes',
+  withdrawal_cut_off: 'Withdrawal cut-off',
 }
 
 function fieldChanged(details: Details): DescribedEntry {
