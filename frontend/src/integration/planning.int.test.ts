@@ -1,5 +1,5 @@
 import { ROLE } from '@/config/roles'
-import { register } from '@/features/auth/api'
+import { fetchCurrentUser, register } from '@/features/auth/api'
 import {
   decideBookingRequest,
   fetchBookingRequests,
@@ -460,6 +460,38 @@ describe('SCRUM-69 registration settings against the backend', () => {
         withdrawal_cut_off: ['The withdrawal cut-off must be before the event starts.'],
       })
       expect(cleared.withdrawal_cut_off).toBeNull()
+    },
+  )
+
+  it.skipIf(!canAssign)(
+    'takes a cut-off as the form sends it, and records one change, by the caller, when it is sent again (AC6, AC7)',
+    async () => {
+      const { reference } = await approvedEvent()
+      // The form sends what was typed with Singapore's offset (ADR-0115).
+      const asTheFormSendsIt = `${daysFromNow(29)}T17:45:00+08:00`
+
+      const recorded = await updateRegistrationSettings(reference, {
+        registration_enabled: false,
+        withdrawal_cut_off: asTheFormSendsIt,
+      })
+      await updateRegistrationSettings(reference, { withdrawal_cut_off: asTheFormSendsIt })
+
+      expect(recorded.withdrawal_cut_off).toBe(asTheFormSendsIt)
+      const { full_name: coordinatorName } = await fetchCurrentUser()
+      const cutOffChanges = (await fetchEventHistory(reference)).history.filter(
+        (entry) => entry.details.field === 'withdrawal_cut_off',
+      )
+      expect(cutOffChanges.map((entry) => [entry.actor_name, entry.details])).toEqual([
+        [
+          coordinatorName,
+          {
+            field: 'withdrawal_cut_off',
+            previous_value: null,
+            new_value: asTheFormSendsIt,
+            significant: false,
+          },
+        ],
+      ])
     },
   )
 
