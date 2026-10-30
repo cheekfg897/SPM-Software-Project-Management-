@@ -90,7 +90,7 @@ hold the detail.
 | SCRUM-61 | Now the Organiser's story; AC1 rewritten; AC2 and AC7 removed (deleted 31 Oct, decision 12, so the end-to-end journey added here is now AC9); "already built" note; only the Organiser cancels (30 Oct) |
 | SCRUM-63 | AC2 and AC3 moved to SCRUM-58 and 61, then deleted (31 Oct, decision 12); can close on its three remaining ACs (PR #148) |
 | SCRUM-37 | Note: the window starts at Approved (SCRUM-110); reservation trimming is SCRUM-60 AC9 |
-| SCRUM-54 | AC5 marked as restating SCRUM-69 AC3; note that AC1–AC4 are built |
+| SCRUM-54 | AC5 marked as restating SCRUM-69 AC3; note that AC1, AC2 and AC4 were built under SCRUM-52 and AC3 is covered by SCRUM-63's registration journey and SCRUM-53 |
 | SCRUM-32, 33 | Comments pointing at SCRUM-110 (32's also records its unbuilt 17 Oct rework) |
 | SCRUM-53, 69 | Moved to In Review |
 | Links | 110 → 56, 61 → 56, 56 → 57, 57/59/60 → 58 (all "blocks"). The 61 → 112 and 57 → 112 links are still there on the backlog item; remove them in Jira if you want |
@@ -113,7 +113,7 @@ two Alembic heads.
 |---|---|
 | Assign owners to SCRUM-110 and 111 | Team |
 | Rank SCRUM-110 above 56 on the board | Ernest |
-| Check SCRUM-54 against the code and move it to review | Ihsan |
+| Check SCRUM-54 against the code and move it to review | Done 30 Oct: moved straight to Done |
 | Close SCRUM-63 | Keene |
 | Strike SCRUM-62 AC2: it now duplicates SCRUM-57 AC7 (review item 3-05) | Cluster 3 owners |
 | Finish SCRUM-32's 17 Oct rework: the coordinator records the response, and remove the Organiser's `/resubmit` | Seth |
