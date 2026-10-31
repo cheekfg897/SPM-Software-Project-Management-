@@ -5,6 +5,7 @@ import { recordRequests } from '@/test/recordRequests'
 import { renderApp } from '@/test/render'
 
 import { venueSearchForEventPath } from '../searchParams'
+import { search, searchesSent, typeInto } from '../test/searchForm'
 
 /**
  * SCRUM-90: a coordinator opens venue search from one of their events, with the filters its
@@ -15,14 +16,9 @@ import { venueSearchForEventPath } from '../searchParams'
  */
 
 const COORDINATOR = { session: mockSessionFor(MOCK_ACCOUNTS.coordinator) }
-const SEARCH_URL = '/api/venues/search'
 const PARTNER_SUMMIT = venueSearchForEventPath('EVR-7K2M9QXA')
 
 type View = ReturnType<typeof renderApp>
-
-function searchesSent(requests: Request[]): Request[] {
-  return requests.filter((request) => new URL(request.url).pathname === SEARCH_URL)
-}
 
 /** The note beside the filters the event could not fill, once the event has arrived. */
 function eventNote(name: string): Promise<HTMLElement> {
@@ -34,12 +30,6 @@ async function openFromPartnerSummit(): Promise<View> {
   const view = renderApp(PARTNER_SUMMIT, COORDINATOR)
   await eventNote('Partner Summit')
   return view
-}
-
-async function replaceText(view: View, label: string, text: string) {
-  const field = screen.getByLabelText(label)
-  await view.user.clear(field)
-  await view.user.type(field, text)
 }
 
 describe('SCRUM-90 venue search opened from an event', () => {
@@ -103,7 +93,7 @@ describe('SCRUM-90 venue search opened from an event', () => {
     const requests = recordRequests()
     const view = await openFromPartnerSummit()
 
-    await replaceText(view, 'Minimum capacity', '300')
+    await typeInto(view, 'Minimum capacity', '300')
     await view.user.selectOptions(screen.getByLabelText('Room layout'), 'Theatre')
     await view.user.type(screen.getByLabelText('Accessibility requirements'), 'step-free access')
     await view.user.click(screen.getByRole('button', { name: 'Search venues' }))
@@ -149,11 +139,7 @@ describe('SCRUM-90 venue search opened from an event', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Event request not found.')
     expect(screen.getByLabelText('Date')).toHaveValue('')
     expect(screen.queryByRole('region', { name: /asked for/ })).not.toBeInTheDocument()
-    await view.user.type(screen.getByLabelText('Date'), '2026-11-20')
-    await view.user.type(screen.getByLabelText('Start time'), '09:00')
-    await view.user.type(screen.getByLabelText('End time'), '17:00')
-    await view.user.type(screen.getByLabelText('Minimum capacity'), '120')
-    await view.user.click(screen.getByRole('button', { name: 'Search venues' }))
+    await search(view)
     expect(await screen.findByRole('heading', { name: 'Venues that match' })).toBeInTheDocument()
   })
 })
