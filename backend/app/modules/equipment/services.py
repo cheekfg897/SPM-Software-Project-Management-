@@ -827,6 +827,20 @@ def settle_reassessment(
     return keep
 
 
+def _confirmed_detail(type_name: str, kept: int, held: int) -> str:
+    """What the coordinator is told of a confirm: what was kept, and any released.
+
+    e.g. "Projector: 1 of 2 kept for the event's new date and time; 1 released." when
+    a type with no line had only one free (ADR-0114 decision 22).
+    """
+    if kept == held:
+        return f"{type_name}: {kept} reserved, confirmed for the event's new date and time."
+    return (
+        f"{type_name}: {kept} of {held} kept for the event's new date and time;"
+        f" {held - kept} released."
+    )
+
+
 def confirm_reservation_move(
     reference: str,
     equipment_type_id: int,
@@ -874,6 +888,7 @@ def confirm_reservation_move(
     if provided is None:
         raise ConflictError(RECORD_THE_OUTCOME_MESSAGE)
 
+    held = _total_quantity(_type_reservations_to_reassess(need.event_id, equipment_type_id, sess))
     kept = settle_reassessment(need, equipment_type_id, provided, session=sess)
     events_services.withdraw_safety_approval(
         need.event_id,
@@ -882,7 +897,7 @@ def confirm_reservation_move(
         session=sess,
     )
     sess.commit()
-    detail = f"{equipment_type.name}: {kept} reserved, confirmed for the event's new date and time."
+    detail = _confirmed_detail(equipment_type.name, kept, held)
     events_services.notify_coordinator_reservation_confirmed(need.event_id, detail, session=sess)
     confirmed = []
     for shown in list_reservations_of_event(need.event_id, session=sess):
