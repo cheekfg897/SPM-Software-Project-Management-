@@ -51,10 +51,12 @@ export interface ListedEvent {
   status: EventRequestStatus
 }
 
-/** A row of the active list: the event and its coordinator's name, never their id. */
+/**
+ * A row of the active list: the event and its coordinator's name, never their id. An event nobody
+ * holds yet is only in the queue, so every row has a coordinator (docs/adr/0120).
+ */
 export interface ActiveEvent extends ListedEvent {
-  /** Null for a submitted event nobody holds yet (docs/adr/0041 decision 5). */
-  coordinator: string | null
+  coordinator: string
 }
 
 export interface ActiveEvents {

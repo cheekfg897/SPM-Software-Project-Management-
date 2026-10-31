@@ -155,8 +155,6 @@ describe('SCRUM-96 the Lead oversight page: the active events', () => {
     await active.findByRole('article', { name: 'Customer Insights Forum' })
     expect(cardNamesIn('Active events')).toEqual([
       'Customer Insights Forum',
-      'Product Launch Evening',
-      'Annual Partner Summit',
       'Founders’ Fireside Chat',
       'Quarterly Town Hall',
       'Rooftop Film Night',
@@ -178,17 +176,15 @@ describe('SCRUM-96 the Lead oversight page: the active events', () => {
     expect(fair.getByText('14 Dec 2026 – 15 Dec 2026')).toBeInTheDocument()
   })
 
-  it('offers a request nobody holds to the queue instead of a reassign form', async () => {
+  it('offers every active event the reassign form, since each one has a coordinator (ADR-0120)', async () => {
     renderOversight()
 
-    const summit = await findActiveEvent('Annual Partner Summit')
-    expect(summit.getByText('Not assigned')).toBeInTheDocument()
-    expect(summit.getByRole('link', { name: 'Assign from the queue' })).toHaveAttribute(
-      'href',
-      ROUTES.LEAD_QUEUE,
-    )
-    expect(summit.queryByRole('textbox')).not.toBeInTheDocument()
-    expect(summit.queryByRole('button')).not.toBeInTheDocument()
+    const active = await findSection('Active events')
+    await active.findByRole('article', { name: 'Customer Insights Forum' })
+    for (const card of active.getAllByRole('article')) {
+      expect(within(card).getByRole('button', { name: /^Reassign / })).toBeInTheDocument()
+    }
+    expect(active.queryByRole('link', { name: 'Assign from the queue' })).not.toBeInTheDocument()
   })
 
   it("links each active event to its read-only record, never to a coordinator's page (SCRUM-24 AC10)", async () => {

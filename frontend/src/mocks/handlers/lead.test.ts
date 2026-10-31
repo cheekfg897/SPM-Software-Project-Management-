@@ -130,11 +130,9 @@ describe('SCRUM-96 Lead mock: who may use the oversight routes', () => {
 })
 
 describe('SCRUM-96 Lead mock: the active list and the workload', () => {
-  it('lists every event in an active status, held or not, newest first, and nothing else', async () => {
+  it('lists every held event in an active status, newest first, and nothing else (ADR-0120)', async () => {
     expect(await activeReferences()).toEqual([
       EVENTS.submittedHeldByChloe,
-      EVENTS.queuedSecond,
-      EVENTS.queuedFirst,
       EVENTS.awaitingClarificationHeldByChloe,
       EVENTS.underReviewHeldByAisha,
       EVENTS.safetyReviewHeldByAisha,
@@ -158,16 +156,6 @@ describe('SCRUM-96 Lead mock: the active list and the workload', () => {
       end_time: '17:00:00',
       status: 'confirmed',
       coordinator: 'Aisha Karim',
-    })
-    expect(body.event_requests.find((row) => row.reference === EVENTS.queuedFirst)).toEqual({
-      reference: EVENTS.queuedFirst,
-      name: 'Annual Partner Summit',
-      proposed_date: '2026-11-12',
-      end_date: null,
-      start_time: '09:00:00',
-      end_time: '17:00:00',
-      status: 'submitted',
-      coordinator: null,
     })
   })
 
@@ -217,6 +205,8 @@ describe('SCRUM-96 Lead mock: the active list and the workload', () => {
   })
 
   it('moves a request assigned from the queue into its coordinator’s workload and the active list', async () => {
+    expect(await activeReferences()).not.toContain(EVENTS.queuedSecond)
+
     await assignCoordinator({ reference: EVENTS.queuedSecond, coordinator_email: AISHA.email })
 
     expect(await workloadByName()).toContainEqual({
