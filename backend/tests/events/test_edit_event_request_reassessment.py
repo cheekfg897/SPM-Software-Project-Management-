@@ -37,6 +37,7 @@ NotificationsOf = Callable[[int], list[tuple[Any, ...]]]
 MakeEventRequest = Callable[..., EventRequest]
 MakeEquipmentLine = Callable[..., EventEquipmentLine]
 MakeEquipmentType = Callable[..., EquipmentType]
+SetStatus = Callable[[EventRequestStatus], None]
 
 REFERENCE = "EVR-AAAAAAAA"
 #: The Event Coordinator ``saved_event_request`` is assigned to.
@@ -94,6 +95,23 @@ def test_one_edit_raises_only_one_notification_even_with_two_affecting_fields(
     significant_change_notification: tuple[Any, ...],
 ) -> None:
     edit_event(COORDINATOR_ID, {"expected_attendance": 300, "equipment_requirements": "4 mics"})
+
+    assert notifications_of(5) == [significant_change_notification]
+
+
+@pytest.mark.scrum_110
+def test_an_amendment_while_the_answer_is_awaited_still_warns_technical_support(
+    saved_users: list[User],
+    event_with_equipment: EventRequest,
+    set_status: SetStatus,
+    edit_event: EditEvent,
+    notifications_of: NotificationsOf,
+    significant_change_notification: tuple[Any, ...],
+) -> None:
+    """ADR-0116 decision 5: they already own a line recorded before approval."""
+    set_status(EventRequestStatus.AWAITING_CLARIFICATION)
+
+    edit_event(COORDINATOR_ID, {"expected_attendance": 300})
 
     assert notifications_of(5) == [significant_change_notification]
 
