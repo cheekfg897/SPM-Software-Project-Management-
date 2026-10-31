@@ -1684,16 +1684,21 @@ def _line_of_event(
 
 
 def _notify_technical_support(
-    event_request: EventRequest, kind: NotificationKind, session: Session
+    event_request: EventRequest,
+    kind: NotificationKind,
+    session: Session,
+    *,
+    detail: str | None = None,
 ) -> None:
     """Tell every Technical Support Staff member about ``event_request`` (ADR-0019).
 
     Used when equipment is requested for it (SCRUM-37 AC5) and when a significant
     change means equipment already requested for it may no longer fit (SCRUM-33 AC2,
-    ADR-0025).
+    ADR-0025). ``detail`` says more, such as which line the Safety Officer reopened
+    (SCRUM-99 AC7).
     """
     technical_support_ids = list_user_ids_with_role(Role.TECHNICAL_SUPPORT_STAFF, session=session)
-    _raise_notifications(technical_support_ids, event_request, kind, session)
+    _raise_notifications(technical_support_ids, event_request, kind, session, detail=detail)
 
 
 #: The line fields whose change alters what Technical Support place for the event,
@@ -4793,18 +4798,13 @@ def _tell_technical_support_of_reopened_lines(
     if not reopened:
         return
     type_names = _equipment_type_names(session)
-    technical_support_ids = list_user_ids_with_role(Role.TECHNICAL_SUPPORT_STAFF, session=session)
     for line in reopened:
         detail = (
             f"Equipment line {line.id} ({type_names[line.equipment_type_id]},"
             f" {line.quantity} requested) reopened: {flag_reason}"
         )
-        _raise_notifications(
-            technical_support_ids,
-            event_request,
-            NotificationKind.SIGNIFICANT_CHANGE,
-            session,
-            detail=detail,
+        _notify_technical_support(
+            event_request, NotificationKind.SIGNIFICANT_CHANGE, session, detail=detail
         )
 
 
