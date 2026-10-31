@@ -81,8 +81,8 @@ interface EquipmentNeedsProps {
 /**
  * What the event needs (SCRUM-37): its equipment lines in the order the backend sent them, each
  * with Technical Support's outcome (SCRUM-48). Its coordinator gets the controls to add, change
- * and remove lines while the event's status allows it (SCRUM-110), and is told when it does
- * otherwise; Technical Support record or revise each outcome, one at a time, in any status.
+ * and remove lines while the event's status allows it (SCRUM-110), and otherwise is told when
+ * it will; Technical Support record or revise each outcome, one at a time, in any status.
  */
 export function EquipmentNeeds({ reference, needs, equipmentTypes }: EquipmentNeedsProps) {
   const user = useAppSelector(selectSessionUser)
