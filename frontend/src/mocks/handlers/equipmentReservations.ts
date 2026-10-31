@@ -84,6 +84,12 @@ export function reservationWithId(reservationId: number): MockReservation | unde
   return reservations.find((saved) => saved.id === reservationId)
 }
 
+/** Delete a reservation, and the record of which event it was for, so its units are free. */
+function removeReservation(reservation: MockReservation): void {
+  reservations = reservations.filter((candidate) => candidate !== reservation)
+  reservationEvents.delete(reservation.id)
+}
+
 /** The reference of the event a reservation is for. */
 export function eventOfReservation(reservation: MockReservation): string {
   return reservationEvents.get(reservation.id) ?? ''
@@ -105,9 +111,9 @@ export function rejectEventEquipment(reference: string): void {
     return
   }
   event.status = EVENT_REQUEST_STATUS.REJECTED
-  reservations = reservations.filter(
-    (reservation) => reservationEvents.get(reservation.id) !== reference,
-  )
+  for (const reservation of reservationsOfEvent(reference)) {
+    removeReservation(reservation)
+  }
 }
 
 /** Whether it overlaps the shared period, as `_overlapping` compares them. */
@@ -308,7 +314,7 @@ export function settleReassessment(
   let leftToKeep = Math.min(provided, unitsHeld(held))
   for (const reservation of held) {
     if (leftToKeep === 0) {
-      reservations = reservations.filter((candidate) => candidate !== reservation)
+      removeReservation(reservation)
       continue
     }
     reservation.quantity = Math.min(reservation.quantity, leftToKeep)

@@ -113,6 +113,20 @@ describe('SCRUM-38 Staff home: the equipment awaiting action, for Technical Supp
     expect(showcase).not.toHaveTextContent('reassess')
   })
 
+  it('names a type to reassess that the event has no line for (SCRUM-60 AC6)', async () => {
+    answerQueueWith([
+      { ...queued('Rooftop Social', 3), equipment_type_ids_to_reassess: [2] },
+      { ...queued('Board Dinner', 4), equipment_lines: [], equipment_type_ids_to_reassess: [2] },
+    ])
+    openStaffHome(MOCK_ACCOUNTS.technicalSupport)
+
+    const [rooftop, dinner] = within(await queue()).getAllByRole('listitem')
+    expect(rooftop).toHaveTextContent(
+      'EVR-Q3 · Projector × 3, Microphone (reservation to reassess)',
+    )
+    expect(dinner).toHaveTextContent('EVR-Q4 · Microphone (reservation to reassess)')
+  })
+
   it.each([
     [0, 'Today'],
     [1, '1 day left'],
