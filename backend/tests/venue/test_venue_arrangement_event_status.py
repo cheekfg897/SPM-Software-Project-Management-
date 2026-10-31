@@ -17,11 +17,16 @@ from app.modules.events.models import EventRequest, EventRequestStatus
 from app.modules.venue import services
 from app.modules.venue.models import BookingRequestStatus, Venue
 from tests.venue.conftest import (
+    ARRANGEMENT_ACTIONS,
     COORDINATOR_ID,
+    ArrangementAction,
     SavedEvent,
+    cancel_all_as_coordinator,
+    change_purpose_as_coordinator,
     history_entries,
     raise_booking,
     reload_request,
+    withdraw_as_coordinator,
 )
 
 pytestmark = pytest.mark.scrum_93
@@ -37,36 +42,6 @@ NOT_PLANNING = [
 ]
 #: An id no arrangement has.
 UNKNOWN_ARRANGEMENT_ID = 9999
-
-
-def _withdraw(event: EventRequest, arrangement_id: int, session: Session) -> object:
-    return services.withdraw_arrangement(
-        event.reference, arrangement_id, coordinator_id=COORDINATOR_ID, session=session
-    )
-
-
-def _change(event: EventRequest, arrangement_id: int, session: Session) -> object:
-    return services.change_arrangement(
-        event.reference,
-        arrangement_id,
-        {"purpose": "Opening plenary"},
-        coordinator_id=COORDINATOR_ID,
-        session=session,
-    )
-
-
-def _cancel_all(event: EventRequest, _arrangement_id: int, session: Session) -> object:
-    return services.cancel_all_arrangements(
-        event.reference, coordinator_id=COORDINATOR_ID, session=session
-    )
-
-
-Action = Callable[[EventRequest, int, Session], object]
-ACTIONS = [
-    pytest.param(_withdraw, id="withdraw"),
-    pytest.param(_change, id="change"),
-    pytest.param(_cancel_all, id="cancel all"),
-]
 
 
 def _refusal(status: EventRequestStatus) -> str:
@@ -92,12 +67,12 @@ def event_with_arrangement(
     return _make
 
 
-@pytest.mark.parametrize("action", ACTIONS)
+@pytest.mark.parametrize("action", ARRANGEMENT_ACTIONS)
 @pytest.mark.parametrize("status", NOT_PLANNING, ids=lambda status: status.value)
 def test_an_event_that_is_not_being_planned_refuses_the_action_naming_its_status(
     db_session: Session,
     event_with_arrangement: Callable[[EventRequestStatus], tuple[EventRequest, int]],
-    action: Action,
+    action: ArrangementAction,
     status: EventRequestStatus,
 ) -> None:
     event, arrangement_id = event_with_arrangement(status)
@@ -115,16 +90,25 @@ def test_an_event_that_is_not_being_planned_refuses_the_action_naming_its_status
 @pytest.mark.parametrize(
     ("action", "status_after", "purpose_after"),
     [
-        pytest.param(_withdraw, BookingRequestStatus.WITHDRAWN, "Main hall", id="withdraw"),
-        pytest.param(_change, BookingRequestStatus.PENDING, "Opening plenary", id="change"),
-        pytest.param(_cancel_all, BookingRequestStatus.WITHDRAWN, "Main hall", id="cancel all"),
+        pytest.param(
+            withdraw_as_coordinator, BookingRequestStatus.WITHDRAWN, "Main hall", id="withdraw"
+        ),
+        pytest.param(
+            change_purpose_as_coordinator,
+            BookingRequestStatus.PENDING,
+            "Opening plenary",
+            id="change",
+        ),
+        pytest.param(
+            cancel_all_as_coordinator, BookingRequestStatus.WITHDRAWN, "Main hall", id="cancel all"
+        ),
     ],
 )
 @pytest.mark.parametrize("status", PLANNING, ids=lambda status: status.value)
 def test_an_event_being_planned_allows_the_action(
     db_session: Session,
     event_with_arrangement: Callable[[EventRequestStatus], tuple[EventRequest, int]],
-    action: Action,
+    action: ArrangementAction,
     status_after: BookingRequestStatus,
     purpose_after: str,
     status: EventRequestStatus,
@@ -137,11 +121,11 @@ def test_an_event_being_planned_allows_the_action(
     assert (acted_on.status, acted_on.purpose) == (status_after, purpose_after)
 
 
-@pytest.mark.parametrize("action", ACTIONS)
+@pytest.mark.parametrize("action", ARRANGEMENT_ACTIONS)
 def test_a_draft_is_not_found(
     db_session: Session,
     event_with_arrangement: Callable[[EventRequestStatus], tuple[EventRequest, int]],
-    action: Action,
+    action: ArrangementAction,
 ) -> None:
     event, arrangement_id = event_with_arrangement(EventRequestStatus.DRAFT)
 
@@ -149,11 +133,17 @@ def test_a_draft_is_not_found(
         action(event, arrangement_id, db_session)
 
 
-@pytest.mark.parametrize("action", [_withdraw, _change], ids=["withdraw", "change"])
+@pytest.mark.parametrize(
+    "action",
+    [
+        pytest.param(withdraw_as_coordinator, id="withdraw"),
+        pytest.param(change_purpose_as_coordinator, id="change"),
+    ],
+)
 def test_the_event_status_is_checked_before_the_arrangement(
     db_session: Session,
     event_with_arrangement: Callable[[EventRequestStatus], tuple[EventRequest, int]],
-    action: Action,
+    action: ArrangementAction,
 ) -> None:
     """An unknown arrangement on a Confirmed event is refused for the event's status."""
     event, _ = event_with_arrangement(EventRequestStatus.CONFIRMED)
