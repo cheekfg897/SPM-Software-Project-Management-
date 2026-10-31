@@ -48,7 +48,10 @@ test('SCRUM-33, SCRUM-110: a coordinator approves a request, changes the attenda
 
   await page.goto('/events/EVR-7K2M9QXA')
   // Under review, so its details change only once she approves it (SCRUM-110).
-  await page.getByRole('button', { name: 'Approve' }).click()
+  const approve = page.getByRole('button', { name: 'Approve' })
+  await expect(approve).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Edit event details' })).toHaveCount(0)
+  await approve.click()
   await expect(page.getByRole('region', { name: 'Decision' })).toContainText('Approved')
   await page.getByRole('link', { name: 'Edit event details' }).click()
   await expect(page).toHaveURL('/events/EVR-7K2M9QXA/edit')
