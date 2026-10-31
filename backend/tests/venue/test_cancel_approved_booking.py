@@ -401,8 +401,8 @@ def test_an_event_past_or_before_planning_is_refused_naming_its_status(
         _cancel(event, booked, db_session)
 
     assert refused.value.message == (
-        "Only an approved event or one in Safety Review can have a venue booking cancelled;"
-        f" this one is {status.value}."
+        "Only an approved event or one in Safety Review can have its venue arrangements"
+        f" withdrawn, changed or cancelled; this one is {status.value}."
     )
     _assert_nothing_changed(db_session, event, booked)
 
