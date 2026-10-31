@@ -45,7 +45,9 @@ from app.modules.venue.models import BookingRequestStatus
 from tests.conftest import approve_safety
 from tests.events.cases import Arrange
 
-pytestmark = pytest.mark.scrum_37
+#: Each test starts on an approved event, the first status its equipment lines change
+#: in (SCRUM-110); a test that needs another status sets it.
+pytestmark = [pytest.mark.scrum_37, pytest.mark.usefixtures("approved_event_request")]
 
 HistoryOf = Callable[[int], list[tuple[EventHistoryKind, int | None, dict[str, Any] | None]]]
 NotificationsOf = Callable[[int], list[tuple[Any, ...]]]
