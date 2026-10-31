@@ -1,6 +1,6 @@
 # ADR-0113: The Safety Officer names arrangements and lines to rework, which are flagged and reopened as a change would leave them
 
-- **Status:** Accepted for what SCRUM-99's criteria settle (AC2, AC4-AC7; AC1 and AC3 were delivered by SCRUM-98); the flag being SCRUM-58's reconfirmation flag with "Flagged by the Safety Officer: <reason>" was decided by the lead before the build; decisions 2-9 were made while building and are defaults to review
+- **Status:** Accepted for what SCRUM-99's criteria settle (AC2, AC4-AC7; AC1 and AC3 were delivered by SCRUM-98); the flag being SCRUM-58's reconfirmation flag with "Flagged by the Safety Officer: <reason>" was decided by the lead before the build; decisions 2-9 were made while building and decision 10 after review: all are defaults to review
 - **Date:** 2026-10-28
 - **Story:** SCRUM-99 Return an event to planning when the safety check is not approved
 - **Extends:** [ADR-0047](0047-safety-officer-and-safety-review.md) (Safety Review and its gate), [ADR-0094](0094-reassess-each-venue-arrangement-after-a-significant-change.md) (the reassessment flag), [ADR-0092](0092-equipment-line-changes-reopen-the-review.md) (a line reopened), [ADR-0112](0112-reconfirm-or-reject-a-flagged-booking.md) (Venue Staff settle a flag)
@@ -18,6 +18,7 @@ SCRUM-98 records Approve, Reject or Request Changes, and the last two send the e
 7. **The record:** the safety outcome now says how many arrangements were flagged and lines reopened (`flagged_arrangement_count`, `reopened_line_count`), and the coordinator's own record carries the outcome too, as the staff and organiser records already did. The web app shows "Flagged by the Safety Officer: <reason>" on the event's safety check when no arrangement was flagged, because AC4 puts it beside each flagged arrangement "or on the event itself where nothing is flagged" and only arrangements are flagged (a line is reopened); otherwise it shows the plain reason, each flagged arrangement showing its own flag beside it, as every reassessment flag does. Whatever was named is counted under it, "Named to rework: 1 venue arrangement and 2 equipment lines.", leaving out a kind with none.
 8. **Resubmission** needs nothing new: SCRUM-97's gate already refuses an open flag and a line without an outcome, naming each.
 9. **The mock** checks the new fields as the backend does and counts what was named on the outcome. It doesn't flag the booking mock's arrangements or reopen the equipment mock's lines: each keeps its own events, as ADR-0107 decision 10 notes.
+10. **Headings** (after review, 31 Oct). On the event record and the coordinator's venue requests page, a reassessment flag is headed "Flagged for re-review" (AC2's words), not "Flagged after a change to the event", since the Safety Officer's flag is not a change. Each flag's own reason still says where it came from. Venue Staff's booking page keeps SCRUM-59's "Flagged after a change" section heading until #152 settles it. A default to review.
 
 ## Consequences
 - The coordinator sees what to rework on the event page, and Venue Staff and Technical Support each get it on their own lists.
