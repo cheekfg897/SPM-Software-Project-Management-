@@ -1,6 +1,7 @@
 import { PageContainer } from '@/components/layout'
 import { ButtonLink } from '@/components/ui'
 import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
+import type { EventRequestStatus } from '@/config/eventStatus'
 import { ROLE } from '@/config/roles'
 import { eventEquipmentPath, venueRequestsPath } from '@/config/routes'
 import { venueSearchForEventPath } from '@/features/venueSearch/searchParams'
@@ -11,6 +12,7 @@ import type { EventRecord } from '../api'
 import { useAnswerClarification } from '../hooks'
 
 import { AboutTheEvent } from './AboutTheEvent'
+import { CancelEventForm } from './CancelEventForm'
 import { ClarificationList } from './ClarificationList'
 import { CoordinatorDetails } from './CoordinatorDetails'
 import { DecisionDetails } from './DecisionDetails'
@@ -26,6 +28,20 @@ import { RegistrantsSection } from './RegistrantsSection'
 import { ReviewActions } from './ReviewActions'
 import { SafetyOutcomeDetails } from './SafetyOutcomeDetails'
 import { VenueArrangementList } from './VenueArrangementList'
+
+/**
+ * Where the organiser may cancel their event: from submitted to confirmed, the statuses the
+ * backend accepts (`CANCELLABLE_STATUSES`, SCRUM-61 AC1, ADR-0075). Whether it goes ahead is still
+ * the backend's call, and its refusal is shown.
+ */
+const CANCELLABLE_STATUSES: readonly EventRequestStatus[] = [
+  EVENT_REQUEST_STATUS.SUBMITTED,
+  EVENT_REQUEST_STATUS.UNDER_REVIEW,
+  EVENT_REQUEST_STATUS.AWAITING_CLARIFICATION,
+  EVENT_REQUEST_STATUS.APPROVED,
+  EVENT_REQUEST_STATUS.SAFETY_REVIEW,
+  EVENT_REQUEST_STATUS.CONFIRMED,
+]
 
 /** The organiser's answer to the open question (SCRUM-32 AC2, ADR-0060). */
 function AnswerClarification({ reference }: { reference: string }) {
@@ -69,14 +85,16 @@ function CoordinatorLinks({ reference }: { reference: string }) {
  * also gets links on and the review actions, and an organiser answers an open question here
  * (SCRUM-31, SCRUM-32, ADR-0060). The organiser is sent everything else on the record too, at
  * every stage: the planning notes, every venue arrangement, the equipment with its outcomes and
- * reservations, and the safety check (SCRUM-24 AC10, ADR-0104).
+ * reservations, and the safety check (SCRUM-24 AC10, ADR-0104). From submitted to confirmed, the
+ * organiser may cancel the event here (SCRUM-61, ADR-0122).
  */
 export function EventRecordView({ record }: { record: EventRecord }) {
   const viewer = useAppSelector(selectSessionUser)
   const isCoordinator = viewer?.role === ROLE.EVENT_COORDINATOR
+  const isOrganiser = viewer?.role === ROLE.EVENT_ORGANISER
   const isAnswerNeeded =
-    viewer?.role === ROLE.EVENT_ORGANISER &&
-    record.status === EVENT_REQUEST_STATUS.AWAITING_CLARIFICATION
+    isOrganiser && record.status === EVENT_REQUEST_STATUS.AWAITING_CLARIFICATION
+  const mayCancel = isOrganiser && CANCELLABLE_STATUSES.includes(record.status)
   // Only the organiser's record names each line's equipment and sends the rest of the record:
   // everything on it, at every stage (ADR-0104). The coordinator works on the lines and the
   // safety check from their own pages instead, and sees the venues listed here (ADR-0105).
@@ -131,6 +149,11 @@ export function EventRecordView({ record }: { record: EventRecord }) {
         </RecordSection>
       )}
       {isCoordinator && <EditDetailsSection record={record} />}
+      {mayCancel && (
+        <div className="mt-12">
+          <CancelEventForm record={record} />
+        </div>
+      )}
       <EventHistorySection reference={record.reference} />
       <RegistrantsSection reference={record.reference} />
     </PageContainer>

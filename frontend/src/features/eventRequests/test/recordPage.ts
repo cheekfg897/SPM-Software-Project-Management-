@@ -19,6 +19,25 @@ export function statusShownFor(reference: string) {
 }
 
 /**
+ * Answer the record of `reference` as the mock would send it to `account`, but in the status
+ * `statusNow` gives each time it is read, so a test can move the event on while the page is open
+ * (say, its coordinator rejects it meanwhile).
+ */
+export async function serveRecordWithStatus(
+  account: MockAccount,
+  reference: string,
+  statusNow: () => EventRequestStatus,
+) {
+  sendRequestsAs(mockTokenFor(account))
+  const record = await fetchEventRequest(reference)
+  server.use(
+    http.get(`/api/events/requests/${reference}`, () =>
+      HttpResponse.json({ ...record, status: statusNow() }),
+    ),
+  )
+}
+
+/**
  * Answer the record of `reference` as the mock would send it to `account`, but in `status`, so
  * a page can be tested in a status the mock's data never reaches.
  */
@@ -27,9 +46,5 @@ export async function serveRecordInStatus(
   reference: string,
   status: EventRequestStatus,
 ) {
-  sendRequestsAs(mockTokenFor(account))
-  const record = await fetchEventRequest(reference)
-  server.use(
-    http.get(`/api/events/requests/${reference}`, () => HttpResponse.json({ ...record, status })),
-  )
+  await serveRecordWithStatus(account, reference, () => status)
 }
