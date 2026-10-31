@@ -83,7 +83,7 @@ def test_it_adds_the_new_status_and_kinds(load_migration: LoadMigration) -> None
     assert migration.ADDED_HISTORY_KIND_VALUES == ("venue_booking_cancelled",)
 
 
-def test_with_the_values_added_each_type_holds_exactly_the_models_values(
+def test_with_the_values_added_each_type_holds_only_the_models_values(
     load_migration: LoadMigration,
 ) -> None:
     migration = load_migration(MIGRATION)
@@ -95,8 +95,9 @@ def test_with_the_values_added_each_type_holds_exactly_the_models_values(
     history_kinds = {*migration.PREVIOUS_HISTORY_KIND_VALUES, *migration.ADDED_HISTORY_KIND_VALUES}
 
     assert statuses == _model_values(BookingRequestStatus)
-    assert notification_kinds == _model_values(NotificationKind)
-    assert history_kinds == _model_values(EventHistoryKind)
+    # Subsets, not equality: a later migration (0052, SCRUM-61) adds further kinds.
+    assert notification_kinds <= _model_values(NotificationKind)
+    assert history_kinds <= _model_values(EventHistoryKind)
 
 
 def test_upgrade_adds_every_value_outside_the_transaction(
