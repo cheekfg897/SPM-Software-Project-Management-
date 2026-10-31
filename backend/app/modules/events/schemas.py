@@ -808,6 +808,8 @@ class EquipmentAwaitingActionSchema(Schema):
     )
     equipment_lines = fields.Nested(EquipmentLineSchema, many=True, dump_only=True)
     days_remaining = fields.Integer(dump_only=True)
+    #: The types whose reservations await reassessment (SCRUM-60 AC6, ADR-0114).
+    equipment_type_ids_to_reassess = fields.List(fields.Integer(), dump_only=True)
 
 
 #: What the Safety Officer's list shows of the event itself: the equipment list's

@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.modules.auth.models import User
 from app.modules.auth.permissions import ALL_ROLES, Role
-from app.modules.equipment.models import EquipmentType
+from app.modules.equipment.models import EquipmentReservation, EquipmentType
 from app.modules.events import routes
 from app.modules.events.models import (
     EquipmentLineStatus,
@@ -49,7 +49,7 @@ from app.modules.notifications.services import (
     list_notifications_for_recipient,
 )
 from app.modules.venue.models import BookingRequestStatus, Venue, VenueBookingRequest
-from tests.conftest import approve_safety
+from tests.conftest import ReserveAndReview, approve_safety
 from tests.events.cases import DRAFT_REFERENCE, LEAD_ID, AddLine, Arrange, SaveArrangement
 
 #: Every role but the Lead, so a role added later is refused unless a test says not.
@@ -835,3 +835,48 @@ def add_line(
         return line
 
     return _add
+
+
+@pytest.fixture()
+def two_projectors(
+    equipment_type: EquipmentType, reserve_and_review: ReserveAndReview
+) -> EventEquipmentLine:
+    """Two of the ten projectors asked for, reserved and recorded fulfilled."""
+    return reserve_and_review(equipment_type, quantity=2, reserved=2, provided=2)
+
+
+@pytest.fixture()
+def three_projectors(
+    equipment_type: EquipmentType, reserve_and_review: ReserveAndReview
+) -> EventEquipmentLine:
+    """Three of the ten projectors asked for, reserved and recorded fulfilled."""
+    return reserve_and_review(equipment_type, quantity=3, reserved=3, provided=3)
+
+
+@pytest.fixture()
+def hold_on_the_20th(
+    make_event_request: Callable[..., EventRequest],
+    equipment_type: EquipmentType,
+    save: Callable[..., None],
+) -> Callable[[int], EventRequest]:
+    """Hold ``quantity`` projectors for another event on 20 Oct 2026, 09:00 to 17:00.
+
+    That event is ``EVR-BBBBBBBB``, Event Coordinator 9's (SCRUM-60).
+    """
+
+    def _hold(quantity: int) -> EventRequest:
+        other = make_event_request(reference="EVR-BBBBBBBB", coordinator_id=9)
+        save(other)
+        save(
+            EquipmentReservation(
+                event_id=other.id,
+                equipment_type_id=equipment_type.id,
+                quantity=quantity,
+                starts_at=datetime(2026, 10, 20, 1, 0, tzinfo=timezone.utc),
+                ends_at=datetime(2026, 10, 20, 9, 0, tzinfo=timezone.utc),
+                reserved_by=5,
+            )
+        )
+        return other
+
+    return _hold

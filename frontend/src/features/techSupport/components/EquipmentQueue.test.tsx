@@ -49,6 +49,7 @@ function queued(name: string, daysRemaining: number, typeId = 1): EquipmentAwait
       },
     ],
     days_remaining: daysRemaining,
+    equipment_type_ids_to_reassess: [],
   }
 }
 
@@ -72,6 +73,7 @@ describe('SCRUM-38 Staff home: the equipment awaiting action, for Technical Supp
     expect(headings.map((heading) => heading.textContent)).toEqual([
       'Sunrise Wellness Walk',
       'Evening Product Showcase',
+      'Leadership Offsite',
       'Data Science Meetup',
       'Charity Fun Run',
       'Board Breakfast Briefing',
@@ -98,6 +100,17 @@ describe('SCRUM-38 Staff home: the equipment awaiting action, for Technical Supp
     expect(showcase).toHaveTextContent('Mon, 12 Oct · 7:30 pm – 10:00 pm')
     expect(showcase).toHaveTextContent('EVR-MOCK0001 · Projector × 2, Microphone × 4')
     expect(showcase).toHaveTextContent('7 days left')
+  })
+
+  it('marks each line whose reservation a change left to reassess (SCRUM-60 AC6)', async () => {
+    openStaffHome(MOCK_ACCOUNTS.technicalSupport)
+
+    const offsite = within(await queue()).getAllByRole('listitem')[2]
+    expect(offsite).toHaveTextContent(
+      'EVR-MOCK0004 · Projector × 3 (reservation to reassess), Lectern × 2 (reservation to reassess)',
+    )
+    const showcase = within(await queue()).getAllByRole('listitem')[1]
+    expect(showcase).not.toHaveTextContent('reassess')
   })
 
   it.each([

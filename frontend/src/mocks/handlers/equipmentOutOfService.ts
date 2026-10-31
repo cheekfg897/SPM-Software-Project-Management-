@@ -7,7 +7,6 @@ import { isRecord } from '@/lib/isRecord'
 
 import { errorResponse, validationError } from '../responses'
 
-import { eventsReservingType, isTypeShort } from './equipment'
 import { callerOrRefusal, withdrawSafetyApproval } from './equipmentAccess'
 import { idFromPath, mockCatalogueType, routeNotFound } from './equipmentCatalogue'
 import { MOCK_BACK_IN_SERVICE_AT, MOCK_OUT_OF_SERVICE_RECORDED_AT } from './equipmentFixtures'
@@ -17,6 +16,7 @@ import {
   outOfServiceEntry,
   outOfServiceQuantity,
 } from './equipmentOutOfServiceEntries'
+import { eventsReservingType, isTypeShort } from './equipmentReservations'
 import {
   MISSING_MESSAGE,
   positiveWholeNumberError,

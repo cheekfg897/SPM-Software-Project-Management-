@@ -21,6 +21,7 @@ from app.modules.equipment.schemas import (
     EquipmentReservationSchema,
     EquipmentTypeSchema,
     OutOfServiceSchema,
+    ReservationReassessmentSchema,
 )
 
 bp = Blueprint("equipment", __name__, url_prefix="/api/equipment")
@@ -33,6 +34,7 @@ _equipment_type_schema = EquipmentTypeSchema()
 _availability_schema = EquipmentAvailabilitySchema()
 _reservation_schema = EquipmentReservationSchema()
 _out_of_service_schema = OutOfServiceSchema()
+_reassessment_schema = ReservationReassessmentSchema()
 
 
 @bp.post("/types")
@@ -104,6 +106,33 @@ def list_event_reservations(reference: str) -> tuple[Response, int]:
         g.current_user_id, reference, viewer_role=Role(g.current_user_role)
     )
     return jsonify(_reservation_schema.dump(reservations, many=True)), 200
+
+
+@bp.get("/events/<reference>/reassessments")
+@requires_role(*_EQUIPMENT_READERS)
+def list_event_reassessments(reference: str) -> tuple[Response, int]:
+    """The event's reservations awaiting reassessment, and any shortfall (SCRUM-60).
+
+    Technical Support for any event; a coordinator for an event assigned to them.
+    """
+    reassessments = services.list_reassessments_for_event(
+        g.current_user_id, reference, viewer_role=Role(g.current_user_role)
+    )
+    return jsonify(_reassessment_schema.dump(reassessments, many=True)), 200
+
+
+@bp.post("/events/<reference>/reassessments/<int:equipment_type_id>/confirm")
+@requires_role(Role.TECHNICAL_SUPPORT_STAFF)
+def confirm_reassessment(reference: str, equipment_type_id: int) -> tuple[Response, int]:
+    """Confirm a marked reservation for the event's period now (SCRUM-60 AC3).
+
+    Technical Support Staff only. The body is not read: the event and the type are in
+    the URL, and the period is the event's.
+    """
+    confirmed = services.confirm_reservation_move(
+        reference, equipment_type_id, confirmed_by=g.current_user_id
+    )
+    return jsonify(_reservation_schema.dump(confirmed, many=True)), 200
 
 
 @bp.post("/types/<int:equipment_type_id>/out-of-service")

@@ -6,6 +6,8 @@ Public surface for other modules (import from here, not from sub-files):
 * :func:`app.modules.equipment.services.list_equipment_types`
 * :func:`app.modules.equipment.services.equipment_availability_for_event`
 * :func:`app.modules.equipment.services.list_reservations_for_event`
+* :func:`app.modules.equipment.services.mark_event_reservations_for_reassessment`
+  and the other SCRUM-60 reassessment functions the events module calls (ADR-0114)
 """
 
 from __future__ import annotations

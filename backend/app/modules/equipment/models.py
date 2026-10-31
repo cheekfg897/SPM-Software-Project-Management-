@@ -131,6 +131,13 @@ class EquipmentReservation(db.Model):  # type: ignore[name-defined]
     needs_attention: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=expression.false()
     )
+    #: Set when the event's date or time, or its line's quantity, changed after the
+    #: units were reserved (SCRUM-60 AC1, AC8). The units stay held for this
+    #: reservation's own period until Technical Support confirm it for the event's
+    #: period or record the line's outcome, which clears it (AC3, AC4, AC6, ADR-0114).
+    needs_reassessment: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=expression.false()
+    )
 
     #: How far Technical Support have got in preparing the units, and their notes
     #: (SCRUM-85). Who recorded each update and when are in the event's history entries.

@@ -1801,8 +1801,9 @@ def _reopen_changed_line(
 
     Called before ``data`` is applied to the line, and without committing: withdraws
     any safety approval, records the line before and after the change, releases the
-    old type's reservations if the line moves to another type (ADR-0092), and clears
-    its outcome, which sends an event in Safety Review back to Approved (SCRUM-33 AC9).
+    old type's reservations if the line moves to another type (ADR-0092) or marks them
+    for reassessment if only its quantity changes (SCRUM-60 AC8), and clears its
+    outcome, which sends an event in Safety Review back to Approved (SCRUM-33 AC9).
     """
     _withdraw_safety_approval_for_line(coordinator_id, line, "changed", session)
     _return_to_approved(event_request)
@@ -1817,6 +1818,12 @@ def _reopen_changed_line(
     )
     if new_equipment_type_id != line.equipment_type_id:
         equipment_services.release_reservations(
+            line.event_request_id, line.equipment_type_id, session=session
+        )
+    else:
+        # A new quantity: the reservation stays, for Technical Support to reassess
+        # with the line's new outcome (SCRUM-60 AC8, ADR-0114).
+        equipment_services.mark_type_reservations_for_reassessment(
             line.event_request_id, line.equipment_type_id, session=session
         )
     _clear_outcome(line)
@@ -2214,19 +2221,28 @@ RESERVATIONS_CLOSED_MESSAGE = (
 class EquipmentAwaitingAction:
     """One event's equipment still to arrange, and how long is left (SCRUM-38 AC2).
 
-    ``equipment_lines`` holds only the lines still ``requested``, in the order added.
-    ``days_remaining`` counts whole days from today to the event's date: 0 on the day.
+    ``equipment_lines`` holds only the lines still ``requested``, or whose reservation
+    awaits reassessment, in the order added. ``days_remaining`` counts whole days from
+    today to the event's date: 0 on the day.
     """
 
     event_request: EventRequest
     equipment_lines: list[EventEquipmentLine]
     days_remaining: int
+    #: The equipment types whose reservations for the event are marked for
+    #: reassessment (SCRUM-60 AC6, ADR-0114).
+    equipment_type_ids_to_reassess: list[int]
 
 
 def _group_lines_by_event(
-    rows: Iterable[Row[tuple[EventRequest, EventEquipmentLine]]], today: date
+    rows: Iterable[Row[tuple[EventRequest, EventEquipmentLine]]],
+    today: date,
+    to_reassess: list[tuple[int, int]],
 ) -> list[EquipmentAwaitingAction]:
-    """One entry per event, in the order the events first appear in ``rows``."""
+    """One entry per event, in the order the events first appear in ``rows``.
+
+    ``to_reassess`` holds each (event id, equipment type id) with a marked reservation.
+    """
     events: list[EventRequest] = []
     lines_by_event: dict[int, list[EventEquipmentLine]] = {}
     for event_request, line in rows:
@@ -2240,11 +2256,16 @@ def _group_lines_by_event(
         # The query above keeps only events with a proposed_date (SCRUM-38 AC1); only a
         # draft has none, and a draft never reaches this list (SCRUM-20, ADR-0024).
         days_remaining = (event_request.proposed_date - today).days  # type: ignore[operator]
+        type_ids_to_reassess = []
+        for event_id, equipment_type_id in to_reassess:
+            if event_id == event_request.id:
+                type_ids_to_reassess.append(equipment_type_id)
         awaiting.append(
             EquipmentAwaitingAction(
                 event_request=event_request,
                 equipment_lines=lines_by_event[event_request.id],
                 days_remaining=days_remaining,
+                equipment_type_ids_to_reassess=type_ids_to_reassess,
             )
         )
     return awaiting
@@ -2256,10 +2277,11 @@ def list_equipment_requests_awaiting_action(
     """The equipment Technical Support still have to arrange, soonest event first.
 
     SCRUM-38 AC1-AC4, ADR-0022. An event is listed while at least one of its lines is
-    still ``requested``, its proposed date is today or later, and it isn't completed,
-    cancelled or rejected. Each entry holds only the lines still ``requested``, so an
-    event drops off once none is. Events are ordered by date, then start time, then
-    as submitted. One list for all Technical Support Staff.
+    still ``requested``, or has a reservation marked for reassessment (SCRUM-60 AC6),
+    its proposed date is today or later, and it isn't completed, cancelled or
+    rejected. Each entry holds only those lines, so an event drops off once none is.
+    Events are ordered by date, then start time, then as submitted. One list for all
+    Technical Support Staff.
 
     Args:
         session: Database session; defaults to ``db.session``.
@@ -2272,13 +2294,24 @@ def list_equipment_requests_awaiting_action(
     sess = resolve_session(session)
     if today is None:
         today = local_today()
+    # A line whose reservation is marked awaits action whatever its outcome.
+    # Reservations hold no line id, so it is found by its event and type (ADR-0092).
+    to_reassess = equipment_services.list_equipment_types_to_reassess(session=sess)
+    awaiting_action = [EventEquipmentLine.status == EquipmentLineStatus.REQUESTED]
+    for event_id, equipment_type_id in to_reassess:
+        awaiting_action.append(
+            and_(
+                EventEquipmentLine.event_request_id == event_id,
+                EventEquipmentLine.equipment_type_id == equipment_type_id,
+            )
+        )
     # One query for the lines themselves: the event's ``equipment_lines`` would load
     # the lines already arranged too, and query once per event.
     stmt = (
         select(EventRequest, EventEquipmentLine)
         .join(EventEquipmentLine, EventEquipmentLine.event_request_id == EventRequest.id)
         .where(
-            EventEquipmentLine.status == EquipmentLineStatus.REQUESTED,
+            or_(*awaiting_action),
             EventRequest.proposed_date >= today,
             EventRequest.status.not_in(EQUIPMENT_NOT_NEEDED_STATUSES),
         )
@@ -2289,7 +2322,7 @@ def list_equipment_requests_awaiting_action(
             EventEquipmentLine.id,
         )
     )
-    return _group_lines_by_event(sess.execute(stmt), today)
+    return _group_lines_by_event(sess.execute(stmt), today, to_reassess)
 
 
 # --------------------------------------------------------------------------
@@ -2414,6 +2447,11 @@ def _affects_equipment(changes: list[FieldChange]) -> bool:
     return any(change.field in EQUIPMENT_AFFECTING_FIELDS for change in changes)
 
 
+def _changes_timing(changes: list[FieldChange]) -> bool:
+    """Whether any of ``changes`` is to the event's date or time (SCRUM-60 AC1)."""
+    return any(change.field in _TIMING_FIELDS for change in changes)
+
+
 def _reassess_arrangements(
     event_request: EventRequest, changes: list[FieldChange], session: Session
 ) -> None:
@@ -2504,6 +2542,58 @@ def _tell_venue_staff_of_flags(
     venue_services.tell_venue_staff_of_flags(_for_booking(event_request), notices, session=session)
 
 
+#: Outcomes Technical Support decided against the event's old period. A date or time
+#: change reopens a line recorded with one, so a fresh outcome is decided for the new
+#: period (SCRUM-60 AC12, ADR-0114). A fulfilled line keeps its outcome: its
+#: reservation is reassessed instead (AC1).
+OUTCOMES_REOPENED_BY_TIMING_CHANGE: frozenset[EquipmentLineStatus] = frozenset(
+    {EquipmentLineStatus.UNAVAILABLE, EquipmentLineStatus.PARTIALLY_FULFILLED}
+)
+
+
+def _reopen_lines_short_of_their_request(event_request: EventRequest) -> int:
+    """Clear the outcome of each line recorded unavailable or partially fulfilled.
+
+    SCRUM-60 AC12: each is back on Technical Support's list with no current outcome,
+    and its earlier outcome stays in the event's history (as SCRUM-37 AC4). Any
+    reservation it has stays, held for its old period (ADR-0114 decision 2).
+
+    Returns:
+        How many lines it reopened.
+    """
+    reopened = 0
+    for line in event_request.equipment_lines:
+        if line.status in OUTCOMES_REOPENED_BY_TIMING_CHANGE:
+            _clear_outcome(line)
+            reopened += 1
+    return reopened
+
+
+def reassess_equipment_after_timing_change(
+    event_id: int, *, session: Session | None = None
+) -> None:
+    """Hand the event's equipment back to Technical Support, without committing.
+
+    SCRUM-60 AC1 and AC12, for any saved change to the event's date or time: the
+    coordinator's direct edit (SCRUM-33) calls it, and so must an approved change
+    request (SCRUM-57), in its own commit, telling Technical Support afterwards as the
+    edit does. Every reservation is marked for reassessment and stays held for its old
+    period until Technical Support act (AC6); every line recorded unavailable or
+    partially fulfilled is reopened. An event in Safety Review left with either goes
+    back to Approved (SCRUM-33 AC9, ADR-0107). See ADR-0114.
+
+    Args:
+        event_id: The event request's id.
+        session: Database session; defaults to ``db.session``.
+    """
+    sess = resolve_session(session)
+    event_request = sess.get(EventRequest, event_id)
+    marked = equipment_services.mark_event_reservations_for_reassessment(event_id, session=sess)
+    reopened = _reopen_lines_short_of_their_request(event_request)
+    if marked > 0 or reopened > 0:
+        _return_to_approved(event_request)
+
+
 def update_event_request(
     coordinator_id: int | str,
     reference: str,
@@ -2522,7 +2612,9 @@ def update_event_request(
     withdraws a safety approval in the same commit, naming the significant fields
     (AC7, :func:`withdraw_safety_approval`), and flags only the venue arrangements
     it affects, each reassessed on its own (AC6, ADR-0094); Venue Staff are told
-    about each one flagged once the edit is saved. In Safety Review, a significant
+    about each one flagged once the edit is saved. A date or time change hands the
+    equipment back to Technical Support in the same commit
+    (:func:`reassess_equipment_after_timing_change`). In Safety Review, a significant
     change that flags an arrangement sends the event back to Approved in the same
     commit, and every Safety Officer is told, naming the fields changed, once it is
     saved (AC9, ADR-0107). An edit that changes nothing writes and commits nothing.
@@ -2572,6 +2664,8 @@ def update_event_request(
     venue_notices = _flag_venue_arrangements(event_request, changes, attendance_before, sess)
     if venue_notices:
         _return_to_approved(event_request)
+    if _changes_timing(changes):
+        reassess_equipment_after_timing_change(event_request.id, session=sess)
     sess.commit()
     _reassess_arrangements(event_request, changes, sess)
     _tell_venue_staff_of_flags(event_request, venue_notices, sess)
@@ -3121,6 +3215,29 @@ def _notify_assigned_coordinator(
         return
     _raise_notifications(
         [event_request.coordinator_id], event_request, kind, session, detail=detail
+    )
+
+
+def notify_coordinator_reservation_confirmed(
+    event_id: int, detail: str, *, session: Session | None = None
+) -> None:
+    """Tell the event's coordinator a reservation was confirmed for its new period.
+
+    For the equipment module, after the confirmation's own commit (SCRUM-60 AC3,
+    ADR-0015). It reuses SCRUM-48's outcome kind: confirming is Technical Support's
+    review, and the coordinator hears once for it, with ``detail`` saying what was
+    confirmed (ADR-0114).
+
+    Args:
+        event_id: The event request's id.
+        detail: What was confirmed, e.g. "Projector: 3 reserved, confirmed for the
+            event's new date and time."
+        session: Database session; defaults to ``db.session``.
+    """
+    sess = resolve_session(session)
+    event_request = sess.get(EventRequest, event_id)
+    _notify_assigned_coordinator(
+        event_request, NotificationKind.EQUIPMENT_OUTCOME_RECORDED, sess, detail=detail
     )
 
 
@@ -3980,6 +4097,22 @@ def lines_without_outcome(
     return list(resolve_session(session).scalars(query).all())
 
 
+def provided_quantity_of_line(
+    event_id: int, equipment_type_id: int, *, session: Session | None = None
+) -> int | None:
+    """How many units the event's line of a type will be provided (SCRUM-60 AC3).
+
+    ``None`` while the line has no current outcome, or when the event has no line of
+    the type. For the equipment module, which confirms a marked reservation only for
+    a line with an outcome (ADR-0114).
+    """
+    statement = select(EventEquipmentLine.provided_quantity).where(
+        EventEquipmentLine.event_request_id == event_id,
+        EventEquipmentLine.equipment_type_id == equipment_type_id,
+    )
+    return resolve_session(session).scalar(statement)
+
+
 def all_outcomes_recorded(event_id: int, *, session: Session | None = None) -> bool:
     """Whether every one of the event's equipment lines has an outcome (SCRUM-48).
 
@@ -4035,6 +4168,34 @@ def _outcome_notice_detail(line: EventEquipmentLine, equipment_name: str) -> str
     return f"{detail} Note: {line.outcome_note}"
 
 
+def _settle_reservations_to_reassess(
+    event_request: EventRequest, line: EventEquipmentLine, provided_quantity: int, session: Session
+) -> bool:
+    """Settle the line's reservations marked for reassessment, if it has any (SCRUM-60).
+
+    Recording the outcome is the review (AC4, AC8, AC12): the reservations keep what
+    the outcome provides for the event's period and release the rest (ADR-0114).
+    Called before the outcome is applied, so a refusal leaves the line as it was.
+
+    Returns:
+        Whether the line had any to settle.
+
+    Raises:
+        ReservationCannotMoveError: 409 — fewer units are free than would be kept.
+    """
+    event_id = event_request.id
+    equipment_type_id = line.equipment_type_id
+    if not equipment_services.has_reservations_to_reassess(
+        event_id, equipment_type_id, session=session
+    ):
+        return False
+    need = _equipment_need_of(event_request)
+    equipment_services.settle_reassessment(
+        need, equipment_type_id, provided_quantity, session=session
+    )
+    return True
+
+
 def record_equipment_outcome(
     reviewer_id: int | str,
     reference: str,
@@ -4052,7 +4213,9 @@ def record_equipment_outcome(
     already had an outcome, also withdraws a safety approval (AC7, ADR-0087). Both are
     saved with the outcome; the event's coordinator is told afterwards (ADR-0015), with
     the equipment, the outcome and the note (SCRUM-50 AC4, ADR-0055). An event that
-    won't run takes no outcome at all, first or revised (AC8).
+    won't run takes no outcome at all, first or revised (AC8). The line's reservations
+    marked for reassessment keep what it provides, for the event's period, and release
+    the rest, which also withdraws a safety approval (SCRUM-60 AC4, AC9, AC10).
 
     Args:
         reviewer_id: The Technical Support user's id, taken from their token.
@@ -4071,6 +4234,8 @@ def record_equipment_outcome(
         NotFoundError: 404 — no such request, or no such line on it.
         ConflictError: 409 — the event is completed, cancelled or rejected; the
             message names its status (AC8).
+        ReservationCannotMoveError: 409 — the line's marked reservations would keep
+            more than is free for the event's period (SCRUM-60).
     """
     outcome = load_or_raise(RecordEquipmentOutcomeSchema(), payload)
     sess = resolve_session(session)
@@ -4084,6 +4249,9 @@ def record_equipment_outcome(
     _check_outcome_is_possible(line, outcome)
     equipment_type = equipment_services.get_equipment_type(line.equipment_type_id, session=sess)
     previous_provided_quantity = line.provided_quantity
+    settled_reservations = _settle_reservations_to_reassess(
+        event_request, line, outcome["provided_quantity"], sess
+    )
 
     line.provided_quantity = outcome["provided_quantity"]
     line.status = outcome_status_for(line.quantity, line.provided_quantity)
@@ -4117,6 +4285,13 @@ def record_equipment_outcome(
                 "equipment_type_name": equipment_type.name,
                 "previous_provided_quantity": previous_provided_quantity,
             },
+            session=sess,
+        )
+    if settled_reservations:
+        withdraw_safety_approval(
+            event_request.id,
+            actor_id=reviewer,
+            details={"equipment_type_name": equipment_type.name, "reservation_reassessed": True},
             session=sess,
         )
     sess.commit()
@@ -4559,11 +4734,18 @@ def _venue_gaps(event_id: int, session: Session) -> list[str]:
 def _equipment_gaps(event_id: int, session: Session) -> list[str]:
     """Each equipment request still waiting on Technical Support (SCRUM-97 AC1, AC2).
 
-    An event with no equipment requests has none waiting, so it passes (AC2).
+    An event with no equipment requests has none waiting, so it passes (AC2). Nor
+    does a reservation marked for reassessment, named in the refusal (SCRUM-60 AC5).
     """
     gaps = []
     for line in lines_without_outcome(event_id, session=session):
         gaps.append(f"Equipment request {line.id} has no outcome from Technical Support.")
+    to_reassess = equipment_services.list_reservations_to_reassess(event_id, session=session)
+    for reservation in to_reassess:
+        gaps.append(
+            f"Equipment reservation {reservation.id} ({reservation.equipment_type_name})"
+            " is awaiting reassessment by Technical Support."
+        )
     return gaps
 
 

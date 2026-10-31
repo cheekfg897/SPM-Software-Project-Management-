@@ -80,20 +80,27 @@ function equipmentEventOf(event: EventListRow): EquipmentEvent {
   }
 }
 
-/** The event's place in the queue, or null when nothing of it is awaited (SCRUM-38 AC1, AC4). */
+/**
+ * The event's place in the queue, or null when nothing of it is awaited (SCRUM-38 AC1, AC4): its
+ * lines still requested, and those whose reservation a change marked (SCRUM-60 AC6).
+ */
 export function awaitingRow(stored: MockEquipmentEvent): EquipmentAwaitingAction | null {
   const { event } = stored
   if (event.proposed_date < MOCK_TODAY || EQUIPMENT_NOT_NEEDED.includes(event.status)) {
     return null
   }
-  const stillRequested = stored.lines.filter((line) => line.status === 'requested')
-  if (stillRequested.length === 0) {
+  const typeIdsToReassess = stored.equipmentTypeIdsToReassess ?? []
+  const awaited = stored.lines.filter(
+    (line) => line.status === 'requested' || typeIdsToReassess.includes(line.equipment_type_id),
+  )
+  if (awaited.length === 0) {
     return null
   }
   return {
     event: equipmentEventOf(event),
-    equipment_lines: stillRequested,
+    equipment_lines: awaited,
     days_remaining: daysFromToday(event.proposed_date),
+    equipment_type_ids_to_reassess: typeIdsToReassess,
   }
 }
 
