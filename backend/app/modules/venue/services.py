@@ -1804,13 +1804,46 @@ def _arrangement_of_event(
     return arrangement
 
 
-def _cancel_hold(arrangement: VenueBookingRequest) -> None:
-    """Cancel an On Hold arrangement's tentative hold, so its venue is free at once.
+def _booking_made_by(arrangement: VenueBookingRequest, session: Session | None) -> Booking | None:
+    """The booking approving ``arrangement`` made, if it still holds the venue (AC7).
 
-    For rejecting a hold (SCRUM-75 AC7) and withdrawing one (ADR-0118). The hold's
-    booking keeps its expiry; the arrangement stops showing it once it leaves On Hold.
+    The booking has no link to its request, so it is the event's booking at the
+    request's venue for exactly the request's period.
     """
-    arrangement.booking.status = BookingStatus.CANCELLED
+    stmt = select(Booking).where(
+        Booking.venue_id == arrangement.venue_id,
+        Booking.event_id == arrangement.event_id,
+        Booking.start_time == arrangement.starts_at,
+        Booking.end_time == arrangement.ends_at,
+        Booking.status.in_(HOLDING_BOOKING_STATUSES),
+    )
+    return resolve_session(session).scalars(stmt).first()
+
+
+def _booking_holding_venue(
+    arrangement: VenueBookingRequest, session: Session | None
+) -> Booking | None:
+    """The hold or booking through which the arrangement holds its venue, if any.
+
+    A hold, and the booking a hold becomes on approval, is linked to its request
+    (SCRUM-75); a booking an ordinary approval made is found by its period.
+    """
+    if arrangement.booking is not None:
+        return arrangement.booking
+    return _booking_made_by(arrangement, session)
+
+
+def _free_venue(arrangement: VenueBookingRequest, session: Session | None) -> None:
+    """Cancel the booking or hold that holds the arrangement's venue, if it has one.
+
+    The one way a booking or hold is let go: rejecting or withdrawing a hold (SCRUM-75
+    AC7, ADR-0118), releasing an arrangement (SCRUM-92, SCRUM-49) and cancelling a
+    booking (SCRUM-111). A cancelled hold keeps its expiry; the arrangement stops
+    showing it once it leaves On Hold.
+    """
+    booking = _booking_holding_venue(arrangement, session)
+    if booking is not None:
+        booking.status = BookingStatus.CANCELLED
 
 
 def _withdraw_and_record(
@@ -1828,8 +1861,10 @@ def _withdraw_and_record(
 
     if arrangement.status not in WITHDRAWABLE_REQUEST_STATUSES:
         raise ConflictError(WITHDRAW_NOT_ALLOWED_MESSAGE.format(status=arrangement.status.value))
+    # Only a hold is freed: a request not yet decided holds nothing, and looking for its
+    # booking by period could find another arrangement's at the same venue and time.
     if arrangement.status is BookingRequestStatus.ON_HOLD:
-        _cancel_hold(arrangement)
+        _free_venue(arrangement, session)
     arrangement.status = BookingRequestStatus.WITHDRAWN
     event_services.record_venue_arrangement_withdrawn(
         arrangement.event_id,
@@ -2267,42 +2302,6 @@ def _booking_to_approve(request: VenueBookingRequest, session: Session | None) -
     return _booking_for(request)
 
 
-def _booking_made_by(arrangement: VenueBookingRequest, session: Session | None) -> Booking | None:
-    """The booking approving ``arrangement`` made, if it still holds the venue (AC7).
-
-    The booking has no link to its request, so it is the event's booking at the
-    request's venue for exactly the request's period.
-    """
-    stmt = select(Booking).where(
-        Booking.venue_id == arrangement.venue_id,
-        Booking.event_id == arrangement.event_id,
-        Booking.start_time == arrangement.starts_at,
-        Booking.end_time == arrangement.ends_at,
-        Booking.status.in_(HOLDING_BOOKING_STATUSES),
-    )
-    return resolve_session(session).scalars(stmt).first()
-
-
-def _booking_holding_venue(
-    arrangement: VenueBookingRequest, session: Session | None
-) -> Booking | None:
-    """The hold or booking through which the arrangement holds its venue, if any.
-
-    A hold, and the booking a hold becomes on approval, is linked to its request
-    (SCRUM-75); a booking an ordinary approval made is found by its period.
-    """
-    if arrangement.booking is not None:
-        return arrangement.booking
-    return _booking_made_by(arrangement, session)
-
-
-def _free_venue(arrangement: VenueBookingRequest, session: Session | None) -> None:
-    """Cancel the booking or hold that holds the arrangement's venue, if it has one."""
-    booking = _booking_holding_venue(arrangement, session)
-    if booking is not None:
-        booking.status = BookingStatus.CANCELLED
-
-
 def _release_and_free_venue(arrangement: VenueBookingRequest, session: Session | None) -> None:
     """Mark a live arrangement Released and cancel any booking or hold it has."""
     _free_venue(arrangement, session)
@@ -2503,7 +2502,7 @@ def decide_booking_request(
         _release_replaced(request, decided_by, session)
     elif request.status is BookingRequestStatus.ON_HOLD:
         # Rejecting a hold releases the venue at once (SCRUM-75 AC7).
-        _cancel_hold(request)
+        _free_venue(request, session)
     request.decision_reason = reason
     _save_decision(request, decision, booking, decided_by=decided_by, session=session)
     _notify_about_booking(
@@ -2956,27 +2955,6 @@ CANCEL_REPLACEMENT_WAITING_MESSAGE = (
 CANCELLED_DETAIL = "Venue arrangement {id} at {venue}, {starts} to {ends}, was cancelled."
 
 
-def _locked_arrangement_of_event(
-    event_id: int, arrangement_id: int, session: Session
-) -> VenueBookingRequest:
-    """One of the event's own arrangements, read under a row lock (ADR-0045).
-
-    Locked as SCRUM-59's reconfirm and reject lock it, so a reject and a cancel, or two
-    cancels, take turns. An id that belongs to another event is reported as missing,
-    as :func:`_arrangement_of_event` reports it (ADR-0035 §6).
-
-    Raises:
-        NotFoundError: 404 — the event has no arrangement with that id.
-    """
-    try:
-        arrangement = _locked_request(arrangement_id, session)
-    except NotFoundError:
-        raise NotFoundError(ARRANGEMENT_NOT_FOUND_MESSAGE) from None
-    if arrangement.event_id != event_id:
-        raise NotFoundError(ARRANGEMENT_NOT_FOUND_MESSAGE)
-    return arrangement
-
-
 def _refuse_cancel_while_replacement_waits(
     arrangement: VenueBookingRequest, session: Session | None
 ) -> None:
@@ -3028,10 +3006,10 @@ def cancel_approved_booking(
     from app.modules.events import services as event_services  # circular at import time
 
     sess = resolve_session(session)
-    event = event_services.get_event_for_booking_cancellation(
+    event = event_services.get_event_for_arrangement_change(
         reference, coordinator_id, session=session
     )
-    arrangement = _locked_arrangement_of_event(event.id, arrangement_id, sess)
+    arrangement = _arrangement_of_event(event.id, arrangement_id, sess)
     if arrangement.status is not BookingRequestStatus.APPROVED:
         raise ConflictError(CANCEL_NOT_APPROVED_MESSAGE.format(status=arrangement.status.value))
     _refuse_cancel_while_replacement_waits(arrangement, session)
