@@ -522,6 +522,19 @@ def reload_equipment_line(db_session: Session) -> Callable[[int], EventEquipment
 
 
 @pytest.fixture()
+def approved_event_request(
+    saved_event_request: EventRequest, set_status: Callable[[EventRequestStatus], None]
+) -> EventRequest:
+    """``saved_event_request`` (``EVR-AAAAAAAA``), approved by Coordinator 3.
+
+    The first status in which its coordinator may edit its details or change its
+    equipment (SCRUM-110, ADR-0116). Set directly, so its history is still empty.
+    """
+    set_status(EventRequestStatus.APPROVED)
+    return saved_event_request
+
+
+@pytest.fixture()
 def edit_event(
     saved_users: list[User], saved_event_request: EventRequest, today: date
 ) -> Callable[[int, dict[str, Any] | None], EventEdit]:

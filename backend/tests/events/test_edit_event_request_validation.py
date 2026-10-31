@@ -24,7 +24,9 @@ from app.modules.events.models import EventHistoryKind, EventRequest
 from app.modules.events.services import EventEdit
 from tests.events.cases import WINDOW_VIOLATION_IDS, WINDOW_VIOLATIONS
 
-pytestmark = pytest.mark.scrum_33
+#: Each test edits an approved event, the first status a direct edit is allowed in
+#: (SCRUM-110).
+pytestmark = [pytest.mark.scrum_33, pytest.mark.usefixtures("approved_event_request")]
 
 EditEvent = Callable[[int, dict[str, Any] | None], EventEdit]
 ReloadEventRequest = Callable[[int], EventRequest]
