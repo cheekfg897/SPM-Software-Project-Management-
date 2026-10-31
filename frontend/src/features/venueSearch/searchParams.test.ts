@@ -1,11 +1,13 @@
 import {
   filtersFrom,
+  readEventToSearchFor,
   readFilters,
   readReplacementSearch,
   readVenueToCheck,
   replacementSearchPath,
   toSearchRequest,
   toSuitabilityRequest,
+  venueSearchForEventPath,
   withFilters,
   withVenueToCheck,
 } from './searchParams'
@@ -200,5 +202,24 @@ describe('SCRUM-92 a search for a replacement venue', () => {
     'event=EVR-BOOK0107&replaces=9104&instead_of=abc',
   ])('reads no replacement from %s', (query) => {
     expect(readReplacementSearch(new URLSearchParams(query))).toBeNull()
+  })
+})
+
+describe('SCRUM-90 a search opened from an event', () => {
+  const OPENED_PATH = venueSearchForEventPath('EVR-7K2M9QXA')
+  const OPENED_PARAMS = new URLSearchParams(OPENED_PATH.split('?')[1])
+
+  it('opens the search naming the event, with no filters until the coordinator searches', () => {
+    expect(OPENED_PATH).toBe('/staff/venue-search?for_event=EVR-7K2M9QXA')
+    expect(readFilters(OPENED_PARAMS)).toBeNull()
+  })
+
+  it('reads the event back from the URL, and keeps it once the filters are added', () => {
+    expect(readEventToSearchFor(OPENED_PARAMS)).toBe('EVR-7K2M9QXA')
+    expect(readEventToSearchFor(withFilters(OPENED_PARAMS, FILTERS))).toBe('EVR-7K2M9QXA')
+  })
+
+  it('reads no event from an ordinary search', () => {
+    expect(readEventToSearchFor(new URLSearchParams('date=2026-11-20'))).toBeNull()
   })
 })
