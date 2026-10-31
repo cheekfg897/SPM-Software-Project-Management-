@@ -74,17 +74,21 @@ function outcome(provided: number, quantity: number): EquipmentOutcomeBody {
   return { provided_quantity: provided, note: 'Only some are free.' }
 }
 
-async function eventWithReviewedEquipment(equipment: Equipment): Promise<ReviewedEvent> {
-  const { reference } = await approvedEvent()
+/** As Technical Support: a new equipment type, `total` units of it held in all. */
+async function newEquipmentType(total: number): Promise<{ id: number; name: string }> {
   await signInAsTechSupport()
-  const typeName = `Integration projector ${uniqueEmail('type')}`
-  const type = await createEquipmentType({
-    name: typeName,
+  return createEquipmentType({
+    name: `Integration projector ${uniqueEmail('type')}`,
     description: '',
-    total_quantity: equipment.total,
+    total_quantity: total,
     venue_id: null,
     store_name: 'Integration store',
   })
+}
+
+async function eventWithReviewedEquipment(equipment: Equipment): Promise<ReviewedEvent> {
+  const { reference } = await approvedEvent()
+  const type = await newEquipmentType(equipment.total)
   await signInAs(staffAccount())
   const line = await addEquipmentLine(reference, {
     equipment_type_id: type.id,
@@ -98,7 +102,7 @@ async function eventWithReviewedEquipment(equipment: Equipment): Promise<Reviewe
     lineId: line.id,
     body: outcome(equipment.provided, equipment.quantity),
   })
-  return { reference, typeId: type.id, typeName, lineId: line.id }
+  return { reference, typeId: type.id, typeName: type.name, lineId: line.id }
 }
 
 /** As the staff account, the event's coordinator: start the event an hour later. */
@@ -139,6 +143,7 @@ describe('SCRUM-60 a timing change against the backend', () => {
       const [reassessment] = await fetchEventReassessments(event.reference)
       expect(Object.keys(reassessment ?? {}).sort()).toEqual([
         'available',
+        'confirmable',
         'ends_at',
         'equipment_type_id',
         'equipment_type_name',
@@ -155,6 +160,7 @@ describe('SCRUM-60 a timing change against the backend', () => {
         ends_at: ENDS_AT,
         available: 5,
         shortfall: 0,
+        confirmable: true,
       })
       expect(reassessment?.reservations.map((held) => [held.quantity, held.starts_at])).toEqual([
         [2, OLD_STARTS_AT],
@@ -264,6 +270,30 @@ describe('SCRUM-60 a timing change against the backend', () => {
         code: 'not_found',
         message: NOTHING_TO_REASSESS,
       })
+    },
+  )
+})
+
+describe('SCRUM-60 a reservation of a type the event has no line for, against the backend', () => {
+  it.skipIf(!canReassess)(
+    'is confirmed though short, keeping what is free and releasing the rest (ADR-0114 decision 22)',
+    async () => {
+      const { reference } = await approvedEvent()
+      const type = await newEquipmentType(2)
+      await reserveEquipment(reference, { equipment_type_id: type.id, quantity: 2 })
+      await moveTheStart(reference)
+      await signInAsTechSupport()
+      await takeOutOfService({
+        equipmentTypeId: String(type.id),
+        body: { quantity: 1, reason: 'damaged' },
+      })
+      const [reassessment] = await fetchEventReassessments(reference)
+      expect(reassessment).toMatchObject({ shortfall: 1, confirmable: true })
+
+      const confirmed = await confirmReassessment(reference, type.id)
+
+      expect(confirmed.map((held) => [held.quantity, held.starts_at])).toEqual([[1, NEW_STARTS_AT]])
+      await expect(fetchEventReassessments(reference)).resolves.toEqual([])
     },
   )
 })

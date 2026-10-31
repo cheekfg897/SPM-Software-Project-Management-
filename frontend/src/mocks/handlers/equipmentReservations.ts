@@ -34,7 +34,7 @@ export interface MockReservation {
 }
 
 /** One type's marked reservations, as GET .../reassessments answers it (SCRUM-60 AC2). */
-interface MockReassessment {
+export interface MockReassessment {
   equipment_type_id: number
   equipment_type_name: string
   reservations: ReturnType<typeof asShown>[]

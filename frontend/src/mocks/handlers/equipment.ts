@@ -31,7 +31,6 @@ import {
   asShown,
   availableQuantity,
   eventOfReservation,
-  hasReservationsToReassess,
   reassessmentsOf,
   refusalToSettle,
   reservationsOfEvent,
@@ -41,6 +40,7 @@ import {
   settleReassessment,
   unitsReservedForEvent,
 } from './equipmentReservations'
+import type { MockReassessment } from './equipmentReservations'
 import {
   EQUIPMENT_TYPE_ID_RANGE_MESSAGE,
   MISSING_MESSAGE,
@@ -112,6 +112,33 @@ function overTheLine(reference: string, equipmentTypeId: number, quantity: numbe
     return undefined
   }
   return `The event asks for ${String(line.quantity)} of these, and ${String(already)} are already reserved.`
+}
+
+/**
+ * At most how many units confirming keeps of the type's marked reservations
+ * (`_quantity_to_confirm`): what the line's outcome provides, null while it has none, or what is
+ * free for a type the event has no line for (ADR-0114 decision 22).
+ */
+function quantityToConfirm(reference: string, reassessment: MockReassessment): number | null {
+  const line = lineOfType(reference, reassessment.equipment_type_id)
+  if (line === undefined) {
+    return reassessment.available
+  }
+  return line.provided_quantity
+}
+
+/**
+ * The event's reassessments, each saying whether confirming would settle it now: it keeps no more
+ * than is held, and refuses to keep more than is free (`_reassessment_of`, decision 23).
+ */
+function reassessmentsWithConfirmable(reference: string) {
+  return reassessmentsOf(reference).map((reassessment) => {
+    const toConfirm = quantityToConfirm(reference, reassessment)
+    const confirmable =
+      toConfirm !== null &&
+      Math.min(toConfirm, reassessment.reserved_quantity) <= reassessment.available
+    return { ...reassessment, confirmable }
+  })
 }
 
 /** Problems with the reservation body, by field, in the backend's wording (EquipmentUnitsSchema). */
@@ -218,7 +245,7 @@ export const equipmentHandlers: RequestHandler[] = [
     if (event === undefined) {
       return eventNotFound()
     }
-    return HttpResponse.json(reassessmentsOf(event.reference))
+    return HttpResponse.json(reassessmentsWithConfirmable(event.reference))
   }),
 
   // Technical Support only. The backend's order: the path, the event, whether it will still run,
@@ -239,10 +266,13 @@ export const equipmentHandlers: RequestHandler[] = [
     if (EQUIPMENT_NOT_NEEDED_STATUSES.includes(event.status)) {
       return errorResponse(409, 'equipment_not_reservable', RESERVATIONS_CLOSED_MESSAGE)
     }
-    if (!hasReservationsToReassess(event.reference, equipmentTypeId)) {
+    const reassessment = reassessmentsOf(event.reference).find(
+      (row) => row.equipment_type_id === equipmentTypeId,
+    )
+    if (reassessment === undefined) {
       return errorResponse(404, 'not_found', NOTHING_TO_REASSESS_MESSAGE)
     }
-    const provided = lineOfType(event.reference, equipmentTypeId)?.provided_quantity ?? null
+    const provided = quantityToConfirm(event.reference, reassessment)
     if (provided === null) {
       return errorResponse(409, 'conflict', RECORD_THE_OUTCOME_MESSAGE)
     }
