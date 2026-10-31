@@ -2376,8 +2376,10 @@ def decide_booking_request(
     calendar then shows as unavailable, padded by its setup and turnaround time
     (ADR-0011). Rejecting books nothing and needs a reason. Either way the request
     keeps the reason, the event's history gets an entry in the same commit, and the
-    coordinator who raised the request is told in a second commit (ADR-0015). The
-    event's other requests are untouched (AC8): each is decided on its own.
+    event's coordinator is told in a second commit (ADR-0015). That is the coordinator
+    assigned now, not whoever raised the request, who may have been reassigned away
+    from the event since (SCRUM-115). The event's other requests are untouched (AC8):
+    each is decided on its own.
 
     An approval is refused when its period, with the venue's setup and turnaround,
     clashes with a confirmed booking at the venue (SCRUM-44, ADR-0045). Once it passes,
@@ -2425,7 +2427,7 @@ def decide_booking_request(
     request.decision_reason = reason
     _save_decision(request, decision, booking, decided_by=decided_by, session=session)
     _notify_about_booking(
-        [request.requested_by],
+        [event.coordinator_id],
         event,
         _NOTIFICATION_BY_DECISION[decision],
         detail=reason,
