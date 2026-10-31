@@ -144,20 +144,6 @@ def test_the_lead_sees_each_active_event_with_its_status_and_coordinator(
     }
 
 
-def test_an_event_nobody_holds_yet_shows_no_coordinator(
-    call_route: CallRoute,
-    token_for: Callable[..., str],
-    replace_services: ReplaceServices,
-    make_event_request: Callable[..., EventRequest],
-) -> None:
-    replace_services(routes, {"list_active_requests": [ActiveRequest(make_event_request(), None)]})
-    endpoint, path, _ = ROUTES["active"]
-
-    response, _ = call_route(endpoint, "GET", path, {}, token_for(role=Role.EVENT_COORDINATOR_LEAD))
-
-    assert response.get_json()["event_requests"][0]["coordinator"] is None
-
-
 def test_the_lead_sees_each_coordinator_with_their_events_and_no_user_id(
     call_route: CallRoute, token_for: Callable[..., str], listing_services: dict[str, MagicMock]
 ) -> None:

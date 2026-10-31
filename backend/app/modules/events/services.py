@@ -119,12 +119,12 @@ class CoordinatorContact:
 class ActiveRequest:
     """One active event with the name of its coordinator, for the Lead (SCRUM-96 AC1).
 
-    No user id: the coordinator is shown by name. ``coordinator_name`` is ``None``
-    while a submitted request waits for the Lead to assign it.
+    No user id: the coordinator is shown by name. An active event always has one
+    (AC2, ADR-0120).
     """
 
     event_request: EventRequest
-    coordinator_name: str | None
+    coordinator_name: str
 
 
 @dataclass(frozen=True)
@@ -2658,32 +2658,38 @@ def list_unassigned_requests(*, session: Session | None = None) -> list[EventReq
 
 
 def _active_requests_newest_first(session: Session) -> list[EventRequest]:
-    """Every request in an :data:`ACTIVE_STATUSES` status, newest first."""
-    return _list_event_requests_newest_first(EventRequest.status.in_(ACTIVE_STATUSES), session)
+    """Every active event, newest first (SCRUM-96 AC2, ADR-0120).
+
+    Active means it has a coordinator and is in an :data:`ACTIVE_STATUSES` status. A
+    submitted request with no coordinator is waiting in the Lead's queue instead, so an
+    event is in one of the Lead's lists, never both (SCRUM-95).
+    """
+    is_active = and_(
+        EventRequest.coordinator_id.is_not(None), EventRequest.status.in_(ACTIVE_STATUSES)
+    )
+    return _list_event_requests_newest_first(is_active, session)
 
 
 def list_active_requests(*, session: Session | None = None) -> list[ActiveRequest]:
-    """Every active event with its coordinator's name, newest first (SCRUM-96 AC1).
+    """Every active event with its coordinator's name, newest first (SCRUM-96 AC1, AC2).
 
-    "Active" is :data:`ACTIVE_STATUSES`, the same set a reassignment accepts (ADR-0041):
-    drafts, and completed, cancelled and rejected events, are left out. The Lead
-    supervises every coordinator, so the list is not filtered by Lead (SCRUM-96
-    Assumption). A submitted request still waiting to be assigned is active, and is
-    listed with no coordinator.
+    Drafts, events nobody holds yet, and completed, cancelled and rejected events are
+    left out (ADR-0120). The Lead supervises every coordinator, so the list is not
+    filtered by Lead (SCRUM-96 Assumption).
 
     Args:
         session: Database session; defaults to ``db.session``.
 
     Returns:
-        The active events, each with its coordinator's full name or ``None``.
+        The active events, each with its coordinator's full name.
     """
     sess = resolve_session(session)
     event_requests = _active_requests_newest_first(sess)
-    coordinator_ids = {r.coordinator_id for r in event_requests if r.coordinator_id is not None}
+    coordinator_ids = {event_request.coordinator_id for event_request in event_requests}
     names = get_user_full_names(coordinator_ids, session=sess)
     active = []
     for event_request in event_requests:
-        coordinator_name = names.get(event_request.coordinator_id)
+        coordinator_name = names[event_request.coordinator_id]
         active.append(ActiveRequest(event_request, coordinator_name))
     return active
 
@@ -2706,8 +2712,6 @@ def list_requests_for_each_coordinator(
     sess = resolve_session(session)
     held_by: dict[int, list[EventRequest]] = {}
     for event_request in _active_requests_newest_first(sess):
-        if event_request.coordinator_id is None:
-            continue
         held_by.setdefault(event_request.coordinator_id, []).append(event_request)
     names = get_user_full_names(held_by, session=sess)
     workloads = [

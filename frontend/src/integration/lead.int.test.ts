@@ -1,4 +1,5 @@
 import {
+  assignCoordinator,
   fetchActiveEvents,
   fetchCoordinatorWorkload,
   fetchUnassignedQueue,
@@ -8,6 +9,31 @@ import { sendRequestsAs } from '@/test/sendRequestsAs'
 
 import { refusal, signInAs, signInAsNewAttendee, staffAccount } from './backend'
 import { LEAD, required, submittedEvent } from './plannedEvent'
+import type { PlannedEvent } from './plannedEvent'
+
+/** The fields the oversight lists send for an event (SCRUM-24 AC8), sorted. */
+const LIST_FIELDS = [
+  'end_date',
+  'end_time',
+  'name',
+  'proposed_date',
+  'reference',
+  'start_time',
+  'status',
+]
+
+/** The keys of `row`, sorted, or none when the row is missing. */
+function keysOf(row: object | undefined): string[] {
+  return row === undefined ? [] : Object.keys(row).sort()
+}
+
+/** As the Lead, give a new submitted event to the staff account. Leaves the Lead signed in. */
+async function eventHeldByTheStaffAccount(): Promise<PlannedEvent> {
+  const event = await submittedEvent()
+  await signInAs(required(LEAD))
+  await assignCoordinator({ reference: event.reference, coordinator_email: staffAccount().email })
+  return event
+}
 
 /**
  * SCRUM-95: the Lead's queue against the real backend. Staff accounts can only be made with
@@ -53,11 +79,12 @@ describe('SCRUM-95 Lead queue contract (ADR-0036)', () => {
 /**
  * SCRUM-96: the Lead's oversight routes against the real backend. The integration setup makes an
  * Event Coordinator (staffAccount) and can sign attendees up, so the refusals run for real. The
- * Lead's own answers need a Lead account and events held by coordinators, which only
- * `flask create-staff-user` and a coordinator's work can make, so those wait as todos and the mock
- * handlers in src/mocks/handlers/lead.ts stand in (docs/adr/0062).
+ * Lead's own answers run when the run has a Lead account (INTEGRATION_LEAD_*, which CI makes).
+ * What a shared backend can't show (the order of every event, empty lists, a second coordinator to
+ * reassign to) waits as todos, and the mock handlers in src/mocks/handlers/lead.ts stand in
+ * (docs/adr/0062, docs/adr/0120).
  */
-describe('SCRUM-96 Lead oversight contract (ADR-0041)', () => {
+describe('SCRUM-96 Lead oversight contract (ADR-0041, ADR-0120)', () => {
   afterEach(() => sendRequestsAs(null))
 
   const OVERSIGHT_CALLS = {
@@ -94,9 +121,34 @@ describe('SCRUM-96 Lead oversight contract (ADR-0041)', () => {
     expect((await refusal(call())).status).toBe(401)
   })
 
-  it.todo(
-    'lists every active event newest first, each with exactly the list fields, its status and its coordinator by name (null when nobody holds it)',
+  it.skipIf(LEAD === null)(
+    'lists a held event with exactly the list fields and its coordinator by name, and leaves out one nobody holds (ADR-0120)',
+    async () => {
+      const waiting = await submittedEvent()
+      const held = await eventHeldByTheStaffAccount()
+
+      const { event_requests: rows } = await fetchActiveEvents()
+
+      expect(rows.map((row) => row.reference)).not.toContain(waiting.reference)
+      const row = rows.find((active) => active.reference === held.reference)
+      expect(keysOf(row)).toEqual(['coordinator', ...LIST_FIELDS])
+      expect(row).toMatchObject({
+        name: held.name,
+        status: 'submitted',
+        coordinator: expect.any(String) as string,
+      })
+    },
   )
+  it.skipIf(LEAD === null)('lists the active events newest first', async () => {
+    const older = await eventHeldByTheStaffAccount()
+    const newer = await eventHeldByTheStaffAccount()
+
+    const { event_requests: rows } = await fetchActiveEvents()
+
+    const references = rows.map((row) => row.reference)
+    expect(references.indexOf(newer.reference)).toBeGreaterThanOrEqual(0)
+    expect(references.indexOf(newer.reference)).toBeLessThan(references.indexOf(older.reference))
+  })
   it.todo(
     'lists each coordinator holding an active event, ordered by name, with exactly the list fields of those events',
   )
