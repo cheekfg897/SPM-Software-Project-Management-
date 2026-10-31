@@ -26,11 +26,8 @@ const COORDINATOR = mockSessionFor(MOCK_ACCOUNTS.coordinator)
 const ORGANISER = mockSessionFor(MOCK_ACCOUNTS.organiser)
 const PARTNER_SUMMIT = 'EVR-7K2M9QXA'
 const TOWN_HALL = 'EVR-BOOK0102'
-/** Every status before Confirmed, which the backend lets an edit through (AC8, ADR-0101). */
+/** Once approved, until Confirmed: the statuses the backend lets an edit through (SCRUM-110). */
 const EDIT_OFFERED_STATUSES: readonly EventRequestStatus[] = [
-  EVENT_REQUEST_STATUS.SUBMITTED,
-  EVENT_REQUEST_STATUS.UNDER_REVIEW,
-  EVENT_REQUEST_STATUS.AWAITING_CLARIFICATION,
   EVENT_REQUEST_STATUS.APPROVED,
   EVENT_REQUEST_STATUS.SAFETY_REVIEW,
 ]
@@ -280,7 +277,7 @@ describe('SCRUM-33 who reaches the edit form', () => {
   )
 
   it.each(EDIT_NOT_OFFERED_STATUSES)(
-    'offers no edit, and no Edit details section, for an event that is %s (AC8)',
+    'offers no edit, and no Edit details section, for an event that is %s (AC8, SCRUM-110)',
     async (status) => {
       await serveRecordInStatus(MOCK_ACCOUNTS.coordinator, PARTNER_SUMMIT, status)
       renderApp(coordinatorEventPath(PARTNER_SUMMIT), { session: COORDINATOR })
