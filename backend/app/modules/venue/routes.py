@@ -248,6 +248,19 @@ def cancel_all_arrangements(reference: str) -> tuple[Response, int]:
     return jsonify(_booking_request_schema.dump(shown, many=True)), 200
 
 
+@bp.post("/events/<reference>/booking-requests/<int:arrangement_id>/cancel")
+@requires_role(Role.EVENT_COORDINATOR)
+def cancel_approved_booking(reference: str, arrangement_id: int) -> tuple[Response, int]:
+    """Cancel one of the coordinator's event's approved venue bookings (SCRUM-111)."""
+    shown = services.cancel_approved_booking(
+        reference,
+        arrangement_id,
+        request.get_json(silent=True),
+        coordinator_id=int(g.current_user_id),
+    )
+    return jsonify(_booking_request_schema.dump(shown)), 200
+
+
 @bp.patch("/events/<reference>/booking-requests/<int:arrangement_id>")
 @requires_role(Role.EVENT_COORDINATOR)
 def change_arrangement(reference: str, arrangement_id: int) -> tuple[Response, int]:
