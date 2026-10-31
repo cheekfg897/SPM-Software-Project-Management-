@@ -4,7 +4,12 @@ import { http, HttpResponse } from 'msw'
 import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
 import type { EventRequestStatus } from '@/config/eventStatus'
 import { coordinatorEventPath, organiserRequestPath, ROUTES } from '@/config/routes'
-import { raiseBookingRequest, withdrawArrangement } from '@/features/booking/api'
+import {
+  cancelBooking,
+  decideBookingRequest,
+  raiseBookingRequest,
+  withdrawArrangement,
+} from '@/features/booking/api'
 import {
   decideEventRequest,
   editEventRequest,
@@ -631,6 +636,25 @@ describe('SCRUM-93 AC5 event record: every arrangement on the coordinator page',
     const venues = await section('Venue arrangements')
     expect(venues).toHaveTextContent('Careers fair')
     expect(venues).toHaveTextContent('10 Nov, 9:00 am – 12:00 pm · Withdrawn')
+  })
+
+  it('lists a booking the coordinator cancelled as Cancelled (SCRUM-111 AC1)', async () => {
+    sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.coordinator))
+    const raised = await raiseBookingRequest('EVR-BOOK0101', {
+      venue_id: 1,
+      starts_at: '2026-11-10T09:00:00+08:00',
+      ends_at: '2026-11-10T12:00:00+08:00',
+      purpose: 'Careers fair',
+    })
+    sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.venueStaff))
+    await decideBookingRequest(raised.id, { outcome: 'approved' })
+    sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.coordinator))
+    await cancelBooking('EVR-BOOK0101', raised.id, { reason: 'Moved online.' })
+    sendRequestsAs(null)
+    openAsCoordinator('EVR-BOOK0101')
+
+    const venues = await section('Venue arrangements')
+    expect(venues).toHaveTextContent('10 Nov, 9:00 am – 12:00 pm · Cancelled')
   })
 })
 

@@ -46,6 +46,7 @@ describe('SCRUM-33 the kinds of history entry', () => {
       'venue_arrangement_changed',
       'venue_arrangement_withdrawn',
       'venue_booking_approved',
+      'venue_booking_cancelled',
       'venue_booking_reconfirmed',
       'venue_booking_rejected',
       'venue_booking_requested',
@@ -339,6 +340,24 @@ describe('SCRUM-33 describing the venue arrangements', () => {
   it('gives the venue of a withdrawn arrangement', () => {
     expect(described('venue_arrangement_withdrawn', { venue_id: 9 })).toEqual(
       plain('Venue arrangement withdrawn', [['Venue ID', '9']]),
+    )
+  })
+
+  it('gives a cancelled booking’s venue, its period and the coordinator’s reason (SCRUM-111 AC5)', () => {
+    const details = {
+      venue_booking_request_id: 4,
+      venue_id: 12,
+      starts_at: '2026-11-10T01:00:00+00:00',
+      ends_at: '2026-11-10T04:00:00+00:00',
+      reason: 'The talks moved to the main hall.',
+    }
+
+    expect(described('venue_booking_cancelled', details)).toEqual(
+      plain('Venue booking cancelled', [
+        ['Venue ID', '12'],
+        ['When', '10 Nov, 9:00 am – 12:00 pm'],
+        ['Reason', 'The talks moved to the main hall.'],
+      ]),
     )
   })
 })
