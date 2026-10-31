@@ -11,7 +11,12 @@ from sqlalchemy.orm import Session
 from app.modules.auth.permissions import ALL_ROLES, Role
 from app.modules.events.models import EventRequest
 from app.modules.registration.models import Registration, RegistrationStatus
-from app.modules.registration.services import MyRegistration, list_my_registrations
+from app.modules.registration.services import (
+    MyRegistration,
+    list_my_registrations,
+    register_for_event,
+    withdraw_registration,
+)
 
 #: Every role but Attendee, in a fixed order so test ids are stable.
 NON_ATTENDEE_ROLES = sorted(ALL_ROLES - {Role.ATTENDEE}, key=lambda role: role.value)
@@ -21,6 +26,26 @@ NON_ATTENDEE_ROLES = sorted(ALL_ROLES - {Role.ATTENDEE}, key=lambda role: role.v
 def non_attendee_role(request: pytest.FixtureRequest) -> Role:
     """Each role but Attendee in turn, for routes only attendees call."""
     return request.param
+
+
+@pytest.fixture()
+def register(db_session: Session, now: datetime) -> Callable[[int | str, int], Registration]:
+    """Register an attendee for an event at ``now``."""
+
+    def _register(attendee_id: int | str, event_id: int) -> Registration:
+        return register_for_event(attendee_id, event_id, session=db_session, now=now)
+
+    return _register
+
+
+@pytest.fixture()
+def withdraw(db_session: Session, now: datetime) -> Callable[[int, int], Registration]:
+    """Withdraw an attendee's registration for an event at ``now``."""
+
+    def _withdraw(attendee_id: int, event_id: int) -> Registration:
+        return withdraw_registration(attendee_id, event_id, session=db_session, now=now)
+
+    return _withdraw
 
 
 @pytest.fixture()
