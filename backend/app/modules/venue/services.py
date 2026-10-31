@@ -1767,10 +1767,30 @@ def list_every_arrangement_for_record(
     return shown
 
 
+def _read_locked(request_id: int, session: Session | None) -> VenueBookingRequest | None:
+    """The request ``request_id`` names, read under a row lock, or ``None``.
+
+    The row is locked while it is read, as the equipment type is before a reservation is
+    counted (ADR-0037): two Venue Staff deciding the same request at the same moment
+    would otherwise both see it Pending and both book the venue, and a coordinator
+    withdrawing or changing it while Venue Staff decide it would overwrite their
+    decision (ADR-0118). ``populate_existing`` is needed with it, because a copy the
+    session loaded earlier may predate the other side's commit, and the locked row has
+    to overwrite it rather than be skipped as already known.
+    """
+    locked = (
+        select(VenueBookingRequest)
+        .where(VenueBookingRequest.id == request_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    return resolve_session(session).scalar(locked)
+
+
 def _arrangement_of_event(
     event_id: int, arrangement_id: int, session: Session
 ) -> VenueBookingRequest:
-    """One of the event's own arrangements.
+    """One of the event's own arrangements, read under a row lock (ADR-0118).
 
     An id that belongs to another event is reported as missing, so arrangements of
     events the caller cannot see are not discoverable (ADR-0035 §6).
@@ -1778,7 +1798,7 @@ def _arrangement_of_event(
     Raises:
         NotFoundError: 404 — the event has no arrangement with that id.
     """
-    arrangement = session.get(VenueBookingRequest, arrangement_id)
+    arrangement = _read_locked(arrangement_id, session)
     if arrangement is None or arrangement.event_id != event_id:
         raise NotFoundError(ARRANGEMENT_NOT_FOUND_MESSAGE)
     return arrangement
@@ -1883,11 +1903,15 @@ def cancel_all_arrangements(
     event = event_services.get_event_for_arrangement_change(
         reference, coordinator_id, session=session
     )
-    arrangements = list_active_arrangements(event.id, session=session)
-    for arrangement in arrangements:
+    retired = []
+    for listed in list_active_arrangements(event.id, session=session):
+        # Each row is locked and read afresh, earliest period first, before it is
+        # withdrawn, so a decision Venue Staff saved meanwhile is seen (ADR-0118).
+        arrangement = _arrangement_of_event(event.id, listed.id, sess)
         _withdraw_and_record(arrangement, coordinator_id, session)
+        retired.append(arrangement)
     sess.commit()
-    return [show_booking_request(arrangement, event) for arrangement in arrangements]
+    return [show_booking_request(arrangement, event) for arrangement in retired]
 
 
 def _changes_to_apply(
@@ -2067,25 +2091,12 @@ def _event_of(request: VenueBookingRequest, session: Session | None) -> EventFor
 
 
 def _locked_request(request_id: int, session: Session | None) -> VenueBookingRequest:
-    """The request ``request_id`` names, read under a row lock.
-
-    The row is locked while it is read, as the equipment type is before a reservation is
-    counted (ADR-0037): two Venue Staff deciding the same request at the same moment
-    would otherwise both see it Pending and both book the venue. ``populate_existing``
-    is needed with it, because a copy the session loaded earlier may predate the other
-    decision's commit, and the locked row has to overwrite it rather than be skipped as
-    already known.
+    """The request ``request_id`` names, read under a row lock (:func:`_read_locked`).
 
     Raises:
         NotFoundError: 404 — no such request.
     """
-    locked = (
-        select(VenueBookingRequest)
-        .where(VenueBookingRequest.id == request_id)
-        .with_for_update()
-        .execution_options(populate_existing=True)
-    )
-    request = resolve_session(session).scalar(locked)
+    request = _read_locked(request_id, session)
     if request is None:
         raise NotFoundError(BOOKING_REQUEST_NOT_FOUND_MESSAGE)
     return request
