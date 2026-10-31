@@ -372,6 +372,34 @@ def test_confirming_a_type_with_no_line_keeps_what_is_free_and_releases_the_rest
     assert reservation_rows() == expected
 
 
+@pytest.mark.parametrize(
+    ("held_elsewhere", "detail"),
+    [
+        (8, "Projector: 2 reserved, confirmed for the event's new date and time."),
+        (9, "Projector: 1 of 2 kept for the event's new date and time; 1 released."),
+        (10, "Projector: 0 of 2 kept for the event's new date and time; 2 released."),
+    ],
+    ids=["all-free", "one-short", "none-free"],
+)
+def test_the_coordinator_is_told_what_was_kept_and_what_was_released(
+    projectors_without_a_line: None,
+    equipment_type: EquipmentType,
+    hold_on_the_20th: Callable[[int], EventRequest],
+    edit_event: EditEvent,
+    detailed_notifications_of: DetailedNotificationsOf,
+    held_elsewhere: int,
+    detail: str,
+) -> None:
+    """A confirm that trims says so, so the coordinator isn't left to find out."""
+    hold_on_the_20th(held_elsewhere)
+    edit_event(COORDINATOR_ID, MOVE_TO_THE_20TH)
+
+    _confirm(equipment_type)
+
+    newest = detailed_notifications_of(COORDINATOR_ID)[0]
+    assert newest == (REFERENCE, NotificationKind.EQUIPMENT_OUTCOME_RECORDED, detail)
+
+
 def test_a_type_with_nothing_marked_has_nothing_to_confirm(
     three_projectors: EventEquipmentLine,
     equipment_type: EquipmentType,

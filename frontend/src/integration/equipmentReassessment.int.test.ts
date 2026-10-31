@@ -289,11 +289,21 @@ describe('SCRUM-60 a reservation of a type the event has no line for, against th
       })
       const [reassessment] = await fetchEventReassessments(reference)
       expect(reassessment).toMatchObject({ shortfall: 1, confirmable: true })
+      const queue = await fetchEquipmentAwaitingAction()
+      const row = queue.equipment_requests.find(
+        (awaiting) => awaiting.event.reference === reference,
+      )
+      expect(row?.equipment_lines).toEqual([])
+      expect(row?.equipment_type_ids_to_reassess).toEqual([type.id])
 
       const confirmed = await confirmReassessment(reference, type.id)
 
       expect(confirmed.map((held) => [held.quantity, held.starts_at])).toEqual([[1, NEW_STARTS_AT]])
       await expect(fetchEventReassessments(reference)).resolves.toEqual([])
+      expect(await coordinatorNotices(reference)).toContainEqual([
+        'equipment_outcome_recorded',
+        `${type.name}: 1 of 2 kept for the event's new date and time; 1 released.`,
+      ])
     },
   )
 })
