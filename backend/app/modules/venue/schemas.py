@@ -480,6 +480,10 @@ class ChangeArrangementSchema(Schema):
     justification = fields.String(validate=not_blank)
 
 
+#: A suggested period sent with only one of its ends (SCRUM-70 AC1).
+SUGGESTED_PERIOD_NOT_WHOLE_MESSAGE = "A suggested period needs both a start and an end."
+
+
 @dataclass(frozen=True)
 class BookingRequestAsShown:
     """A booking request with the event details Venue Staff need beside it (AC4).
@@ -532,7 +536,8 @@ class DecideBookingRequestSchema(Schema):
     (SCRUM-75).
     ``reason`` may be left out here — only a rejection needs one, which the service
     checks, as the events module's decide route does (ADR-0028). A reason that is sent
-    must not be blank, and is trimmed.
+    must not be blank, and is trimmed. A suggested alternative is checked here only for
+    its shape: a whole period that ends after it starts (SCRUM-70, ADR-0123).
     """
 
     outcome = fields.Enum(
@@ -542,11 +547,44 @@ class DecideBookingRequestSchema(Schema):
         error_messages={"unknown": "Outcome must be approved or rejected."},
     )
     reason = fields.String(allow_none=True, load_default=None, validate=not_blank)
+    #: The alternative Venue Staff may suggest when rejecting: another venue, another
+    #: period, or both (SCRUM-70 AC1). Whether one may be given is the service's call,
+    #: as whether a reason is needed is. A time with no offset is business time.
+    suggested_venue_id = PositiveId("suggested_venue_id", load_default=None)
+    suggested_starts_at = fields.DateTime(load_default=None)
+    suggested_ends_at = fields.DateTime(load_default=None)
+
+    @validates_schema
+    def _suggested_period_is_whole(self, data: dict[str, Any], **_: Any) -> None:
+        starts_at = data.get("suggested_starts_at")
+        ends_at = data.get("suggested_ends_at")
+        if starts_at is None and ends_at is None:
+            return
+        if starts_at is None:
+            raise MarshmallowValidationError(
+                SUGGESTED_PERIOD_NOT_WHOLE_MESSAGE, field_name="suggested_starts_at"
+            )
+        if ends_at is None:
+            raise MarshmallowValidationError(
+                SUGGESTED_PERIOD_NOT_WHOLE_MESSAGE, field_name="suggested_ends_at"
+            )
+        if as_utc(ends_at) <= as_utc(starts_at):
+            raise MarshmallowValidationError(
+                "suggested_ends_at must be after suggested_starts_at.",
+                field_name="suggested_ends_at",
+            )
 
     @post_load
     def _trim_reason(self, data: dict[str, Any], **_: Any) -> dict[str, Any]:
         if data["reason"] is not None:
             data["reason"] = data["reason"].strip()
+        return data
+
+    @post_load
+    def _suggested_period_to_utc(self, data: dict[str, Any], **_: Any) -> dict[str, Any]:
+        for key in ("suggested_starts_at", "suggested_ends_at"):
+            if data[key] is not None:
+                data[key] = as_utc(data[key])
         return data
 
 
@@ -656,6 +694,14 @@ class VenueBookingRequestSchema(Schema):
         BookingRequestStatus, by_value=True, attribute="request.status", dump_only=True
     )
     decision_reason = fields.String(attribute="request.decision_reason", dump_only=True)
+    #: The alternative suggested when the request was rejected, if any (SCRUM-70 AC3).
+    suggested_venue_id = fields.Integer(attribute="request.suggested_venue_id", dump_only=True)
+    suggested_starts_at = BusinessDateTime(
+        attribute="request.suggested_starts_at", dump_only=True, allow_none=True
+    )
+    suggested_ends_at = BusinessDateTime(
+        attribute="request.suggested_ends_at", dump_only=True, allow_none=True
+    )
     preparation_status = fields.Enum(
         PreparationStatus, by_value=True, attribute="request.preparation_status", dump_only=True
     )
