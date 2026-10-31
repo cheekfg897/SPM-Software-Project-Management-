@@ -185,9 +185,17 @@ function shownLine(line: MockEquipmentLine) {
   }
 }
 
-/** The event as the list describes it (EQUIPMENT_EVENT_FIELDS). Every mock event shares one period. */
+/**
+ * The event as its lines come with it (EQUIPMENT_LINES_EVENT_FIELDS): when it is, and its status
+ * (SCRUM-110). Every mock event shares one period.
+ */
 function eventShown(event: MockEvent) {
-  return { reference: event.reference, name: event.name, ...MOCK_EVENT_SCHEDULE }
+  return {
+    reference: event.reference,
+    name: event.name,
+    ...MOCK_EVENT_SCHEDULE,
+    status: event.status,
+  }
 }
 
 /** The decoded JSON body, or undefined for anything that is not a JSON object. */

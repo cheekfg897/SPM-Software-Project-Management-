@@ -22,6 +22,7 @@ import {
 import {
   approvedEvent,
   coordinatorPosts,
+  EVENT_DATE,
   LEAD,
   SAFETY_OFFICER,
   safetyApprovedEvent,
@@ -42,6 +43,20 @@ const UNKNOWN_EVENT_REFERENCE = 'EVR-NOSUCH00'
 const UNKNOWN_LINE_ID = 987654
 const NOT_FOUND_MESSAGE = 'Event request not found.'
 const MISSING_MESSAGE = 'Missing data for required field.'
+
+/** Every field of a listed line (EquipmentLine), and nothing more. */
+const EQUIPMENT_LINE_FIELDS = [
+  'equipment_type_id',
+  'id',
+  'notes',
+  'outcome_note',
+  'provided_quantity',
+  'quantity',
+  'reviewed_at',
+  'reviewed_by',
+  'shortfall',
+  'status',
+]
 
 /** Every field the frontend's EquipmentType reads, and nothing more. */
 const EQUIPMENT_TYPE_FIELDS = [
@@ -201,8 +216,32 @@ describe('SCRUM-37 equipment lines against the backend', () => {
     })
   })
 
-  it.todo(
-    "lists an assigned event's lines in the order added, each with exactly EquipmentLine's fields, and the event's reference, name, dates and times (needs an assigned event)",
+  it.skipIf(!canReviewALine)(
+    "lists an approved event's lines in the order added, each with exactly EquipmentLine's fields, and the event's reference, name, dates, times and status (SCRUM-110)",
+    async () => {
+      const firstTypeId = await newEquipmentType()
+      const secondTypeId = await newEquipmentType()
+      const event = await approvedEvent()
+      await addEquipmentLine(event.reference, { equipment_type_id: secondTypeId, quantity: 3 })
+      await addEquipmentLine(event.reference, { equipment_type_id: firstTypeId, quantity: 1 })
+
+      const listed = await fetchEventEquipmentLines(event.reference)
+
+      expect(listed.event).toEqual({
+        reference: event.reference,
+        name: event.name,
+        proposed_date: EVENT_DATE,
+        end_date: EVENT_DATE,
+        start_time: '09:00:00',
+        end_time: '17:00:00',
+        status: 'approved',
+      })
+      const listedTypes = listed.equipment_lines.map((line) => line.equipment_type_id)
+      expect(listedTypes).toEqual([secondTypeId, firstTypeId])
+      for (const line of listed.equipment_lines) {
+        expect(Object.keys(line).sort()).toEqual(EQUIPMENT_LINE_FIELDS)
+      }
+    },
   )
   it.todo('adds a line (201) answering exactly SavedEquipmentLine, with blank notes as null')
   it.todo('refuses a second line for the same equipment type (409 conflict)')

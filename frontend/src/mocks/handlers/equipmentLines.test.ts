@@ -118,6 +118,7 @@ describe('SCRUM-37 equipment line mock: listing', () => {
         end_date: '2026-10-12',
         start_time: '19:30:00',
         end_time: '22:00:00',
+        status: 'approved',
       },
       equipment_lines: [
         {
@@ -147,6 +148,17 @@ describe('SCRUM-37 equipment line mock: listing', () => {
       ],
     })
   })
+
+  it.each(['under_review', 'safety_review'] as const)(
+    "answers the event's own status, here %s, which decides whether its lines may change (SCRUM-110)",
+    async (status) => {
+      signInAs(MOCK_ACCOUNTS.coordinator)
+
+      const listed = await fetchEventEquipmentLines(eventIn(status))
+
+      expect(listed.event.status).toBe(status)
+    },
+  )
 
   it('works the shortfall out from the quantity and what will be provided', async () => {
     signInAs(MOCK_ACCOUNTS.technicalSupport)
