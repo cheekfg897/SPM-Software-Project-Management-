@@ -1,6 +1,6 @@
 # ADR-0042: Venue Staff decide a Pending booking request from one queue; approving books the venue and tells the coordinator
 
-- **Status:** Accepted
+- **Status:** Accepted; who is told of a decision changed to the event's current coordinator, not the one who raised the request, by [ADR-0121](0121-venue-decision-notices-go-to-the-current-coordinator.md) (SCRUM-115)
 - **Date:** 2026-10-14
 - **Story:** SCRUM-43 Approve, hold or reject a venue booking
 
