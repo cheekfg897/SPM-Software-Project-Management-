@@ -1,7 +1,9 @@
 # ADR-0073: Coordinators search venues and check one venue's suitability from one web page
 
 - **Status:** Accepted; the coordinator-only page, the optional end date and checking against
-  the search's needs are defaults to review with the Product Owner
+  the search's needs are defaults to review with the Product Owner; decision 9 (SCRUM-90 stays
+  deferred) superseded by [ADR-0124](0124-venue-search-pre-filled-from-an-event.md), which opens
+  this page from an event
 - **Date:** 2026-10-18
 - **Story:** SCRUM-35 Search and filter venues against event requirements, SCRUM-36 Check whether
   a venue suits an event
