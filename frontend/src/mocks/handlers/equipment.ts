@@ -111,7 +111,7 @@ function overTheLine(reference: string, equipmentTypeId: number, quantity: numbe
   if (already + quantity <= line.quantity) {
     return undefined
   }
-  return `The event asks for ${String(line.quantity)} of these, and ${String(already)} are already reserved.`
+  return `The event asks for ${String(line.quantity)} of these and already has ${String(already)} reserved.`
 }
 
 /**

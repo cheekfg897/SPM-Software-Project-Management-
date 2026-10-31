@@ -78,10 +78,11 @@ def test_the_whole_line_can_be_reserved(
 @pytest.mark.parametrize(
     ("held", "asked", "message"),
     [
-        ([], 4, "The event asks for 3 of these, and 0 are already reserved."),
-        ([2], 2, "The event asks for 3 of these, and 2 are already reserved."),
+        ([], 4, "The event asks for 3 of these and already has 0 reserved."),
+        ([2], 2, "The event asks for 3 of these and already has 2 reserved."),
+        ([1], 3, "The event asks for 3 of these and already has 1 reserved."),
     ],
-    ids=["one-more-at-once", "one-more-in-two"],
+    ids=["one-more-at-once", "one-more-in-two", "one-held"],
 )
 def test_one_unit_more_than_the_line_asks_for_is_refused_on_quantity(
     line_of_three: EventEquipmentLine,
@@ -113,7 +114,7 @@ def test_nothing_more_can_be_added_to_a_reservation_above_a_lowered_line(
     with pytest.raises(ValidationError) as exc_info:
         _reserve(equipment_type, 1)
 
-    assert exc_info.value.message == "The event asks for 2 of these, and 3 are already reserved."
+    assert exc_info.value.message == "The event asks for 2 of these and already has 3 reserved."
     assert _reserved(db_session) == [3]
 
 

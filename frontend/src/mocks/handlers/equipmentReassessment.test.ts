@@ -364,7 +364,7 @@ describe('SCRUM-60 mock: a reservation never exceeds its line (AC9)', () => {
       ),
     ).toMatchObject({
       status: 400,
-      fieldErrors: { quantity: ['The event asks for 4 of these, and 3 are already reserved.'] },
+      fieldErrors: { quantity: ['The event asks for 4 of these and already has 3 reserved.'] },
     })
     await expect(
       reserveEquipment(MOCK_OPEN_EVENT_REFERENCE, { equipment_type_id: MICROPHONE, quantity: 1 }),

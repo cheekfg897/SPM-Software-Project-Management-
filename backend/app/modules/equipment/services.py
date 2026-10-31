@@ -217,9 +217,7 @@ def _check_within_the_line(
         return
     already = _event_reserved_quantity(need.event_id, equipment_type_id, session)
     if already + quantity > line_quantity:
-        message = (
-            f"The event asks for {line_quantity} of these, and {already} are already reserved."
-        )
+        message = f"The event asks for {line_quantity} of these and already has {already} reserved."
         raise ValidationError(message, details={"quantity": [message]})
 
 
