@@ -501,6 +501,30 @@ class BookingRequestAsShown:
         return self.request.hold_expires_at
 
 
+@dataclass(frozen=True)
+class Reconfirmation:
+    """What reconfirming a flagged booking gives it (SCRUM-59 AC2, AC10, ADR-0112).
+
+    The period, moved by as much as the event's start moved, and the expected
+    occupancy, raised to the new attendance when the booking held the whole audience.
+    Times are in UTC. Venue Staff may adjust the period only to apply a change to the
+    event's date or times; otherwise it stays (AC2, customer Week 4 A75).
+    """
+
+    starts_at: datetime
+    ends_at: datetime
+    expected_occupancy: int
+    period_adjustable: bool
+
+
+@dataclass(frozen=True)
+class FlaggedBookingAsShown:
+    """A booking a change flagged, as Venue Staff's queue lists it (SCRUM-59 AC1)."""
+
+    shown: BookingRequestAsShown
+    reconfirm_with: Reconfirmation
+
+
 class DecideBookingRequestSchema(Schema):
     """Payload for ``POST /api/venues/booking-requests/<id>/decision`` (SCRUM-43 AC3).
 
@@ -540,6 +564,40 @@ class UpdatePreparationSchema(PreparationNotesSchema):
         required=True,
         error_messages={"unknown": "Status must be not_started, in_progress or ready."},
     )
+
+
+class FlaggedBookingReasonSchema(Schema):
+    """Payload for ``POST /api/venues/booking-requests/<id>/reject`` (SCRUM-59 AC5).
+
+    Venue Staff's ``reason``, which the service requires to reject a flagged booking,
+    and to reconfirm one whose venue is too small (AC4). A blank one counts as missing,
+    so it is trimmed and loaded as ``None``.
+    """
+
+    reason = fields.String(load_default=None)
+
+    @post_load
+    def _blank_reason_as_missing(self, data: dict[str, Any], **_: Any) -> dict[str, Any]:
+        if data["reason"] is not None:
+            data["reason"] = data["reason"].strip()
+        if data["reason"] == "":
+            data["reason"] = None
+        return data
+
+
+class ReconfirmBookingSchema(TimeRangeSchema, FlaggedBookingReasonSchema):
+    """Payload for ``POST /api/venues/booking-requests/<id>/reconfirm`` (SCRUM-59).
+
+    The new period, which the queue pre-fills and Venue Staff may adjust; the service
+    checks it lies within the event (AC2). The ``reason`` is needed only when the venue
+    is too small for the booking's occupancy, which the service checks (AC4).
+    """
+
+    start_field = "starts_at"
+    end_field = "ends_at"
+
+    starts_at = fields.DateTime(required=True)
+    ends_at = fields.DateTime(required=True)
 
 
 class HoldBookingRequestSchema(Schema):
@@ -624,3 +682,23 @@ class VenueBookingRequestSchema(Schema):
     event_start_time = fields.Time(attribute="start_time", dump_only=True)
     event_end_time = fields.Time(attribute="end_time", dump_only=True)
     accessibility_needs = fields.String(dump_only=True)
+
+
+class ReconfirmationSchema(Schema):
+    """What reconfirming a flagged booking gives it, in business time (SCRUM-59)."""
+
+    starts_at = BusinessDateTime(dump_only=True)
+    ends_at = BusinessDateTime(dump_only=True)
+    expected_occupancy = fields.Integer(dump_only=True)
+    period_adjustable = fields.Boolean(dump_only=True)
+
+
+class FlaggedBookingSchema(Schema):
+    """A booking a change flagged, as Venue Staff's queue lists it (SCRUM-59 AC1).
+
+    The booking as every other list shows it, with its flags and their reasons, and
+    what reconfirming it gives it, which the reconfirm form starts from (AC2, AC10).
+    """
+
+    booking = fields.Nested(VenueBookingRequestSchema, attribute="shown", dump_only=True)
+    reconfirm_with = fields.Nested(ReconfirmationSchema, dump_only=True)

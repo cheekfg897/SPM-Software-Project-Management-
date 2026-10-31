@@ -2,6 +2,7 @@ import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
 import type { EventRequestStatus } from '@/config/eventStatus'
 import {
   fetchBookingRequests,
+  fetchFlaggedBookings,
   raiseBookingRequest,
   withdrawArrangement,
 } from '@/features/booking/api'
@@ -559,6 +560,45 @@ describe('SCRUM-33 mock of an edit: reassessing each venue arrangement (AC6)', (
       { kind: 'requires_reconfirmation', reason: TIMING_CHANGED },
     ])
   })
+
+  it("moves a flagged booking's pre-filled period by as much as the edit moved the start", async () => {
+    signInAs(MOCK_ACCOUNTS.coordinator)
+    const hall = await raiseOnCareersFair()
+
+    await editEventRequest('EVR-BOOK0101', { proposed_date: '2026-11-11', start_time: '10:30' })
+
+    signInAs(MOCK_ACCOUNTS.venueStaff)
+    const flagged = await fetchFlaggedBookings()
+    expect(flagged.find((each) => each.booking.id === hall.id)?.reconfirm_with).toEqual({
+      starts_at: '2026-11-11T10:30:00+08:00',
+      ends_at: '2026-11-11T13:30:00+08:00',
+      expected_occupancy: 80,
+      period_adjustable: true,
+    })
+  })
+
+  // SCRUM-59 AC2, ADR-0112 decision 17: the period may be adjusted only once the timing moved.
+  it.each([
+    ['an edit to the end alone', { end_time: '15:00' }, true],
+    ['an edit that leaves the date and times', { venue_requirements: 'A stage.' }, false],
+  ])(
+    "says whether a flagged booking's period may be adjusted after %s",
+    async (_label, edit, adjustable) => {
+      signInAs(MOCK_ACCOUNTS.coordinator)
+      const hall = await raiseOnCareersFair()
+
+      await editEventRequest('EVR-BOOK0101', edit)
+
+      signInAs(MOCK_ACCOUNTS.venueStaff)
+      const flagged = await fetchFlaggedBookings()
+      expect(flagged.find((each) => each.booking.id === hall.id)?.reconfirm_with).toEqual({
+        starts_at: '2026-11-10T09:00:00+08:00',
+        ends_at: '2026-11-10T12:00:00+08:00',
+        expected_occupancy: 80,
+        period_adjustable: adjustable,
+      })
+    },
+  )
 
   // As the backend's is_flagged_after_change: only while it holds or asks for its venue.
   it('stops counting a flag once the arrangement is withdrawn, keeping the reason', async () => {

@@ -3,29 +3,31 @@ import type { UseQueryResult } from '@tanstack/react-query'
 
 import { Button, ErrorAlert, Spinner } from '@/components/ui'
 
-import type { BookingRequest } from '../api'
-
-interface BookingQueryListProps {
+interface BookingQueryListProps<Item> {
   /** One of Venue Staff's lists, as the backend sent it. */
-  query: UseQueryResult<BookingRequest[]>
+  query: UseQueryResult<Item[]>
   /** What loading says, e.g. "Loading booking requests…". */
   loadingText: string
   /** What an empty list says. */
   emptyText: string
-  /** Draws one request. */
-  children: (request: BookingRequest) => ReactNode
+  /** The id that tells one item from the others. */
+  itemKey: (item: Item) => number
+  /** Draws one item. */
+  children: (item: Item) => ReactNode
 }
 
 /**
  * One of Venue Staff's lists in the order the backend sent it, or its loading, error or empty
- * state in its place. The decisions queue and the approved bookings both use it.
+ * state in its place. The decisions queue, the flagged bookings (SCRUM-59) and the approved
+ * bookings all use it.
  */
-export function BookingQueryList({
+export function BookingQueryList<Item>({
   query,
   loadingText,
   emptyText,
+  itemKey,
   children,
-}: BookingQueryListProps) {
+}: BookingQueryListProps<Item>) {
   if (query.isPending) {
     return (
       <p role="status" className="text-ink-muted flex items-center gap-3">
@@ -53,8 +55,8 @@ export function BookingQueryList({
   }
   return (
     <ul className="space-y-5">
-      {query.data.map((request) => (
-        <li key={request.id}>{children(request)}</li>
+      {query.data.map((item) => (
+        <li key={itemKey(item)}>{children(item)}</li>
       ))}
     </ul>
   )

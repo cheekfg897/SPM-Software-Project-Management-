@@ -830,8 +830,10 @@ describe("SCRUM-24 booking mock: Venue Staff's list of events", () => {
     // 106 has a withdrawn arrangement beside its rejected ones, and 108 a released one beside an
     // expired one, so both stay listed, 110 has the approved ballroom Venue Staff prepare
     // (SCRUM-84), and 111 in Safety Review has a flagged approved one, which is still active
-    // (SCRUM-92); 101 to 103 have none. 112, confirmed, has two approved (SCRUM-49 AC11).
+    // (SCRUM-92); 101 to 103 have none. 112, confirmed, has two approved (SCRUM-49 AC11), and
+    // 113 has the bookings a change flagged (SCRUM-59).
     expect(await listedReferences()).toEqual([
+      'EVR-BOOK0113',
       'EVR-BOOK0112',
       'EVR-BOOK0111',
       'EVR-BOOK0110',
@@ -941,6 +943,8 @@ describe('SCRUM-92 booking mock: raising a replacement for a flagged arrangement
       venueRequirementsChanged: false,
       previousAttendance: 10,
       newAttendance: 10,
+      startMovedByMs: 0,
+      endMovedByMs: 0,
     })
     return {
       id: Number(raised.id),

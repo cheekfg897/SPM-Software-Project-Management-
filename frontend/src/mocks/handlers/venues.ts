@@ -18,6 +18,7 @@ import { isRecord } from '@/lib/isRecord'
 import { errorResponse, notAllowed, notAuthenticated, validationError } from '../responses'
 
 import { accountForRequest } from './auth'
+import { businessIso } from './businessTime'
 import { MOCK_VENUE_BLOCKS, MOCK_VENUE_BOOKINGS, MOCK_VENUES } from './venueFixtures'
 import type { MockVenueBlock, MockVenueBooking } from './venueFixtures'
 import { blockErrors, calendarRangeErrors, instantOf } from './venueBlockRules'
@@ -38,7 +39,6 @@ const NOT_AN_OBJECT_MESSAGE = 'Request body must be a JSON object.'
 /** DEFAULT_VENUE_SETUP_MINUTES and DEFAULT_VENUE_TURNAROUND_MINUTES (config.py, ADR-0011). */
 const STANDARD_BUFFER_MINUTES = 30
 const MINUTE_MS = 60_000
-const BUSINESS_OFFSET_MS = 8 * 60 * MINUTE_MS
 const FIRST_NEW_VENUE_ID = 900
 const FIRST_NEW_BLOCK_ID = 800
 const BLOCK_NOT_FOUND_MESSAGE = 'Block not found.'
@@ -144,11 +144,6 @@ function applyChanges(venue: Venue, body: Record<string, unknown>): Venue {
   }
   updated.opening_hours = inWeekOrder(updated.opening_hours)
   return updated
-}
-
-/** A moment as the backend writes it, in business time: `2026-11-10T12:30:00+08:00`. */
-function businessIso(ms: number): string {
-  return `${new Date(ms + BUSINESS_OFFSET_MS).toISOString().slice(0, 19)}+08:00`
 }
 
 /** The period a booking holds its venue, padded by setup and turnaround (ADR-0011). */

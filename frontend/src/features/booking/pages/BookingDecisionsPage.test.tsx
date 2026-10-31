@@ -54,8 +54,9 @@ describe('SCRUM-43 the venue booking decisions screen', () => {
       .getAllByRole('heading', { level: 3 })
       .map((entry) => entry.textContent)
 
-    // The studio is already on hold, waiting for final approval (SCRUM-75).
-    expect(purposes).toEqual(['Breakout room', 'Studio', 'Main hall'])
+    // The studio is already on hold, waiting for final approval (SCRUM-75). The workshop room's
+    // event moved, which flagged it, but it still waits for a decision (SCRUM-59).
+    expect(purposes).toEqual(['Workshop room', 'Breakout room', 'Studio', 'Main hall'])
   })
 
   it('sends the approval and takes the request out of the queue', async () => {
