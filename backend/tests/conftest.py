@@ -45,6 +45,7 @@ from app.modules.events.models import (
 )
 from app.modules.events.services import record_equipment_outcome
 from app.modules.notifications.services import list_notifications_for_recipient
+from app.modules.registration.models import Registration, RegistrationStatus
 from app.modules.venue.models import (
     Booking,
     BookingRequestStatus,
@@ -259,6 +260,25 @@ def make_user() -> Callable[..., User]:
 def now() -> datetime:
     """Wednesday 14 October 2026, 12:00 in Singapore, the registration tests' "now"."""
     return datetime(2026, 10, 14, 4, 0, tzinfo=timezone.utc)
+
+
+@pytest.fixture()
+def make_registration(save: Callable[..., None], now: datetime) -> Callable[..., Registration]:
+    """Factory for saved registrations; ``registered_at`` defaults to ``now``."""
+
+    def _make(
+        event: EventRequest, attendee_id: int, *, registered_at: datetime | None = None
+    ) -> Registration:
+        registration = Registration(
+            event_request_id=event.id,
+            attendee_id=attendee_id,
+            status=RegistrationStatus.REGISTERED,
+            registered_at=registered_at if registered_at is not None else now,
+        )
+        save(registration)
+        return registration
+
+    return _make
 
 
 @pytest.fixture()
