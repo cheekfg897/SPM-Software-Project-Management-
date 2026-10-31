@@ -23,7 +23,8 @@ const REJECTION_REASON_REQUIRED_MESSAGE = 'A reason is required to reject the ev
 /**
  * Statuses a request awaits its first decision in (AWAITING_DECISION_STATUSES, ADR-0028,
  * ADR-0029). Until it is approved, the coordinator edits neither its details nor its equipment
- * lines (SCRUM-110, ADR-0116).
+ * lines, but for the amendments they record while the organiser's answer is awaited (SCRUM-110
+ * AC2's exception, ADR-0116).
  */
 export const AWAITING_DECISION_STATUSES: readonly EventRequestStatus[] = [
   EVENT_REQUEST_STATUS.SUBMITTED,
