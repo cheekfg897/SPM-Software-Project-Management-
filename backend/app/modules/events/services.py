@@ -5615,14 +5615,14 @@ class EventRejectionNotAllowedError(AppError):
     error_code = "rejection_not_allowed"
 
 
-def _release_arrangements(event_id: int, coordinator_id: int, session: Session) -> list[str]:
+def _release_arrangements(event_id: int, actor_id: int, session: Session) -> list[str]:
     """Free the venues and equipment of an event that won't run, without committing.
 
     Its venue arrangements are withdrawn or released, bookings and holds included, and
-    its reserved equipment goes back to stock (SCRUM-49 AC10). Written for a rejection
-    during planning; SCRUM-61's cancellation releases the same things, "as for a
-    cancelled event", so it is meant to share this. Open equipment requests close with
-    the event's status (``EQUIPMENT_NOT_NEEDED_STATUSES``), not here.
+    its reserved equipment goes back to stock: for a rejection during planning (SCRUM-49
+    AC10) and a cancellation (SCRUM-61 AC2, AC3, AC6) alike. ``actor_id`` is who
+    rejected or cancelled it. Open equipment requests close with the event's status
+    (``EQUIPMENT_NOT_NEEDED_STATUSES``), not here.
 
     Returns:
         What Venue Staff are to be told about each booking or hold released (ADR-0103).
@@ -5630,7 +5630,7 @@ def _release_arrangements(event_id: int, coordinator_id: int, session: Session) 
     from app.modules.venue import services as venue_services  # circular at import time
 
     released = venue_services.release_event_arrangements(
-        event_id, coordinator_id=coordinator_id, session=session
+        event_id, actor_id=actor_id, session=session
     )
     equipment_services.release_event_reservations(event_id, session=session)
     return released

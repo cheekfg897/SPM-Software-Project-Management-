@@ -49,7 +49,7 @@ WITHDRAWN_STATUSES = [
 
 def _release(event: EventRequest, session: Session) -> list[str]:
     released = services.release_event_arrangements(
-        event.id, coordinator_id=COORDINATOR_ID, session=session
+        event.id, actor_id=COORDINATOR_ID, session=session
     )
     session.commit()
     return released
@@ -278,7 +278,7 @@ def test_nothing_is_saved_until_the_caller_commits(
     decide(approved.id, "approved", db_session)
     kinds_before = _history_kinds(db_session, event)
 
-    services.release_event_arrangements(event.id, coordinator_id=COORDINATOR_ID, session=db_session)
+    services.release_event_arrangements(event.id, actor_id=COORDINATOR_ID, session=db_session)
     db_session.rollback()
 
     assert reload_request(db_session, pending.id).status is BookingRequestStatus.PENDING
