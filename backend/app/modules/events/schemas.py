@@ -591,6 +591,19 @@ class RejectEventSchema(_RequiredReasonSchema):
     reason = _required_reason(PLANNING_REJECTION_REASON_REQUIRED_MESSAGE)
 
 
+CANCELLATION_REASON_REQUIRED_MESSAGE = "A reason is required to cancel the event."
+
+
+class CancelEventSchema(_RequiredReasonSchema):
+    """Payload for ``POST .../<reference>/cancel`` (SCRUM-61 AC1, ADR-0122).
+
+    ``reason`` is why the organiser is calling the event off: required, not ``null``,
+    not blank, and trimmed, as a rejection's reason is (ADR-0093).
+    """
+
+    reason = _required_reason(CANCELLATION_REASON_REQUIRED_MESSAGE)
+
+
 SAFETY_REASON_REQUIRED_MESSAGE = "A reason is required to reject the event or request changes."
 
 

@@ -161,6 +161,26 @@ RETIRED_ARRANGEMENT_STATUSES = [
 ACTIVE_ARRANGEMENT_STATUSES = [
     status for status in BookingRequestStatus if status not in RETIRED_ARRANGEMENT_STATUSES
 ]
+#: The arrangements that hold their venue, so rejecting the event during planning
+#: (SCRUM-49) or cancelling it (SCRUM-61) releases them and Venue Staff are told
+#: (ADR-0103). Written out; the others come from the enum.
+HOLDING_ARRANGEMENT_STATUSES = [BookingRequestStatus.APPROVED, BookingRequestStatus.ON_HOLD]
+NOT_HOLDING_ARRANGEMENT_STATUSES = [
+    status for status in BookingRequestStatus if status not in HOLDING_ARRANGEMENT_STATUSES
+]
+
+
+def released_detail(arrangement: VenueBookingRequest, starting_hour: int = 17) -> str:
+    """What Venue Staff hear of an arrangement ``arrange`` saved (ADR-0103).
+
+    It is at ``venue``'s Main Hall for half an hour on 1 November 2026. The first one
+    ``arrange`` saves starts at 17:00 in business time, and each later one an hour after
+    the last, so the second one passes ``starting_hour=18``.
+    """
+    return (
+        f"Venue arrangement {arrangement.id} at Main Hall, 2026-11-01 {starting_hour}:00 to"
+        f" 2026-11-01 {starting_hour}:30, was released."
+    )
 
 
 def decisions_in(history: list[tuple[EventHistoryKind, int | None, Any]]) -> list[Any]:

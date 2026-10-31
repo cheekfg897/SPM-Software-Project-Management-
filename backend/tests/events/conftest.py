@@ -786,6 +786,14 @@ def save_arrangement(save: Callable[..., None]) -> SaveArrangement:
 
 
 @pytest.fixture()
+def second_venue_staff(make_user: Callable[..., User], save: Callable[..., None]) -> User:
+    """Venue Staff user 8, beside ``saved_users``' 4: all of them hear of a release."""
+    user = make_user(email="venue8@example.com", role=Role.VENUE_STAFF, user_id=8)
+    save(user)
+    return user
+
+
+@pytest.fixture()
 def arrange(
     saved_event_request: EventRequest, venue: Venue, save_arrangement: SaveArrangement
 ) -> Arrange:

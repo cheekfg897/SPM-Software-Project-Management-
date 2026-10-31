@@ -45,7 +45,14 @@ from app.modules.notifications.schemas import NotificationSchema
 from app.modules.notifications.services import NotificationKind, list_notifications_for_recipient
 from app.modules.venue import services as venue_services
 from app.modules.venue.models import BookingRequestStatus, VenueBookingRequest
-from tests.events.cases import LOST_CONNECTION, AddLine, Arrange
+from tests.events.cases import (
+    HOLDING_ARRANGEMENT_STATUSES,
+    LOST_CONNECTION,
+    NOT_HOLDING_ARRANGEMENT_STATUSES,
+    AddLine,
+    Arrange,
+    released_detail,
+)
 
 pytestmark = pytest.mark.scrum_49
 
@@ -64,10 +71,6 @@ VENUE_STAFF_ID = 4
 NON_ORGANISER_IDS = [9, 3, 4, 5, 2]
 REASON = "No venue large enough is free that week."
 PLANNING_STATUSES = [EventRequestStatus.APPROVED, EventRequestStatus.SAFETY_REVIEW]
-#: The arrangements that hold their venue, so a rejection releases them and Venue Staff
-#: are told (ADR-0093, ADR-0103). Written out; the other statuses come from the enum.
-HOLDING_STATUSES = [BookingRequestStatus.APPROVED, BookingRequestStatus.ON_HOLD]
-NOT_HOLDING_STATUSES = [status for status in BookingRequestStatus if status not in HOLDING_STATUSES]
 #: Every status but planning, built from the enum so a status added later is refused
 #: too. A draft is left out: staff get a 404 for it, not a 409 (ADR-0024).
 NOT_IN_PLANNING = [
@@ -238,18 +241,6 @@ def test_a_lost_notification_does_not_lose_the_rejection(
 # --------------------------------------------------------------------------
 
 
-def _released_detail(arrangement: VenueBookingRequest) -> str:
-    """What Venue Staff are told about the first arrangement ``arrange`` saves.
-
-    It is at ``venue``'s Main Hall, from 17:00 to 17:30 on 1 November 2026 in business
-    time; each later one starts an hour after the last.
-    """
-    return (
-        f"Venue arrangement {arrangement.id} at Main Hall, 2026-11-01 17:00 to"
-        " 2026-11-01 17:30, was released."
-    )
-
-
 def _released_notifications(user_id: int) -> list[Notification]:
     """The user's "booking released" notifications, newest first."""
     notices = []
@@ -267,15 +258,7 @@ def _released_notices(user_id: int) -> list[tuple[str, str | None]]:
     return rows
 
 
-@pytest.fixture()
-def second_venue_staff(make_user: Callable[..., User], save: Callable[..., None]) -> User:
-    """Another Venue Staff user: every one of them is told (ADR-0103)."""
-    user = make_user(email="venue8@example.com", role=Role.VENUE_STAFF, user_id=8)
-    save(user)
-    return user
-
-
-@pytest.mark.parametrize("status", HOLDING_STATUSES, ids=lambda status: status.value)
+@pytest.mark.parametrize("status", HOLDING_ARRANGEMENT_STATUSES, ids=lambda status: status.value)
 def test_every_venue_staff_user_is_told_of_each_booking_or_hold_released(
     db_session: Session,
     in_planning: EventRequest,
@@ -287,7 +270,7 @@ def test_every_venue_staff_user_is_told_of_each_booking_or_hold_released(
 
     _reject(db_session)
 
-    told = [(REFERENCE, _released_detail(held))]
+    told = [(REFERENCE, released_detail(held))]
     assert _released_notices(VENUE_STAFF_ID) == told
     assert _released_notices(second_venue_staff.id) == told
 
@@ -302,13 +285,14 @@ def test_each_released_arrangement_is_its_own_notice(
 
     # Newest first: the second arrangement's notice was sent last.
     assert [detail for _, detail in _released_notices(VENUE_STAFF_ID)] == [
-        f"Venue arrangement {second.id} at Main Hall, 2026-11-01 18:00 to"
-        " 2026-11-01 18:30, was released.",
-        _released_detail(first),
+        released_detail(second, starting_hour=18),
+        released_detail(first),
     ]
 
 
-@pytest.mark.parametrize("status", NOT_HOLDING_STATUSES, ids=lambda status: status.value)
+@pytest.mark.parametrize(
+    "status", NOT_HOLDING_ARRANGEMENT_STATUSES, ids=lambda status: status.value
+)
 def test_an_arrangement_that_did_not_hold_its_venue_is_not_told_about(
     db_session: Session, approved: EventRequest, arrange: Arrange, status: BookingRequestStatus
 ) -> None:
