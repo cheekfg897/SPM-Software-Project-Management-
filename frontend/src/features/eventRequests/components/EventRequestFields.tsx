@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { SegmentedControl, TextAreaField, TextField } from '@/components/ui'
 import type { SegmentedOption } from '@/components/ui'
 import type { FieldErrors } from '@/lib/api'
+import { toTimeInputValue } from '@/lib/businessTime'
 
 import type { EventRequest } from '../api'
 
@@ -28,9 +29,9 @@ function shown(value: string | number | null | undefined): string {
   return value === null || value === undefined ? '' : String(value)
 }
 
-/** A saved time ("19:00:00") as a time input shows it, to the minute ("19:00"). */
+/** A saved time as a time input shows it: empty when the request doesn't have it yet. */
 function shownTime(value: string | null | undefined): string {
-  return shown(value).slice(0, 5)
+  return toTimeInputValue(shown(value))
 }
 
 interface EventRequestFieldsProps {
