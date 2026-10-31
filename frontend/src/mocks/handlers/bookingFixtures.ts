@@ -165,6 +165,9 @@ export const MOCK_PENDING_DECISIONS = [
     justification: null,
     status: 'pending',
     decision_reason: null,
+    suggested_venue_id: null,
+    suggested_starts_at: null,
+    suggested_ends_at: null,
     preparation_status: 'not_started',
     preparation_notes: null,
     hold_expires_at: null,
@@ -191,6 +194,9 @@ export const MOCK_PENDING_DECISIONS = [
     justification: null,
     status: 'pending',
     decision_reason: null,
+    suggested_venue_id: null,
+    suggested_starts_at: null,
+    suggested_ends_at: null,
     preparation_status: 'not_started',
     preparation_notes: null,
     hold_expires_at: null,
@@ -231,10 +237,16 @@ function arrangementOf(
         | 'justification'
         | 'flagged_after_change'
         | 'reassessment_flags'
+        | 'suggested_venue_id'
+        | 'suggested_starts_at'
+        | 'suggested_ends_at'
       >
     >,
 ): BookingRequest {
   return {
+    suggested_venue_id: null,
+    suggested_starts_at: null,
+    suggested_ends_at: null,
     hold_expires_at: null,
     needs_alternative_venue: false,
     unavailability: [],

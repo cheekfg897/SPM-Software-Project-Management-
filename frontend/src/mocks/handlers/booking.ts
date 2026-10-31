@@ -52,6 +52,13 @@ import {
 } from './preparationRules'
 import { FLAGGABLE_STATUSES, reassessmentFlagsFor } from './reassessmentRules'
 import type { SignificantChange } from './reassessmentRules'
+import {
+  NO_SUGGESTION,
+  suggestedVenueName,
+  suggestionIn,
+  suggestionRuleErrors,
+  suggestionShapeErrors,
+} from './suggestionRules'
 import { instantOf } from './venueBlockRules'
 import { unknownFieldErrors } from './venueRules'
 import { currentMockVenues } from './venues'
@@ -424,6 +431,7 @@ function toRequest(event: MockBookingEvent, body: Record<string, unknown>, id: n
     required_layout: body.required_layout ?? null,
     justification: body.justification ?? null,
     status: 'pending',
+    ...NO_SUGGESTION,
     preparation_status: 'not_started',
     preparation_notes: null,
     hold_expires_at: null,
@@ -556,6 +564,9 @@ function arrangementInFull(arrangement: BookingRequest) {
     justification: arrangement.justification,
     status: arrangement.status,
     decision_reason: arrangement.decision_reason,
+    suggested_venue_name: suggestedVenueName(arrangement),
+    suggested_starts_at: arrangement.suggested_starts_at,
+    suggested_ends_at: arrangement.suggested_ends_at,
     hold_expires_at: arrangement.hold_expires_at,
     needs_alternative_venue: arrangement.needs_alternative_venue,
     unavailability: arrangement.unavailability,
@@ -674,6 +685,15 @@ function releaseReplaced(approved: BookingRequest): void {
   moveTo(replaced, 'released')
   // The hold is cancelled with it, and the backend shows an expiry only while On hold or Expired.
   replaced.hold_expires_at = null
+}
+
+/**
+ * Whether the request replaces an arrangement whose venue became unavailable, so must keep its
+ * period (SCRUM-92 AC6, ADR-0108), as the backend's `_keeps_its_period` says (SCRUM-70).
+ */
+function keepsItsPeriod(waiting: BookingRequest): boolean {
+  const replaced = requests.find((existing) => existing.id === waiting.replaces_request_id)
+  return replaced?.needs_alternative_venue === true
 }
 
 function withdrawRefusal(arrangement: BookingRequest) {
@@ -926,9 +946,22 @@ export const bookingHandlers: RequestHandler[] = [
     if (body.outcome !== 'approved' && body.outcome !== 'rejected') {
       return validationError({ outcome: [OUTCOME_ERROR_MESSAGE] })
     }
+    const badShape = suggestionShapeErrors(body)
+    if (Object.keys(badShape).length > 0) {
+      return validationError(badShape)
+    }
     const reason = typeof body.reason === 'string' ? body.reason : null
     if (body.outcome === 'rejected' && reason === null) {
       return validationError({ reason: [REJECTION_REASON_REQUIRED_MESSAGE] })
+    }
+    const suggestion = suggestionIn(body)
+    const refusedSuggestion = suggestionRuleErrors(
+      suggestion,
+      body.outcome,
+      keepsItsPeriod(waiting),
+    )
+    if (Object.keys(refusedSuggestion).length > 0) {
+      return validationError(refusedSuggestion)
     }
 
     // Final approval turns a hold into the booking, so it has nothing to clash with (SCRUM-75).
@@ -941,6 +974,7 @@ export const bookingHandlers: RequestHandler[] = [
 
     moveTo(waiting, body.outcome)
     waiting.decision_reason = reason
+    Object.assign(waiting, suggestion)
     // The backend shows an expiry only while a request is On Hold or Expired.
     waiting.hold_expires_at = null
     if (body.outcome === 'approved') {
