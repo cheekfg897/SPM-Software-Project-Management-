@@ -98,7 +98,8 @@ AWAITING_DECISION_STATUSES: frozenset[EventRequestStatus] = frozenset(
     }
 )
 #: How a request awaiting its decision can still change: its coordinator edits it
-#: directly only once they have approved it (SCRUM-110 AC2, ADR-0116).
+#: directly only once they have approved it, or to record the amendments that come
+#: with the organiser's answer to a clarification (SCRUM-110 AC2, ADR-0116).
 CHANGES_BEFORE_APPROVAL = (
     "Until then, changes go through a clarification or the organiser's change request."
 )
@@ -2390,11 +2391,17 @@ def list_equipment_requests_awaiting_action(
 #: have approved it, until it is Confirmed (SCRUM-110 AC1, ADR-0116). In Safety Review
 #: a significant change withdraws the safety approval (SCRUM-33 AC7). Before approval,
 #: changes go through a clarification or the organiser's change request (SCRUM-110
-#: AC2); a Confirmed event changes only through a change request (SCRUM-56,
-#: SCRUM-57); a completed, cancelled or rejected event is over, and a draft has no
-#: coordinator to edit it.
+#: AC2), so the one status before approval here is Awaiting Clarification: the
+#: coordinator records the amendments that come with the organiser's answer (AC2's
+#: exception, SCRUM-32 AC2, ADR-0101). A Confirmed event changes only through a change
+#: request (SCRUM-56, SCRUM-57); a completed, cancelled or rejected event is over, and
+#: a draft has no coordinator to edit it.
 EDITABLE_STATUSES: frozenset[EventRequestStatus] = frozenset(
-    {EventRequestStatus.APPROVED, EventRequestStatus.SAFETY_REVIEW}
+    {
+        EventRequestStatus.AWAITING_CLARIFICATION,
+        EventRequestStatus.APPROVED,
+        EventRequestStatus.SAFETY_REVIEW,
+    }
 )
 NOT_YET_APPROVED_MESSAGE = (
     f"An event request can only be edited once it is approved. {CHANGES_BEFORE_APPROVAL}"
@@ -2468,19 +2475,19 @@ def _event_request_editable_by(
     Raises:
         NotFoundError: 404 — no such request among the coordinator's own; a draft is
             never found (ADR-0024).
-        RequestNotEditableError: 409 — the request awaits its decision, so it changes
-            through a clarification or the organiser's change request (SCRUM-110
-            AC2); it is Confirmed, so it changes only through a change request
-            (SCRUM-33 AC8); or it is completed, cancelled or rejected.
+        RequestNotEditableError: 409 — the request is submitted or under review, so
+            it changes through a clarification or the organiser's change request
+            (SCRUM-110 AC2); it is Confirmed, so it changes only through a change
+            request (SCRUM-33 AC8); or it is completed, cancelled or rejected.
     """
     event_request = _event_request_assigned_to(coordinator_id, reference, session)
+    if event_request.status in EDITABLE_STATUSES:
+        return event_request
     if event_request.status in AWAITING_DECISION_STATUSES:
         raise RequestNotEditableError(NOT_YET_APPROVED_MESSAGE)
     if event_request.status is EventRequestStatus.CONFIRMED:
         raise RequestNotEditableError(CONFIRMED_NOT_EDITABLE_MESSAGE)
-    if event_request.status not in EDITABLE_STATUSES:
-        raise RequestNotEditableError(NOT_EDITABLE_MESSAGE)
-    return event_request
+    raise RequestNotEditableError(NOT_EDITABLE_MESSAGE)
 
 
 def _changes_to(event_request: EventRequest, data: Mapping[str, Any]) -> list[FieldChange]:
@@ -2715,8 +2722,9 @@ def update_event_request(
     Raises:
         ValidationError: 400 — payload invalid (details per field).
         NotFoundError: 404 — no such event request among the coordinator's own.
-        RequestNotEditableError: 409 — the request isn't approved yet (SCRUM-110
-            AC2), or it is Confirmed (AC8), completed, cancelled or rejected.
+        RequestNotEditableError: 409 — the request is submitted or under review
+            (SCRUM-110 AC2), or it is Confirmed (AC8), completed, cancelled or
+            rejected.
     """
     sess = resolve_session(session)
     event_request = _event_request_editable_by(coordinator_id, reference, sess)

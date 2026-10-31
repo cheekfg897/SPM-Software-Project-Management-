@@ -11,8 +11,11 @@ the event history with who made it and when, in the same commit as the change it
 Only the request's assigned coordinator may edit it, and only once they have approved
 it and before it is Confirmed: while it is approved or in Safety Review (SCRUM-110
 AC1, ADR-0116). Before approval the edit is refused, and the refusal points to a
-clarification or the organiser's change request (SCRUM-110 AC2). AC8: a Confirmed
-event is refused, and the refusal says it changes only through a change request.
+clarification or the organiser's change request (SCRUM-110 AC2); the exception is
+an event awaiting clarification, where the coordinator records the amendments that
+come with the organiser's answer (SCRUM-32 AC2, ADR-0101 decision 5). AC8: a
+Confirmed event is refused, and the refusal says it changes only through a change
+request.
 
 Runs against ``db_session`` with ``saved_users`` and ``approved_event_request``
 (``EVR-AAAAAAAA``, assigned to Event Coordinator 3), so lookups are real SQL; the
@@ -63,17 +66,18 @@ REFERENCE = "EVR-AAAAAAAA"
 COORDINATOR_ID = 3
 OTHER_COORDINATOR_ID = 9
 
-#: The statuses a coordinator edits an event in directly: once they have approved it,
-#: until it is Confirmed (SCRUM-110 AC1, ADR-0116). Written out so the test doesn't
-#: copy the code's own list.
-EDITABLE = [EventRequestStatus.APPROVED, EventRequestStatus.SAFETY_REVIEW]
-#: The statuses before approval, when a change goes through a clarification or the
-#: organiser's change request instead (SCRUM-110 AC2).
-NOT_YET_APPROVED = [
-    EventRequestStatus.SUBMITTED,
-    EventRequestStatus.UNDER_REVIEW,
+#: The statuses a coordinator edits an event in directly: while the organiser's answer
+#: is awaited, to record the amendments that come with it (SCRUM-110 AC2's exception,
+#: SCRUM-32 AC2), and once they have approved it, until it is Confirmed (SCRUM-110
+#: AC1, ADR-0116). Written out so the test doesn't copy the code's own list.
+EDITABLE = [
     EventRequestStatus.AWAITING_CLARIFICATION,
+    EventRequestStatus.APPROVED,
+    EventRequestStatus.SAFETY_REVIEW,
 ]
+#: The statuses before approval that aren't awaiting an answer, when a change goes
+#: through a clarification or the organiser's change request instead (SCRUM-110 AC2).
+NOT_YET_APPROVED = [EventRequestStatus.SUBMITTED, EventRequestStatus.UNDER_REVIEW]
 #: Every other status but Confirmed, which has its own message (AC8), and a draft,
 #: which staff never find (ADR-0024). Built from the enum so a status added later is
 #: checked too.
@@ -426,7 +430,7 @@ def test_the_reference_ignores_case_and_surrounding_spaces(
 
 @pytest.mark.scrum_110
 @pytest.mark.parametrize("status", EDITABLE, ids=lambda status: status.value)
-def test_an_approved_event_or_one_in_safety_review_can_be_edited_and_keeps_its_status(
+def test_an_event_in_an_editable_status_can_be_edited_and_keeps_its_status(
     edit_event: EditEvent,
     set_status: SetStatus,
     reload_event_request: ReloadEventRequest,
@@ -444,7 +448,7 @@ def test_an_approved_event_or_one_in_safety_review_can_be_edited_and_keeps_its_s
 
 @pytest.mark.scrum_110
 @pytest.mark.parametrize("status", NOT_YET_APPROVED, ids=lambda status: status.value)
-def test_an_event_not_yet_approved_is_refused_and_pointed_to_a_clarification(
+def test_a_submitted_or_under_review_event_is_refused_and_pointed_to_a_clarification(
     edit_event: EditEvent,
     set_status: SetStatus,
     history_of: HistoryOf,
