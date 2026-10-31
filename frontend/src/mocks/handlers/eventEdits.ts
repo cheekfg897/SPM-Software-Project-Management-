@@ -16,6 +16,7 @@ import { withSeconds } from './eventRequestRules'
 import { assignedOrRefusal } from './eventRequests'
 import { positiveWholeNumberError } from './equipmentValidation'
 import type { MockEventRequest } from './eventRequestFixtures'
+import { AWAITING_DECISION_STATUSES, CHANGES_BEFORE_APPROVAL } from './eventReviewRules'
 import { FLAGGABLE_STATUSES, reassessmentFlagsFor } from './reassessmentRules'
 import type { SignificantChange } from './reassessmentRules'
 
@@ -35,9 +36,7 @@ import type { SignificantChange } from './reassessmentRules'
  */
 
 const REQUESTS_PATH = '/api/events/requests'
-const NOT_YET_APPROVED_MESSAGE =
-  'An event request can only be edited once it is approved. ' +
-  "Until then, changes go through a clarification or the organiser's change request."
+const NOT_YET_APPROVED_MESSAGE = `An event request can only be edited once it is approved. ${CHANGES_BEFORE_APPROVAL}`
 const NOT_EDITABLE_MESSAGE =
   'An event request can only be edited before it is confirmed, and not once it is rejected or cancelled.'
 const CONFIRMED_NOT_EDITABLE_MESSAGE =
@@ -48,12 +47,7 @@ const EDITABLE_STATUSES: readonly EventRequestStatus[] = [
   EVENT_REQUEST_STATUS.APPROVED,
   EVENT_REQUEST_STATUS.SAFETY_REVIEW,
 ]
-/** Before approval (`AWAITING_DECISION_STATUSES`): refused with its own message (SCRUM-110 AC2). */
-const NOT_YET_APPROVED_STATUSES: readonly EventRequestStatus[] = [
-  EVENT_REQUEST_STATUS.SUBMITTED,
-  EVENT_REQUEST_STATUS.UNDER_REVIEW,
-  EVENT_REQUEST_STATUS.AWAITING_CLARIFICATION,
-]
+
 /** Where a withdrawn safety approval sends an event back to Approved (ADR-0087). */
 const RETURNED_TO_PLANNING_ON_WITHDRAWAL: readonly EventRequestStatus[] = [
   EVENT_REQUEST_STATUS.SAFETY_REVIEW,
@@ -406,7 +400,7 @@ export const eventEditHandlers: RequestHandler[] = [
       return found.refusal
     }
     const { coordinator, stored } = found
-    if (NOT_YET_APPROVED_STATUSES.includes(stored.request.status)) {
+    if (AWAITING_DECISION_STATUSES.includes(stored.request.status)) {
       return errorResponse(409, 'request_not_editable', NOT_YET_APPROVED_MESSAGE)
     }
     if (stored.request.status === EVENT_REQUEST_STATUS.CONFIRMED) {
