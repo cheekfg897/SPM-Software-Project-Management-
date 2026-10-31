@@ -170,6 +170,8 @@ class ReservationReassessmentSchema(Schema):
 
     Each reservation is shown as the event record shows it, with the period it still
     holds; ``starts_at`` and ``ends_at`` are the event's period now, in business time.
+    ``confirmable`` says whether confirming would settle them now (ADR-0114
+    decision 23).
     """
 
     equipment_type_id = fields.Integer(dump_only=True)
@@ -180,6 +182,7 @@ class ReservationReassessmentSchema(Schema):
     ends_at = BusinessDateTime(dump_only=True)
     available = fields.Integer(dump_only=True)
     shortfall = fields.Integer(dump_only=True)
+    confirmable = fields.Boolean(dump_only=True)
 
 
 class MarkOutOfServiceSchema(Schema):

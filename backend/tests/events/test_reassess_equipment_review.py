@@ -272,6 +272,79 @@ def test_a_coordinator_not_assigned_to_the_event_is_told_it_is_not_found(
 
 
 # --------------------------------------------------------------------------
+# AC3, AC4 — whether confirming settles it, or an outcome must be recorded
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("held_elsewhere", "confirmable"),
+    [(8, True), (9, False)],
+    ids=["exactly-enough", "one-short"],
+)
+def test_a_line_with_an_outcome_is_confirmed_only_when_every_reserved_unit_is_free(
+    two_projectors: EventEquipmentLine,
+    held_for_other_event: Callable[[int], EquipmentReservation],
+    edit_event: EditEvent,
+    held_elsewhere: int,
+    confirmable: bool,
+) -> None:
+    """One short, Technical Support record a partially fulfilled outcome (AC4)."""
+    held_for_other_event(held_elsewhere)
+    edit_event(COORDINATOR_ID, EARLIER_START)
+
+    [reassessment] = _reassessment_of(TECHNICAL_SUPPORT_ID, Role.TECHNICAL_SUPPORT_STAFF)
+
+    assert reassessment.confirmable is confirmable
+
+
+def test_a_line_providing_more_than_is_reserved_is_confirmed_for_what_it_holds(
+    equipment_type: EquipmentType,
+    reserve_and_review: ReserveAndReview,
+    held_for_other_event: Callable[[int], EquipmentReservation],
+    edit_event: EditEvent,
+) -> None:
+    """Three provided, two reserved and two free: confirming keeps the two it holds."""
+    reserve_and_review(equipment_type, quantity=3, reserved=2, provided=3)
+    held_for_other_event(8)
+    edit_event(COORDINATOR_ID, EARLIER_START)
+
+    [reassessment] = _reassessment_of(TECHNICAL_SUPPORT_ID, Role.TECHNICAL_SUPPORT_STAFF)
+
+    assert (_numbers(reassessment), reassessment.confirmable) == ((2, 2, 0), True)
+
+
+def test_a_line_with_no_current_outcome_is_settled_by_recording_one_not_confirmed(
+    equipment_type: EquipmentType, reserve_and_review: ReserveAndReview, edit_event: EditEvent
+) -> None:
+    """Partially fulfilled, so the change reopened it (AC12); every unit is free."""
+    reserve_and_review(equipment_type, quantity=3, reserved=1, provided=1)
+    edit_event(COORDINATOR_ID, EARLIER_START)
+
+    [reassessment] = _reassessment_of(TECHNICAL_SUPPORT_ID, Role.TECHNICAL_SUPPORT_STAFF)
+
+    assert (reassessment.shortfall, reassessment.confirmable) == (0, False)
+
+
+@pytest.mark.parametrize(
+    ("held_elsewhere", "shortfall"), [(8, 0), (10, 2)], ids=["all-free", "none-free"]
+)
+def test_a_type_with_no_line_is_always_confirmed_keeping_what_is_free(
+    projectors_without_a_line: None,
+    held_for_other_event: Callable[[int], EquipmentReservation],
+    edit_event: EditEvent,
+    held_elsewhere: int,
+    shortfall: int,
+) -> None:
+    """With no line there is no outcome to record (ADR-0114 decision 22)."""
+    held_for_other_event(held_elsewhere)
+    edit_event(COORDINATOR_ID, EARLIER_START)
+
+    [reassessment] = _reassessment_of(TECHNICAL_SUPPORT_ID, Role.TECHNICAL_SUPPORT_STAFF)
+
+    assert (reassessment.shortfall, reassessment.confirmable) == (shortfall, True)
+
+
+# --------------------------------------------------------------------------
 # AC6, AC12 — back on Technical Support's list of requests awaiting action
 # --------------------------------------------------------------------------
 
