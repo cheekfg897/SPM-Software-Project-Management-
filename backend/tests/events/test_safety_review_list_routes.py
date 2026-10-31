@@ -45,6 +45,7 @@ def list_service(
     event_request = make_event_request(status=EventRequestStatus.SAFETY_REVIEW)
     event_request.accessibility_needs = "Step-free entrance"
     venue = ArrangedVenue(
+        id=31,
         name="Main Hall",
         capacity=100,
         layouts=["theatre"],
@@ -54,6 +55,7 @@ def list_service(
         ends_at=datetime(2026, 10, 15, 9, tzinfo=timezone.utc),
     )
     equipment = SafetyReviewEquipment(
+        id=41,
         equipment_type_name="Projector",
         quantity=2,
         notes="Needs HDMI",
@@ -108,6 +110,7 @@ def test_a_safety_officer_gets_each_event_with_its_venues_and_equipment(
                 },
                 "venues": [
                     {
+                        "id": 31,
                         "name": "Main Hall",
                         "capacity": 100,
                         "layouts": ["theatre"],
@@ -119,6 +122,7 @@ def test_a_safety_officer_gets_each_event_with_its_venues_and_equipment(
                 ],
                 "equipment": [
                     {
+                        "id": 41,
                         "equipment_type_name": "Projector",
                         "quantity": 2,
                         "notes": "Needs HDMI",

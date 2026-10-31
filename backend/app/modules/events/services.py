@@ -1684,16 +1684,21 @@ def _line_of_event(
 
 
 def _notify_technical_support(
-    event_request: EventRequest, kind: NotificationKind, session: Session
+    event_request: EventRequest,
+    kind: NotificationKind,
+    session: Session,
+    *,
+    detail: str | None = None,
 ) -> None:
     """Tell every Technical Support Staff member about ``event_request`` (ADR-0019).
 
     Used when equipment is requested for it (SCRUM-37 AC5) and when a significant
     change means equipment already requested for it may no longer fit (SCRUM-33 AC2,
-    ADR-0025).
+    ADR-0025). ``detail`` says more, such as which line the Safety Officer reopened
+    (SCRUM-99 AC7).
     """
     technical_support_ids = list_user_ids_with_role(Role.TECHNICAL_SUPPORT_STAFF, session=session)
-    _raise_notifications(technical_support_ids, event_request, kind, session)
+    _raise_notifications(technical_support_ids, event_request, kind, session, detail=detail)
 
 
 #: The line fields whose change alters what Technical Support place for the event,
@@ -2914,57 +2919,6 @@ def assign_coordinator_to_request(
     sess.commit()
     _notify_about_assignment(event_request, coordinator_id, sess)
     return event_request, coordinator
-
-
-@dataclass(frozen=True)
-class CoordinatorEventRecord(EventRecord):
-    """The record as the event's assigned coordinator sees it (SCRUM-24 AC9).
-
-    The sections every record shows, then every venue arrangement, in any status,
-    earliest period first, so the event page itself lists them with each hold's expiry
-    (SCRUM-93 AC5, ADR-0105).
-    """
-
-    venue_arrangements: tuple[ArrangementForRecord, ...] = ()
-
-
-def get_event_record_for_coordinator(
-    coordinator_id: int | str, reference: str, *, session: Session | None = None
-) -> CoordinatorEventRecord:
-    """A request assigned to the coordinator, and its coordinator (SCRUM-24 AC9).
-
-    The sections every record shows, and every venue arrangement with its status
-    (SCRUM-93 AC5). Only a request assigned to the caller opens: the requests no
-    coordinator has are the Event Coordinator Lead's queue (SCRUM-24 AC2, SCRUM-95,
-    ADR-0034), not any coordinator's.
-
-    Args:
-        coordinator_id: The caller's user id, taken from their token.
-        reference: The ``EVR-…`` reference; case and surrounding spaces are ignored.
-        session: Database session; defaults to ``db.session``.
-
-    Returns:
-        The request's record: the request, its coordinator's name and email, and every
-        venue arrangement.
-
-    Raises:
-        NotFoundError: 404 — no such request, or it isn't assigned to the caller.
-    """
-    from app.modules.venue import services as venue_services  # circular at import time
-
-    sess = resolve_session(session)
-    event_request = _event_request_by_reference(
-        reference, sess, belongs_to=_assigned_to(coordinator_id)
-    )
-    record = _event_record(event_request, sess)
-    arrangements = venue_services.list_every_arrangement_for_record(event_request.id, session=sess)
-    return CoordinatorEventRecord(
-        event_request=record.event_request,
-        coordinator=record.coordinator,
-        decision=record.decision,
-        clarifications=record.clarifications,
-        venue_arrangements=tuple(arrangements),
-    )
 
 
 # --------------------------------------------------------------------------
@@ -4684,11 +4638,13 @@ def submit_for_safety_review(
 class SafetyReviewEquipment:
     """One equipment request with its outcome, as the Safety Officer sees it (AC6).
 
-    No ids: the equipment type is shown by name. ``status`` and ``provided_quantity``
+    The equipment type is shown by name; ``id`` is the line's, which the Safety Officer
+    names to reopen it (SCRUM-99 AC2, ADR-0113). ``status`` and ``provided_quantity``
     are Technical Support's outcome, which exists for every request of an event in
     Safety Review (ADR-0047).
     """
 
+    id: int
     equipment_type_name: str
     quantity: int
     notes: str | None
@@ -4720,6 +4676,7 @@ def _equipment_for_safety_review(
     for line in event_request.equipment_lines:
         equipment.append(
             SafetyReviewEquipment(
+                id=line.id,
                 equipment_type_name=type_names[line.equipment_type_id],
                 quantity=line.quantity,
                 notes=line.notes,
@@ -4799,6 +4756,58 @@ NOTIFICATION_BY_SAFETY_OUTCOME = {
 }
 
 
+#: How a flag or a reopened line the Safety Officer named words their reason (SCRUM-99
+#: AC4, ADR-0113).
+SAFETY_OFFICER_FLAG_REASON = "Flagged by the Safety Officer: {reason}"
+NOT_NAMEABLE_LINE_MESSAGE = "Equipment line {id} is not one of this event's lines."
+
+
+def _lines_to_reopen(event_request: EventRequest, line_ids: list[int]) -> list[EventEquipmentLine]:
+    """The event's lines ``line_ids`` name, in that order (SCRUM-99 AC2).
+
+    Raises:
+        ValidationError: 400 — on ``reopened_line_ids``, one message per id that isn't
+            one of the event's lines.
+    """
+    lines_by_id = {}
+    for line in event_request.equipment_lines:
+        lines_by_id[line.id] = line
+    named = []
+    refused = []
+    for line_id in line_ids:
+        if line_id in lines_by_id:
+            named.append(lines_by_id[line_id])
+        else:
+            refused.append(NOT_NAMEABLE_LINE_MESSAGE.format(id=line_id))
+    if refused:
+        raise ValidationError("Invalid request.", details={"reopened_line_ids": refused})
+    return named
+
+
+def _tell_technical_support_of_reopened_lines(
+    event_request: EventRequest,
+    reopened: list[EventEquipmentLine],
+    flag_reason: str,
+    session: Session,
+) -> None:
+    """Tell every Technical Support Staff member of each line reopened (SCRUM-99 AC7).
+
+    One ``significant_change`` notice per line, as a line change tells them (SCRUM-37
+    AC4), naming the line and the Safety Officer's reason. After the commit.
+    """
+    if not reopened:
+        return
+    type_names = _equipment_type_names(session)
+    for line in reopened:
+        detail = (
+            f"Equipment line {line.id} ({type_names[line.equipment_type_id]},"
+            f" {line.quantity} requested) reopened: {flag_reason}"
+        )
+        _notify_technical_support(
+            event_request, NotificationKind.SIGNIFICANT_CHANGE, session, detail=detail
+        )
+
+
 def record_safety_outcome(
     officer_id: int | str,
     reference: str,
@@ -4816,6 +4825,13 @@ def record_safety_outcome(
     outcome, checklist and reason, is saved with the status. The assigned coordinator
     is told afterwards, with the reason (ADR-0015).
 
+    SCRUM-99 AC2, AC7 (ADR-0113): Reject or Request Changes may name venue
+    arrangements, each flagged for Venue Staff to reconfirm, and equipment lines, each
+    reopened as a quantity change reopens it (SCRUM-37 AC4), both with "Flagged by the
+    Safety Officer: <reason>". Every id is checked before anything changes, and the
+    history entry keeps them. Venue Staff are told of each flagged arrangement and
+    Technical Support of each reopened line, after the commit.
+
     Args:
         officer_id: The Safety Officer's user id, taken from their token.
         reference: The ``EVR-…`` reference; case and surrounding spaces are ignored.
@@ -4827,12 +4843,15 @@ def record_safety_outcome(
         The request, in the status the outcome leaves it in.
 
     Raises:
-        ValidationError: 400 — invalid payload, a checklist note missing or blank, or
-            no reason for Reject or Request Changes.
+        ValidationError: 400 — invalid payload, a checklist note missing or blank, no
+            reason for Reject or Request Changes, something named on an approval, or an
+            id that isn't one of the event's approved arrangements or its lines.
         NotFoundError: 404 — no such request, or it is still a draft.
         SafetyOutcomeNotAllowedError: 409 — the event isn't in Safety Review, or the
             Safety Officer has already approved it.
     """
+    from app.modules.venue import services as venue_services  # circular at import time
+
     recorded = load_or_raise(RecordSafetyOutcomeSchema(), payload)
     sess = resolve_session(session)
     event_request = _event_request_for_staff(reference, sess)
@@ -4842,6 +4861,13 @@ def record_safety_outcome(
         raise SafetyOutcomeNotAllowedError(ALREADY_SAFETY_APPROVED_MESSAGE)
 
     outcome = recorded["outcome"]
+    flag_reason = SAFETY_OFFICER_FLAG_REASON.format(reason=recorded["reason"])
+    reopened = _lines_to_reopen(event_request, recorded["reopened_line_ids"])
+    venue_notices = venue_services.flag_named_arrangements(
+        event_request.id, recorded["flagged_arrangement_ids"], flag_reason, session=sess
+    )
+    for line in reopened:
+        _clear_outcome(line)
     event_request.status = STATUS_AFTER_SAFETY_OUTCOME[outcome]
     record_event_history(
         event_request,
@@ -4851,6 +4877,8 @@ def record_safety_outcome(
             "outcome": outcome.value,
             "checklist": recorded["checklist"],
             "reason": recorded["reason"],
+            "flagged_arrangement_ids": recorded["flagged_arrangement_ids"],
+            "reopened_line_ids": recorded["reopened_line_ids"],
         },
         session=sess,
         now=now,
@@ -4859,6 +4887,8 @@ def record_safety_outcome(
     _notify_assigned_coordinator(
         event_request, NOTIFICATION_BY_SAFETY_OUTCOME[outcome], sess, detail=recorded["reason"]
     )
+    _tell_venue_staff_of_flags(event_request, venue_notices, sess)
+    _tell_technical_support_of_reopened_lines(event_request, reopened, flag_reason, sess)
     return event_request
 
 
@@ -4881,6 +4911,10 @@ class SafetyOutcomeAsShown:
     reason: str | None
     recorded_by: str | None
     recorded_at: datetime
+    #: How many arrangements it flagged and lines it reopened (SCRUM-99 AC4); none on
+    #: an outcome recorded before SCRUM-99 or that named nothing.
+    flagged_arrangement_count: int
+    reopened_line_count: int
 
 
 @dataclass(frozen=True)
@@ -4968,6 +5002,63 @@ def _safety_outcome_of(
         reason=details.get("reason"),
         recorded_by=_actor_name(entry, names),
         recorded_at=entry.occurred_at,
+        flagged_arrangement_count=len(details.get("flagged_arrangement_ids", [])),
+        reopened_line_count=len(details.get("reopened_line_ids", [])),
+    )
+
+
+@dataclass(frozen=True)
+class CoordinatorEventRecord(EventRecord):
+    """The record as the event's assigned coordinator sees it (SCRUM-24 AC9).
+
+    The sections every record shows, then every venue arrangement, in any status,
+    earliest period first, so the event page itself lists them with each hold's expiry
+    (SCRUM-93 AC5, ADR-0105).
+    """
+
+    venue_arrangements: tuple[ArrangementForRecord, ...] = ()
+    #: The outcome of the event's current safety check, or ``None`` until there is one,
+    #: so the coordinator sees what to rework (SCRUM-99 AC4).
+    safety_outcome: SafetyOutcomeAsShown | None = None
+
+
+def get_event_record_for_coordinator(
+    coordinator_id: int | str, reference: str, *, session: Session | None = None
+) -> CoordinatorEventRecord:
+    """A request assigned to the coordinator, and its coordinator (SCRUM-24 AC9).
+
+    The sections every record shows, and every venue arrangement with its status
+    (SCRUM-93 AC5). Only a request assigned to the caller opens: the requests no
+    coordinator has are the Event Coordinator Lead's queue (SCRUM-24 AC2, SCRUM-95,
+    ADR-0034), not any coordinator's.
+
+    Args:
+        coordinator_id: The caller's user id, taken from their token.
+        reference: The ``EVR-…`` reference; case and surrounding spaces are ignored.
+        session: Database session; defaults to ``db.session``.
+
+    Returns:
+        The request's record: the request, its coordinator's name and email, every
+        venue arrangement, and the current safety outcome (SCRUM-99 AC4).
+
+    Raises:
+        NotFoundError: 404 — no such request, or it isn't assigned to the caller.
+    """
+    from app.modules.venue import services as venue_services  # circular at import time
+
+    sess = resolve_session(session)
+    event_request = _event_request_by_reference(
+        reference, sess, belongs_to=_assigned_to(coordinator_id)
+    )
+    record = _event_record(event_request, sess)
+    arrangements = venue_services.list_every_arrangement_for_record(event_request.id, session=sess)
+    return CoordinatorEventRecord(
+        event_request=record.event_request,
+        coordinator=record.coordinator,
+        decision=record.decision,
+        clarifications=record.clarifications,
+        venue_arrangements=tuple(arrangements),
+        safety_outcome=_safety_outcome_of(event_request, sess),
     )
 
 

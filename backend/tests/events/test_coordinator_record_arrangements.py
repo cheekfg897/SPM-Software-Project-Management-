@@ -102,5 +102,6 @@ def test_the_route_sends_the_coordinator_each_arrangement_in_full_and_nothing_el
     [shown] = body["venue_arrangements"]
     assert (shown["status"], shown["hold_expires_at"]) == ("on_hold", "2026-10-30T17:00:00+08:00")
     assert shown["venue_location"] == "Building A"
-    organiser_only = {"internal_planning_notes", "equipment_reservations", "safety_outcome"}
+    # The safety outcome is the coordinator's too since SCRUM-99 AC4 (ADR-0113).
+    organiser_only = {"internal_planning_notes", "equipment_reservations"}
     assert organiser_only.isdisjoint(body)

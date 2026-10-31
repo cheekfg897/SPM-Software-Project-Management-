@@ -130,6 +130,8 @@ def staff_record(
             reason=None,
             recorded_by="Sam Safety",
             recorded_at=CHECKED_AT,
+            flagged_arrangement_count=0,
+            reopened_line_count=0,
         ),
     )
 
@@ -301,6 +303,8 @@ def test_the_record_shows_every_section_and_no_ids_or_registrants(
             "reason": None,
             "recorded_by": "Sam Safety",
             "recorded_at": "2026-10-02T10:00:00+08:00",
+            "flagged_arrangement_count": 0,
+            "reopened_line_count": 0,
         },
     }
 

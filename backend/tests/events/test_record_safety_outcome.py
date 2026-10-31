@@ -380,7 +380,14 @@ def test_the_notes_and_the_reason_are_trimmed(
     _record(db_session, "rejected", reason=f"  {REASON}\n", checklist=padded_checklist)
 
     [(_, _, details)] = history_of(in_review.id)
-    assert details == {"outcome": "rejected", "checklist": CHECKLIST, "reason": REASON}
+    assert details == {
+        "outcome": "rejected",
+        "checklist": CHECKLIST,
+        "reason": REASON,
+        # What the Safety Officer named to rework: nothing here (SCRUM-99 AC2).
+        "flagged_arrangement_ids": [],
+        "reopened_line_ids": [],
+    }
 
 
 # --------------------------------------------------------------------------
@@ -397,7 +404,13 @@ def test_the_outcome_is_kept_in_the_history_with_the_officer_checklist_and_reaso
         (
             EventHistoryKind.SAFETY_OUTCOME_RECORDED,
             SAFETY_OFFICER_ID,
-            {"outcome": "changes_requested", "checklist": CHECKLIST, "reason": REASON},
+            {
+                "outcome": "changes_requested",
+                "checklist": CHECKLIST,
+                "reason": REASON,
+                "flagged_arrangement_ids": [],
+                "reopened_line_ids": [],
+            },
         )
     ]
     entry = db_session.scalar(select(EventHistoryEntry))

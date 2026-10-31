@@ -83,9 +83,9 @@ export interface Clarification {
  * Officer's view of a line (the type by name, the coordinator's technical notes, the outcome, the
  * quantity provided and the outcome note), with the shortfall and who reviewed it when (SCRUM-37
  * AC5, SCRUM-48 AC5, ADR-0104). The reviewer is null until it is reviewed, or once their account
- * is gone.
+ * is gone. The record sends no line id (ADR-0104).
  */
-export interface RecordEquipmentLine extends SafetyReviewEquipment {
+export interface RecordEquipmentLine extends Omit<SafetyReviewEquipment, 'id'> {
   shortfall: number | null
   reviewed_by: string | null
   /** ISO date-time with an offset; null until it is reviewed. */
@@ -517,6 +517,12 @@ export interface SafetyCheckOutcome {
   recorded_by: string | null
   /** ISO date-time with an offset. */
   recorded_at: string
+  /**
+   * How many venue arrangements the officer flagged and equipment lines they reopened, on a Reject
+   * or Request Changes (SCRUM-99 AC4); both 0 when they named nothing.
+   */
+  flagged_arrangement_count: number
+  reopened_line_count: number
 }
 
 /**

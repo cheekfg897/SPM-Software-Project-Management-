@@ -148,7 +148,7 @@ export function SafetyReviewCard({ awaiting }: { awaiting: AwaitingSafetyReview 
         ) : (
           <ul className="grid gap-3 lg:grid-cols-2">
             {venues.map((venue) => (
-              <VenueItem key={`${venue.name}-${venue.starts_at}`} venue={venue} />
+              <VenueItem key={venue.id} venue={venue} />
             ))}
           </ul>
         )}
@@ -160,9 +160,8 @@ export function SafetyReviewCard({ awaiting }: { awaiting: AwaitingSafetyReview 
           <p className="text-ink-muted text-sm">No equipment requested.</p>
         ) : (
           <ul className="grid gap-3 lg:grid-cols-2">
-            {equipment.map((line, index) => (
-              // The backend sends no ids here (ADR-0047), and the list never reorders.
-              <EquipmentItem key={index} equipment={line} />
+            {equipment.map((line) => (
+              <EquipmentItem key={line.id} equipment={line} />
             ))}
           </ul>
         )}
@@ -176,7 +175,7 @@ export function SafetyReviewCard({ awaiting }: { awaiting: AwaitingSafetyReview 
         >
           Record safety check
         </Button>
-        {isFormOpen && <SafetyOutcomeForm reference={event.reference} name={event.name} />}
+        {isFormOpen && <SafetyOutcomeForm awaiting={awaiting} />}
       </div>
     </article>
   )

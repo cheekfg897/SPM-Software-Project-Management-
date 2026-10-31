@@ -332,6 +332,8 @@ def test_the_record_shows_the_latest_safety_outcome_with_its_checklist(
         reason=None,
         recorded_by="Sam Safety",
         recorded_at=SECOND_CHECK_AT,
+        flagged_arrangement_count=0,
+        reopened_line_count=0,
     )
 
 
@@ -352,6 +354,8 @@ def test_the_record_shows_the_reason_the_officer_gave_for_a_current_refusal(
         reason="No second fire exit.",
         recorded_by="Sam Safety",
         recorded_at=FIRST_CHECK_AT,
+        flagged_arrangement_count=0,
+        reopened_line_count=0,
     )
 
 

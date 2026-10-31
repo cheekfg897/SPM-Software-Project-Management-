@@ -36,6 +36,11 @@ export function historyOf(reference: string): EventHistoryEntry[] {
   return storedHistory[reference] ?? []
 }
 
+/** How many ids a check's history entry named, as the backend counts them (SCRUM-99). */
+function namedIn(ids: unknown): number {
+  return Array.isArray(ids) ? ids.length : 0
+}
+
 /**
  * The outcome on the event's current safety check, with its checklist, reason, officer and time,
  * or null, as the backend's _safety_outcome_of reads it: the newest entry that opens, settles or
@@ -53,5 +58,8 @@ export function currentSafetyCheckOf(reference: string) {
     reason: latest.details.reason ?? null,
     recorded_by: latest.actor_name,
     recorded_at: latest.occurred_at,
+    // What the officer named to rework (SCRUM-99 AC4); none on a check that named nothing.
+    flagged_arrangement_count: namedIn(latest.details.flagged_arrangement_ids),
+    reopened_line_count: namedIn(latest.details.reopened_line_ids),
   }
 }

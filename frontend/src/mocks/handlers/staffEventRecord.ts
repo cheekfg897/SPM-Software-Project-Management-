@@ -152,8 +152,14 @@ function safetyLinesOf(safetyEvent: MockSafetyEvent | undefined): RecordEquipmen
   if (safetyEvent === undefined) {
     return []
   }
+  // The record sends no line id (ADR-0104), unlike the Safety Officer's list (SCRUM-99).
   return safetyEvent.equipment.map((line) => ({
-    ...line,
+    equipment_type_name: line.equipment_type_name,
+    quantity: line.quantity,
+    notes: line.notes,
+    status: line.status,
+    provided_quantity: line.provided_quantity,
+    outcome_note: line.outcome_note,
     shortfall: shortfallOf(line),
     reviewed_by: MOCK_ACCOUNTS.technicalSupport.full_name,
     reviewed_at: SAFETY_LINES_REVIEWED_AT,

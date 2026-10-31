@@ -1602,9 +1602,11 @@ class ArrangedVenue:
     """A venue an event has booked, with what the Safety Officer reviews (SCRUM-97 AC6).
 
     The venue's name, capacity, supported room layouts, facilities and accessibility
-    features, and the period it is booked for. No ids: they are not the reader's to use.
+    features, and the period it is booked for. ``id`` is the arrangement's, which the
+    Safety Officer names to flag it (SCRUM-99 AC2, ADR-0113).
     """
 
+    id: int
     name: str
     capacity: int
     layouts: list[str]
@@ -1624,6 +1626,7 @@ def list_arranged_venues(event_id: int, *, session: Session | None = None) -> li
         venue = get_venue(arrangement.venue_id, session=session)
         arranged.append(
             ArrangedVenue(
+                id=arrangement.id,
                 name=venue.name,
                 capacity=venue.capacity,
                 layouts=venue.layouts_list(),
@@ -2966,6 +2969,11 @@ def _live_arrangements_of(event_id: int, session: Session | None) -> list[VenueB
     return list(resolve_session(session).scalars(stmt))
 
 
+def _flag_notice_detail(arrangement: VenueBookingRequest, venue: Venue, reasons: str) -> str:
+    """What Venue Staff are told about one flagged arrangement (ADR-0094 decision 7)."""
+    return f"Venue arrangement {arrangement.id} at {venue.name}: {reasons}"
+
+
 def flag_arrangements_after_change(
     event_id: int, change: SignificantChange, *, session: Session | None = None
 ) -> list[str]:
@@ -2989,7 +2997,7 @@ def flag_arrangements_after_change(
             continue
         arrangement.reassessment_flags.extend(flags)
         reasons = " ".join(flag.reason for flag in flags)
-        details.append(f"Venue arrangement {arrangement.id} at {venue.name}: {reasons}")
+        details.append(_flag_notice_detail(arrangement, venue, reasons))
     return details
 
 
@@ -3535,3 +3543,67 @@ def reject_flagged_booking(
         session=session,
     )
     return show_booking_request(arrangement, event)
+
+
+# --------------------------------------------------------------------------
+# SCRUM-99 — the Safety Officer names arrangements to look at again
+# --------------------------------------------------------------------------
+
+NOT_NAMEABLE_ARRANGEMENT_MESSAGE = (
+    "Venue arrangement {id} is not one of this event's approved arrangements."
+)
+
+
+def _arrangements_to_name(
+    event_id: int, arrangement_ids: list[int], session: Session
+) -> list[VenueBookingRequest]:
+    """The arrangements ``arrangement_ids`` name, if each is the event's and approved.
+
+    In Safety Review every live arrangement is approved (SCRUM-97), so that is what the
+    Safety Officer can name.
+
+    Raises:
+        ValidationError: 400 — on ``flagged_arrangement_ids``, one message per id
+            that is unknown, another event's or not approved.
+    """
+    named = []
+    refused = []
+    for arrangement_id in arrangement_ids:
+        arrangement = session.get(VenueBookingRequest, arrangement_id)
+        is_nameable = (
+            arrangement is not None
+            and arrangement.event_id == event_id
+            and arrangement.status is BookingRequestStatus.APPROVED
+        )
+        if is_nameable:
+            named.append(arrangement)
+        else:
+            refused.append(NOT_NAMEABLE_ARRANGEMENT_MESSAGE.format(id=arrangement_id))
+    if refused:
+        raise ValidationError("Invalid request.", details={"flagged_arrangement_ids": refused})
+    return named
+
+
+def flag_named_arrangements(
+    event_id: int, arrangement_ids: list[int], reason: str, *, session: Session | None = None
+) -> list[str]:
+    """Flag each named arrangement for Venue Staff to reconfirm, without committing.
+
+    SCRUM-99 AC2 (ADR-0113): the flag a change leaves (SCRUM-58, ADR-0094),
+    ``requires_reconfirmation`` with ``reason``, so Venue Staff reconfirm or reject it
+    from their flagged list (SCRUM-59). Every id is checked before any is flagged. What
+    Venue Staff are to be told is returned, in the order named, for
+    :func:`tell_venue_staff_of_flags` once the caller has committed.
+
+    Raises:
+        ValidationError: 400 — an id that isn't one of the event's approved
+            arrangements; nothing is flagged.
+    """
+    sess = resolve_session(session)
+    details = []
+    for arrangement in _arrangements_to_name(event_id, arrangement_ids, sess):
+        flag = ReassessmentFlag(kind=ReassessmentFlagKind.REQUIRES_RECONFIRMATION, reason=reason)
+        arrangement.reassessment_flags.append(flag)
+        venue = get_venue(arrangement.venue_id, session=sess)
+        details.append(_flag_notice_detail(arrangement, venue, reason))
+    return details
