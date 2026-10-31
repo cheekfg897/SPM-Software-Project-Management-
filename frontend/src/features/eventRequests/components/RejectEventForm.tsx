@@ -7,6 +7,7 @@ import type { EventRecord, Rejection } from '../api'
 import { useRejectEvent } from '../hooks'
 
 import { ActionCard } from './ActionCard'
+import { ConfirmStep } from './ConfirmStep'
 
 /**
  * Reject an event in planning whose essential arrangements can't be met, with a reason (SCRUM-49
@@ -38,19 +39,17 @@ export function RejectEventForm({ record }: { record: EventRecord }) {
         errors={fieldErrorsOf(reject.error).reason}
       />
       {isConfirming ? (
-        <div className="border-danger/40 bg-danger/5 space-y-3 rounded-xl border p-4 text-sm">
+        <ConfirmStep
+          confirmLabel="Yes, reject the event"
+          keepLabel="Keep planning"
+          isPending={reject.isPending}
+          onConfirm={rejectTheEvent}
+          onKeep={() => setIsConfirming(false)}
+        >
           <p className="text-ink">
             Its venue bookings and holds are released and its equipment returned.
           </p>
-          <div className="flex flex-wrap gap-3">
-            <Button isPending={reject.isPending} onClick={rejectTheEvent}>
-              Yes, reject the event
-            </Button>
-            <Button variant="ghost" onClick={() => setIsConfirming(false)}>
-              Keep planning
-            </Button>
-          </div>
-        </div>
+        </ConfirmStep>
       ) : (
         <Button variant="secondary" onClick={() => setIsConfirming(true)}>
           Reject event
