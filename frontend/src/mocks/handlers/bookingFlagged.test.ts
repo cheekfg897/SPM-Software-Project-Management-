@@ -339,15 +339,16 @@ describe('SCRUM-59 booking mock: reconfirming a flagged booking', () => {
       { ...onTheNewDay('09:00', '12:00'), reason: ['A'] },
       { reason: ['Not a valid string.'] },
     ],
-    [
-      'null reason',
-      { ...onTheNewDay('09:00', '12:00'), reason: null },
-      { reason: ['Field may not be null.'] },
-    ],
   ])('refuses a body with %s, as the schema does', async (_label, body, fieldErrors) => {
     const error = await errorOf(reconfirm(HALL.id, body))
 
     expect([error.status, error.fieldErrors]).toEqual([400, fieldErrors])
+  })
+
+  it('takes a null reason as no reason, as the schema does', async () => {
+    const reconfirmed = await reconfirm(HALL.id, { ...onTheNewDay('09:00', '12:00'), reason: null })
+
+    expect(reconfirmed).toMatchObject({ status: 'approved', flagged_after_change: false })
   })
 })
 
@@ -385,6 +386,7 @@ describe('SCRUM-59 booking mock: rejecting a flagged booking', () => {
   it.each([
     ['missing', {}],
     ['blank', { reason: '  ' }],
+    ['null', { reason: null }],
   ])('needs a reason (%s)', async (_label, body) => {
     const error = await errorOf(reject(HALL.id, body))
 

@@ -14,7 +14,6 @@ import { unknownFieldErrors } from './venueRules'
 /** Business time is UTC+8 all year (BUSINESS_UTC_OFFSET), as milliseconds. */
 const BUSINESS_OFFSET_MS = 8 * 60 * 60_000
 const NOT_A_STRING_MESSAGE = 'Not a valid string.'
-const NULL_MESSAGE = 'Field may not be null.'
 /** The fields ReconfirmBookingSchema declares; the reject payload has only the reason. */
 const RECONFIRM_FIELDS: readonly string[] = ['starts_at', 'ends_at', 'reason']
 const REJECT_FIELDS: readonly string[] = ['reason']
@@ -83,13 +82,13 @@ export function reconfirmationOf(
   }
 }
 
-/** The reason's own message: present, it must be text. */
+/**
+ * The reason's own message: present, it must be text. Null counts as no reason, since the schema's
+ * `load_default=None` lets it through (FlaggedBookingReasonSchema).
+ */
 function reasonFieldErrors(body: Record<string, unknown>): FieldErrors {
-  if (body.reason === undefined) {
+  if (body.reason === undefined || body.reason === null) {
     return {}
-  }
-  if (body.reason === null) {
-    return { reason: [NULL_MESSAGE] }
   }
   return typeof body.reason === 'string' ? {} : { reason: [NOT_A_STRING_MESSAGE] }
 }
