@@ -1,4 +1,5 @@
 import { formText } from '@/features/auth/formText'
+import { toTimeInputValue } from '@/lib/businessTime'
 
 import type { EventEditChanges, EventRecord } from './api'
 
@@ -34,8 +35,7 @@ export function openingValue(record: EventRecord, field: ShownField): string {
     return ''
   }
   const typed = String(saved)
-  // A time input holds the minute ("09:00"); the record has seconds too ("09:00:00").
-  return TIME_FIELDS.includes(field) ? typed.slice(0, 5) : typed
+  return TIME_FIELDS.includes(field) ? toTimeInputValue(typed) : typed
 }
 
 /** The fields the coordinator changed on `record`, as the backend wants them. */
