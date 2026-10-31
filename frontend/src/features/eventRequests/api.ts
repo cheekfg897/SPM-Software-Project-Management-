@@ -415,6 +415,21 @@ export function rejectEvent(reference: string, rejection: Rejection): Promise<Ev
   })
 }
 
+/** A cancellation's body: the same as a rejection's, the reason left out when none was typed. */
+export type Cancellation = Rejection
+
+/**
+ * Cancel one of the organiser's organisation's events, from submitted to confirmed, at once. The
+ * backend requires the reason, releases the event's venues, returns its equipment and tells the
+ * coordinator, the registered attendees and Venue Staff (SCRUM-61, ADR-0122).
+ */
+export function cancelEvent(reference: string, cancellation: Cancellation): Promise<EventRequest> {
+  return apiRequest<EventRequest>(`${requestPath(reference)}/cancel`, {
+    method: 'POST',
+    body: cancellation,
+  })
+}
+
 /** Mark a confirmed event completed once it has ended; there is no body (SCRUM-68, ADR-0027). */
 export function completeEvent(reference: string): Promise<EventRequest> {
   return apiRequest<EventRequest>(`${requestPath(reference)}/complete`, { method: 'POST' })

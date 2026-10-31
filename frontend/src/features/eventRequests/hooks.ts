@@ -4,6 +4,7 @@ import { selectSessionUser, useAppSelector } from '@/store'
 
 import {
   answerClarification,
+  cancelEvent,
   completeEvent,
   confirmEvent,
   decideEventRequest,
@@ -33,6 +34,7 @@ import {
   WITH_VENUE_BOOKINGS_KEY,
 } from './api'
 import type {
+  Cancellation,
   DecisionChoice,
   EventEditChanges,
   EventRequestDetails,
@@ -168,6 +170,19 @@ export function useRejectEvent(reference: string) {
   return useMutation({
     mutationFn: (rejection: Rejection) => rejectEvent(reference, rejection),
     onSuccess: refresh,
+  })
+}
+
+/**
+ * Cancel one of the organiser's organisation's events, with a reason (SCRUM-61 AC1). Afterwards,
+ * cancelled or refused, the record, its history and the lists are read again: a refusal may mean
+ * the event has moved on, such as rejected by its coordinator meanwhile.
+ */
+export function useCancelEvent(reference: string) {
+  const refresh = useRefreshEventRequests()
+  return useMutation({
+    mutationFn: (cancellation: Cancellation) => cancelEvent(reference, cancellation),
+    onSettled: refresh,
   })
 }
 

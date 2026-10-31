@@ -11,15 +11,15 @@ import { errorResponse, validationError } from '../responses'
 
 import { releaseEventArrangements } from './booking'
 import { MOCK_NOW } from './catalogueFixtures'
-import { rejectEventEquipment } from './equipmentReservations'
+import { releaseEventEquipment } from './equipmentReservations'
 import { NOTHING_PLANNED } from './eventPlanningFixtures'
 import type { MockArrangement, MockArrangementStatus, MockPlanning } from './eventPlanningFixtures'
 import { loadRegistrationChanges } from './eventPlanningRules'
 import { addToHistory } from './eventRecordSections'
 import { flaggedGaps } from './reassessmentRules'
 import type { MockEventRequest } from './eventRequestFixtures'
-import { assignedOrRefusal, objectBodyOrRefusal } from './eventRequests'
-import { loadRejectionReason } from './eventReviewRules'
+import { assignedOrRefusal, objectBodyOrRefusal, visibleOrRefusal } from './eventRequests'
+import { loadCancellationReason, loadRejectionReason } from './eventReviewRules'
 
 /**
  * The coordinator's planning actions on the stored event requests eventRequests.ts keeps, so
@@ -28,7 +28,9 @@ import { loadRejectionReason } from './eventReviewRules'
  * ADR-0027), its registration settings and withdrawal cut-off (SCRUM-69, ADR-0043, ADR-0086),
  * confirming it once every approval is in (SCRUM-49, ADR-0051) and rejecting it during planning
  * (SCRUM-49 AC9, AC10, ADR-0093), a rejection SCRUM-31's decision can't then change (AC12,
- * ADR-0106). Only the event's assigned coordinator may; the checks, their
+ * ADR-0106). Beside them, the organiser's cancellation, which releases the same things
+ * (SCRUM-61, ADR-0122): any organiser of the event's organisation may, from submitted to
+ * confirmed. Otherwise only the event's assigned coordinator may; the checks, their
  * order, the codes, messages and the gaps named are the backend's (ADR-0075). Each action that
  * changes something is written to the event's history as the backend writes it (SCRUM-33 AC4).
  * No notification is raised.
@@ -60,6 +62,17 @@ const PLANNING_STATUSES: readonly EventRequestStatus[] = [
   EVENT_REQUEST_STATUS.APPROVED,
   EVENT_REQUEST_STATUS.SAFETY_REVIEW,
 ]
+/** Where the organiser may cancel their event (`CANCELLABLE_STATUSES`, SCRUM-61 AC1). */
+const CANCELLABLE_STATUSES: readonly EventRequestStatus[] = [
+  EVENT_REQUEST_STATUS.SUBMITTED,
+  EVENT_REQUEST_STATUS.UNDER_REVIEW,
+  EVENT_REQUEST_STATUS.AWAITING_CLARIFICATION,
+  EVENT_REQUEST_STATUS.APPROVED,
+  EVENT_REQUEST_STATUS.SAFETY_REVIEW,
+  EVENT_REQUEST_STATUS.CONFIRMED,
+]
+/** The refusal for any other status, which goes after it, as the backend names it. */
+const NOT_CANCELLABLE_MESSAGE = 'Only an event between Submitted and Confirmed can be cancelled;'
 /**
  * Arrangements no longer counted among the event's venues (`RETIRED_REQUEST_STATUSES`): a
  * cancelled one too, which the Safety Review gate and confirmation ignore (SCRUM-111).
@@ -75,13 +88,13 @@ const REGISTRATION_FIELDS = [
   'withdrawal_cut_off',
 ] as const
 
-/** One history entry by the coordinator at the mock's "now", as `record_event_history` writes it. */
+/** One history entry by `actorName` at the mock's "now", as `record_event_history` writes it. */
 function entryBy(
-  coordinatorName: string,
+  actorName: string,
   kind: EventHistoryKind,
   details: Record<string, unknown>,
 ): EventHistoryEntry {
-  return { kind, occurred_at: MOCK_NOW, actor_name: coordinatorName, details }
+  return { kind, occurred_at: MOCK_NOW, actor_name: actorName, details }
 }
 
 /** A 409 with the reasons behind it, as the backend's gates send it (ADR-0047, ADR-0051). */
@@ -236,18 +249,21 @@ function settingChanges(
   return entries
 }
 
-/** What a rejection leaves of the event's arrangements, and the history it writes for them. */
+/**
+ * What a rejection or a cancellation leaves of the event's arrangements, and the history it
+ * writes for them.
+ */
 interface Release {
   arrangements: MockArrangement[]
   withdrawals: EventHistoryEntry[]
 }
 
 /**
- * The event's arrangements once it is rejected, as `release_event_arrangements` leaves them:
- * one holding its venue is released, any other still active is withdrawn with its own history
- * entry, and a retired one stays as it is.
+ * The event's arrangements once it is rejected or cancelled, as `release_event_arrangements`
+ * leaves them: one holding its venue is released, any other still active is withdrawn with its
+ * own history entry by `actorName`, and a retired one stays as it is.
  */
-function releaseArrangements(planning: MockPlanning, coordinatorName: string): Release {
+function releaseArrangements(planning: MockPlanning, actorName: string): Release {
   const release: Release = { arrangements: [], withdrawals: [] }
   for (const arrangement of planning.arrangements) {
     if (RETIRED_STATUSES.includes(arrangement.status)) {
@@ -257,10 +273,25 @@ function releaseArrangements(planning: MockPlanning, coordinatorName: string): R
     } else {
       release.arrangements.push({ ...arrangement, status: 'withdrawn' })
       const details = { venue_booking_request_id: arrangement.id, venue_id: arrangement.venueId }
-      release.withdrawals.push(entryBy(coordinatorName, 'venue_arrangement_withdrawn', details))
+      release.withdrawals.push(entryBy(actorName, 'venue_arrangement_withdrawn', details))
     }
   }
   return release
+}
+
+/**
+ * Free everything the event, now rejected or cancelled, has arranged, as `_release_arrangements`
+ * does: its own arrangements here, and the venues and equipment the venue and equipment mocks
+ * keep in their own stores, which its new status closes. Answers the withdrawals' history
+ * entries, by `actorName`, for the caller to write after its own.
+ */
+function releaseEverything(stored: MockEventRequest, actorName: string): EventHistoryEntry[] {
+  const planning = planningOf(stored)
+  const { arrangements, withdrawals } = releaseArrangements(planning, actorName)
+  stored.planning = { ...planning, arrangements }
+  releaseEventArrangements(stored.request.reference)
+  releaseEventEquipment(stored.request.reference, stored.request.status)
+  return withdrawals
 }
 
 export const eventPlanningHandlers: RequestHandler[] = [
@@ -374,23 +405,47 @@ export const eventPlanningHandlers: RequestHandler[] = [
       return validationError(loaded.errors)
     }
 
-    const planning = planningOf(stored)
-    const { arrangements, withdrawals } = releaseArrangements(planning, coordinator.full_name)
     const decision = { outcome: 'rejected' as const, reason: loaded.text }
     stored.request.status = EVENT_REQUEST_STATUS.REJECTED
     stored.record = {
       ...stored.record,
       decision: { ...decision, decided_by: coordinator.full_name, decided_at: MOCK_NOW },
     }
+    stored.rejectedDuringPlanning = true
+    const withdrawals = releaseEverything(stored, coordinator.full_name)
     addToHistory(stored.request.reference, [
       entryBy(coordinator.full_name, 'decision_recorded', { ...decision, during_planning: true }),
       ...withdrawals,
     ])
-    stored.planning = { ...planning, arrangements }
-    stored.rejectedDuringPlanning = true
-    // The venues and equipment the backend frees live in the venue and equipment mocks' stores.
-    releaseEventArrangements(stored.request.reference)
-    rejectEventEquipment(stored.request.reference)
+    return HttpResponse.json(stored.request)
+  }),
+
+  http.post(`${REQUEST_PATH}/cancel`, async ({ request, params }) => {
+    const found = visibleOrRefusal(request, params.reference)
+    if ('refusal' in found) {
+      return found.refusal
+    }
+    const { organiser, stored } = found
+    const { status } = stored.request
+    if (!CANCELLABLE_STATUSES.includes(status)) {
+      const message = `${NOT_CANCELLABLE_MESSAGE} this one is ${status}.`
+      return errorResponse(409, 'cancellation_not_allowed', message)
+    }
+    const payload = await objectBodyOrRefusal(request)
+    if ('refusal' in payload) {
+      return payload.refusal
+    }
+    const loaded = loadCancellationReason(payload.body)
+    if ('errors' in loaded) {
+      return validationError(loaded.errors)
+    }
+
+    stored.request.status = EVENT_REQUEST_STATUS.CANCELLED
+    const withdrawals = releaseEverything(stored, organiser.full_name)
+    addToHistory(stored.request.reference, [
+      entryBy(organiser.full_name, 'event_cancelled', { reason: loaded.text }),
+      ...withdrawals,
+    ])
     return HttpResponse.json(stored.request)
   }),
 ]

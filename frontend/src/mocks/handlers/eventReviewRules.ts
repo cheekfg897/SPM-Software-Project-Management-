@@ -8,8 +8,8 @@ import { MISSING_MESSAGE } from './eventRequestRules'
 /**
  * The backend's checks on the review actions' bodies, worded as marshmallow words them
  * (events/schemas.py DecideEventRequestSchema, RequestClarificationSchema,
- * ResubmitEventRequestSchema and RejectEventSchema; common/validation.py not_blank; ADR-0028,
- * ADR-0029, ADR-0093). Each field is checked on its own and every message is reported at once.
+ * ResubmitEventRequestSchema, RejectEventSchema and CancelEventSchema; common/validation.py
+ * not_blank; ADR-0028, ADR-0029, ADR-0093, ADR-0122). Each field is checked on its own and every message is reported at once.
  */
 
 const NOT_NULL_MESSAGE = 'Field may not be null.'
@@ -19,6 +19,7 @@ const UNKNOWN_FIELD_MESSAGE = 'Unknown field.'
 const OUTCOME_MESSAGE = 'Outcome must be approved or rejected.'
 const DECISION_FIELDS: readonly string[] = ['outcome', 'reason']
 const REJECTION_REASON_REQUIRED_MESSAGE = 'A reason is required to reject the event.'
+const CANCELLATION_REASON_REQUIRED_MESSAGE = 'A reason is required to cancel the event.'
 
 /**
  * Statuses a request awaits its first decision in (AWAITING_DECISION_STATUSES, ADR-0028,
@@ -153,18 +154,29 @@ export function loadText(
 }
 
 /**
- * A planning rejection's body, its `reason` loaded (trimmed), or what it is refused for
- * (RejectEventSchema, ADR-0093): a missing or null reason gets the schema's own message, a blank
- * or non-text one marshmallow's.
+ * A body holding only a required `reason`, loaded (trimmed), or what it is refused for
+ * (_RequiredReasonSchema): a missing or null reason gets `missingMessage`, the schema's own, and
+ * a blank or non-text one marshmallow's.
  */
-export function loadRejectionReason(
+function loadRequiredReason(
   body: Record<string, unknown>,
+  missingMessage: string,
 ): { text: string } | { errors: FieldErrors } {
   const { reason } = body
   const isMissing = reason === undefined || reason === null
-  return loadOnlyText(
-    body,
-    'reason',
-    isMissing ? [REJECTION_REASON_REQUIRED_MESSAGE] : textErrors(reason),
-  )
+  return loadOnlyText(body, 'reason', isMissing ? [missingMessage] : textErrors(reason))
+}
+
+/** A planning rejection's body (RejectEventSchema, ADR-0093), loaded or refused. */
+export function loadRejectionReason(
+  body: Record<string, unknown>,
+): { text: string } | { errors: FieldErrors } {
+  return loadRequiredReason(body, REJECTION_REASON_REQUIRED_MESSAGE)
+}
+
+/** A cancellation's body (CancelEventSchema, SCRUM-61, ADR-0122), loaded or refused. */
+export function loadCancellationReason(
+  body: Record<string, unknown>,
+): { text: string } | { errors: FieldErrors } {
+  return loadRequiredReason(body, CANCELLATION_REASON_REQUIRED_MESSAGE)
 }
