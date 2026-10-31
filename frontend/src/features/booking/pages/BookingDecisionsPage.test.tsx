@@ -14,6 +14,7 @@ import { recordRequests } from '@/test/recordRequests'
 import { renderApp } from '@/test/render'
 
 const QUEUE_URL = '/api/venues/booking-requests'
+const SUGGESTED_VENUE_NOT_ACTIVE = 'The suggested venue must be an active venue.'
 
 /**
  * The queue, as distinct from the approved bookings under it (SCRUM-84), which can hold a
@@ -239,6 +240,67 @@ describe('SCRUM-75 holding a venue from the venue booking decisions screen', () 
       )
     },
   )
+})
+
+describe('SCRUM-70 suggesting an alternative when rejecting', () => {
+  it('sends the suggested venue and period, in Singapore time, with the rejection', async () => {
+    const requests = recordRequests()
+    const { user } = renderQueue()
+    const breakout = await findRequest('Breakout room')
+
+    await user.type(breakout.getByLabelText('Reason for Breakout room'), 'Closed for repairs')
+    await user.type(breakout.getByLabelText('Suggested venue ID for Breakout room'), '33')
+    await user.type(
+      breakout.getByLabelText('Suggested start for Breakout room'),
+      '2026-11-21T09:00',
+    )
+    await user.type(breakout.getByLabelText('Suggested end for Breakout room'), '2026-11-21T12:00')
+    await user.click(breakout.getByRole('button', { name: /^Reject/ }))
+
+    await waitFor(() =>
+      expect(queue().queryByRole('article', { name: 'Breakout room' })).toBeNull(),
+    )
+    const decision = requests.find((sent) => sent.method === 'POST')
+    await expect(decision?.json()).resolves.toEqual({
+      outcome: 'rejected',
+      reason: 'Closed for repairs',
+      suggested_venue_id: 33,
+      suggested_starts_at: '2026-11-21T09:00:00+08:00',
+      suggested_ends_at: '2026-11-21T12:00:00+08:00',
+    })
+  })
+
+  it("shows the backend's message under the venue when it is not active", async () => {
+    const { user } = renderQueue()
+    const breakout = await findRequest('Breakout room')
+
+    await user.type(breakout.getByLabelText('Reason for Breakout room'), 'Closed')
+    await user.type(breakout.getByLabelText('Suggested venue ID for Breakout room'), '34')
+    await user.click(breakout.getByRole('button', { name: /^Reject/ }))
+
+    const venueField = breakout.getByLabelText('Suggested venue ID for Breakout room')
+    await waitFor(() => expect(venueField).toHaveAccessibleDescription(SUGGESTED_VENUE_NOT_ACTIVE))
+    expect(breakout.queryByRole('alert')).not.toBeInTheDocument()
+    expect(queue().getByRole('article', { name: 'Breakout room' })).toBeInTheDocument()
+  })
+
+  it("shows the backend's refusal under the period when it is sent with an approval", async () => {
+    const { user } = renderQueue()
+    const breakout = await findRequest('Breakout room')
+
+    await user.type(
+      breakout.getByLabelText('Suggested start for Breakout room'),
+      '2026-11-21T09:00',
+    )
+    await user.type(breakout.getByLabelText('Suggested end for Breakout room'), '2026-11-21T12:00')
+    await user.click(breakout.getByRole('button', { name: /^Approve/ }))
+
+    expect(
+      await breakout.findAllByText(
+        'An alternative can only be suggested when rejecting a request.',
+      ),
+    ).toHaveLength(2)
+  })
 })
 
 describe('SCRUM-92 a replacement in the decisions queue', () => {
