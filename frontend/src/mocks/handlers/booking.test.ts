@@ -371,9 +371,16 @@ function cancelBooking(reference: string, arrangementId: number, body: unknown) 
   })
 }
 
-function cancelAll(reference: string) {
+/** Why the coordinator cancels all of an event's venues; the backend requires one (ADR-0118). */
+const CANCEL_ALL_REASON = 'The conference moved online.'
+
+function cancelAll(
+  reference: string,
+  body: Record<string, unknown> = { reason: CANCEL_ALL_REASON },
+) {
   return apiRequest<Record<string, unknown>[]>(`${bookingUrl(reference)}/cancel-all`, {
     method: 'POST',
+    body,
   })
 }
 
@@ -816,15 +823,51 @@ describe('SCRUM-93 booking mock: cancelling all of an event’s arrangements', (
     ).toEqual([[heldStudio.id, 'withdrawn', null]])
   })
 
-  it('refuses while an arrangement is approved, and withdraws none of the others', async () => {
-    const error = await errorOf(cancelAll(BOOKED_EVENT.reference))
+  it('cancels an approved booking and withdraws the rest, as the backend does (ADR-0118)', async () => {
+    const cancelled = await cancelAll(BOOKED_EVENT.reference)
 
-    expect(error.status).toBe(409)
-    expect(error.message).toBe(withdrawRefusal('approved'))
-    expect(await statusesOf(BOOKED_EVENT.reference)).toEqual([
-      `${bookedSideRoom.id} rejected`,
-      `${bookedHall.id} approved`,
+    expect(cancelled.map((arrangement) => [arrangement.id, arrangement.status])).toEqual([
+      [bookedSideRoom.id, 'withdrawn'],
+      [bookedHall.id, 'cancelled'],
     ])
+    expect(await statusesOf(BOOKED_EVENT.reference)).toEqual([
+      `${bookedSideRoom.id} withdrawn`,
+      `${bookedHall.id} cancelled`,
+    ])
+  })
+
+  it.each([
+    ['none', {}, 'A reason is required to cancel a booking.'],
+    ['null', { reason: null }, 'A reason is required to cancel a booking.'],
+    ['blank', { reason: '   ' }, 'Must not be blank.'],
+    ['a number', { reason: 7 }, 'Not a valid string.'],
+  ])(
+    'refuses a cancel-all with %s as its reason, changing nothing',
+    async (_name, body, message) => {
+      const error = await errorOf(cancelAll(BOOKED_EVENT.reference, body))
+
+      expect([error.status, error.fieldErrors]).toEqual([400, { reason: [message] }])
+      expect(await statusesOf(BOOKED_EVENT.reference)).toEqual([
+        `${bookedSideRoom.id} rejected`,
+        `${bookedHall.id} approved`,
+      ])
+    },
+  )
+
+  it('names a field it does not know, as CancelBookingSchema does', async () => {
+    const error = await errorOf(
+      cancelAll(BOOKED_EVENT.reference, { reason: CANCEL_ALL_REASON, notify: true }),
+    )
+
+    expect(error.fieldErrors).toEqual({ notify: ['Unknown field.'] })
+  })
+
+  it('sends an event in Safety Review back to approved, as it is left with no venue', async () => {
+    const inSafetyReview = MOCK_BOOKING_EVENTS.inSafetyReview
+
+    await cancelAll(inSafetyReview.reference)
+
+    expect(bookingEventByReference(inSafetyReview.reference)?.status).toBe('approved')
   })
 
   it('answers 404 for an event the coordinator does not coordinate', async () => {
@@ -921,7 +964,6 @@ describe('SCRUM-93 booking mock: only while the event is being planned (AC10)', 
       () => withdraw(SAFETY_REVIEW_EVENT.reference, reviewedAuditorium.id),
       withdrawRefusal('approved'),
     ],
-    ['cancel all', () => cancelAll(SAFETY_REVIEW_EVENT.reference), withdrawRefusal('approved')],
   ])(
     'lets %s through to the arrangement while the event is in Safety Review',
     async (_name, call, message) => {
@@ -930,6 +972,20 @@ describe('SCRUM-93 booking mock: only while the event is being planned (AC10)', 
       expect([error.status, error.message]).toEqual([409, message])
     },
   )
+
+  it('lets cancel all through while the event is in Safety Review, cancelling its booking', async () => {
+    const cancelled = await cancelAll(SAFETY_REVIEW_EVENT.reference)
+
+    expect(cancelled.map((arrangement) => [arrangement.id, arrangement.status])).toEqual([
+      [reviewedAuditorium.id, 'cancelled'],
+    ])
+  })
+
+  it('refuses cancel all on a confirmed event before looking at its reason', async () => {
+    const error = await errorOf(cancelAll(CONFIRMED_EVENT.reference, {}))
+
+    expect(error.status).toBe(409)
+  })
 
   it('still names a bad field of a change before looking at a confirmed event', async () => {
     const error = await errorOf(

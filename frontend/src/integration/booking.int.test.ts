@@ -18,6 +18,7 @@ import {
   approvedEvent,
   coordinatorPosts,
   EVENT_DATE,
+  eventReadyForSafetyReview,
   LEAD,
   newVenue,
   SAFETY_OFFICER,
@@ -28,6 +29,8 @@ import {
 /** A well-formed reference no database has, so the lookup finds nothing. */
 const UNKNOWN_EVENT_REFERENCE = 'EVR-NOSUCH00'
 const NOT_FOUND_MESSAGE = 'Event request not found.'
+/** A cancel-all body: the reason goes on each approved booking it cancels (ADR-0118). */
+const CANCEL_ALL = { reason: 'The conference moved online.' }
 
 /**
  * Venue Staff are made the same way as the staff account (`flask create-staff-user`), but CI does
@@ -209,7 +212,7 @@ describe('SCRUM-93 changing, withdrawing and cancelling venue arrangements again
     change: () =>
       changeArrangement(UNKNOWN_EVENT_REFERENCE, UNKNOWN_ARRANGEMENT_ID, { purpose: 'Keynote' }),
     withdraw: () => withdrawArrangement(UNKNOWN_EVENT_REFERENCE, UNKNOWN_ARRANGEMENT_ID),
-    'cancel all': () => cancelAllArrangements(UNKNOWN_EVENT_REFERENCE),
+    'cancel all': () => cancelAllArrangements(UNKNOWN_EVENT_REFERENCE, CANCEL_ALL),
   }
 
   it.each(Object.entries(CALLS))('refuses %s without a token (401)', async (_name, call) => {
@@ -289,7 +292,7 @@ describe('SCRUM-93 AC10 venue arrangements change only while the event is planne
     const calls = [
       () => withdrawArrangement(reference, arrangementId),
       () => changeArrangement(reference, arrangementId, { purpose: 'Opening plenary' }),
-      () => cancelAllArrangements(reference),
+      () => cancelAllArrangements(reference, CANCEL_ALL),
     ]
     const refusals = []
     for (const call of calls) {
@@ -337,6 +340,40 @@ describe('SCRUM-93 AC10 venue arrangements change only while the event is planne
     const refused = { status: 409, code: 'conflict', message: notInPlanning('rejected') }
     expect(await refusalsOfEachAction(reference, raised.id)).toEqual([refused, refused, refused])
   })
+})
+
+describe('SCRUM-93 AC6 cancelling all of an event’s arrangements, approved bookings included, against the backend', () => {
+  /** An approved booking needs Venue Staff, and the event a Lead. */
+  const canBook = LEAD !== null && VENUE_STAFF !== null
+
+  it.skipIf(!canBook)(
+    'needs a reason, then cancels the approved booking and withdraws the pending request',
+    async () => {
+      const { reference, bookingId } = await eventReadyForSafetyReview()
+      const venueId = await newVenue()
+      await signInAs(staffAccount())
+      const pending = await raiseBookingRequest(reference, {
+        venue_id: venueId,
+        starts_at: `${EVENT_DATE}T13:00:00+08:00`,
+        ends_at: `${EVENT_DATE}T16:00:00+08:00`,
+        purpose: 'Breakout room',
+      })
+
+      // --- No reason: refused, and nothing changes ---
+      const noReason = await refusal(cancelAllArrangements(reference, {}))
+      expect(noReason).toMatchObject({ status: 400, code: 'validation_error' })
+      expect(noReason.fieldErrors).toEqual({
+        reason: ['A reason is required to cancel a booking.'],
+      })
+
+      // --- With one: the booking is cancelled and the request withdrawn, in period order ---
+      const retired = await cancelAllArrangements(reference, CANCEL_ALL)
+      expect(retired.map((arrangement) => [arrangement.id, arrangement.status])).toEqual([
+        [bookingId, 'cancelled'],
+        [pending.id, 'withdrawn'],
+      ])
+    },
+  )
 })
 
 describe("SCRUM-24 Venue Staff's list of events against the backend", () => {
