@@ -27,7 +27,8 @@ export function VenueSearchForm({ event }: VenueSearchFormProps) {
   const { filters, applyFilters } = useVenueSearchFilters()
   const { error, isFetching } = useVenueSearch(filters)
   const fieldErrors = fieldErrorsOf(error)
-  const shown = filters ?? (event === undefined ? null : filtersFromEvent(event))
+  const eventFilters = event === undefined ? null : filtersFromEvent(event)
+  const shown = filters ?? eventFilters
 
   function handleSubmit(submitted: FormEvent<HTMLFormElement>) {
     submitted.preventDefault()
