@@ -24,6 +24,7 @@ from app.modules.venue.models import (
 )
 from app.modules.venue.schemas import BookingRequestAsShown
 from tests.venue.conftest import (
+    CANCEL_ALL_BODY,
     COORDINATOR_ID,
     SECOND_PERIOD,
     SavedEvent,
@@ -279,7 +280,7 @@ def test_a_coordinator_who_is_not_assigned_cannot_withdraw(
 
 def _cancel_all(event: EventRequest, session: Session) -> list[BookingRequestAsShown]:
     return services.cancel_all_arrangements(
-        event.reference, coordinator_id=COORDINATOR_ID, session=session
+        event.reference, CANCEL_ALL_BODY, coordinator_id=COORDINATOR_ID, session=session
     )
 
 
@@ -318,7 +319,7 @@ def test_cancelling_all_commits_once_for_the_whole_batch(
 
     monkeypatch.setattr(db_session, "commit", counting_commit)
     services.cancel_all_arrangements(
-        event.reference, coordinator_id=COORDINATOR_ID, session=db_session
+        event.reference, CANCEL_ALL_BODY, coordinator_id=COORDINATOR_ID, session=db_session
     )
     assert len(commits) == 1
 
@@ -379,7 +380,9 @@ def test_cancelling_all_for_an_event_that_is_not_the_callers_changes_nothing(
     history_before = len(_history(db_session))
 
     with pytest.raises(NotFoundError):
-        services.cancel_all_arrangements(event.reference, coordinator_id=99, session=db_session)
+        services.cancel_all_arrangements(
+            event.reference, CANCEL_ALL_BODY, coordinator_id=99, session=db_session
+        )
 
     active = services.list_active_arrangements(event.id, session=db_session)
     assert [arrangement.status for arrangement in active] == [BookingRequestStatus.PENDING] * 2

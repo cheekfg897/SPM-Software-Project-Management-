@@ -177,12 +177,21 @@ def test_withdrawing_an_arrangement_returns_200_with_the_withdrawn_request(
 def test_cancelling_all_arrangements_returns_200_with_each_retired_request(
     call_route: CallRoute, mock_services: dict[str, MagicMock], coordinator_token: str
 ) -> None:
-    response, status = _call(call_route, "venue.cancel_all_arrangements", "POST", coordinator_token)
+    body = {"reason": "The conference moved online."}
+
+    response, status = call_route(
+        "venue.cancel_all_arrangements",
+        "POST",
+        f"{PATH}/cancel-all",
+        {"reference": REFERENCE},
+        coordinator_token,
+        body=body,
+    )
 
     assert status == 200
     assert [entry["id"] for entry in response.get_json()] == [11]
     mock_services["cancel_all_arrangements"].assert_called_once_with(
-        REFERENCE, coordinator_id=COORDINATOR_ID
+        REFERENCE, body, coordinator_id=COORDINATOR_ID
     )
 
 
