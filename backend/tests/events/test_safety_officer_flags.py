@@ -28,6 +28,7 @@ from sqlalchemy.orm import Session
 from app.common.errors import ValidationError
 from app.modules.auth.models import User
 from app.modules.auth.permissions import Role
+from app.modules.equipment.models import EquipmentType
 from app.modules.events import routes
 from app.modules.events.models import (
     EquipmentLineStatus,
@@ -210,6 +211,16 @@ def test_naming_an_arrangement_twice_flags_it_once(
     assert _flags(db_session, hall.id) == [("requires_reconfirmation", FLAG_REASON)]
 
 
+def test_naming_a_line_twice_reopens_and_tells_about_it_once(
+    db_session: Session, hall: VenueBookingRequest, lines: list[EventEquipmentLine]
+) -> None:
+    _record(db_session, "rejected", reopened_line_ids=[lines[0].id, lines[0].id])
+
+    assert _significant_change_notices(TECHNICAL_SUPPORT_IDS[0]) == [
+        f"Equipment line {lines[0].id} (Item 0, 2 requested) reopened: {FLAG_REASON}"
+    ]
+
+
 def test_naming_nothing_flags_nothing_and_the_event_still_returns_to_planning(
     db_session: Session,
     hall: VenueBookingRequest,
@@ -312,17 +323,29 @@ def test_an_unknown_line_or_another_events_is_refused_and_nothing_changes(
     db_session: Session,
     hall: VenueBookingRequest,
     lines: list[EventEquipmentLine],
+    make_event_request: Callable[..., EventRequest],
+    make_equipment_line: Callable[..., EventEquipmentLine],
+    save: Callable[..., None],
     reload_event_request: ReloadEventRequest,
 ) -> None:
+    other_event = make_event_request(reference="EVR-OTHER001", coordinator_id=COORDINATOR_ID)
+    save(other_event)
+    elsewhere_type = db_session.get(EquipmentType, lines[0].equipment_type_id)
+    elsewhere = make_equipment_line(other_event, elsewhere_type)
+    save(elsewhere)
+
     errors = _field_errors(
         db_session,
         "rejected",
         flagged_arrangement_ids=[hall.id],
-        reopened_line_ids=[lines[0].id, 9999],
+        reopened_line_ids=[lines[0].id, elsewhere.id, 9999],
     )
 
     assert errors == {
-        "reopened_line_ids": ["Equipment line 9999 is not one of this event's lines."]
+        "reopened_line_ids": [
+            f"Equipment line {elsewhere.id} is not one of this event's lines.",
+            "Equipment line 9999 is not one of this event's lines.",
+        ]
     }
     assert _flags(db_session, hall.id) == []
     assert _line(db_session, lines[0].id).status is EquipmentLineStatus.FULFILLED
@@ -438,13 +461,31 @@ def test_the_coordinators_record_has_no_outcome_before_one_is_recorded(
     assert record.safety_outcome is None
 
 
+@pytest.fixture()
+def unused_venue_and_type(
+    make_venue: Callable[..., Venue],
+    make_equipment_type: Callable[..., EquipmentType],
+    save: Callable[..., None],
+) -> None:
+    """Save a venue and an equipment type nothing uses, ahead of the ones booked.
+
+    The booked venues and types then get higher ids than the arrangements and lines that
+    use them, so an id taken from the wrong row can't equal the right one.
+    """
+    save(make_venue(name="Unused"), make_equipment_type(name="Unused"))
+
+
 def test_the_safety_officers_list_gives_each_arrangement_and_line_its_id(
     db_session: Session,
+    unused_venue_and_type: None,
     hall: VenueBookingRequest,
     annex: VenueBookingRequest,
     lines: list[EventEquipmentLine],
 ) -> None:
-    """So the Safety Officer can name them (AC2)."""
+    """The ids the Safety Officer names (AC2) are the arrangement's and line's own."""
+    assert [hall.id, annex.id] != [hall.venue_id, annex.venue_id]
+    assert [line.id for line in lines] != [line.equipment_type_id for line in lines]
+
     (awaiting,) = list_events_awaiting_safety_review(session=db_session)
 
     assert [venue.id for venue in awaiting.venues] == [hall.id, annex.id]
