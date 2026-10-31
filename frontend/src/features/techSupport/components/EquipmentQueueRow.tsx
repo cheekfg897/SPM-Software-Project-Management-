@@ -26,17 +26,34 @@ function daysLeft(days: number): string {
 /** Said after a line whose reservation a change marked for reassessment (SCRUM-60 AC6). */
 const TO_REASSESS = ' (reservation to reassess)'
 
+/** The type's name from the catalogue, or its id when the catalogue doesn't list it yet. */
+function typeName(typeNames: ReadonlyMap<number, string>, equipmentTypeId: number): string {
+  return typeNames.get(equipmentTypeId) ?? `Equipment type ${equipmentTypeId}`
+}
+
 /**
- * e.g. "Projector × 2, Microphone × 4 (reservation to reassess)". A type the catalogue doesn't
- * list yet is named by its id, so its line still shows (ADR-0061).
+ * e.g. "Projector × 2, Microphone × 4 (reservation to reassess)", then each type to reassess the
+ * event has no line for, by name alone: "Lectern (reservation to reassess)" (ADR-0114 decision
+ * 22). A type the catalogue doesn't list yet is named by its id, so its line still shows
+ * (ADR-0061).
  */
-function equipmentOf(item: EquipmentAwaitingAction, typeNames: ReadonlyMap<number, string>) {
+function equipmentOf(
+  item: EquipmentAwaitingAction,
+  typeNames: ReadonlyMap<number, string>,
+): string {
   const named: string[] = []
+  const typesWithALine: number[] = []
   for (const line of item.equipment_lines) {
-    const typeName =
-      typeNames.get(line.equipment_type_id) ?? `Equipment type ${line.equipment_type_id}`
     const toReassess = item.equipment_type_ids_to_reassess.includes(line.equipment_type_id)
-    named.push(`${typeName} × ${line.quantity}${toReassess ? TO_REASSESS : ''}`)
+    named.push(
+      `${typeName(typeNames, line.equipment_type_id)} × ${line.quantity}${toReassess ? TO_REASSESS : ''}`,
+    )
+    typesWithALine.push(line.equipment_type_id)
+  }
+  for (const equipmentTypeId of item.equipment_type_ids_to_reassess) {
+    if (!typesWithALine.includes(equipmentTypeId)) {
+      named.push(`${typeName(typeNames, equipmentTypeId)}${TO_REASSESS}`)
+    }
   }
   return named.join(', ')
 }

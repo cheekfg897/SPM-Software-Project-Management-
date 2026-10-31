@@ -82,7 +82,9 @@ function equipmentEventOf(event: EventListRow): EquipmentEvent {
 
 /**
  * The event's place in the queue, or null when nothing of it is awaited (SCRUM-38 AC1, AC4): its
- * lines still requested, and those whose reservation a change marked (SCRUM-60 AC6).
+ * lines still requested, and those whose reservation a change marked (SCRUM-60 AC6). A marked
+ * reservation of a type the event has no line for queues the event with no line to show (ADR-0114
+ * decision 22).
  */
 export function awaitingRow(stored: MockEquipmentEvent): EquipmentAwaitingAction | null {
   const { event } = stored
@@ -93,7 +95,7 @@ export function awaitingRow(stored: MockEquipmentEvent): EquipmentAwaitingAction
   const awaited = stored.lines.filter(
     (line) => line.status === 'requested' || typeIdsToReassess.includes(line.equipment_type_id),
   )
-  if (awaited.length === 0) {
+  if (awaited.length === 0 && typeIdsToReassess.length === 0) {
     return null
   }
   return {

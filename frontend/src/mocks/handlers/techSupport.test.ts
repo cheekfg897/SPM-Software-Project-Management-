@@ -125,6 +125,27 @@ describe('SCRUM-38 mock of the equipment awaiting action', () => {
     },
   )
 
+  it('queues an event whose marked reservation has no line, with no line to show (SCRUM-60 AC6)', () => {
+    const row = awaitingRow({
+      id: 98,
+      createdAt: '2026-10-01T00:00:00+00:00',
+      event: {
+        reference: 'EVR-NOLINE98',
+        name: 'No Line',
+        status: EVENT_REQUEST_STATUS.APPROVED,
+        proposed_date: MOCK_TODAY,
+        end_date: MOCK_TODAY,
+        start_time: '10:00:00',
+        end_time: '11:00:00',
+      },
+      lines: [],
+      equipmentTypeIdsToReassess: [3],
+    })
+
+    expect(row?.equipment_lines).toEqual([])
+    expect(row?.equipment_type_ids_to_reassess).toEqual([3])
+  })
+
   it('keeps an event with several requested lines as one row, its lines in the order added', async () => {
     signInAs(MOCK_ACCOUNTS.technicalSupport)
 
