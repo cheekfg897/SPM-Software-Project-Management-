@@ -11,12 +11,11 @@ SCRUM-59 "Reconfirm or reject a booking flagged after a change" (ADR-0112):
 * ``event_history_entry_kind`` gains ``venue_booking_reconfirmed``, the entry that
   records it, with the period and occupancy before and after (AC2, AC10).
 
-Revises 0048 (PR #149, SCRUM-89), which merges first; until it does, this branch has
-no 0048 and can't be upgraded on its own. If another migration takes 0049's place
-first, re-point ``down_revision`` and add its values to the lists below. Each value is
-added outside the migration's transaction, with ``IF NOT EXISTS``, as 0039 and 0047
-do. Downgrading deletes the rows of the new values and rebuilds each type without them
-(lossy, like 0047's).
+Revises 0048 (PR #149, SCRUM-89), the newest migration on main when this one was added.
+If another migration takes 0049's place first, re-point ``down_revision`` and add its
+values to the lists below. Each value is added outside the migration's transaction,
+with ``IF NOT EXISTS``, as 0039 and 0047 do. Downgrading deletes the rows of the new
+values and rebuilds each type without them (lossy, like 0047's).
 """
 
 from __future__ import annotations
