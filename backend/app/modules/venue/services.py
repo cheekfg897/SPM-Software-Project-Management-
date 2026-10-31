@@ -2876,6 +2876,27 @@ CANCEL_NOT_APPROVED_MESSAGE = "Only an approved booking can be cancelled; this o
 CANCELLED_DETAIL = "Venue arrangement {id} at {venue}, {starts} to {ends}, was cancelled."
 
 
+def _locked_arrangement_of_event(
+    event_id: int, arrangement_id: int, session: Session
+) -> VenueBookingRequest:
+    """One of the event's own arrangements, read under a row lock (ADR-0045).
+
+    Locked as SCRUM-59's reconfirm and reject lock it, so a reject and a cancel, or two
+    cancels, take turns. An id that belongs to another event is reported as missing,
+    as :func:`_arrangement_of_event` reports it (ADR-0035 §6).
+
+    Raises:
+        NotFoundError: 404 — the event has no arrangement with that id.
+    """
+    try:
+        arrangement = _locked_request(arrangement_id, session)
+    except NotFoundError:
+        raise NotFoundError(ARRANGEMENT_NOT_FOUND_MESSAGE) from None
+    if arrangement.event_id != event_id:
+        raise NotFoundError(ARRANGEMENT_NOT_FOUND_MESSAGE)
+    return arrangement
+
+
 def cancel_approved_booking(
     reference: str,
     arrangement_id: int,
@@ -2912,7 +2933,7 @@ def cancel_approved_booking(
     event = event_services.get_event_for_booking_cancellation(
         reference, coordinator_id, session=session
     )
-    arrangement = _arrangement_of_event(event.id, arrangement_id, sess)
+    arrangement = _locked_arrangement_of_event(event.id, arrangement_id, sess)
     if arrangement.status is not BookingRequestStatus.APPROVED:
         raise ConflictError(CANCEL_NOT_APPROVED_MESSAGE.format(status=arrangement.status.value))
     cancellation = load_or_raise(CancelBookingSchema(), payload)

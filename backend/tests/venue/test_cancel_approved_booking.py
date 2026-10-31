@@ -48,6 +48,7 @@ from tests.venue.conftest import (
     edit_event,
     flags_on,
     history_entries,
+    locked_request_reads,
     period,
     raise_booking,
     reload_event,
@@ -395,6 +396,19 @@ def test_an_unknown_arrangement_is_not_found(db_session: Session, event: EventRe
         _cancel(event, 9999, db_session)
 
     assert refused.value.message == "Venue arrangement not found."
+
+
+def test_the_arrangement_is_read_under_a_row_lock(
+    db_session: Session, event: EventRequest, booked: int
+) -> None:
+    """Read under a row lock, as SCRUM-59's reconfirm and reject read it (ADR-0045).
+
+    A reject and a cancel, or two cancels, take turns rather than both writing their
+    history and notices.
+    """
+    reads = locked_request_reads(db_session, lambda: _cancel(event, booked, db_session))
+
+    assert len(reads) == 1
 
 
 # --------------------------------------------------------------------------
