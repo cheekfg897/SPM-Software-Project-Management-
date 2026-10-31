@@ -142,8 +142,8 @@ class BookingRequestStatus(str, enum.Enum):
     #: Venue Staff approved the venue and are holding it tentatively until the
     #: coordinator finalises the event's arrangements (SCRUM-75, ADR-0045).
     ON_HOLD = "on_hold"
-    #: The coordinator retracted the arrangement before Venue Staff decided it
-    #: (SCRUM-93 AC6). The row stays so SCRUM-75 can ignore it when counting venues.
+    #: The coordinator retracted the arrangement before its final approval (SCRUM-93
+    #: AC6, ADR-0118). The row stays so SCRUM-75 can ignore it when counting venues.
     WITHDRAWN = "withdrawn"
     #: Venue Staff approved the request, so the venue is booked (SCRUM-43 AC3).
     APPROVED = "approved"

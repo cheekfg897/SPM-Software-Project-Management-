@@ -1504,20 +1504,28 @@ def list_booking_requests_for_event(
 
 
 WITHDRAW_NOT_ALLOWED_MESSAGE = (
-    "Only a pending, conflicting, rejected or expired arrangement can be withdrawn;"
+    "Only a pending, conflicting, held, rejected or expired arrangement can be withdrawn;"
     " this one is {status}."
 )
 #: A rejected arrangement stays active until its coordinator withdraws it (SCRUM-43), so
 #: it can be withdrawn like a pending one, and so can a Conflicting one (SCRUM-44) and
-#: one whose hold expired (SCRUM-94). An approved one has made a booking, which
-#: withdrawing would leave behind, so it cannot.
+#: one whose hold expired (SCRUM-94). An On Hold one can too, and its hold is released
+#: with it (the Product Owner's decision of 19 Oct, ADR-0118). An approved one has made
+#: a booking, which withdrawing would leave behind, so it cannot.
 WITHDRAWABLE_REQUEST_STATUSES = frozenset(
     {
         BookingRequestStatus.PENDING,
         BookingRequestStatus.CONFLICTING,
+        BookingRequestStatus.ON_HOLD,
         BookingRequestStatus.REJECTED,
         BookingRequestStatus.EXPIRED,
     }
+)
+#: Arrangements whose venue is held for them: by a booking once approved, by a tentative
+#: hold while On Hold (SCRUM-75). Releasing an event's venues releases these rather than
+#: withdrawing them, so Venue Staff are told the venue is free (ADR-0103).
+VENUE_HOLDING_REQUEST_STATUSES = frozenset(
+    {BookingRequestStatus.APPROVED, BookingRequestStatus.ON_HOLD}
 )
 CHANGE_NOT_PENDING_MESSAGE = "Only a pending arrangement can be changed; this one is {status}."
 
@@ -1768,18 +1776,32 @@ def _arrangement_of_event(
     return arrangement
 
 
+def _release_hold(arrangement: VenueBookingRequest) -> None:
+    """Cancel an On Hold arrangement's tentative hold, so its venue is free at once.
+
+    For rejecting a hold (SCRUM-75 AC7) and withdrawing one (ADR-0118). The hold's
+    booking keeps its expiry; the arrangement stops showing it once it leaves On Hold.
+    """
+    arrangement.booking.status = BookingStatus.CANCELLED
+
+
 def _withdraw_and_record(
     arrangement: VenueBookingRequest, coordinator_id: int, session: Session | None
 ) -> None:
     """Withdraw one arrangement and write its history entry, without committing.
 
+    An On Hold arrangement's hold is released with it, in the same transaction.
+
     Raises:
-        ConflictError: 409 — the arrangement is not pending, conflicting or rejected.
+        ConflictError: 409 — the arrangement is not pending, conflicting, On Hold,
+            rejected or expired.
     """
     from app.modules.events import services as event_services  # circular at import time
 
     if arrangement.status not in WITHDRAWABLE_REQUEST_STATUSES:
         raise ConflictError(WITHDRAW_NOT_ALLOWED_MESSAGE.format(status=arrangement.status.value))
+    if arrangement.status is BookingRequestStatus.ON_HOLD:
+        _release_hold(arrangement)
     arrangement.status = BookingRequestStatus.WITHDRAWN
     event_services.record_venue_arrangement_withdrawn(
         arrangement.event_id,
@@ -1799,15 +1821,17 @@ def withdraw_arrangement(
     coordinator_id: int,
     session: Session | None = None,
 ) -> BookingRequestAsShown:
-    """Retract one of an event's arrangements while it is pending or rejected (AC6).
+    """Retract one of an event's arrangements before its final approval (AC6).
 
-    The event's other arrangements are untouched. The withdrawal and its history entry
-    are saved in one commit.
+    It may be pending, conflicting, On Hold, rejected or expired. Withdrawing an On Hold
+    one releases its hold, so the venue is free for that period at once (ADR-0118). The
+    event's other arrangements are untouched. The withdrawal, any release and the
+    history entry are saved in one commit.
 
     Raises:
         NotFoundError: 404 — no such event among the coordinator's own, or no such
             arrangement on it.
-        ConflictError: 409 — the arrangement is not pending, conflicting or rejected.
+        ConflictError: 409 — the arrangement is approved or already retired.
     """
     from app.modules.events import services as event_services  # circular at import time
 
@@ -1826,10 +1850,10 @@ def cancel_all_arrangements(
 
     AC6 keeps one arrangement's fate from touching the others unless the coordinator
     asks for all of them, which is this call rather than a loop the client writes.
-    Every pending or rejected arrangement is withdrawn. An approved one cannot be (its
-    booking would be left behind), so the call is refused while the event has one;
-    cancelling an approved booking is not yet in any story. An event with none is not
-    an error.
+    Every arrangement not yet approved is withdrawn, and an On Hold one's hold
+    released (ADR-0118). An approved one cannot be (its booking would be left
+    behind), so the call is refused while the event has one; cancelling an approved
+    booking is not yet in any story. An event with none is not an error.
 
     Returns:
         The retired arrangements, earliest period first, or an empty list.
@@ -2402,7 +2426,7 @@ def decide_booking_request(
         _release_replaced(request, decided_by, session)
     elif request.status is BookingRequestStatus.ON_HOLD:
         # Rejecting a hold releases the venue at once (SCRUM-75 AC7).
-        request.booking.status = BookingStatus.CANCELLED
+        _release_hold(request)
     request.decision_reason = reason
     _save_decision(request, decision, booking, decided_by=decided_by, session=session)
     _notify_about_booking(
@@ -2785,8 +2809,8 @@ def release_event_arrangements(
     """Free every venue an event still has arranged, without committing (SCRUM-49 AC10).
 
     For an event rejected during planning, whose venues are released as a cancelled
-    event's are (SCRUM-61 AC3, AC8, ADR-0093). An arrangement Venue Staff haven't
-    approved is withdrawn, with its history entry, as the coordinator would withdraw it
+    event's are (SCRUM-61 AC3, AC8, ADR-0093). An arrangement that doesn't hold its
+    venue is withdrawn, with its history entry, as the coordinator would withdraw it
     (SCRUM-93). One that holds the venue, Approved or On Hold, is Released and its
     booking or hold cancelled, so the venue is free for that period again. Arrangements
     already withdrawn or released are left as they are. The caller commits, with the
@@ -2805,7 +2829,7 @@ def release_event_arrangements(
     """
     released = []
     for arrangement in list_active_arrangements(event_id, session=session):
-        if arrangement.status in WITHDRAWABLE_REQUEST_STATUSES:
+        if arrangement.status not in VENUE_HOLDING_REQUEST_STATUSES:
             _withdraw_and_record(arrangement, coordinator_id, session)
             continue
         _release_and_free_venue(arrangement, session)
