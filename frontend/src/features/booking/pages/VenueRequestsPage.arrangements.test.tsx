@@ -134,22 +134,18 @@ describe('SCRUM-93 venue arrangements on the venue requests page', () => {
     expect(await item(bookedSideRoom.purpose)).not.toHaveTextContent('alternative venue')
   })
 
-  it('shows the backend’s refusal in the arrangement it was about', async () => {
-    const view = openEvent(MOCK_BOOKING_EVENTS.booked.reference)
-
-    await view.user.click(
-      await screen.findByRole('button', { name: `Withdraw ${bookedHall.purpose}` }),
-    )
+  it('offers no Withdraw on an approved booking, which the backend refuses (SCRUM-111)', async () => {
+    openEvent(MOCK_BOOKING_EVENTS.booked.reference)
 
     const hall = await item(bookedHall.purpose)
-    expect(await within(hall).findByRole('alert')).toHaveTextContent(
-      'Only a pending, conflicting, rejected or expired arrangement can be withdrawn; this one is approved.',
-    )
     expect(hall).toHaveTextContent('Approved')
-    expect(within(await item(bookedSideRoom.purpose)).queryByRole('alert')).not.toBeInTheDocument()
+    expect(within(hall).queryByRole('button', { name: /^Withdraw/ })).not.toBeInTheDocument()
+    expect(
+      within(hall).getByRole('button', { name: `Cancel booking ${bookedHall.purpose}` }),
+    ).toBeInTheDocument()
   })
 
-  it('shows whatever refusal the backend sends, such as one naming the event’s status', async () => {
+  it('shows the backend’s refusal, such as one naming the event’s status, in the arrangement it was about', async () => {
     const message = 'Venue arrangements cannot be withdrawn; this event is Confirmed.'
     server.use(
       http.post('/api/venues/events/:reference/booking-requests/:id/withdraw', () =>
@@ -165,6 +161,9 @@ describe('SCRUM-93 venue arrangements on the venue requests page', () => {
     expect(await within(await item(rejectedMain.purpose)).findByRole('alert')).toHaveTextContent(
       message,
     )
+    expect(
+      within(await item(rejectedBreakout.purpose)).queryByRole('alert'),
+    ).not.toBeInTheDocument()
   })
 
   it('opens the change form holding the arrangement’s current values', async () => {
