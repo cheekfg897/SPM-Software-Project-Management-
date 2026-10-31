@@ -125,6 +125,18 @@ def _booking_of(session: Session, event: EventRequest, venue: Venue) -> Booking:
     return session.scalars(stmt).one()
 
 
+def _refused_while_replacement_waits(
+    session: Session, request_id: int, replacement_id: int
+) -> None:
+    """Reconfirming the booking is refused, naming the replacement that waits (AC6)."""
+    with pytest.raises(ConflictError) as excinfo:
+        _reconfirm_as_listed(session, request_id)
+    assert excinfo.value.message == (
+        f"Cannot reconfirm: replacement request #{replacement_id} for this booking is still"
+        " waiting for a decision."
+    )
+
+
 def _reconfirmed_notices(user_id: int) -> list[str | None]:
     rows = []
     for notification in list_notifications_for_recipient(user_id):
@@ -171,6 +183,22 @@ def buffered(
     request_id = approved_arrangement(venue, event, db_session, starts_at=at(10).isoformat())
     edit_event(db_session, event, NEXT_DAY)
     return venue, request_id
+
+
+@pytest.fixture()
+def replacement(
+    db_session: Session, event: EventRequest, breakout_room: Venue, main_id: int, moved: None
+) -> VenueBookingRequest:
+    """A Pending replacement for the Auditorium booking, at the Breakout room."""
+    return raise_booking(
+        breakout_room,
+        event,
+        db_session,
+        replaces_request_id=main_id,
+        expected_occupancy=30,
+        starts_at=at(9, day=2).isoformat(),
+        ends_at=at(12, day=2).isoformat(),
+    )
 
 
 # --------------------------------------------------------------------------
@@ -659,28 +687,32 @@ def test_a_breakout_room_keeps_its_occupancy_whatever_the_attendance(
 
 
 def test_reconfirming_waits_while_a_replacement_for_the_booking_is_pending(
-    db_session: Session, event: EventRequest, breakout_room: Venue, main_id: int, moved: None
+    db_session: Session, main_id: int, replacement: VenueBookingRequest
 ) -> None:
-    replacement = raise_booking(
-        breakout_room,
-        event,
-        db_session,
-        replaces_request_id=main_id,
-        expected_occupancy=30,
-        starts_at=at(9, day=2).isoformat(),
-        ends_at=at(12, day=2).isoformat(),
-    )
-    with pytest.raises(ConflictError) as excinfo:
-        _reconfirm_as_listed(db_session, main_id)
-    assert excinfo.value.message == (
-        f"Cannot reconfirm: replacement request #{replacement.id} for this booking is still"
-        " waiting for a decision."
-    )
+    _refused_while_replacement_waits(db_session, main_id, replacement.id)
 
     decide(replacement.id, "rejected", db_session, reason="Room taken.")
     _reconfirm_as_listed(db_session, main_id)
 
     assert _period(db_session, main_id) == (at(9, day=2), at(12, day=2))
+
+
+@pytest.mark.parametrize(
+    "status",
+    [BookingRequestStatus.CONFLICTING, BookingRequestStatus.ON_HOLD],
+    ids=lambda status: status.value,
+)
+def test_reconfirming_waits_while_a_replacement_is_conflicting_or_on_hold_too(
+    db_session: Session,
+    main_id: int,
+    replacement: VenueBookingRequest,
+    status: BookingRequestStatus,
+) -> None:
+    """Both still wait for Venue Staff's decision (ADR-0112 decision 8)."""
+    replacement.status = status
+    db_session.commit()
+
+    _refused_while_replacement_waits(db_session, main_id, replacement.id)
 
 
 def test_reconfirming_one_booking_leaves_the_events_others_flagged(
