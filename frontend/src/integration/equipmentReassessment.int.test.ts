@@ -404,7 +404,7 @@ describe('SCRUM-60 settling a reservation with an outcome against the backend', 
 
       expect(refused).toMatchObject({
         status: 400,
-        fieldErrors: { quantity: ['The event asks for 2 of these, and 2 are already reserved.'] },
+        fieldErrors: { quantity: ['The event asks for 2 of these and already has 2 reserved.'] },
       })
     },
   )
