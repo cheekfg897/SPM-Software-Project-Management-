@@ -1826,17 +1826,21 @@ def withdraw_arrangement(
     It may be pending, conflicting, On Hold, rejected or expired. Withdrawing an On Hold
     one releases its hold, so the venue is free for that period at once (ADR-0118). The
     event's other arrangements are untouched. The withdrawal, any release and the
-    history entry are saved in one commit.
+    history entry are saved in one commit. The event must be Approved or in Safety
+    Review (AC10); its status is checked before the arrangement is looked for.
 
     Raises:
         NotFoundError: 404 — no such event among the coordinator's own, or no such
             arrangement on it.
-        ConflictError: 409 — the arrangement is approved or already retired.
+        ConflictError: 409 — the event isn't being planned, or the arrangement is
+            approved or already retired; the message names the status.
     """
     from app.modules.events import services as event_services  # circular at import time
 
     sess = resolve_session(session)
-    event = event_services.get_event_for_coordinator(reference, coordinator_id, session=session)
+    event = event_services.get_event_for_arrangement_change(
+        reference, coordinator_id, session=session
+    )
     arrangement = _arrangement_of_event(event.id, arrangement_id, sess)
     _withdraw_and_record(arrangement, coordinator_id, session)
     sess.commit()
@@ -1853,19 +1857,23 @@ def cancel_all_arrangements(
     Every arrangement not yet approved is withdrawn, and an On Hold one's hold
     released (ADR-0118). An approved one cannot be (its booking would be left
     behind), so the call is refused while the event has one; cancelling an approved
-    booking is not yet in any story. An event with none is not an error.
+    booking is not yet in any story. An event with none is not an error. The event must
+    be Approved or in Safety Review (AC10).
 
     Returns:
         The retired arrangements, earliest period first, or an empty list.
 
     Raises:
         NotFoundError: 404 — no such event among the coordinator's own.
-        ConflictError: 409 — an arrangement is approved; nothing is withdrawn.
+        ConflictError: 409 — the event isn't being planned, naming its status, or an
+            arrangement is approved; nothing is withdrawn.
     """
     from app.modules.events import services as event_services  # circular at import time
 
     sess = resolve_session(session)
-    event = event_services.get_event_for_coordinator(reference, coordinator_id, session=session)
+    event = event_services.get_event_for_arrangement_change(
+        reference, coordinator_id, session=session
+    )
     arrangements = list_active_arrangements(event.id, session=session)
     for arrangement in arrangements:
         _withdraw_and_record(arrangement, coordinator_id, session)
@@ -1907,20 +1915,25 @@ def change_arrangement(
     a change that outgrows the venue needs a justification just as raising one does.
     That check runs before anything is written, so a refused change leaves the
     arrangement exactly as it was. A change that alters nothing writes no history entry.
+    The body is checked first, then the event, which must be Approved or in Safety
+    Review (AC10), then the arrangement.
 
     Raises:
         ValidationError: 400 — invalid values, or no justification for a venue the
             changed arrangement no longer suits.
         NotFoundError: 404 — no such event among the coordinator's own, or no such
             arrangement on it.
-        ConflictError: 409 — the arrangement is no longer pending.
+        ConflictError: 409 — the event isn't being planned, or the arrangement is no
+            longer pending; the message names the status.
     """
     from app.modules.events import services as event_services  # circular at import time
 
     schema = ChangeArrangementSchema()
     data = load_or_raise(schema, payload, partial=tuple(schema.fields))
     sess = resolve_session(session)
-    event = event_services.get_event_for_coordinator(reference, coordinator_id, session=session)
+    event = event_services.get_event_for_arrangement_change(
+        reference, coordinator_id, session=session
+    )
     arrangement = _arrangement_of_event(event.id, arrangement_id, sess)
     if arrangement.status is not BookingRequestStatus.PENDING:
         raise ConflictError(CHANGE_NOT_PENDING_MESSAGE.format(status=arrangement.status.value))
