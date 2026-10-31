@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.modules.auth.models import User
 from app.modules.auth.permissions import ALL_ROLES, Role
 from app.modules.equipment.models import EquipmentReservation, EquipmentType
+from app.modules.equipment.services import reserve_equipment
 from app.modules.events import routes
 from app.modules.events.models import (
     EquipmentLineStatus,
@@ -880,3 +881,15 @@ def hold_on_the_20th(
         return other
 
     return _hold
+
+
+@pytest.fixture()
+def projectors_without_a_line(
+    saved_users: list[User], saved_event_request: EventRequest, equipment_type: EquipmentType
+) -> None:
+    """Two projectors reserved for ``saved_event_request``, which has no projector line.
+
+    Reserving a type the event has no line for is allowed (ADR-0114 decision 18).
+    """
+    units = {"equipment_type_id": equipment_type.id, "quantity": 2}
+    reserve_equipment(saved_event_request.reference, units, reserved_by=5)

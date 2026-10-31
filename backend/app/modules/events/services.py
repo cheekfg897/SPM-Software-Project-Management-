@@ -2471,6 +2471,20 @@ def _changes_timing(changes: list[FieldChange]) -> bool:
     return any(change.field in _TIMING_FIELDS for change in changes)
 
 
+def _has_equipment_to_reassess(event_request: EventRequest, session: Session) -> bool:
+    """Whether the event has an equipment line, or a reservation marked to reassess.
+
+    A type the event has no line for may still be reserved (ADR-0114 decision 18), and
+    a date or time change marks that reservation too (SCRUM-60 AC1, decision 22).
+    """
+    if event_request.equipment_lines:
+        return True
+    to_reassess = equipment_services.list_reservations_to_reassess(
+        event_request.id, session=session
+    )
+    return len(to_reassess) > 0
+
+
 def _reassess_arrangements(
     event_request: EventRequest, changes: list[FieldChange], session: Session
 ) -> None:
@@ -2478,12 +2492,15 @@ def _reassess_arrangements(
 
     Technical Support Staff get one ``significant_change`` notification per edit
     when a changed field could affect equipment already requested and the event has
-    at least one equipment line (AC2); with no lines there is nothing to reassess.
+    at least one equipment line (AC2), or a reservation the edit marked for
+    reassessment (SCRUM-60 AC1); otherwise there is nothing to reassess.
     Runs after the edit's own commit, so a failed notification never rolls back a
     saved edit; the failure is logged, not raised (ADR-0015). Venue arrangements are
     flagged in the edit's own commit instead (:func:`_flag_venue_arrangements`).
     """
-    if not _affects_equipment(changes) or not event_request.equipment_lines:
+    if not _affects_equipment(changes):
+        return
+    if not _has_equipment_to_reassess(event_request, session):
         return
     _notify_technical_support(event_request, NotificationKind.SIGNIFICANT_CHANGE, session)
 

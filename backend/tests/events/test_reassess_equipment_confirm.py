@@ -342,6 +342,36 @@ def test_a_reservation_whose_line_has_no_outcome_is_settled_by_recording_one(
     assert reservation_rows() == [(equipment_type.id, 1, OLD_STARTS_AT, OLD_ENDS_AT, True)]
 
 
+@pytest.mark.parametrize(
+    ("held_elsewhere", "kept"),
+    [(8, [2]), (9, [1]), (10, [])],
+    ids=["all-free", "one-short", "none-free"],
+)
+def test_confirming_a_type_with_no_line_keeps_what_is_free_and_releases_the_rest(
+    projectors_without_a_line: None,
+    equipment_type: EquipmentType,
+    hold_on_the_20th: Callable[[int], EventRequest],
+    edit_event: EditEvent,
+    reservation_rows: ReservationRows,
+    held_elsewhere: int,
+    kept: list[int],
+) -> None:
+    """With no line there is no outcome to record, so confirming is the review.
+
+    The event's own reservation is saved first; the other event's hold comes last.
+    """
+    hold_on_the_20th(held_elsewhere)
+    edit_event(COORDINATOR_ID, MOVE_TO_THE_20TH)
+
+    _confirm(equipment_type)
+
+    expected = []
+    for quantity in kept:
+        expected.append((equipment_type.id, quantity, NEW_STARTS_AT, NEW_ENDS_AT, False))
+    expected.append((equipment_type.id, held_elsewhere, NEW_STARTS_AT, NEW_ENDS_AT, False))
+    assert reservation_rows() == expected
+
+
 def test_a_type_with_nothing_marked_has_nothing_to_confirm(
     three_projectors: EventEquipmentLine,
     equipment_type: EquipmentType,
