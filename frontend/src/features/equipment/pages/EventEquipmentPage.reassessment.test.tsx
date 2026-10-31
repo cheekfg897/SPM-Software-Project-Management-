@@ -1,5 +1,5 @@
 import { screen, waitFor, within } from '@testing-library/react'
-import { http, HttpResponse } from 'msw'
+import { delay, http, HttpResponse } from 'msw'
 
 import { eventEquipmentPath } from '@/config/routes'
 import { MOCK_ACCOUNTS, mockSessionFor } from '@/mocks/handlers/auth'
@@ -196,6 +196,18 @@ describe('SCRUM-60 Equipment page: reservations to reassess', () => {
 })
 
 describe('SCRUM-60 Equipment page: confirming a reservation (AC3)', () => {
+  it('shows only the Confirm being sent as busy', async () => {
+    const speaker = projectorReassessment({ equipment_type_id: 4, equipment_type_name: 'Speaker' })
+    server.use(
+      http.get(REASSESSMENTS_PATH, () => HttpResponse.json([projectorReassessment({}), speaker])),
+      http.post(`${REASSESSMENTS_PATH}/1/confirm`, () => delay('infinite')),
+    )
+    await confirmAsTechnicalSupport('Projector')
+
+    await waitFor(() => expect(confirmButtonFor('Projector')).toHaveAttribute('aria-busy', 'true'))
+    expect(confirmButtonFor('Speaker')).toHaveAttribute('aria-busy', 'false')
+  })
+
   it('confirms the type and reads the equipment again, so it leaves the list', async () => {
     const requests = recordRequests()
     await confirmAsTechnicalSupport('Projector')

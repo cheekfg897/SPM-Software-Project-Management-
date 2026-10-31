@@ -1,15 +1,12 @@
 import { Button, ErrorAlert } from '@/components/ui'
-import { ROLE } from '@/config/roles'
-import type { Role } from '@/config/roles'
 import { formatShortDate, formatTimeRange } from '@/lib/formatDate'
 import { selectSessionUser, useAppSelector } from '@/store'
 
 import type { ReservationReassessment } from '../api'
+import { EQUIPMENT_RESERVER_ROLES } from '../constants'
 import { useConfirmReassessment } from '../hooks'
 
 const TITLE = 'Reservations to reassess'
-/** Only Technical Support confirm a reservation for the event's period now (SCRUM-60 AC3). */
-const CONFIRMER_ROLES: readonly Role[] = [ROLE.TECHNICAL_SUPPORT_STAFF]
 
 /** e.g. "12 Oct, 7:30 pm – 10:00 pm", as the reservation list writes a period. */
 function periodText(startsAt: string, endsAt: string): string {
@@ -125,7 +122,8 @@ interface ReassessmentListProps {
  */
 export function ReassessmentList({ reference, reassessments }: ReassessmentListProps) {
   const user = useAppSelector(selectSessionUser)
-  const canConfirm = user !== null && CONFIRMER_ROLES.includes(user.role)
+  // Confirming moves a reservation, which only Technical Support do (SCRUM-60 AC3).
+  const canConfirm = user !== null && EQUIPMENT_RESERVER_ROLES.includes(user.role)
   const confirm = useConfirmReassessment(reference)
 
   if (reassessments.length === 0) {
@@ -149,7 +147,7 @@ export function ReassessmentList({ reference, reassessments }: ReassessmentListP
             reassessment={reassessment}
             canConfirm={canConfirm}
             onConfirm={(equipmentTypeId) => confirm.mutate(equipmentTypeId)}
-            isConfirming={confirm.isPending}
+            isConfirming={confirm.isPending && confirm.variables === reassessment.equipment_type_id}
           />
         ))}
       </ul>
