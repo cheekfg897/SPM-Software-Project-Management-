@@ -740,6 +740,7 @@ describe('SCRUM-93 booking mock: changing an arrangement', () => {
     ],
     ['venue_id', { venue_id: TINY_VENUE.id }, 'Unknown field.'],
     ['starts_at', { starts_at: '2026-11-10T10:00:00+08:00' }, 'Unknown field.'],
+    ['ends_at', { ends_at: '2026-11-10T13:00:00+08:00' }, 'Unknown field.'],
   ])('refuses %s in %j before looking for the event', async (field, body, message) => {
     const error = await errorOf(change('EVR-NOSUCH00', 1, body))
 
