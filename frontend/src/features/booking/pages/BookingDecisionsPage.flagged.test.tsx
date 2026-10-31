@@ -182,7 +182,7 @@ describe('SCRUM-59 flagged bookings on the venue booking page', () => {
     })
   })
 
-  it("shows the backend's field error when a venue too small needs a reason", async () => {
+  it("shows the backend's field error under its field, and not again as an alert", async () => {
     const { user } = renderPage()
     const stage = await findFlagged('Stage')
 
@@ -194,6 +194,7 @@ describe('SCRUM-59 flagged bookings on the venue booking page', () => {
       ),
     ).toBeInTheDocument()
     expect(stage.getByLabelText('Reason for Stage')).toHaveAttribute('aria-invalid', 'true')
+    expect(stage.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it("shows the backend's 409 message, and reads the list again after the refusal", async () => {
