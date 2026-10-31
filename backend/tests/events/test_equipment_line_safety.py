@@ -187,7 +187,7 @@ def test_a_refused_duplicate_line_keeps_the_safety_approval(
 
 def test_a_line_added_to_an_event_without_an_approval_withdraws_nothing(
     saved_users: list[User],
-    saved_event_request: EventRequest,
+    approved_event_request: EventRequest,
     equipment_type: EquipmentType,
     safety_withdrawals_of: WithdrawalsOf,
 ) -> None:
@@ -195,4 +195,4 @@ def test_a_line_added_to_an_event_without_an_approval_withdraws_nothing(
 
     add_equipment_line(COORDINATOR_ID, REFERENCE, payload)
 
-    assert safety_withdrawals_of(saved_event_request.id) == []
+    assert safety_withdrawals_of(approved_event_request.id) == []

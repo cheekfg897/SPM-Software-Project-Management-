@@ -248,6 +248,7 @@ def test_a_partly_arranged_event_shows_only_the_lines_still_requested(
     assert _summary(awaiting) == [(REFERENCE, [(equipment_type.id, 2)], 30)]
 
 
+@pytest.mark.usefixtures("approved_event_request")
 def test_a_removed_line_drops_off_the_list(
     two_lines: list[EventEquipmentLine], microphone: EquipmentType, today: date
 ) -> None:
@@ -264,6 +265,7 @@ def test_a_removed_line_drops_off_the_list(
 # --------------------------------------------------------------------------
 
 
+@pytest.mark.usefixtures("approved_event_request")
 def test_a_line_changed_after_its_outcome_is_listed_again(
     two_lines: list[EventEquipmentLine], equipment_type: EquipmentType, today: date
 ) -> None:

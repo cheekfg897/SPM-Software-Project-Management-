@@ -1,9 +1,11 @@
 """Unit tests for SCRUM-37 "Record what equipment an event needs": the equipment lines.
 
 AC1: an Event Coordinator adds one or more lines to an event, each with an equipment
-type, a quantity and technical notes. AC2: a line can be added, edited or removed at
-any time before the event is Confirmed, and is locked from then on. AC3: a quantity
-of zero or less is refused. AC4: the lines and their current state are visible on the
+type, a quantity and technical notes. AC2: a line can be added, edited or removed
+until the event is Confirmed, and is locked from then on; it can't be before the
+request is approved either, and a line recorded earlier is kept as it is, its outcome
+still Technical Support's to record (SCRUM-110 AC3, AC4). AC3: a quantity of zero or
+less is refused. AC4: the lines and their current state are visible on the
 event record. One line per equipment type per event, and the database holds the same
 rules as the schema (ADR-0019). Only the event's assigned coordinator (SCRUM-30) adds,
 edits, removes or lists its lines; any other coordinator, or anyone on an unassigned
@@ -24,6 +26,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.common.errors import ConflictError, NotFoundError, ValidationError
+from app.modules.auth.models import User
 from app.modules.auth.permissions import Role
 from app.modules.equipment.models import EquipmentType
 from app.modules.events.models import (
@@ -38,11 +41,14 @@ from app.modules.events.services import (
     EquipmentNotEditableError,
     add_equipment_line,
     list_equipment_lines,
+    record_equipment_outcome,
     remove_equipment_line,
     update_equipment_line,
 )
 
-pytestmark = pytest.mark.scrum_37
+#: Each test starts on an approved event, the first status its equipment lines change
+#: in (SCRUM-110); a test that needs another status sets it.
+pytestmark = [pytest.mark.scrum_37, pytest.mark.usefixtures("approved_event_request")]
 
 MakeEventRequest = Callable[..., EventRequest]
 MakeEquipmentLine = Callable[..., EventEquipmentLine]
@@ -50,6 +56,7 @@ ReloadEquipmentLine = Callable[[int], EventEquipmentLine]
 Save = Callable[..., None]
 StoredLine = tuple[int, int, int, str | None, EquipmentLineStatus]
 LineOperation = Callable[[int, str, int], None]
+NotificationsOf = Callable[[int], list[tuple[Any, ...]]]
 
 #: The Event Coordinator ``saved_event_request`` is assigned to.
 COORDINATOR_ID = 3
@@ -59,15 +66,22 @@ OTHER_REFERENCE = "EVR-BBBBBBBB"
 UNKNOWN_REFERENCE = "EVR-ZZZZZZZZ"
 UNKNOWN_ID = 999
 REQUESTED = EquipmentLineStatus.REQUESTED
-#: The statuses before the event is Confirmed (AC2, ADR-0092). A draft is out of scope
-#: here: it is hidden from coordinators altogether (SCRUM-20, ADR-0024), not merely
-#: refused as locked.
-EQUIPMENT_EDITABLE_STATUSES = [
+#: Why a line can't change before the request is approved (SCRUM-110 AC3).
+NOT_YET_APPROVED_MESSAGE = (
+    "Equipment can only be added, changed or removed once the event request is approved. "
+    "Until then, changes go through a clarification or the organiser's change request."
+)
+#: The statuses lines change in: once the request is approved, until the event is
+#: Confirmed (SCRUM-110 AC3, SCRUM-37 AC2, ADR-0116). A draft is out of scope here: it
+#: is hidden from coordinators altogether (SCRUM-20, ADR-0024), not merely refused as
+#: locked.
+EQUIPMENT_EDITABLE_STATUSES = [EventRequestStatus.APPROVED, EventRequestStatus.SAFETY_REVIEW]
+#: The statuses before approval, when Technical Support must not be asked about the
+#: event yet (SCRUM-110 AC3).
+EQUIPMENT_NOT_YET_APPROVED = [
     EventRequestStatus.SUBMITTED,
     EventRequestStatus.UNDER_REVIEW,
     EventRequestStatus.AWAITING_CLARIFICATION,
-    EventRequestStatus.APPROVED,
-    EventRequestStatus.SAFETY_REVIEW,
 ]
 #: Confirmed and every status after it, and an event that will not run.
 EQUIPMENT_LOCKED_STATUSES = [
@@ -538,15 +552,20 @@ def test_a_line_can_only_be_reached_through_its_own_event(
 
 
 def test_every_status_is_tested_as_either_open_or_locked_for_equipment() -> None:
-    """A status added later must go on one side of AC2 here (a draft is hidden)."""
-    sorted_statuses = set(EQUIPMENT_EDITABLE_STATUSES) | set(EQUIPMENT_LOCKED_STATUSES)
+    """A status added later must be sorted here (a draft is hidden)."""
+    sorted_statuses = (
+        set(EQUIPMENT_EDITABLE_STATUSES)
+        | set(EQUIPMENT_NOT_YET_APPROVED)
+        | set(EQUIPMENT_LOCKED_STATUSES)
+    )
     sorted_statuses.add(EventRequestStatus.DRAFT)
 
     assert sorted_statuses == set(EventRequestStatus)
 
 
+@pytest.mark.scrum_110
 @pytest.mark.parametrize("status", EQUIPMENT_EDITABLE_STATUSES, ids=lambda status: status.value)
-def test_lines_may_change_at_any_time_before_the_event_is_confirmed(
+def test_lines_may_change_once_the_request_is_approved_until_it_is_confirmed(
     db_session: Session,
     saved_event_request: EventRequest,
     valid_equipment_line_payload: dict[str, Any],
@@ -562,6 +581,79 @@ def test_lines_may_change_at_any_time_before_the_event_is_confirmed(
 
     assert edited.quantity == 3
     assert _stored_lines(db_session) == []
+
+
+@pytest.mark.scrum_110
+@pytest.mark.parametrize("status", EQUIPMENT_NOT_YET_APPROVED, ids=lambda status: status.value)
+def test_lines_cannot_be_added_before_the_request_is_approved(
+    db_session: Session,
+    saved_users: list[User],
+    saved_event_request: EventRequest,
+    valid_equipment_line_payload: dict[str, Any],
+    save: Save,
+    notifications_of: NotificationsOf,
+    status: EventRequestStatus,
+) -> None:
+    """Technical Support are never asked about an event that may still be rejected."""
+    saved_event_request.status = status
+    save(saved_event_request)
+
+    with pytest.raises(EquipmentNotEditableError) as exc_info:
+        add_equipment_line(COORDINATOR_ID, REFERENCE, valid_equipment_line_payload)
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.error_code == "equipment_not_editable"
+    assert exc_info.value.message == NOT_YET_APPROVED_MESSAGE
+    assert _stored_lines(db_session) == []
+    assert notifications_of(TECHNICAL_SUPPORT_ID) == []
+
+
+@pytest.mark.scrum_110
+@pytest.mark.parametrize("status", EQUIPMENT_NOT_YET_APPROVED, ids=lambda status: status.value)
+@pytest.mark.parametrize("operation", LINE_OPERATIONS, ids=LINE_OPERATION_IDS)
+def test_a_line_recorded_before_approval_is_kept_as_it_is(
+    db_session: Session,
+    saved_event_request: EventRequest,
+    saved_line: EventEquipmentLine,
+    equipment_type: EquipmentType,
+    save: Save,
+    operation: LineOperation,
+    status: EventRequestStatus,
+) -> None:
+    """SCRUM-110 AC4: an older line stays, and changes once the request is approved."""
+    saved_event_request.status = status
+    save(saved_event_request)
+
+    with pytest.raises(EquipmentNotEditableError) as exc_info:
+        operation(COORDINATOR_ID, REFERENCE, saved_line.id)
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.message == NOT_YET_APPROVED_MESSAGE
+    assert _stored_lines(db_session) == [
+        (saved_event_request.id, equipment_type.id, 2, "Needs HDMI", REQUESTED)
+    ]
+
+
+@pytest.mark.scrum_110
+@pytest.mark.parametrize("status", EQUIPMENT_NOT_YET_APPROVED, ids=lambda status: status.value)
+def test_technical_support_still_record_the_outcome_of_a_line_from_before_approval(
+    saved_users: list[User],
+    saved_event_request: EventRequest,
+    saved_line: EventEquipmentLine,
+    save: Save,
+    reload_equipment_line: ReloadEquipmentLine,
+    status: EventRequestStatus,
+) -> None:
+    """SCRUM-110 AC4: the lock is the coordinator's; the review goes on (SCRUM-48)."""
+    saved_event_request.status = status
+    save(saved_event_request)
+
+    record_equipment_outcome(
+        TECHNICAL_SUPPORT_ID, REFERENCE, saved_line.id, {"provided_quantity": 2}
+    )
+
+    reviewed = reload_equipment_line(saved_line.id)
+    assert (reviewed.status, reviewed.provided_quantity) == (EquipmentLineStatus.FULFILLED, 2)
 
 
 @pytest.mark.parametrize("status", EQUIPMENT_LOCKED_STATUSES, ids=lambda status: status.value)
