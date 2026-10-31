@@ -20,8 +20,9 @@ import { accountForRequest } from './auth'
 /**
  * The Event Coordinator Lead's endpoints, as the backend on main answers them: the queue and the
  * first assignment (SCRUM-95, ADR-0036), and the active list, the workload and reassignment
- * (SCRUM-96, ADR-0041). Only the Lead may use them. One store of events lies behind all five, so
- * a request assigned from the queue joins its coordinator's workload, as it does on the backend.
+ * (SCRUM-96, ADR-0041, ADR-0120). Only the Lead may use them. One store of events lies behind all
+ * five, so a request assigned from the queue joins its coordinator's workload, as it does on the
+ * backend.
  */
 
 export const EMPTY_QUEUE_MESSAGE = 'No event requests are waiting to be assigned.'
@@ -285,8 +286,17 @@ function isActive(event: LeadMockEvent): boolean {
   return ACTIVE_STATUSES.includes(event.status)
 }
 
-function activeNewestFirst(): LeadMockEvent[] {
-  const active = events.filter(isActive)
+/** An event the Lead's two lists show: held by a coordinator and active (ADR-0120). */
+interface HeldEvent extends LeadMockEvent {
+  coordinator_id: number
+}
+
+function isHeldAndActive(event: LeadMockEvent): event is HeldEvent {
+  return event.coordinator_id !== null && isActive(event)
+}
+
+function activeNewestFirst(): HeldEvent[] {
+  const active = events.filter(isHeldAndActive)
   return active.sort((a, b) => b.created_at.localeCompare(a.created_at))
 }
 
@@ -332,7 +342,7 @@ function queueBody() {
 function activeBody() {
   const rows = activeNewestFirst().map((event) => ({
     ...listRow(event),
-    coordinator: event.coordinator_id === null ? null : coordinatorNameOf(event.coordinator_id),
+    coordinator: coordinatorNameOf(event.coordinator_id),
   }))
   return listBody('event_requests', rows, NO_ACTIVE_EVENTS_MESSAGE)
 }
@@ -341,9 +351,6 @@ function activeBody() {
 function workloadBody() {
   const heldBy = new Map<number, LeadMockEvent[]>()
   for (const event of activeNewestFirst()) {
-    if (event.coordinator_id === null) {
-      continue
-    }
     const held = heldBy.get(event.coordinator_id) ?? []
     held.push(event)
     heldBy.set(event.coordinator_id, held)

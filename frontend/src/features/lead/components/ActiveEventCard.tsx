@@ -2,7 +2,7 @@ import { useId } from 'react'
 import { Link } from 'react-router'
 
 import { StatusChip } from '@/components/ui'
-import { ROUTES, staffEventPath } from '@/config/routes'
+import { staffEventPath } from '@/config/routes'
 
 import type { ActiveEvent } from '../api'
 import { formatEventDates, formatProposedTimes } from '../formatRequest'
@@ -25,9 +25,9 @@ function ReassignForm({ event }: { event: ActiveEvent }) {
 }
 
 /**
- * One active event: what it is, when, its status and who holds it, then the way to move it. An
- * event nobody holds can't be reassigned, so it points to the queue instead (docs/adr/0062). It
- * links to the event's read-only record, which the Lead may open (SCRUM-24 AC10, ADR-0095).
+ * One active event: what it is, when, its status and who holds it, then the way to move it. Every
+ * active event has a coordinator, so every one can be reassigned (docs/adr/0120). It links to the
+ * event's read-only record, which the Lead may open (SCRUM-24 AC10, ADR-0095).
  */
 export function ActiveEventCard({ event }: { event: ActiveEvent }) {
   const headingId = useId()
@@ -49,18 +49,9 @@ export function ActiveEventCard({ event }: { event: ActiveEvent }) {
         <Detail term="Status">
           <StatusChip status={event.status} />
         </Detail>
-        <Detail term="Coordinator">{event.coordinator ?? 'Not assigned'}</Detail>
+        <Detail term="Coordinator">{event.coordinator}</Detail>
       </dl>
-      {event.coordinator === null ? (
-        <Link
-          to={ROUTES.LEAD_QUEUE}
-          className="text-flare mt-5 inline-block text-sm font-medium hover:underline"
-        >
-          Assign from the queue
-        </Link>
-      ) : (
-        <ReassignForm event={event} />
-      )}
+      <ReassignForm event={event} />
     </article>
   )
 }
