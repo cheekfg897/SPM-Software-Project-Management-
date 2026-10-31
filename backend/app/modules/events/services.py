@@ -86,6 +86,18 @@ MAX_REFERENCE_ATTEMPTS = 3
 #: reference can't be probed (ADR-0012).
 EVENT_REQUEST_NOT_FOUND_MESSAGE = "Event request not found."
 
+#: Statuses in which a request awaits its first decision: straight from submission,
+#: or once its review has started (SCRUM-31 AC4, ADR-0028). One awaiting
+#: clarification may be rejected, but not approved until the organiser answers
+#: (SCRUM-32 AC3, ADR-0029).
+AWAITING_DECISION_STATUSES: frozenset[EventRequestStatus] = frozenset(
+    {
+        EventRequestStatus.SUBMITTED,
+        EventRequestStatus.UNDER_REVIEW,
+        EventRequestStatus.AWAITING_CLARIFICATION,
+    }
+)
+
 
 class ReferenceGenerationError(AppError):
     """No unused reference was found after several attempts (500)."""
@@ -3364,17 +3376,6 @@ def complete_event_request(
 
 NOT_REVIEWABLE_MESSAGE = "Only a submitted event request can be moved to under review."
 
-#: Statuses in which a request awaits its first decision: straight from submission,
-#: or once its review has started (SCRUM-31 AC4, ADR-0028). One awaiting
-#: clarification may be rejected, but not approved until the organiser answers
-#: (SCRUM-32 AC3, ADR-0029).
-AWAITING_DECISION_STATUSES: frozenset[EventRequestStatus] = frozenset(
-    {
-        EventRequestStatus.SUBMITTED,
-        EventRequestStatus.UNDER_REVIEW,
-        EventRequestStatus.AWAITING_CLARIFICATION,
-    }
-)
 #: Statuses in which a request has been decided, and may be decided again with a
 #: reason until arrangements exist for it (SCRUM-31 AC6, AC7).
 DECIDED_STATUSES: frozenset[EventRequestStatus] = frozenset(
