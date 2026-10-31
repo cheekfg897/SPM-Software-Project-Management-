@@ -307,22 +307,53 @@ def test_a_line_a_timing_change_reopened_is_listed_with_nothing_to_reassess(
     assert _listed(awaiting) == [(REFERENCE, [line.id], [])]
 
 
-def test_another_events_marked_reservation_does_not_list_this_events_line(
-    two_projectors: EventEquipmentLine,
+@pytest.fixture()
+def other_events_reserved_line(
     other_event: EventRequest,
     equipment_type: EquipmentType,
     make_equipment_line: Callable[..., EventEquipmentLine],
     held_for_other_event: Callable[[int], EquipmentReservation],
     save: Save,
-) -> None:
-    """Both events have a fulfilled projector line; only the other's is marked."""
+) -> EventEquipmentLine:
+    """``other_event``'s projector line, fulfilled, with its 3 projectors held."""
     other_line = make_equipment_line(other_event, equipment_type, quantity=3)
     other_line.status = EquipmentLineStatus.FULFILLED
     other_line.provided_quantity = 3
     save(other_line)
     held_for_other_event(3)
+    return other_line
+
+
+def test_another_events_marked_reservation_does_not_list_this_events_line(
+    two_projectors: EventEquipmentLine,
+    other_event: EventRequest,
+    other_events_reserved_line: EventEquipmentLine,
+    equipment_type: EquipmentType,
+) -> None:
+    """Both events have a fulfilled projector line; only the other's is marked."""
     mark_event_reservations_for_reassessment(other_event.id)
 
     awaiting = list_equipment_requests_awaiting_action(today=TODAY)
 
-    assert _listed(awaiting) == [(OTHER_REFERENCE, [other_line.id], [equipment_type.id])]
+    assert _listed(awaiting) == [
+        (OTHER_REFERENCE, [other_events_reserved_line.id], [equipment_type.id])
+    ]
+
+
+def test_each_listed_event_names_only_its_own_types_to_reassess(
+    saved_event_request: EventRequest,
+    two_projectors: EventEquipmentLine,
+    other_event: EventRequest,
+    other_events_reserved_line: EventEquipmentLine,
+    equipment_type: EquipmentType,
+) -> None:
+    """Both events' projector reservations are marked; each names the type once."""
+    mark_event_reservations_for_reassessment(saved_event_request.id)
+    mark_event_reservations_for_reassessment(other_event.id)
+
+    awaiting = list_equipment_requests_awaiting_action(today=TODAY)
+
+    assert _listed(awaiting) == [
+        (REFERENCE, [two_projectors.id], [equipment_type.id]),
+        (OTHER_REFERENCE, [other_events_reserved_line.id], [equipment_type.id]),
+    ]
