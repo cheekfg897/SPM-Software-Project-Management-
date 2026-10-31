@@ -1,6 +1,6 @@
 # ADR-0036: A submitted request waits unassigned in the Event Coordinator Lead's queue, and only the Lead gives it to one coordinator, named by email
 
-- **Status:** Accepted
+- **Status:** Accepted; "last write wins" when two Leads assign one request at once superseded by [ADR-0120](0120-lead-oversight-active-events-and-every-coordinator.md) (the first assignment is kept)
 - **Date:** 2026-10-11
 - **Story:** SCRUM-95 Newly submitted event requests come to the Event Coordinator Lead unassigned (Week 7 customer change #5; seven ACs, no comments)
 - **Supersedes:** [ADR-0018](0018-least-loaded-coordinator-and-event-history.md)'s least-loaded assignment on submission, and its reading of SCRUM-28 AC3 as "only the assigned coordinator is told"; [ADR-0030](0030-organiser-told-about-assignment.md) decision 8's list of test names (decision 17 below)
@@ -89,5 +89,5 @@ SCRUM-95's ACs are all met. These belong to the next story, which the plan names
 - A route lists the Event Coordinators. The payload could then carry an id, the web app could offer a picker, and decision 8 should be reopened (ADR-0021 decision 3 would have to be reopened with it).
 - A real `submitted_at` column is added. The queue's ordering and its `submitted_at` field would then mean what they say for a submitted draft too (decision 6).
 - A status transition is added that can leave a request unassigned — a cancellation, in particular. Decision 10's guard starts refusing rows that users can really create, and the queue's condition should be re-read at the same time.
-- Several Leads are in use and one request is assigned twice at once. Last write wins and both are in the history, as for a reassignment (ADR-0021 decision 15); a row lock is the answer if that stops being acceptable.
+- ~~Several Leads are in use and one request is assigned twice at once. Last write wins and both are in the history, as for a reassignment (ADR-0021 decision 15); a row lock is the answer if that stops being acceptable.~~ Superseded by [ADR-0120](0120-lead-oversight-active-events-and-every-coordinator.md) decision 4 (SCRUM-95's AC for several Leads): the request is read under a row lock, the first assignment is kept, and the second Lead gets the `409`.
 - The integration suite can seed staff accounts and submitted requests: the seven todos in `lead.int.test.ts` become real checks of the contract.
