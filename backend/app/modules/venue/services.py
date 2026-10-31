@@ -2815,7 +2815,7 @@ def release_event_arrangements(
     approved is withdrawn, with its history entry, as the coordinator would withdraw it
     (SCRUM-93). One that holds the venue, Approved or On Hold, is Released and its
     booking or hold cancelled, so the venue is free for that period again. Arrangements
-    already withdrawn or released are left as they are. The caller commits, with the
+    already retired are left as they are. The caller commits, with the
     rejection this is part of.
 
     Args:
@@ -2955,7 +2955,7 @@ def _live_arrangements_of(event_id: int, session: Session | None) -> list[VenueB
     """The event's arrangements that still hold or ask for their venue, earliest first.
 
     The statuses a significant change flags (ADR-0094 decision 2): a decided-against,
-    withdrawn or released arrangement has nothing to lose, and On Hold waits for its own
+    retired arrangement has nothing to lose, and On Hold waits for its own
     follow-up, though a venue becoming unavailable flags it (ADR-0100).
     """
     stmt = (

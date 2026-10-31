@@ -176,6 +176,11 @@ class EventHistoryKind(str, enum.Enum):
     #: (SCRUM-59 AC2, ADR-0112). It also marks when the arrangement's period was last
     #: set, which the next reconfirmation's pre-filled period is worked out from.
     VENUE_BOOKING_RECONFIRMED = "venue_booking_reconfirmed"
+    #: The assigned coordinator cancelled one of the event's approved venue bookings,
+    #: which freed the venue; ``details`` holds ``venue_booking_request_id``,
+    #: ``venue_id``, the period (``starts_at``, ``ends_at``) and the ``reason``, and
+    #: ``actor_id`` is the coordinator (SCRUM-111 AC5, ADR-0117). Migration 0051.
+    VENUE_BOOKING_CANCELLED = "venue_booking_cancelled"
 
 
 class SafetyOutcome(str, enum.Enum):

@@ -23,6 +23,7 @@ from app.modules.venue.models import (
     Venue,
     VenueBookingRequest,
 )
+from tests.events.cases import RETIRED_ARRANGEMENT_STATUSES
 from tests.venue.conftest import (
     COORDINATOR_ID,
     SavedEvent,
@@ -44,8 +45,9 @@ WITHDRAWN_STATUSES = [
     BookingRequestStatus.REJECTED,
     BookingRequestStatus.EXPIRED,
 ]
-#: Arrangements already out of the event's venues, which are left as they are.
-RETIRED_STATUSES = [BookingRequestStatus.WITHDRAWN, BookingRequestStatus.RELEASED]
+#: Arrangements already out of the event's venues, which are left as they are; a
+#: cancelled one among them (SCRUM-111).
+RETIRED_STATUSES = RETIRED_ARRANGEMENT_STATUSES
 
 
 def _release(event: EventRequest, session: Session) -> list[str]:
