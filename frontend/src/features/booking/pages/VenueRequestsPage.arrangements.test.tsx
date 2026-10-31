@@ -328,11 +328,13 @@ describe('SCRUM-93 venue arrangements on the venue requests page', () => {
     await item(rejectedMain.purpose)
 
     await view.user.click(view.getByRole('button', { name: 'Cancel all venue requests' }))
+    await view.user.type(view.getByLabelText('Reason for cancelling'), CANCEL_ALL_REASON)
     await view.user.click(view.getByRole('button', { name: 'Keep them' }))
 
     expect(screen.queryByRole('button', { name: 'Cancel them all' })).not.toBeInTheDocument()
-    expect(view.getByRole('button', { name: 'Cancel all venue requests' })).toBeEnabled()
     expect(pathsPosted(requests)).toEqual([])
+    await view.user.click(view.getByRole('button', { name: 'Cancel all venue requests' }))
+    expect(view.getByLabelText('Reason for cancelling')).toHaveValue('')
   })
 
   it('sends no reason when none is typed, and shows the backend’s message under the box', async () => {
