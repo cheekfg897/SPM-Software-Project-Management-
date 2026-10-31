@@ -144,11 +144,11 @@ def change_expiry(request_id: int, expires_at: datetime, session: Session) -> Ve
     return shown.request
 
 
-def locked_venue_reads(session: Session, action: Callable[[], object]) -> list[str]:
-    """The reads of ``venues`` under ``FOR UPDATE`` that ``action`` sends (ADR-0045).
+def _locked_reads(session: Session, table: str, action: Callable[[], object]) -> list[str]:
+    """The reads of ``table`` under ``FOR UPDATE`` that ``action`` sends.
 
     SQLite ignores ``FOR UPDATE``, so each statement is compiled as Postgres would get
-    it; that shows the venue is read under a lock, not that two callers really queue.
+    it; that shows the row is read under a lock, not that two callers really queue.
     """
     sent: list[str] = []
 
@@ -160,7 +160,17 @@ def locked_venue_reads(session: Session, action: Callable[[], object]) -> list[s
         action()
     finally:
         sqlalchemy_event.remove(session.get_bind(), "before_execute", _record)
-    return [sql for sql in sent if "FROM venues" in sql and "FOR UPDATE" in sql]
+    return [sql for sql in sent if f"FROM {table}" in sql and "FOR UPDATE" in sql]
+
+
+def locked_venue_reads(session: Session, action: Callable[[], object]) -> list[str]:
+    """The reads of ``venues`` under ``FOR UPDATE`` that ``action`` sends (ADR-0045)."""
+    return _locked_reads(session, "venues", action)
+
+
+def locked_request_reads(session: Session, action: Callable[[], object]) -> list[str]:
+    """The reads of booking requests under ``FOR UPDATE`` that ``action`` sends."""
+    return _locked_reads(session, "venue_booking_requests", action)
 
 
 #: The date a block's "not ended before today" rule is measured against (SCRUM-34).

@@ -40,6 +40,7 @@ from tests.venue.conftest import (
     edit_event,
     flags_on,
     history_entries,
+    locked_request_reads,
     raise_booking,
     reload_event,
     reload_request,
@@ -317,3 +318,10 @@ def test_a_booking_that_needs_an_alternative_venue_is_refused(
     assert excinfo.value.message == (
         "This booking needs an alternative venue, which only a replacement settles."
     )
+
+
+def test_the_booking_is_read_under_a_lock(db_session: Session, main_id: int, too_big: None) -> None:
+    """ADR-0112 decision 7: two Venue Staff settling one booking take turns."""
+    reads = locked_request_reads(db_session, lambda: _reject(db_session, main_id))
+
+    assert len(reads) == 1
