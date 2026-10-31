@@ -176,7 +176,7 @@ function shownLine(line: MockEquipmentLine) {
 }
 
 /**
- * The event as its lines come with it (EQUIPMENT_LINES_EVENT_FIELDS): when it is, and its status
+ * The event as its lines come with it (EVENT_LIST_FIELDS): when it is, and its status
  * (SCRUM-110). Every mock event shares one period.
  */
 function eventShown(event: MockEvent) {
