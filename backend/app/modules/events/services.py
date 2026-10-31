@@ -1552,12 +1552,13 @@ class EventWhenArranged:
     """The event as it stood when an arrangement's period was last set (SCRUM-59).
 
     What a reconfirmation measures the change against (ADR-0112): how far the event's
-    start has moved since (AC2), and whether the arrangement held the whole audience
-    (AC10).
+    start has moved since, and whether its date or times changed at all (AC2), and
+    whether the arrangement held the whole audience (AC10).
     """
 
-    #: The event's start, in UTC.
+    #: The event's start and end, in UTC.
     starts_at: datetime
+    ends_at: datetime
     expected_attendance: int
 
 
@@ -1604,7 +1605,7 @@ def _values_before_edits(entries: list[EventHistoryEntry]) -> dict[str, Any]:
 def get_event_when_arranged(
     event_id: int, arrangement_id: int, *, session: Session | None = None
 ) -> EventWhenArranged:
-    """The event's start and attendance when the arrangement's period was last set.
+    """The event's start, end and attendance when the arrangement's period was last set.
 
     SCRUM-59 AC2 and AC10, ADR-0112: raised, or last reconfirmed. Each field is read
     back from the first edit to it since then, which recorded its value from before;
@@ -1625,12 +1626,21 @@ def get_event_when_arranged(
     start_time = event_request.start_time
     if "start_time" in before:
         start_time = time.fromisoformat(before["start_time"])
+    end_date = event_request.end_date
+    if "end_date" in before:
+        end_date = date.fromisoformat(before["end_date"])
+    end_time = event_request.end_time
+    if "end_time" in before:
+        end_time = time.fromisoformat(before["end_time"])
     expected_attendance = event_request.expected_attendance
     if "expected_attendance" in before:
         expected_attendance = before["expected_attendance"]
 
-    starts_at = as_utc(datetime.combine(proposed_date, start_time))
-    return EventWhenArranged(starts_at=starts_at, expected_attendance=expected_attendance)
+    return EventWhenArranged(
+        starts_at=as_utc(datetime.combine(proposed_date, start_time)),
+        ends_at=as_utc(datetime.combine(end_date, end_time)),
+        expected_attendance=expected_attendance,
+    )
 
 
 def _event_request_with_editable_equipment(

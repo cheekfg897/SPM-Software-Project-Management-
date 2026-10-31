@@ -295,6 +295,45 @@ def test_a_change_that_did_not_touch_the_timing_keeps_the_period_and_clears_the_
     assert flags_on(db_session, breakout_id) == []
 
 
+@pytest.mark.parametrize(
+    ("starts", "ends", "field"),
+    [(at(14), at(16), "starts_at"), (at(13), at(15), "ends_at")],
+    ids=["new-start", "new-end"],
+)
+def test_a_period_the_change_did_not_retime_cannot_be_adjusted(
+    db_session: Session,
+    event: EventRequest,
+    breakout_id: int,
+    starts: datetime,
+    ends: datetime,
+    field: str,
+) -> None:
+    """AC2: Venue Staff adjust the period only to apply a change to its timing (A75)."""
+    edit_event(db_session, event, {"venue_requirements": "A stage."})
+
+    with pytest.raises(ValidationError) as excinfo:
+        _reconfirm(db_session, breakout_id, starts, ends)
+
+    assert excinfo.value.details == {
+        field: [
+            "The event's date and times haven't changed, so the booking keeps its period:"
+            " 2026-11-01 13:00 to 2026-11-01 16:00."
+        ]
+    }
+    assert _period(db_session, breakout_id) == (at(13), at(16))
+
+
+def test_a_change_to_the_events_end_alone_lets_the_period_be_adjusted(
+    db_session: Session, event: EventRequest, breakout_id: int
+) -> None:
+    """The event now ends at 15:00, so the 13:00-16:00 booking has to move to fit it."""
+    edit_event(db_session, event, {"end_date": "2026-11-01", "end_time": "15:00"})
+
+    _reconfirm(db_session, breakout_id, at(12), at(15))
+
+    assert _period(db_session, breakout_id) == (at(12), at(15))
+
+
 def test_the_coordinator_is_told_of_the_new_period(
     db_session: Session, main_id: int, moved: None
 ) -> None:
