@@ -57,7 +57,8 @@ test('a coordinator changes, withdraws and cancels an event’s venue arrangemen
   await expect(breakout).toContainText('Pending')
 
   await page.getByRole('button', { name: 'Cancel all venue requests' }).click()
-  await page.getByRole('button', { name: 'Withdraw them all' }).click()
+  await page.getByLabel('Reason for cancelling').fill('The conference moved online.')
+  await page.getByRole('button', { name: 'Cancel them all' }).click()
   await expect(breakout).toContainText('Withdrawn')
   await expect(main).toContainText('Withdrawn')
 })

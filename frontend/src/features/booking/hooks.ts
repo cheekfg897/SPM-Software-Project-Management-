@@ -128,12 +128,15 @@ export function useCancelBooking(reference: string, arrangementId: number) {
   })
 }
 
-/** Withdraw every arrangement the event still has, in one go (SCRUM-93). */
+/**
+ * Retire every arrangement the event still has, in one go, with a reason (SCRUM-93 AC6). The
+ * list is read again either way: someone else may have changed it.
+ */
 export function useCancelAllArrangements(reference: string) {
   const reread = useRereadEventRequests(reference)
   return useMutation({
-    mutationFn: () => cancelAllArrangements(reference),
-    onSuccess: reread,
+    mutationFn: (cancellation: CancelBooking) => cancelAllArrangements(reference, cancellation),
+    onSettled: reread,
   })
 }
 
