@@ -74,6 +74,48 @@ def raise_booking(
     return shown.request
 
 
+def withdraw_as_coordinator(event: EventRequest, arrangement_id: int, session: Session) -> object:
+    """Withdraw one of ``event``'s arrangements as its coordinator (SCRUM-93)."""
+    return services.withdraw_arrangement(
+        event.reference, arrangement_id, coordinator_id=COORDINATOR_ID, session=session
+    )
+
+
+def change_purpose_as_coordinator(
+    event: EventRequest, arrangement_id: int, session: Session
+) -> object:
+    """Change an arrangement of ``event``'s to "Opening plenary" (SCRUM-93)."""
+    return services.change_arrangement(
+        event.reference,
+        arrangement_id,
+        {"purpose": "Opening plenary"},
+        coordinator_id=COORDINATOR_ID,
+        session=session,
+    )
+
+
+def cancel_all_as_coordinator(
+    event: EventRequest, _arrangement_id: int, session: Session
+) -> object:
+    """Cancel all of ``event``'s arrangements as its coordinator (SCRUM-93).
+
+    It takes an arrangement id it doesn't use, so the three actions share one shape
+    and a test can be parametrised over them (``ARRANGEMENT_ACTIONS``).
+    """
+    return services.cancel_all_arrangements(
+        event.reference, coordinator_id=COORDINATOR_ID, session=session
+    )
+
+
+#: The coordinator's three actions on an event's arrangements, for parametrised tests.
+ARRANGEMENT_ACTIONS = [
+    pytest.param(withdraw_as_coordinator, id="withdraw"),
+    pytest.param(change_purpose_as_coordinator, id="change"),
+    pytest.param(cancel_all_as_coordinator, id="cancel all"),
+]
+ArrangementAction = Callable[[EventRequest, int, Session], object]
+
+
 def decide(
     request_id: int, outcome: str, session: Session, reason: str | None = None
 ) -> VenueBookingRequest:
