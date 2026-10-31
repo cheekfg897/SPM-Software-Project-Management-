@@ -37,6 +37,7 @@ from app.modules.events.services import (
     CLARIFICATION_NOT_ALLOWED_MESSAGE,
     EVENT_REQUEST_NOT_FOUND_MESSAGE,
     ClarificationNotAllowedError,
+    EventEdit,
     request_clarification,
 )
 from tests.events.cases import CLARIFICATION_QUESTION
@@ -44,6 +45,7 @@ from tests.events.cases import CLARIFICATION_QUESTION
 pytestmark = pytest.mark.scrum_32
 
 AskClarification = Callable[[int, Any], EventRequest]
+EditEvent = Callable[[int, dict[str, Any] | None], EventEdit]
 SetStatus = Callable[[EventRequestStatus], None]
 ReloadEventRequest = Callable[[int], EventRequest]
 HistoryOf = Callable[[int], list[tuple[EventHistoryKind, int | None, dict[str, Any] | None]]]
@@ -150,6 +152,23 @@ def test_the_reference_ignores_case_and_surrounding_spaces(
     request_clarification(COORDINATOR_ID, "  evr-aaaaaaaa ", QUESTION)
 
     reloaded = reload_event_request(under_review_request.id)
+    assert reloaded.status is EventRequestStatus.AWAITING_CLARIFICATION
+
+
+@pytest.mark.scrum_110
+def test_the_coordinator_can_record_an_amendment_while_the_question_is_open(
+    edit_event: EditEvent,
+    awaiting_clarification_request: EventRequest,
+    reload_event_request: ReloadEventRequest,
+) -> None:
+    """AC2: the coordinator edits; the question stays open (ADR-0101, ADR-0116).
+
+    The one edit before approval SCRUM-110 AC2 lets through.
+    """
+    edit_event(COORDINATOR_ID, {"description": "Changed"})
+
+    reloaded = reload_event_request(awaiting_clarification_request.id)
+    assert reloaded.description == "Changed"
     assert reloaded.status is EventRequestStatus.AWAITING_CLARIFICATION
 
 

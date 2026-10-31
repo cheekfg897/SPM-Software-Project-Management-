@@ -38,6 +38,7 @@ from app.modules.events.models import (
 )
 from app.modules.events.services import (
     EDITABLE_STATUSES,
+    EQUIPMENT_EDITABLE_STATUSES,
     EventEdit,
     SafetyReviewNotAllowedError,
     add_equipment_line,
@@ -94,6 +95,11 @@ NOTE_FIELDS = ["description", "programme_notes", "accessibility_needs", "interna
 #: Every status an edit is allowed in but Safety Review, built from the editable set.
 EDITABLE_OUTSIDE_SAFETY_REVIEW = sorted(
     EDITABLE_STATUSES - {EventRequestStatus.SAFETY_REVIEW}, key=lambda status: status.value
+)
+#: Every status a line may change in but Safety Review, built from the lines' own set.
+LINES_EDITABLE_OUTSIDE_SAFETY_REVIEW = sorted(
+    EQUIPMENT_EDITABLE_STATUSES - {EventRequestStatus.SAFETY_REVIEW},
+    key=lambda status: status.value,
 )
 
 
@@ -516,7 +522,9 @@ def test_removing_a_line_tells_the_officers_and_leaves_the_event_in_safety_revie
     _assert_every_officer_told("Changed: equipment line.")
 
 
-@pytest.mark.parametrize("status", EDITABLE_OUTSIDE_SAFETY_REVIEW, ids=lambda status: status.value)
+@pytest.mark.parametrize(
+    "status", LINES_EDITABLE_OUTSIDE_SAFETY_REVIEW, ids=lambda status: status.value
+)
 def test_a_line_change_outside_safety_review_tells_no_safety_officer(
     projector_line: EventEquipmentLine,
     in_safety_review: EventRequest,
