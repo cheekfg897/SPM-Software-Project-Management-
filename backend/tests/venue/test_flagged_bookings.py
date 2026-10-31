@@ -1,4 +1,4 @@
-"""Unit tests for SCRUM-59 AC1, AC2 and AC9: flagged bookings in Venue Staff's queue.
+"""Unit tests for SCRUM-59 AC1, AC2 and AC10: flagged bookings in Venue Staff's queue.
 
 A booking a change flagged (SCRUM-33 AC6, SCRUM-58) appears in Venue Staff's queue with
 the reason it was flagged (AC1); one that needs an alternative venue is settled under
@@ -10,7 +10,7 @@ SCRUM-92, not here. Each one comes with what reconfirming it gives it by default
   Monday becomes 14:00-15:00 on Tuesday; a change that didn't touch the timing leaves
   the period as it is;
 * the expected occupancy, raised to the new attendance when the booking held the whole
-  audience and the attendance outgrew it (AC9).
+  audience and the attendance outgrew it (AC10).
 
 The services run against ``db_session``. The event is the ``saved_event`` fixture's:
 approved, 80 attending, from 09:00 on 1 November 2026 to 17:30 the next day. The
@@ -132,7 +132,7 @@ def test_a_booking_the_change_did_not_affect_is_left_out(
 def test_a_flagged_request_venue_staff_have_not_decided_is_listed_too(
     db_session: Session, event: EventRequest, auditorium: Venue
 ) -> None:
-    """AC10: a Pending request moves to the new period before it is decided."""
+    """AC11: a Pending request moves to the new period before it is decided."""
     pending = raise_booking(auditorium, event, db_session)
 
     edit_event(db_session, event, NEXT_DAY)
@@ -290,7 +290,7 @@ def test_the_period_moves_from_when_a_request_raised_after_an_earlier_edit_was_s
 
 
 # --------------------------------------------------------------------------
-# AC9 — a booking that held everyone is reconfirmed for the new attendance
+# AC10 — a booking that held everyone is reconfirmed for the new attendance
 # --------------------------------------------------------------------------
 
 

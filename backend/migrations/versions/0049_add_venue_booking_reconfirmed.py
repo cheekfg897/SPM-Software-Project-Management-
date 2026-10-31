@@ -7,9 +7,9 @@ Create Date: 2026-10-28
 SCRUM-59 "Reconfirm or reject a booking flagged after a change" (ADR-0112):
 
 * ``notification_kind`` gains ``venue_booking_reconfirmed``, raised to the event's
-  assigned coordinator when Venue Staff reconfirm a flagged arrangement (AC2, AC10).
+  assigned coordinator when Venue Staff reconfirm a flagged arrangement (AC2, AC11).
 * ``event_history_entry_kind`` gains ``venue_booking_reconfirmed``, the entry that
-  records it, with the period and occupancy before and after (AC2, AC9).
+  records it, with the period and occupancy before and after (AC2, AC10).
 
 Revises 0048 (PR #149, SCRUM-89), which merges first; until it does, this branch has
 no 0048 and can't be upgraded on its own. If another migration takes 0049's place

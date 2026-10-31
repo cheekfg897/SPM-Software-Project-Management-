@@ -42,8 +42,8 @@ function FlaggedEntry({ flagged }: { flagged: FlaggedBooking }) {
 
 /**
  * The bookings a change flagged, in the order the backend sent them, each with why it was
- * flagged and the period and occupancy reconfirming it gives it (SCRUM-59 AC1, AC2, AC9). One
- * Venue Staff haven't decided yet only moves when reconfirmed (AC10).
+ * flagged and the period and occupancy reconfirming it gives it (SCRUM-59 AC1, AC2, AC10). One
+ * Venue Staff haven't decided yet only moves when reconfirmed (AC11).
  */
 export function FlaggedBookingQueue() {
   const flagged = useFlaggedBookings()

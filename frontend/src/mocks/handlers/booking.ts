@@ -1160,7 +1160,7 @@ export const bookingHandlers: RequestHandler[] = [
     if (reason !== null) {
       booking.decision_reason = reason
     }
-    // Moved clear of every booking, a Conflicting request no longer clashes (AC10).
+    // Moved clear of every booking, a Conflicting request no longer clashes (AC11).
     moveTo(booking, booking.status === 'conflicting' ? 'pending' : booking.status)
     if (booking.status === 'approved') {
       markClashingRequestsConflicting(booking)

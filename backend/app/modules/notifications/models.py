@@ -118,7 +118,7 @@ class NotificationKind(str, enum.Enum):
     #: Tells the event's assigned coordinator that Venue Staff reconfirmed one of its
     #: arrangements after a change, or moved an undecided request to the new period; the
     #: arrangement, its venue, its period and any reason are the notification's
-    #: ``detail`` (SCRUM-59 AC2, AC4, AC10, ADR-0112). Migration 0049.
+    #: ``detail`` (SCRUM-59 AC2, AC4, AC11, ADR-0112). Migration 0049.
     VENUE_BOOKING_RECONFIRMED = "venue_booking_reconfirmed"
 
 

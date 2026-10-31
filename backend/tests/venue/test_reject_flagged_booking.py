@@ -5,7 +5,7 @@ that period again, the booking shows as Rejected, the event stays Approved and i
 current coordinator is told, with the reason. A Rejected booking stays active and holds
 back Safety Review until the coordinator withdraws it (SCRUM-93, SCRUM-97). Venue Staff
 may reject any flagged booking, not only one that is no longer suitable (ADR-0112
-decision 2), and a request they haven't decided is rejected as in SCRUM-43 (AC10).
+decision 2), and a request they haven't decided is rejected as in SCRUM-43 (AC11).
 Each booking is decided on its own (AC8).
 
 The services run against ``db_session``. The event is the ``saved_event`` fixture's:
