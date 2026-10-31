@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router'
 
 import { checkSuitability, fetchVenues, searchVenues, venueSearchKeys } from './api'
 import {
+  readEventToSearchFor,
   readFilters,
   readReplacementSearch,
   readVenueToCheck,
@@ -67,4 +68,10 @@ export function useSuitability(venueId: number, filters: SearchFilters) {
 export function useReplacementSearch() {
   const [searchParams] = useSearchParams()
   return readReplacementSearch(searchParams)
+}
+
+/** The EVR- reference of the event the search was opened from, or null (SCRUM-90). */
+export function useEventToSearchFor() {
+  const [searchParams] = useSearchParams()
+  return readEventToSearchFor(searchParams)
 }
