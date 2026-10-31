@@ -1,6 +1,8 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 
+import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
+import type { EventRequestStatus } from '@/config/eventStatus'
 import { eventEquipmentPath } from '@/config/routes'
 import { MOCK_ACCOUNTS, mockSessionFor } from '@/mocks/handlers/auth'
 import {
@@ -14,7 +16,8 @@ import { renderApp } from '@/test/render'
 /**
  * SCRUM-37 on the Equipment page: the assigned coordinator adds, changes and removes the event's
  * equipment lines (AC1, AC2), a quantity below 1 is refused in the backend's words (AC3), and
- * staff see each line and its status (AC5). ADR-0065.
+ * staff see each line and its status (AC5). ADR-0065. The controls show only while the lines can
+ * change: once the request is approved, until the event is confirmed (SCRUM-110, ADR-0116).
  */
 
 const COORDINATOR = mockSessionFor(MOCK_ACCOUNTS.coordinator)
@@ -22,6 +25,14 @@ const TECHNICAL_SUPPORT = mockSessionFor(MOCK_ACCOUNTS.technicalSupport)
 const OPEN_PAGE = eventEquipmentPath(MOCK_OPEN_EVENT_REFERENCE)
 const LINES_PATH = `/api/events/requests/${MOCK_OPEN_EVENT_REFERENCE}/equipment`
 const PROJECTOR_NOTES = 'Ceiling-mounted, with HDMI at the lectern.'
+const LINES_LOCKED_NOTE =
+  'Equipment can be added, changed or removed once the request is approved, until the event is confirmed.'
+/** The statuses the coordinator may change the lines in (EQUIPMENT_EDITABLE_STATUSES, SCRUM-110). */
+const LINES_EDITABLE_STATUSES: readonly EventRequestStatus[] = ['approved', 'safety_review']
+/** Every other status, but a draft, which staff never find. Built from every status. */
+const LINES_LOCKED_STATUSES = Object.values(EVENT_REQUEST_STATUS).filter(
+  (status) => status !== 'draft' && !LINES_EDITABLE_STATUSES.includes(status),
+)
 
 type User = ReturnType<typeof renderApp>['user']
 
@@ -137,7 +148,11 @@ describe('SCRUM-37 equipment page: what the event needs (AC5)', () => {
     server.use(
       http.get(LINES_PATH, () =>
         HttpResponse.json({
-          event: { reference: MOCK_OPEN_EVENT_REFERENCE, name: 'Annual Partner Summit' },
+          event: {
+            reference: MOCK_OPEN_EVENT_REFERENCE,
+            name: 'Annual Partner Summit',
+            status: 'approved',
+          },
           equipment_lines: [
             { ...line, id: 71, equipment_type_id: 77, quantity: 1, status: 'unavailable' },
             { ...line, id: 72, equipment_type_id: 1, quantity: 2, status: 'partially_fulfilled' },
@@ -159,7 +174,7 @@ describe('SCRUM-37 equipment page: what the event needs (AC5)', () => {
   })
 
   it('says when nothing has been asked for yet', async () => {
-    await openAsCoordinator(eventEquipmentPath(mockStatusEventReference('submitted')))
+    await openAsCoordinator(eventEquipmentPath(mockStatusEventReference('approved')))
 
     expect(screen.getByText('No equipment has been asked for yet.')).toBeInTheDocument()
     expect(screen.queryByRole('table', { name: 'Equipment lines' })).not.toBeInTheDocument()
@@ -261,17 +276,50 @@ describe('SCRUM-37 equipment page: adding a line (AC1, AC3)', () => {
       'This event already has a line for that equipment type. Edit that line instead.',
     )
   })
+})
 
-  it('shows the refusal for an event whose equipment can no longer change', async () => {
-    const { user } = await openAsCoordinator(
-      eventEquipmentPath(mockStatusEventReference('confirmed')),
-    )
+describe('SCRUM-110 equipment page: changes only once the request is approved', () => {
+  it.each(LINES_EDITABLE_STATUSES)(
+    'offers the coordinator a new line on an event that is %s',
+    async (status) => {
+      await openAsCoordinator(eventEquipmentPath(mockStatusEventReference(status)))
 
-    await addLine(user, { type: 'Lectern', quantity: '1' })
+      expect(screen.getByRole('button', { name: 'Add line' })).toBeInTheDocument()
+      expect(screen.queryByText(LINES_LOCKED_NOTE)).not.toBeInTheDocument()
+    },
+  )
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Equipment can only be changed before the event is confirmed, and not once it is rejected or cancelled.',
-    )
+  it.each(LINES_LOCKED_STATUSES)(
+    'gives the coordinator no way to change the lines of an event that is %s, and says when they can',
+    async (status) => {
+      await openAsCoordinator(eventEquipmentPath(mockStatusEventReference(status)))
+
+      expect(screen.getByText(LINES_LOCKED_NOTE)).toBeInTheDocument()
+      expect(
+        screen.queryByRole('button', { name: /Change|Remove|Add line/ }),
+      ).not.toBeInTheDocument()
+      expect(screen.queryByLabelText('Equipment type')).not.toBeInTheDocument()
+    },
+  )
+
+  it('keeps a line recorded before approval listed, with no way to change it (AC4)', async () => {
+    await openAsCoordinator(eventEquipmentPath(mockStatusEventReference('awaiting_clarification')))
+
+    expect(lineRows()).toEqual([['Microphone', '2', 'No notes', 'Awaiting Technical Support']])
+    expect(
+      within(linesTable()).queryByRole('columnheader', { name: 'Change or remove' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('lets Technical Support record the outcome of a line on an event not approved yet (AC4)', async () => {
+    renderApp(eventEquipmentPath(mockStatusEventReference('awaiting_clarification')), {
+      session: TECHNICAL_SUPPORT,
+    })
+
+    expect(
+      await screen.findByRole('button', { name: 'Record outcome for Microphone' }),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(LINES_LOCKED_NOTE)).not.toBeInTheDocument()
   })
 })
 
@@ -449,7 +497,11 @@ describe('SCRUM-48 equipment page: the outcome beside each line (AC1, AC2, AC5)'
     server.use(
       http.get(LINES_PATH, () =>
         HttpResponse.json({
-          event: { reference: MOCK_OPEN_EVENT_REFERENCE, name: 'Annual Partner Summit' },
+          event: {
+            reference: MOCK_OPEN_EVENT_REFERENCE,
+            name: 'Annual Partner Summit',
+            status: 'approved',
+          },
           equipment_lines: [
             {
               ...reviewed,
