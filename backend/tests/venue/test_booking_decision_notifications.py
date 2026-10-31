@@ -1,7 +1,9 @@
 """Unit tests for SCRUM-43 AC6 — the coordinator is told how their request went.
 
-Only the coordinator who raised the request is told, with the reason as the
-notification's ``detail``, after the decision is saved (ADR-0015, ADR-0042). A
+Only the event's coordinator is told, with the reason as the notification's
+``detail``, after the decision is saved (ADR-0015, ADR-0042). SCRUM-115: that is the
+coordinator assigned now. If the event was reassigned after the request was raised,
+the current coordinator is told (AC1) and the one reassigned away is not (AC2). A
 notification that can't be saved is logged and never undoes the decision.
 """
 
@@ -27,6 +29,8 @@ DECISION_KINDS = (
     NotificationKind.VENUE_BOOKING_APPROVED,
     NotificationKind.VENUE_BOOKING_REJECTED,
 )
+#: The other Event Coordinator ``saved_users`` saves, for an event reassigned to them.
+OTHER_COORDINATOR_ID = 9
 
 
 def _decision_notifications(session: Session) -> list[Notification]:
@@ -51,6 +55,36 @@ def test_only_the_coordinator_who_raised_the_request_is_told_it_was_approved(
     notifications = _decision_notifications(db_session)
     assert [(n.recipient_id, n.kind, n.event_reference) for n in notifications] == [
         (COORDINATOR_ID, NotificationKind.VENUE_BOOKING_APPROVED, event.reference)
+    ]
+
+
+@pytest.mark.scrum_115
+@pytest.mark.parametrize(
+    ("outcome", "kind"),
+    [
+        ("approved", NotificationKind.VENUE_BOOKING_APPROVED),
+        ("rejected", NotificationKind.VENUE_BOOKING_REJECTED),
+    ],
+)
+def test_after_a_reassignment_only_the_current_coordinator_is_told_with_the_reason(
+    db_session: Session,
+    saved_users: list[User],
+    venue: Venue,
+    saved_event: SavedEvent,
+    outcome: str,
+    kind: NotificationKind,
+) -> None:
+    """AC1 and AC2: the coordinator who raised it was reassigned away, so isn't told."""
+    event = saved_event()
+    request = raise_booking(venue, event, db_session)
+    event.coordinator_id = OTHER_COORDINATOR_ID
+    db_session.commit()
+
+    decide(request.id, outcome, db_session, reason="Decided after the reassignment")
+
+    notifications = _decision_notifications(db_session)
+    assert [(n.recipient_id, n.kind, n.event_reference, n.detail) for n in notifications] == [
+        (OTHER_COORDINATOR_ID, kind, event.reference, "Decided after the reassignment")
     ]
 
 
