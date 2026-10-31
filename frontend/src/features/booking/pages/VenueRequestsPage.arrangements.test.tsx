@@ -28,7 +28,11 @@ const {
   bookedSideRoom,
   releasedHall,
   expiredGallery,
+  heldStudio,
 } = MOCK_ARRANGEMENTS
+/** The backend's refusal to withdraw an approved arrangement (WITHDRAW_NOT_ALLOWED_MESSAGE). */
+const APPROVED_WITHDRAW_REFUSAL =
+  'Only a pending, conflicting, held, rejected or expired arrangement can be withdrawn; this one is approved.'
 
 type AppView = ReturnType<typeof renderApp>
 
@@ -127,6 +131,24 @@ describe('SCRUM-93 venue arrangements on the venue requests page', () => {
     ])
   })
 
+  it('withdraws an arrangement on hold, so its hold and expiry go with it', async () => {
+    const requests = recordRequests()
+    const view = openEvent(MOCK_BOOKING_EVENTS.held.reference)
+    expect(await item(heldStudio.purpose)).toHaveTextContent('Hold expiry')
+
+    await view.user.click(
+      await screen.findByRole('button', { name: `Withdraw ${heldStudio.purpose}` }),
+    )
+
+    await waitFor(async () => expect(await item(heldStudio.purpose)).toHaveTextContent('Withdrawn'))
+    const withdrawn = await item(heldStudio.purpose)
+    expect(withdrawn).not.toHaveTextContent('Hold expiry')
+    expect(within(withdrawn).queryByRole('button')).not.toBeInTheDocument()
+    expect(pathsPosted(requests)).toEqual([
+      `/api/venues/events/${MOCK_BOOKING_EVENTS.held.reference}/booking-requests/${heldStudio.id}/withdraw`,
+    ])
+  })
+
   it('says which arrangement needs an alternative venue, as the backend flags it', async () => {
     openEvent(MOCK_BOOKING_EVENTS.booked.reference)
 
@@ -142,15 +164,16 @@ describe('SCRUM-93 venue arrangements on the venue requests page', () => {
     )
 
     const hall = await item(bookedHall.purpose)
-    expect(await within(hall).findByRole('alert')).toHaveTextContent(
-      'Only a pending, conflicting, rejected or expired arrangement can be withdrawn; this one is approved.',
-    )
+    expect(await within(hall).findByRole('alert')).toHaveTextContent(APPROVED_WITHDRAW_REFUSAL)
     expect(hall).toHaveTextContent('Approved')
     expect(within(await item(bookedSideRoom.purpose)).queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('shows whatever refusal the backend sends, such as one naming the event’s status', async () => {
-    const message = 'Venue arrangements cannot be withdrawn; this event is Confirmed.'
+    // The mock's confirmed event has no arrangements to offer a Withdraw on, so the route is
+    // made to answer as the backend does for one (SCRUM-93 AC10).
+    const message =
+      'Only an approved event or one in Safety Review can have its venue arrangements withdrawn, changed or cancelled; this one is confirmed.'
     server.use(
       http.post('/api/venues/events/:reference/booking-requests/:id/withdraw', () =>
         errorResponse(409, 'conflict', message),
@@ -319,9 +342,7 @@ describe('SCRUM-93 venue arrangements on the venue requests page', () => {
     await view.user.click(view.getByRole('button', { name: 'Withdraw them all' }))
 
     const section = screen.getByRole('region', { name: 'Cancel all venue requests' })
-    expect(await within(section).findByRole('alert')).toHaveTextContent(
-      'Only a pending, conflicting, rejected or expired arrangement can be withdrawn; this one is approved.',
-    )
+    expect(await within(section).findByRole('alert')).toHaveTextContent(APPROVED_WITHDRAW_REFUSAL)
     expect(await item(bookedSideRoom.purpose)).toHaveTextContent('Rejected')
   })
 
