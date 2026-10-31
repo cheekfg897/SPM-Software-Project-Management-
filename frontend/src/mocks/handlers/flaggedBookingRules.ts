@@ -1,6 +1,7 @@
 import type { BookingRequest, Reconfirmation } from '@/features/booking/api'
 import type { FieldErrors } from '@/lib/api'
 
+import { businessIso, noticeTime } from './businessTime'
 import { isOutgrown } from './reassessmentRules'
 import type { SignificantChange } from './reassessmentRules'
 import { instantField } from './venueBlockRules'
@@ -11,8 +12,6 @@ import { unknownFieldErrors } from './venueRules'
  * venue/services.py and ReconfirmBookingSchema check it, for the booking mock.
  */
 
-/** Business time is UTC+8 all year (BUSINESS_UTC_OFFSET), as milliseconds. */
-const BUSINESS_OFFSET_MS = 8 * 60 * 60_000
 const NOT_A_STRING_MESSAGE = 'Not a valid string.'
 /** The fields ReconfirmBookingSchema declares; the reject payload has only the reason. */
 const RECONFIRM_FIELDS: readonly string[] = ['starts_at', 'ends_at', 'reason']
@@ -23,16 +22,6 @@ export const NOT_FLAGGED_AFTER_CHANGE_MESSAGE =
   'This booking is not flagged after a change, so there is nothing to reconfirm or reject.'
 export const SETTLED_BY_REPLACEMENT_MESSAGE =
   'This booking needs an alternative venue, which only a replacement settles.'
-
-/** An instant as the backend's messages write it, in business time: "2026-11-16 09:00". */
-export function noticeTime(instant: number): string {
-  return new Date(instant + BUSINESS_OFFSET_MS).toISOString().slice(0, 16).replace('T', ' ')
-}
-
-/** An instant as the backend sends it, in business time: "2026-11-16T09:00:00+08:00". */
-export function businessIso(instant: number): string {
-  return `${new Date(instant + BUSINESS_OFFSET_MS).toISOString().slice(0, 19)}+08:00`
-}
 
 /**
  * What changed under a booking since its period was last set, raised or reconfirmed: how far the
