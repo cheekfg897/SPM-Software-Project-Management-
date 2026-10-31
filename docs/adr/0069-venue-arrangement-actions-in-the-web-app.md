@@ -1,6 +1,6 @@
 # ADR-0069: The coordinator changes, withdraws or cancels venue arrangements from the event's Venue requests page, and the backend decides which it allows
 
-- **Status:** Accepted; the choices in decision 7 are defaults to review with the team
+- **Status:** Accepted; the choices in decision 7 are defaults to review with the team; the AC10 event-status refusal this waited for, and withdrawing a held arrangement, landed with [ADR-0118](0118-withdraw-a-held-arrangement-and-change-arrangements-only-while-planning.md), with the mock and contract tests
 - **Date:** 2026-10-17
 - **Story:** SCRUM-93 Book several venues for one event (AC6, AC8, AC9, AC10)
 - **Extends:** ADR-0039, ADR-0042
