@@ -23,12 +23,13 @@ from datetime import UTC, datetime
 from typing import Any
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.common.errors import ValidationError
 from app.modules.auth.models import User
 from app.modules.auth.permissions import Role
-from app.modules.equipment.models import EquipmentType
+from app.modules.equipment.models import EquipmentReservation, EquipmentType
 from app.modules.events import routes
 from app.modules.events.models import (
     EquipmentLineStatus,
@@ -201,6 +202,36 @@ def test_a_named_line_is_reopened_and_the_others_are_left(
     assert reopened.provided_quantity is None
     assert _line(db_session, other.id).status is EquipmentLineStatus.FULFILLED
     assert _line(db_session, other.id).provided_quantity == 2
+
+
+@pytest.mark.scrum_60
+def test_a_named_lines_reservations_are_marked_for_reassessment(
+    db_session: Session, lines: list[EventEquipmentLine], save: Callable[..., None]
+) -> None:
+    """As a new quantity marks them (SCRUM-60 AC8), so the fresh outcome settles them.
+
+    The other line's reservation is left unmarked (ADR-0113 decision 4).
+    """
+    named, other = lines
+    for line in lines:
+        save(
+            EquipmentReservation(
+                event_id=line.event_request_id,
+                equipment_type_id=line.equipment_type_id,
+                quantity=2,
+                starts_at=datetime(2026, 10, 15, 1, tzinfo=UTC),
+                ends_at=datetime(2026, 10, 15, 9, tzinfo=UTC),
+                reserved_by=TECHNICAL_SUPPORT_IDS[0],
+            )
+        )
+
+    _record(db_session, "changes_requested", reopened_line_ids=[named.id])
+
+    db_session.expire_all()
+    marked = {}
+    for reservation in db_session.scalars(select(EquipmentReservation)):
+        marked[reservation.equipment_type_id] = reservation.needs_reassessment
+    assert marked == {named.equipment_type_id: True, other.equipment_type_id: False}
 
 
 def test_naming_an_arrangement_twice_flags_it_once(
