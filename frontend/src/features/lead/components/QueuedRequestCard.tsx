@@ -13,15 +13,19 @@ import { Detail } from './Detail'
 
 interface QueuedRequestCardProps {
   request: UnassignedRequest
+  /** Called once the backend has given the request to a coordinator. */
+  onAssigned: () => void
+  /** Called with the backend's refusal, so the queue can say why if the request then leaves it. */
+  onRefused: (error: Error) => void
 }
 
 /**
  * One request waiting in the queue: what it is, when it is for, its status (SCRUM-24 AC8), a link
  * to its read-only record (SCRUM-24 AC10, ADR-0095), and the form to assign it.
  */
-export function QueuedRequestCard({ request }: QueuedRequestCardProps) {
+export function QueuedRequestCard({ request, onAssigned, onRefused }: QueuedRequestCardProps) {
   const headingId = useId()
-  const assign = useAssignCoordinator()
+  const assign = useAssignCoordinator({ onAssigned, onRefused })
   return (
     <article aria-labelledby={headingId} className="border-line bg-surface rounded-2xl border p-6">
       <h2 id={headingId} className="font-display text-xl font-semibold">
