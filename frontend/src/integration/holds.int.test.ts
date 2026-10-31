@@ -5,7 +5,9 @@ import {
   fetchPendingBookingRequests,
   placeBookingHold,
   raiseBookingRequest,
+  withdrawArrangement,
 } from '@/features/booking/api'
+import { fetchVenueCalendar } from '@/features/venues/api'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
 
 import { refusal, signInAs, signInAsNewAttendee, staffAccount } from './backend'
@@ -168,6 +170,36 @@ describe('SCRUM-75 tentative holds against the backend: a hold from start to fin
           message: 'Only a request on hold has an expiry to change; this one is approved.',
         },
       )
+    },
+  )
+})
+
+describe('SCRUM-93 withdrawing a held request against the backend', () => {
+  /** The whole of EVENT_DATE, as the calendar route reads a range (business time). */
+  const EVENT_DAY = { range_start: `${EVENT_DATE}T00:00`, range_end: `${EVENT_DATE}T23:59` }
+
+  it.skipIf(!canHold)(
+    'releases its hold: the venue is free again, Venue Staff no longer wait on it, and the other request stays',
+    async () => {
+      const { reference, requestIds } = await eventWithRequests('Main hall', 'Breakout room')
+      const [mainHall = 0, breakoutRoom = 0] = requestIds
+      const held = await placeBookingHold(mainHall, { expires_at: EXPIRY })
+      const calendarWhileHeld = await fetchVenueCalendar(held.venue_id, EVENT_DAY)
+
+      await signInAs(staffAccount())
+      const withdrawn = await withdrawArrangement(reference, mainHall)
+
+      expect(calendarWhileHeld.map((entry) => entry.kind)).toEqual(['tentative_hold'])
+      expect(withdrawn).toMatchObject({ id: mainHall, status: 'withdrawn', hold_expires_at: null })
+      const listed = await fetchBookingRequests(reference)
+      expect(listed.map((request) => [request.id, request.status])).toEqual([
+        [mainHall, 'withdrawn'],
+        [breakoutRoom, 'pending'],
+      ])
+      await signInAs(required(VENUE_STAFF))
+      expect(await fetchVenueCalendar(held.venue_id, EVENT_DAY)).toEqual([])
+      const queue = await fetchPendingBookingRequests()
+      expect(queue.map((waiting) => waiting.id)).not.toContain(mainHall)
     },
   )
 })

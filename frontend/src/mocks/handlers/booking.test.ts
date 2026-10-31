@@ -5,7 +5,7 @@ import { sendRequestsAs } from '@/test/sendRequestsAs'
 
 import { MOCK_ACCOUNTS, mockTokenFor } from '../fixtures/accounts'
 
-import { flagArrangementsAfterChange } from './booking'
+import { flagArrangementsAfterChange, releaseEventArrangements } from './booking'
 import { MOCK_ARRANGEMENTS, MOCK_BOOKING_EVENTS, MOCK_BOOKING_VENUES } from './bookingFixtures'
 
 /**
@@ -381,19 +381,32 @@ const OVERLAPPING_SLOT = {
   ends_at: '2026-11-20T14:00:00+08:00',
 }
 
+/** Decide a request as Venue Staff, then send as the coordinator again, refused or not. */
+async function decideAsVenueStaff(requestId: unknown, outcome: string) {
+  sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.venueStaff))
+  try {
+    return await apiRequest<Record<string, unknown>>(
+      `/api/venues/booking-requests/${String(requestId)}/decision`,
+      { method: 'POST', body: { outcome, reason: 'Checked with the venue' } },
+    )
+  } finally {
+    sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.coordinator))
+  }
+}
+
 /**
  * Raise a request for OVERLAPPING_SLOT, then have Venue Staff approve the waiting one, which
  * marks this one Conflicting (SCRUM-44). Returns this one's id.
  */
 async function raiseConflicting(): Promise<number> {
   const overlapping = await raisePending(OVERLAPPING_SLOT)
-  sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.venueStaff))
-  await apiRequest('/api/venues/booking-requests/9001/decision', {
-    method: 'POST',
-    body: { outcome: 'approved' },
-  })
-  sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.coordinator))
+  await decideAsVenueStaff(9001, 'approved')
   return overlapping
+}
+
+/** The backend's WITHDRAW_NOT_ALLOWED_MESSAGE for an arrangement that is `status`. */
+function withdrawRefusal(status: string): string {
+  return `Only a pending, conflicting, held, rejected or expired arrangement can be withdrawn; this one is ${status}.`
 }
 
 const {
@@ -478,7 +491,34 @@ describe('SCRUM-93 booking mock: withdrawing an arrangement', () => {
     expect(withdrawn.status).toBe('withdrawn')
   })
 
-  it.each(statusesOtherThan(['pending', 'conflicting', 'rejected', 'expired']))(
+  it('withdraws an arrangement on hold and releases its hold, as the backend does (ADR-0118)', async () => {
+    const withdrawn = await withdraw(HELD_EVENT.reference, heldStudio.id)
+
+    expect(withdrawn).toMatchObject({
+      id: heldStudio.id,
+      status: 'withdrawn',
+      hold_expires_at: null,
+      needs_alternative_venue: false,
+    })
+  })
+
+  it('frees a held venue and period, so Venue Staff can approve another event’s request for them', async () => {
+    const sameSlot = {
+      venue_id: heldStudio.venue_id,
+      starts_at: heldStudio.starts_at,
+      ends_at: heldStudio.ends_at,
+    }
+    const theirs = await raisePending(sameSlot)
+    const whileHeld = await errorOf(decideAsVenueStaff(theirs, 'approved'))
+
+    await withdraw(HELD_EVENT.reference, heldStudio.id)
+    const approved = await decideAsVenueStaff(theirs, 'approved')
+
+    expect(whileHeld.status).toBe(409)
+    expect(approved.status).toBe('approved')
+  })
+
+  it.each(statusesOtherThan(['pending', 'conflicting', 'on_hold', 'rejected', 'expired']))(
     'refuses to withdraw an arrangement that is %s, naming its status',
     async (status) => {
       const [reference, id] = await ARRANGEMENT_IN[status]()
@@ -486,9 +526,7 @@ describe('SCRUM-93 booking mock: withdrawing an arrangement', () => {
       const error = await errorOf(withdraw(reference, id))
 
       expect(error.status).toBe(409)
-      expect(error.message).toBe(
-        `Only a pending, conflicting, rejected or expired arrangement can be withdrawn; this one is ${status}.`,
-      )
+      expect(error.message).toBe(withdrawRefusal(status))
     },
   )
 
@@ -497,10 +535,7 @@ describe('SCRUM-93 booking mock: withdrawing an arrangement', () => {
 
     const error = await errorOf(withdraw(BOOKED_EVENT.reference, bookedHall.id))
 
-    expect([error.status, error.message]).toEqual([
-      409,
-      'Only a pending, conflicting, rejected or expired arrangement can be withdrawn; this one is approved.',
-    ])
+    expect([error.status, error.message]).toEqual([409, withdrawRefusal('approved')])
   })
 
   it('answers 404 for an arrangement of another event, or one that does not exist', async () => {
@@ -750,22 +785,23 @@ describe('SCRUM-93 booking mock: cancelling all of an event’s arrangements', (
     ])
   })
 
-  it('refuses while an arrangement is on hold, naming its status', async () => {
-    const error = await errorOf(cancelAll(HELD_EVENT.reference))
+  it('withdraws one on hold and releases its hold, as the backend does (ADR-0118)', async () => {
+    const cancelled = await cancelAll(HELD_EVENT.reference)
 
-    expect(error.status).toBe(409)
-    expect(error.message).toBe(
-      'Only a pending, conflicting, rejected or expired arrangement can be withdrawn; this one is on_hold.',
-    )
+    expect(
+      cancelled.map((arrangement) => [
+        arrangement.id,
+        arrangement.status,
+        arrangement.hold_expires_at,
+      ]),
+    ).toEqual([[heldStudio.id, 'withdrawn', null]])
   })
 
   it('refuses while an arrangement is approved, and withdraws none of the others', async () => {
     const error = await errorOf(cancelAll(BOOKED_EVENT.reference))
 
     expect(error.status).toBe(409)
-    expect(error.message).toBe(
-      'Only a pending, conflicting, rejected or expired arrangement can be withdrawn; this one is approved.',
-    )
+    expect(error.message).toBe(withdrawRefusal('approved'))
     expect(await statusesOf(BOOKED_EVENT.reference)).toEqual([
       `${bookedSideRoom.id} rejected`,
       `${bookedHall.id} approved`,
@@ -776,6 +812,24 @@ describe('SCRUM-93 booking mock: cancelling all of an event’s arrangements', (
     const error = await errorOf(cancelAll(MOCK_BOOKING_EVENTS.someoneElses.reference))
 
     expect(error.status).toBe(404)
+  })
+})
+
+describe('SCRUM-49 booking mock: releasing an event’s venues when it is rejected during planning', () => {
+  it('releases one on hold rather than withdrawing it, and clears its expiry, as the backend does', async () => {
+    releaseEventArrangements(HELD_EVENT.reference)
+
+    const listed = await apiRequest<Record<string, unknown>[]>(bookingUrl(HELD_EVENT.reference))
+    expect(listed).toMatchObject([{ id: heldStudio.id, status: 'released', hold_expires_at: null }])
+  })
+
+  it('withdraws an expired one and leaves a released one as it is', async () => {
+    releaseEventArrangements(REPLACED_EVENT.reference)
+
+    expect(await statusesOf(REPLACED_EVENT.reference)).toEqual([
+      `${releasedHall.id} released`,
+      `${expiredGallery.id} withdrawn`,
+    ])
   })
 })
 
@@ -811,6 +865,60 @@ describe('SCRUM-93 booking mock: who may change, withdraw or cancel', () => {
       }
     },
   )
+})
+
+describe('SCRUM-93 booking mock: only while the event is being planned (AC10)', () => {
+  const CONFIRMED_EVENT = MOCK_BOOKING_EVENTS.confirmed
+  const SAFETY_REVIEW_EVENT = MOCK_BOOKING_EVENTS.inSafetyReview
+  const { reviewedAuditorium } = MOCK_ARRANGEMENTS
+  /** An id no arrangement has, so a refusal for the event's status shows it is checked first. */
+  const UNKNOWN_ARRANGEMENT_ID = 424242
+  const ON_CONFIRMED_EVENT = {
+    change: () => change(CONFIRMED_EVENT.reference, UNKNOWN_ARRANGEMENT_ID, { purpose: 'x' }),
+    withdraw: () => withdraw(CONFIRMED_EVENT.reference, UNKNOWN_ARRANGEMENT_ID),
+    'cancel all': () => cancelAll(CONFIRMED_EVENT.reference),
+  }
+
+  it.each(Object.entries(ON_CONFIRMED_EVENT))(
+    'refuses %s on a confirmed event, naming its status, before looking at the arrangement',
+    async (_name, call) => {
+      const error = await errorOf(call())
+
+      expect([error.status, error.message]).toEqual([
+        409,
+        'Only an approved event or one in Safety Review can have its venue arrangements withdrawn, changed or cancelled; this one is confirmed.',
+      ])
+    },
+  )
+
+  it.each([
+    [
+      'change',
+      () => change(SAFETY_REVIEW_EVENT.reference, reviewedAuditorium.id, { purpose: 'x' }),
+      'Only a pending arrangement can be changed; this one is approved.',
+    ],
+    [
+      'withdraw',
+      () => withdraw(SAFETY_REVIEW_EVENT.reference, reviewedAuditorium.id),
+      withdrawRefusal('approved'),
+    ],
+    ['cancel all', () => cancelAll(SAFETY_REVIEW_EVENT.reference), withdrawRefusal('approved')],
+  ])(
+    'lets %s through to the arrangement while the event is in Safety Review',
+    async (_name, call, message) => {
+      const error = await errorOf(call())
+
+      expect([error.status, error.message]).toEqual([409, message])
+    },
+  )
+
+  it('still names a bad field of a change before looking at a confirmed event', async () => {
+    const error = await errorOf(
+      change(CONFIRMED_EVENT.reference, UNKNOWN_ARRANGEMENT_ID, { purpose: '   ' }),
+    )
+
+    expect([error.status, error.fieldErrors]).toEqual([400, { purpose: ['Must not be blank.'] }])
+  })
 })
 
 describe("SCRUM-24 booking mock: Venue Staff's list of events", () => {
@@ -912,15 +1020,6 @@ describe('SCRUM-92 booking mock: raising a replacement for a flagged arrangement
       ends_at: replaced.ends_at,
       replaces_request_id: replaced.id,
     })
-  }
-
-  async function decideAsVenueStaff(requestId: unknown, outcome: string) {
-    sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.venueStaff))
-    await apiRequest(`/api/venues/booking-requests/${String(requestId)}/decision`, {
-      method: 'POST',
-      body: { outcome, reason: 'Checked with the venue' },
-    })
-    sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.coordinator))
   }
 
   /** The booked event's arrangement `id`, as the mock lists it. */

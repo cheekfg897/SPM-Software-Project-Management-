@@ -124,16 +124,35 @@ const REPLACEMENT_EVENT_STATUSES: readonly MockBookingEvent['status'][] = [
   'safety_review',
 ]
 /**
+ * As the backend's PLANNING_STATUSES (events/services.py): an event's arrangements can be
+ * withdrawn, changed or cancelled only while it is Approved or in Safety Review (SCRUM-93 AC10,
+ * ADR-0118).
+ */
+const PLANNING_EVENT_STATUSES: readonly MockBookingEvent['status'][] = ['approved', 'safety_review']
+/**
  * As the backend's WITHDRAWABLE_REQUEST_STATUSES: a rejected arrangement stays active until
  * withdrawn, a conflicting one (SCRUM-44) may be withdrawn like a pending one, and so may one
- * whose hold expired (SCRUM-94). An approved or held one has a booking behind it.
+ * whose hold expired (SCRUM-94), or one on hold, whose hold goes with it (ADR-0118). An approved
+ * one has a booking behind it.
  */
 const WITHDRAWABLE_STATUSES: readonly BookingRequestStatus[] = [
   'pending',
   'conflicting',
+  'on_hold',
   'rejected',
   'expired',
 ]
+/**
+ * As the backend's VENUE_HOLDING_REQUEST_STATUSES: the venue is held for an approved arrangement
+ * by its booking and for one on hold by its hold, so rejecting the event releases these rather
+ * than withdrawing them (ADR-0093, ADR-0118).
+ */
+const VENUE_HOLDING_STATUSES: readonly BookingRequestStatus[] = ['approved', 'on_hold']
+/**
+ * As the backend's REQUEST_STATUSES_WITH_A_HOLD: only a request on hold, or one whose hold ran out,
+ * shows a hold's expiry (SCRUM-75 AC9, SCRUM-94 AC6).
+ */
+const STATUSES_WITH_A_HOLD: readonly BookingRequestStatus[] = ['on_hold', 'expired']
 /**
  * As the backend's RETIRED_REQUEST_STATUSES: withdrawn, or released when an approved replacement
  * took over (SCRUM-92). Cancel all leaves them out.
@@ -216,7 +235,8 @@ function clashingApproval(waiting: BookingRequest): BookingRequest | undefined {
 /**
  * Move a request to `status`. Its flags count only while it still holds or asks for its venue, as
  * the backend's needs_alternative_venue and is_flagged_after_change say; once it doesn't, they stay
- * as the record of why (SCRUM-92, SCRUM-33 AC6, ADR-0094, ADR-0100).
+ * as the record of why (SCRUM-92, SCRUM-33 AC6, ADR-0094, ADR-0100). Leaving On hold releases the
+ * hold, so a status without one shows no expiry, as the backend's hold_expires_at doesn't.
  */
 function moveTo(request: BookingRequest, status: BookingRequestStatus): void {
   request.status = status
@@ -224,6 +244,9 @@ function moveTo(request: BookingRequest, status: BookingRequestStatus): void {
     UNAVAILABILITY_FLAGGABLE_STATUSES.includes(status) && request.unavailability.length > 0
   request.flagged_after_change =
     FLAGGABLE_STATUSES.includes(status) && request.reassessment_flags.length > 0
+  if (!STATUSES_WITH_A_HOLD.includes(status)) {
+    request.hold_expires_at = null
+  }
 }
 
 /** The backend marks each Pending request that clashes with a newly approved one Conflicting (SCRUM-44). */
@@ -500,20 +523,20 @@ export function bookingEventByReference(reference: string): MockBookingEvent | u
 
 /**
  * Free every venue the event still has arranged, as the backend's release_event_arrangements
- * does when the event is rejected during planning (SCRUM-49 AC10, ADR-0093): one Venue Staff
- * haven't approved is withdrawn, one holding its venue (approved or on hold) is released, and a
- * retired one stays as it is. Like the withdraw route here, it writes no history.
+ * does when the event is rejected during planning (SCRUM-49 AC10, ADR-0093): one holding its
+ * venue (approved or on hold) is released, any other active one is withdrawn, and a retired one
+ * stays as it is. Like the withdraw route here, it writes no history.
  */
 export function releaseEventArrangements(reference: string): void {
   const event = events.find((known) => known.reference === reference)
   if (event === undefined) {
     return
   }
-  for (const arrangement of requestsOf(event)) {
-    if (WITHDRAWABLE_STATUSES.includes(arrangement.status)) {
-      moveTo(arrangement, 'withdrawn')
-    } else if (!RETIRED_STATUSES.includes(arrangement.status)) {
+  for (const arrangement of requestsOf(event).filter(isActive)) {
+    if (VENUE_HOLDING_STATUSES.includes(arrangement.status)) {
       moveTo(arrangement, 'released')
+    } else {
+      moveTo(arrangement, 'withdrawn')
     }
   }
 }
@@ -656,15 +679,34 @@ function releaseReplaced(approved: BookingRequest): void {
     return
   }
   moveTo(replaced, 'released')
-  // The hold is cancelled with it, and the backend shows an expiry only while On hold or Expired.
-  replaced.hold_expires_at = null
+}
+
+/**
+ * The coordinator's own event, if its arrangements may still be withdrawn, changed or cancelled,
+ * as the backend's get_event_for_arrangement_change finds it; otherwise the response to send: 404
+ * for an event that isn't theirs, 409 naming the status of one that isn't being planned (SCRUM-93
+ * AC10).
+ */
+function eventToChange(reference: unknown, coordinatorId: number): MockBookingEvent | Response {
+  const event = findOwnEvent(reference, coordinatorId)
+  if (event === undefined) {
+    return notFound(EVENT_NOT_FOUND_MESSAGE)
+  }
+  if (!PLANNING_EVENT_STATUSES.includes(event.status)) {
+    return errorResponse(
+      409,
+      'conflict',
+      `Only an approved event or one in Safety Review can have its venue arrangements withdrawn, changed or cancelled; this one is ${event.status}.`,
+    )
+  }
+  return event
 }
 
 function withdrawRefusal(arrangement: BookingRequest) {
   return errorResponse(
     409,
     'conflict',
-    `Only a pending, conflicting, rejected or expired arrangement can be withdrawn; this one is ${arrangement.status}.`,
+    `Only a pending, conflicting, held, rejected or expired arrangement can be withdrawn; this one is ${arrangement.status}.`,
   )
 }
 
@@ -822,8 +864,6 @@ export const bookingHandlers: RequestHandler[] = [
 
     moveTo(waiting, body.outcome)
     waiting.decision_reason = reason
-    // The backend shows an expiry only while a request is On Hold or Expired.
-    waiting.hold_expires_at = null
     if (body.outcome === 'approved') {
       markClashingRequestsConflicting(waiting)
       releaseReplaced(waiting)
@@ -836,9 +876,9 @@ export const bookingHandlers: RequestHandler[] = [
     if (refusal !== null || user === undefined) {
       return refusal
     }
-    const event = findOwnEvent(params.reference, user.id)
-    if (event === undefined) {
-      return notFound(EVENT_NOT_FOUND_MESSAGE)
+    const event = eventToChange(params.reference, user.id)
+    if (event instanceof Response) {
+      return event
     }
     const arrangement = findArrangement(event, params.arrangementId)
     if (arrangement === undefined) {
@@ -857,9 +897,9 @@ export const bookingHandlers: RequestHandler[] = [
     if (refusal !== null || user === undefined) {
       return refusal
     }
-    const event = findOwnEvent(params.reference, user.id)
-    if (event === undefined) {
-      return notFound(EVENT_NOT_FOUND_MESSAGE)
+    const event = eventToChange(params.reference, user.id)
+    if (event instanceof Response) {
+      return event
     }
     const active = requestsOf(event).filter(isActive)
     // The backend commits once, so one it cannot withdraw means none of them is.
@@ -885,9 +925,9 @@ export const bookingHandlers: RequestHandler[] = [
       return validationError(invalid)
     }
 
-    const event = findOwnEvent(params.reference, user.id)
-    if (event === undefined) {
-      return notFound(EVENT_NOT_FOUND_MESSAGE)
+    const event = eventToChange(params.reference, user.id)
+    if (event instanceof Response) {
+      return event
     }
     const arrangement = findArrangement(event, params.arrangementId)
     if (arrangement === undefined) {
