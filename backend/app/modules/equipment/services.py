@@ -143,6 +143,9 @@ class ReservationReassessment:
     available: int
     #: Reserved units the period can't give; 0 when it can give them all.
     shortfall: int
+    #: Whether confirming would settle them now (AC3, ADR-0114 decision 23). If not,
+    #: Technical Support record the line's outcome instead (AC4, AC8, AC12).
+    confirmable: bool
 
 
 def _check_venue(venue_id: int | None, session: Session) -> None:
@@ -624,6 +627,24 @@ def _free_for_reassessment(
     return max(_units_in_service(equipment_type, session) - taken, 0)
 
 
+def _quantity_to_confirm(
+    need: events_services.EventEquipmentNeed, equipment_type: EquipmentType, session: Session
+) -> int | None:
+    """At most how many units confirming keeps of the type's marked reservations.
+
+    What the line's outcome provides (SCRUM-60 AC3); ``None`` while the line has no
+    current outcome, which recording one settles instead (AC8, AC12). A type the event
+    has no line for has no outcome to record: it was reserved up to what was free
+    (ADR-0114 decision 18), so confirming is its review, and keeps what is free for the
+    event's period now (decision 22).
+    """
+    if equipment_type.id not in need.requested:
+        return _free_for_reassessment(equipment_type, need, session)
+    return events_services.provided_quantity_of_line(
+        need.event_id, equipment_type.id, session=session
+    )
+
+
 def _reassessment_of(
     reservations: list[EquipmentReservation],
     need: events_services.EventEquipmentNeed,
@@ -635,6 +656,10 @@ def _reassessment_of(
     for reservation in reservations:
         reserved += reservation.quantity
     available = _free_for_reassessment(equipment_type, need, session)
+    to_confirm = _quantity_to_confirm(need, equipment_type, session)
+    # Confirming keeps no more than the reservations hold, and refuses to keep more
+    # than is free (settle_reassessment).
+    confirmable = to_confirm is not None and min(to_confirm, reserved) <= available
     return ReservationReassessment(
         equipment_type_id=equipment_type.id,
         equipment_type_name=equipment_type.name,
@@ -644,6 +669,7 @@ def _reassessment_of(
         ends_at=need.ends_at,
         available=available,
         shortfall=max(reserved - available, 0),
+        confirmable=confirmable,
     )
 
 
@@ -791,30 +817,6 @@ def settle_reassessment(
     return keep
 
 
-def _quantity_to_confirm(
-    need: events_services.EventEquipmentNeed, equipment_type: EquipmentType, session: Session
-) -> int:
-    """At most how many units confirming keeps of the type's marked reservations.
-
-    What the line's outcome provides (SCRUM-60 AC3); a line with no current outcome is
-    settled by recording one instead (AC8, AC12). A type the event has no line for has
-    no outcome to record: it was reserved up to what was free (ADR-0114 decision 18),
-    so confirming is its review, and keeps what is free for the event's period now
-    (decision 22).
-
-    Raises:
-        ConflictError: 409 — the type's line has no current outcome.
-    """
-    if equipment_type.id not in need.requested:
-        return _free_for_reassessment(equipment_type, need, session)
-    provided = events_services.provided_quantity_of_line(
-        need.event_id, equipment_type.id, session=session
-    )
-    if provided is None:
-        raise ConflictError(RECORD_THE_OUTCOME_MESSAGE)
-    return provided
-
-
 def confirm_reservation_move(
     reference: str,
     equipment_type_id: int,
@@ -859,6 +861,8 @@ def confirm_reservation_move(
         raise NotFoundError(NOTHING_TO_REASSESS_MESSAGE)
     equipment_type = get_equipment_type(equipment_type_id, session=sess)
     provided = _quantity_to_confirm(need, equipment_type, sess)
+    if provided is None:
+        raise ConflictError(RECORD_THE_OUTCOME_MESSAGE)
 
     kept = settle_reassessment(need, equipment_type_id, provided, session=sess)
     events_services.withdraw_safety_approval(
