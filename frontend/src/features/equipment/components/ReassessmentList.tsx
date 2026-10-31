@@ -36,6 +36,43 @@ function freeText(reassessment: ReservationReassessment): string {
   return `${String(reassessment.available)} free for it: ${String(reassessment.shortfall)} short.`
 }
 
+interface ConfirmActionProps {
+  reassessment: ReservationReassessment
+  onConfirm: (equipmentTypeId: number) => void
+  isConfirming: boolean
+}
+
+/**
+ * What Technical Support do with one type: confirm it where the backend says that settles it
+ * (AC3), or record the line's outcome in the form above (AC4, AC12). A type with no line is
+ * confirmed even when short, keeping what is free (ADR-0114 decisions 22, 23).
+ */
+function ConfirmAction({ reassessment, onConfirm, isConfirming }: ConfirmActionProps) {
+  const name = reassessment.equipment_type_name
+  if (!reassessment.confirmable) {
+    return (
+      <p className="text-sm">Record the outcome for {name} above; that settles the reservation.</p>
+    )
+  }
+  return (
+    <>
+      {reassessment.shortfall > 0 && (
+        <p className="text-sm">
+          Confirming keeps the {reassessment.available} free and releases the rest.
+        </p>
+      )}
+      <Button
+        variant="secondary"
+        aria-label={`Confirm ${name} for the event's period now`}
+        isPending={isConfirming}
+        onClick={() => onConfirm(reassessment.equipment_type_id)}
+      >
+        Confirm for the period now
+      </Button>
+    </>
+  )
+}
+
 interface ReassessmentItemProps {
   reassessment: ReservationReassessment
   canConfirm: boolean
@@ -43,10 +80,7 @@ interface ReassessmentItemProps {
   isConfirming: boolean
 }
 
-/**
- * One type's reassessment. With nothing short, Technical Support may confirm it; with a shortfall
- * they record the line's outcome in the form above instead (AC4).
- */
+/** One type's reassessment, and for Technical Support what settles it. */
 function ReassessmentItem({
   reassessment,
   canConfirm,
@@ -66,21 +100,12 @@ function ReassessmentItem({
       <p className={reassessment.shortfall > 0 ? 'text-danger font-semibold' : 'text-sm'}>
         {freeText(reassessment)}
       </p>
-      {canConfirm && reassessment.shortfall > 0 && (
-        <p className="text-sm">
-          Record a partially fulfilled or unavailable outcome for {name} above; that settles the
-          reservation.
-        </p>
-      )}
-      {canConfirm && reassessment.shortfall === 0 && (
-        <Button
-          variant="secondary"
-          aria-label={`Confirm ${name} for the event's period now`}
-          isPending={isConfirming}
-          onClick={() => onConfirm(reassessment.equipment_type_id)}
-        >
-          Confirm for the period now
-        </Button>
+      {canConfirm && (
+        <ConfirmAction
+          reassessment={reassessment}
+          onConfirm={onConfirm}
+          isConfirming={isConfirming}
+        />
       )}
     </li>
   )

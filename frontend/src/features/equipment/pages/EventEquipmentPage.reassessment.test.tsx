@@ -15,8 +15,9 @@ import { renderApp } from '@/test/render'
 /**
  * SCRUM-60 on the Equipment page (ADR-0114): what a change left to reassess, with each
  * reservation's period, the event's period now, what is free and any shortfall (AC2), and for
- * Technical Support a Confirm action (AC3). A shortfall is settled with the outcome form above
- * (AC4). The moved mock event starts with its projectors and a lectern marked.
+ * Technical Support a Confirm action where the backend says confirming settles it (AC3,
+ * ADR-0114 decision 23); otherwise the outcome form above settles it (AC4, AC12). The moved mock
+ * event starts with its projectors (fulfilled) and a lectern (reopened, no outcome) marked.
  */
 
 const TECHNICAL_SUPPORT = mockSessionFor(MOCK_ACCOUNTS.technicalSupport)
@@ -26,6 +27,8 @@ const REASSESSMENTS_PATH = `/api/equipment/events/${MOCK_MOVED_EVENT_REFERENCE}/
 const LIST_NAME = 'Reservations to reassess'
 const RECORD_THE_OUTCOME =
   "This equipment's request has no current outcome. Record its outcome instead: that settles the reservation."
+const OUTCOME_HINT = (name: string) =>
+  `Record the outcome for ${name} above; that settles the reservation.`
 
 type User = ReturnType<typeof renderApp>['user']
 
@@ -68,6 +71,7 @@ function projectorReassessment(changes: Record<string, unknown>) {
     ends_at: '2026-10-12T22:00:00+08:00',
     available: 6,
     shortfall: 0,
+    confirmable: true,
     ...changes,
   }
 }
@@ -106,17 +110,40 @@ describe('SCRUM-60 Equipment page: reservations to reassess', () => {
   it('shows a shortfall, and points to the outcome form instead of confirming (AC4)', async () => {
     server.use(
       http.get(REASSESSMENTS_PATH, () =>
-        HttpResponse.json([projectorReassessment({ available: 1, shortfall: 2 })]),
+        HttpResponse.json([
+          projectorReassessment({ available: 1, shortfall: 2, confirmable: false }),
+        ]),
       ),
     )
     renderApp(MOVED_PAGE, { session: TECHNICAL_SUPPORT })
 
     const projector = await itemFor('Projector')
     expect(projector).toHaveTextContent('1 free for it: 2 short.')
-    expect(projector).toHaveTextContent(
-      'Record a partially fulfilled or unavailable outcome for Projector above; that settles the reservation.',
-    )
+    expect(projector).toHaveTextContent(OUTCOME_HINT('Projector'))
     expect(within(projector).queryByRole('button', { name: /Confirm/ })).not.toBeInTheDocument()
+  })
+
+  it('points a line with no current outcome to the outcome form, with nothing short (AC12)', async () => {
+    renderApp(MOVED_PAGE, { session: TECHNICAL_SUPPORT })
+
+    const lectern = await itemFor('Lectern')
+    expect(lectern).toHaveTextContent('2 free for it, enough for every reserved unit.')
+    expect(lectern).toHaveTextContent(OUTCOME_HINT('Lectern'))
+    expect(within(lectern).queryByRole('button', { name: /Confirm/ })).not.toBeInTheDocument()
+  })
+
+  it('offers Confirm when the backend says so though short, saying what it keeps', async () => {
+    server.use(
+      http.get(REASSESSMENTS_PATH, () =>
+        HttpResponse.json([projectorReassessment({ available: 1, shortfall: 2 })]),
+      ),
+    )
+    renderApp(MOVED_PAGE, { session: TECHNICAL_SUPPORT })
+
+    const projector = await itemFor('Projector')
+    expect(projector).toHaveTextContent('Confirming keeps the 1 free and releases the rest.')
+    expect(projector).not.toHaveTextContent(OUTCOME_HINT('Projector'))
+    expect(confirmButtonFor('Projector')).toBeInTheDocument()
   })
 
   it('names a period two reservations share once', async () => {
@@ -189,8 +216,13 @@ describe('SCRUM-60 Equipment page: confirming a reservation (AC3)', () => {
   })
 
   it("shows the backend's refusal in its own words, and reads the equipment again", async () => {
+    server.use(
+      http.post(`${REASSESSMENTS_PATH}/1/confirm`, () =>
+        errorResponse(409, 'conflict', RECORD_THE_OUTCOME),
+      ),
+    )
     const requests = recordRequests()
-    await confirmAsTechnicalSupport('Lectern')
+    await confirmAsTechnicalSupport('Projector')
 
     expect(await screen.findByRole('alert')).toHaveTextContent(RECORD_THE_OUTCOME)
     await waitFor(() => {
@@ -200,7 +232,7 @@ describe('SCRUM-60 Equipment page: confirming a reservation (AC3)', () => {
       )
       expect(reads).toHaveLength(2)
     })
-    expect(await itemFor('Lectern')).toHaveTextContent('Lectern: 1 reserved')
+    expect(await itemFor('Projector')).toHaveTextContent('Projector: 3 reserved')
   })
 
   it('shows a shortfall refusal the backend sends after the list was read', async () => {
