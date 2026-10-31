@@ -60,8 +60,11 @@ const PLANNING_STATUSES: readonly EventRequestStatus[] = [
   EVENT_REQUEST_STATUS.APPROVED,
   EVENT_REQUEST_STATUS.SAFETY_REVIEW,
 ]
-/** Arrangements no longer counted among the event's venues (`RETIRED_REQUEST_STATUSES`). */
-const RETIRED_STATUSES: readonly MockArrangementStatus[] = ['withdrawn', 'released']
+/**
+ * Arrangements no longer counted among the event's venues (`RETIRED_REQUEST_STATUSES`): a
+ * cancelled one too, which the Safety Review gate and confirmation ignore (SCRUM-111).
+ */
+const RETIRED_STATUSES: readonly MockArrangementStatus[] = ['withdrawn', 'released', 'cancelled']
 /** Arrangements holding their venue, which a rejection releases rather than withdraws. */
 const HOLDING_STATUSES: readonly MockArrangementStatus[] = ['approved']
 

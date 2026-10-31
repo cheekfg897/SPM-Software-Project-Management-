@@ -4,7 +4,7 @@ import { apiRequest } from '@/lib/api'
 
 /**
  * The venue module's booking request endpoints (SCRUM-42, SCRUM-43, SCRUM-93, SCRUM-75, SCRUM-84,
- * SCRUM-59).
+ * SCRUM-59, SCRUM-111).
  */
 const BOOKING_PATHS = {
   EVENT_REQUESTS: (reference: string) => `/api/venues/events/${reference}/booking-requests`,
@@ -14,6 +14,9 @@ const BOOKING_PATHS = {
   withdraw: (reference: string, arrangementId: number) =>
     `/api/venues/events/${reference}/booking-requests/${arrangementId}/withdraw`,
   cancelAll: (reference: string) => `/api/venues/events/${reference}/booking-requests/cancel-all`,
+  /** Cancel one approved booking, with a reason (SCRUM-111). */
+  cancel: (reference: string, arrangementId: number) =>
+    `/api/venues/events/${reference}/booking-requests/${arrangementId}/cancel`,
   /** Venue Staff's queue, across every event. */
   PENDING: '/api/venues/booking-requests',
   decisionFor: (requestId: number) => `/api/venues/booking-requests/${requestId}/decision`,
@@ -65,6 +68,7 @@ export interface ArrangementChange {
  * `hold_expires_at` (SCRUM-75). `withdrawn` is the coordinator's retraction (SCRUM-93).
  * `expired` is a hold that ran out before Venue Staff's final approval, so the venue was
  * released (SCRUM-94). `released` is one an approved replacement took over from (SCRUM-92).
+ * `cancelled` is an approved booking the coordinator cancelled, with a reason (SCRUM-111).
  */
 export type BookingRequestStatus =
   | 'pending'
@@ -75,6 +79,7 @@ export type BookingRequestStatus =
   | 'withdrawn'
   | 'expired'
   | 'released'
+  | 'cancelled'
 
 /** One reason a booking needs an alternative venue: a block, or the venue's deactivation. */
 export interface Unavailability {
@@ -93,6 +98,15 @@ export interface Unavailability {
 export interface ReassessmentFlag {
   kind: 'requires_reconfirmation' | 'no_longer_suitable'
   reason: string
+}
+
+/**
+ * What the backend accepts when the coordinator cancels an approved booking (SCRUM-111). The
+ * backend requires the reason; it is left out of the body when none was typed, so the backend's
+ * message says so.
+ */
+export interface CancelBooking {
+  reason?: string
 }
 
 /** What the backend accepts when Venue Staff decide a request (SCRUM-43). */
@@ -234,6 +248,21 @@ export function withdrawArrangement(
 ): Promise<BookingRequest> {
   return apiRequest<BookingRequest>(BOOKING_PATHS.withdraw(reference, arrangementId), {
     method: 'POST',
+  })
+}
+
+/**
+ * Cancel one approved booking with a reason, freeing its venue; the event's others are left as
+ * they are (SCRUM-111). Answers with the arrangement, now cancelled.
+ */
+export function cancelBooking(
+  reference: string,
+  arrangementId: number,
+  cancellation: CancelBooking,
+): Promise<BookingRequest> {
+  return apiRequest<BookingRequest>(BOOKING_PATHS.cancel(reference, arrangementId), {
+    method: 'POST',
+    body: cancellation,
   })
 }
 
