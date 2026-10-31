@@ -26,9 +26,11 @@ import type { MockAccount } from '../fixtures/accounts'
  * the backend does (SCRUM-33 AC1 to AC4; ADR-0025): only the fields sent change, a change to
  * the date, times, attendance or requirements is significant, every change is written to the
  * history, and the refusals come with the backend's codes and messages. An event can be edited
- * once it is approved and until it is Confirmed (SCRUM-110, ADR-0116): before approval the
- * refusal points to a clarification or the organiser's change request, and a Confirmed event to
- * a change request (AC8, ADR-0101). The mock's "today" is 5 Oct 2026.
+ * once it is approved and until it is Confirmed (SCRUM-110, ADR-0116), and while the organiser's
+ * answer is awaited, to record the amendments that come with it (SCRUM-110 AC2's exception,
+ * SCRUM-32 AC2). Submitted or under review, the refusal points to a clarification or the
+ * organiser's change request; a Confirmed event is pointed to a change request (AC8, ADR-0101).
+ * The mock's "today" is 5 Oct 2026.
  */
 
 /**
@@ -48,8 +50,12 @@ const NOT_YET_APPROVED_MESSAGE =
 /** Every status but a draft's, which no coordinator is assigned. */
 type AssignedStatus = Exclude<EventRequestStatus, typeof EVENT_REQUEST_STATUS.DRAFT>
 
-/** Once approved, until Confirmed (SCRUM-110 AC1, ADR-0116). */
+/**
+ * While the organiser's answer is awaited (SCRUM-110 AC2's exception, SCRUM-32 AC2), and once
+ * approved, until Confirmed (SCRUM-110 AC1, ADR-0116).
+ */
 const EDITABLE_STATUSES: readonly AssignedStatus[] = [
+  EVENT_REQUEST_STATUS.AWAITING_CLARIFICATION,
   EVENT_REQUEST_STATUS.APPROVED,
   EVENT_REQUEST_STATUS.SAFETY_REVIEW,
 ]
@@ -57,7 +63,6 @@ const EDITABLE_STATUSES: readonly AssignedStatus[] = [
 const NOT_YET_APPROVED_STATUSES: readonly AssignedStatus[] = [
   EVENT_REQUEST_STATUS.SUBMITTED,
   EVENT_REQUEST_STATUS.UNDER_REVIEW,
-  EVENT_REQUEST_STATUS.AWAITING_CLARIFICATION,
 ]
 /**
  * Every other assigned status but Confirmed, which has its own message. Built from the statuses,

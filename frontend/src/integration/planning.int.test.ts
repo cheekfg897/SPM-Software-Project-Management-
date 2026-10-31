@@ -695,7 +695,7 @@ describe('SCRUM-33 AC8, SCRUM-110 the statuses an event can be edited in, agains
   )
 
   it.skipIf(!canAssign)(
-    'refuses an edit before approval, pointing to a clarification or a change request, in each status (SCRUM-110 AC2)',
+    'refuses an edit while the request is submitted or under review, pointing to a clarification or a change request (SCRUM-110 AC2)',
     async () => {
       const NOT_YET_APPROVED = {
         status: 409,
@@ -709,12 +709,26 @@ describe('SCRUM-33 AC8, SCRUM-110 the statuses an event can be edited in, agains
       expect(await refusedNote(reference)).toMatchObject(NOT_YET_APPROVED)
       await startEventRequestReview(reference)
       expect(await refusedNote(reference)).toMatchObject(NOT_YET_APPROVED)
-      await requestClarification(reference, 'Which hall would suit?')
-      expect(await refusedNote(reference)).toMatchObject(NOT_YET_APPROVED)
 
       expect(await fetchEventRequest(reference)).toMatchObject({
-        status: 'awaiting_clarification',
+        status: 'under_review',
         description: null,
+      })
+    },
+  )
+
+  it.skipIf(!canAssign)(
+    "lets the coordinator record an amendment while the organiser's answer is awaited (SCRUM-110 AC2's exception, SCRUM-32 AC2)",
+    async () => {
+      const { reference } = await assignedEvent()
+      await startEventRequestReview(reference)
+      await requestClarification(reference, 'Which hall would suit?')
+
+      const edited = await editEventRequest(reference, { description: 'The main hall.' })
+
+      expect(edited).toMatchObject({
+        status: 'awaiting_clarification',
+        description: 'The main hall.',
       })
     },
   )
