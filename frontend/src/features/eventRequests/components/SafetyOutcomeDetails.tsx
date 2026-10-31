@@ -19,29 +19,39 @@ function counted(count: number, thing: string): string {
   return `${String(count)} ${thing}${count === 1 ? '' : 's'}`
 }
 
+/** What the outcome named, leaving out what it named none of: "1 venue arrangement and 2 equipment lines". */
+function namedToRework(outcome: SafetyCheckOutcome): string {
+  const named = []
+  if (outcome.flagged_arrangement_count > 0) {
+    named.push(counted(outcome.flagged_arrangement_count, 'venue arrangement'))
+  }
+  if (outcome.reopened_line_count > 0) {
+    named.push(counted(outcome.reopened_line_count, 'equipment line'))
+  }
+  return named.join(' and ')
+}
+
 /**
- * The reason, and on a Reject or Request Changes what the officer named to rework (SCRUM-99 AC4):
- * with nothing named, the reason is shown on the event itself as "Flagged by the Safety Officer";
- * otherwise each flagged arrangement shows it beside itself, and this says how much was named.
+ * The reason, and on a Reject or Request Changes what the officer named to rework (SCRUM-99 AC4).
+ * Each flagged arrangement shows "Flagged by the Safety Officer: <reason>" beside itself; with no
+ * arrangement flagged, the reason is shown on the event itself in those words (ADR-0113).
  */
 function ReworkReason({ outcome }: { outcome: SafetyCheckOutcome }) {
   if (outcome.reason === null) {
     return null
   }
-  const namedNothing = outcome.flagged_arrangement_count === 0 && outcome.reopened_line_count === 0
   if (outcome.outcome === 'approved') {
     return <p className="text-ink mt-2">{outcome.reason}</p>
   }
-  if (namedNothing) {
-    return <p className="text-ink mt-2">Flagged by the Safety Officer: {outcome.reason}</p>
-  }
+  const named = namedToRework(outcome)
+  const reason =
+    outcome.flagged_arrangement_count === 0
+      ? `Flagged by the Safety Officer: ${outcome.reason}`
+      : outcome.reason
   return (
     <>
-      <p className="text-ink mt-2">{outcome.reason}</p>
-      <p className="text-ink-muted mt-1">
-        Named to rework: {counted(outcome.flagged_arrangement_count, 'venue arrangement')} and{' '}
-        {counted(outcome.reopened_line_count, 'equipment line')}.
-      </p>
+      <p className="text-ink mt-2">{reason}</p>
+      {named !== '' && <p className="text-ink-muted mt-1">Named to rework: {named}.</p>}
     </>
   )
 }

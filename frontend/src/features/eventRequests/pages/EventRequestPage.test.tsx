@@ -47,10 +47,6 @@ const ARRANGEMENT_IN_FULL: RecordVenueArrangement = {
   preparation_status: 'not_started',
   preparation_notes: null,
 }
-/**
- * The Partner Summit's record with one of everything the organiser is sent on it (ADR-0104): a
- * held, an expired and a flagged arrangement, a reviewed line and the Safety Officer's outcome.
- */
 const SAFETY_CHECKLIST = {
   attendance_vs_capacity: '250 expected in a hall for 300.',
   venue_layout: 'Theatre layout with two aisles.',
@@ -61,6 +57,10 @@ const SAFETY_CHECKLIST = {
   venue_restrictions: 'No open flames.',
 }
 
+/**
+ * The Partner Summit's record with one of everything the organiser is sent on it (ADR-0104): a
+ * held, an expired and a flagged arrangement, a reviewed line and the Safety Officer's outcome.
+ */
 const EVERYTHING_RECORDED: EventRecord = {
   reference: 'EVR-7K2M9QXA',
   status: 'approved',
@@ -550,6 +550,34 @@ describe('SCRUM-99 AC4 the safety check on the coordinator page', () => {
     expect(await section('Safety check')).toHaveTextContent(
       'Named to rework: 2 venue arrangements and 1 equipment line.',
     )
+  })
+
+  it('names only the arrangements when no line was reopened, without a count of none', async () => {
+    coordinatorRecordWith({
+      ...CHANGES_REQUESTED,
+      flagged_arrangement_count: 1,
+      reopened_line_count: 0,
+    })
+
+    const safety = await section('Safety check')
+    expect(within(safety).getByText('Named to rework: 1 venue arrangement.')).toBeInTheDocument()
+    expect(within(safety).queryByText(/Flagged by the Safety Officer/)).not.toBeInTheDocument()
+  })
+
+  it('shows the reason on the event itself when only lines were reopened', async () => {
+    coordinatorRecordWith({
+      ...CHANGES_REQUESTED,
+      flagged_arrangement_count: 0,
+      reopened_line_count: 2,
+    })
+
+    const safety = await section('Safety check')
+    expect(
+      within(safety).getByText(
+        'Flagged by the Safety Officer: The east fire exit is blocked by the stage.',
+      ),
+    ).toBeInTheDocument()
+    expect(within(safety).getByText('Named to rework: 2 equipment lines.')).toBeInTheDocument()
   })
 
   it('shows an approval with no rework', async () => {
