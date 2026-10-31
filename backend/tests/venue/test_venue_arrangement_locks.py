@@ -9,22 +9,22 @@ as a decision committed while the coordinator's request was in flight would be.
 
 from __future__ import annotations
 
-from collections.abc import Callable
-
 import pytest
 from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from app.common.errors import ConflictError
-from app.modules.events.models import EventRequest
-from app.modules.venue import services
 from app.modules.venue.models import BookingRequestStatus, Venue, VenueBookingRequest
 from tests.venue.conftest import (
-    COORDINATOR_ID,
+    ARRANGEMENT_ACTIONS,
+    ArrangementAction,
     SavedEvent,
+    cancel_all_as_coordinator,
+    change_purpose_as_coordinator,
     locked_request_reads,
     raise_booking,
     reload_request,
+    withdraw_as_coordinator,
 )
 
 pytestmark = pytest.mark.scrum_93
@@ -34,31 +34,6 @@ WITHDRAW_REFUSAL = (
     " this one is approved."
 )
 CHANGE_REFUSAL = "Only a pending arrangement can be changed; this one is approved."
-
-
-def _withdraw(event: EventRequest, arrangement_id: int, session: Session) -> object:
-    return services.withdraw_arrangement(
-        event.reference, arrangement_id, coordinator_id=COORDINATOR_ID, session=session
-    )
-
-
-def _change(event: EventRequest, arrangement_id: int, session: Session) -> object:
-    return services.change_arrangement(
-        event.reference,
-        arrangement_id,
-        {"purpose": "Opening plenary"},
-        coordinator_id=COORDINATOR_ID,
-        session=session,
-    )
-
-
-def _cancel_all(event: EventRequest, _arrangement_id: int, session: Session) -> object:
-    return services.cancel_all_arrangements(
-        event.reference, coordinator_id=COORDINATOR_ID, session=session
-    )
-
-
-Action = Callable[[EventRequest, int, Session], object]
 
 
 def _approved_underneath(arrangement: VenueBookingRequest, session: Session) -> None:
@@ -71,16 +46,9 @@ def _approved_underneath(arrangement: VenueBookingRequest, session: Session) -> 
     )
 
 
-@pytest.mark.parametrize(
-    "action",
-    [
-        pytest.param(_withdraw, id="withdraw"),
-        pytest.param(_change, id="change"),
-        pytest.param(_cancel_all, id="cancel all"),
-    ],
-)
+@pytest.mark.parametrize("action", ARRANGEMENT_ACTIONS)
 def test_the_arrangement_is_read_under_a_row_lock(
-    db_session: Session, venue: Venue, saved_event: SavedEvent, action: Action
+    db_session: Session, venue: Venue, saved_event: SavedEvent, action: ArrangementAction
 ) -> None:
     event = saved_event()
     arrangement = raise_booking(venue, event, db_session)
@@ -93,13 +61,17 @@ def test_the_arrangement_is_read_under_a_row_lock(
 @pytest.mark.parametrize(
     ("action", "refusal"),
     [
-        pytest.param(_withdraw, WITHDRAW_REFUSAL, id="withdraw"),
-        pytest.param(_change, CHANGE_REFUSAL, id="change"),
-        pytest.param(_cancel_all, WITHDRAW_REFUSAL, id="cancel all"),
+        pytest.param(withdraw_as_coordinator, WITHDRAW_REFUSAL, id="withdraw"),
+        pytest.param(change_purpose_as_coordinator, CHANGE_REFUSAL, id="change"),
+        pytest.param(cancel_all_as_coordinator, WITHDRAW_REFUSAL, id="cancel all"),
     ],
 )
 def test_an_approval_saved_meanwhile_is_seen_and_refuses_the_action(
-    db_session: Session, venue: Venue, saved_event: SavedEvent, action: Action, refusal: str
+    db_session: Session,
+    venue: Venue,
+    saved_event: SavedEvent,
+    action: ArrangementAction,
+    refusal: str,
 ) -> None:
     """Without the locked read, the stale Pending copy would be withdrawn or changed."""
     event = saved_event()
