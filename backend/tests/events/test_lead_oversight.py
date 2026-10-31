@@ -210,7 +210,7 @@ def test_the_active_list_is_newest_first(
 
 
 # --------------------------------------------------------------------------
-# AC2 — each coordinator's active events
+# AC3 — every Event Coordinator's active events, an idle one with none
 # --------------------------------------------------------------------------
 
 
@@ -236,29 +236,47 @@ def test_each_coordinator_with_active_events_is_listed_with_their_events(
     ]
 
 
-def test_a_coordinator_with_no_active_event_is_left_out(
+def test_a_coordinator_with_no_active_event_is_still_listed_with_none(
     one_event_in_each_status: dict[EventRequestStatus, EventRequest],
     make_event_request: Callable[..., EventRequest],
     save: Callable[..., None],
 ) -> None:
-    """Coordinator 9 holds only a completed event, so has nothing to supervise."""
+    """Coordinator 9 holds only a completed event, so is free to take a new one.
+
+    AC3 lists them anyway, so the Lead can see who is free (ADR-0120).
+    """
     save(
         make_event_request(
             reference="EVR-NINE0001", status=EventRequestStatus.COMPLETED, coordinator_id=9
         )
     )
 
+    shown = [
+        (w.coordinator_id, w.coordinator_name, len(w.assigned))
+        for w in list_requests_for_each_coordinator()
+    ]
+
+    assert shown == [(9, "Coordinator Nine", 0), (3, "Coordinator Three", 6)]
+
+
+def test_only_event_coordinators_are_listed(saved_users: list[Any], saved_leads: list[Any]) -> None:
+    """Venue Staff, Technical Support, the organiser and the Leads hold no events."""
     coordinator_ids = [w.coordinator_id for w in list_requests_for_each_coordinator()]
 
-    assert coordinator_ids == [3]
+    assert coordinator_ids == [9, 3]
+
+
+def test_with_no_event_coordinator_account_the_list_is_empty(db_session: Session) -> None:
+    assert list_requests_for_each_coordinator() == []
 
 
 def test_an_inactive_event_is_not_counted_in_a_coordinators_events(
     one_event_in_each_status: dict[EventRequestStatus, EventRequest],
 ) -> None:
-    (workload,) = list_requests_for_each_coordinator()
+    nine, three = list_requests_for_each_coordinator()
 
-    assert {event.id for event in workload.assigned} == {
+    assert nine.assigned == []
+    assert {event.id for event in three.assigned} == {
         one_event_in_each_status[status].id for status in ACTIVE_STATUSES
     }
 
@@ -270,4 +288,6 @@ def test_an_event_waiting_for_the_lead_is_in_nobodys_workload(
 ) -> None:
     save(make_event_request(coordinator_id=None))
 
-    assert list_requests_for_each_coordinator() == []
+    held = [(w.coordinator_id, w.assigned) for w in list_requests_for_each_coordinator()]
+
+    assert held == [(9, []), (3, [])]

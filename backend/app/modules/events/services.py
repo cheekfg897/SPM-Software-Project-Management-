@@ -129,7 +129,7 @@ class ActiveRequest:
 
 @dataclass(frozen=True)
 class CoordinatorWorkload:
-    """A coordinator and their active events, for the Lead (SCRUM-96 AC2)."""
+    """An Event Coordinator and their active events, for the Lead (SCRUM-96 AC3)."""
 
     coordinator_id: int
     coordinator_name: str
@@ -2823,22 +2823,28 @@ def list_active_requests(*, session: Session | None = None) -> list[ActiveReques
 def list_requests_for_each_coordinator(
     *, session: Session | None = None
 ) -> list[CoordinatorWorkload]:
-    """Each coordinator's active events, coordinators by name (SCRUM-96 AC2).
+    """Every Event Coordinator's active events, coordinators by name (SCRUM-96 AC3).
 
-    A coordinator with no active event is left out rather than listed empty, so the
-    list shows who has work to supervise; a request nobody holds yet is in no one's
-    list. A coordinator's events are newest first, as in :func:`list_active_requests`.
+    A coordinator with no active event is listed with none, so the Lead can see who is
+    free to take a new event (ADR-0120). Only Event Coordinators are listed, and every
+    active event is held by one: the first assignment and a reassignment both accept
+    only that role, and no route changes a role. A request nobody holds yet is in no
+    one's list. A coordinator's events are newest first, as in
+    :func:`list_active_requests`.
 
     Args:
         session: Database session; defaults to ``db.session``.
 
     Returns:
-        One entry per coordinator who holds an active event, ordered by name then id.
+        One entry per Event Coordinator, ordered by name then id; empty only when there
+        is no Event Coordinator account.
     """
     sess = resolve_session(session)
     held_by: dict[int, list[EventRequest]] = {}
+    for coordinator_id in list_user_ids_with_role(Role.EVENT_COORDINATOR, session=sess):
+        held_by[coordinator_id] = []
     for event_request in _active_requests_newest_first(sess):
-        held_by.setdefault(event_request.coordinator_id, []).append(event_request)
+        held_by[event_request.coordinator_id].append(event_request)
     names = get_user_full_names(held_by, session=sess)
     workloads = [
         CoordinatorWorkload(coordinator_id, names[coordinator_id], assigned)

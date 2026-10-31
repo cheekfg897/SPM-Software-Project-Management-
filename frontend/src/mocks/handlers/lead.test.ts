@@ -68,14 +68,25 @@ async function activeReferences(): Promise<string[]> {
   return rows.map((row) => row.reference)
 }
 
-/** Each coordinator's name with the references of the events they hold, in the mock's order. */
+/**
+ * Each coordinator's name with the count the mock sends for them and the references of the events
+ * they hold, in the mock's order.
+ */
 async function workloadByName() {
   const { coordinators } = await fetchCoordinatorWorkload()
   return coordinators.map((entry) => ({
     coordinator: entry.coordinator,
+    count: entry.active_count,
     references: entry.event_requests.map((row) => row.reference),
   }))
 }
+
+/** The Event Coordinators who hold no event in the Lead mock, listed after Aisha and Chloe. */
+const IDLE_WORKLOADS = ['Colin Tay', 'Daniel Ong', 'Hana Yusof', 'Priya Nair'].map((name) => ({
+  coordinator: name,
+  count: 0,
+  references: [],
+}))
 
 function reassign(reference: string, email: string) {
   return reassignCoordinator({ reference, coordinator_email: email })
@@ -159,13 +170,14 @@ describe('SCRUM-96 Lead mock: the active list and the workload', () => {
     })
   })
 
-  it('lists each coordinator who holds an active event, by name, with those events newest first', async () => {
+  it('lists each Event Coordinator by name, with their active events newest first and their count', async () => {
     const body = await fetchCoordinatorWorkload()
 
     expect(body).not.toHaveProperty('message')
     expect(await workloadByName()).toEqual([
       {
         coordinator: 'Aisha Karim',
+        count: 3,
         references: [
           EVENTS.underReviewHeldByAisha,
           EVENTS.safetyReviewHeldByAisha,
@@ -174,12 +186,14 @@ describe('SCRUM-96 Lead mock: the active list and the workload', () => {
       },
       {
         coordinator: 'Chloe Lim',
+        count: 3,
         references: [
           EVENTS.submittedHeldByChloe,
           EVENTS.awaitingClarificationHeldByChloe,
           EVENTS.approvedHeldByChloe,
         ],
       },
+      ...IDLE_WORKLOADS,
     ])
     expect(body.coordinators[0]?.event_requests[0]).toEqual({
       reference: EVENTS.underReviewHeldByAisha,
@@ -190,6 +204,31 @@ describe('SCRUM-96 Lead mock: the active list and the workload', () => {
       end_time: '12:00:00',
       status: 'under_review',
     })
+  })
+
+  it('sends an Event Coordinator who holds nothing with a count of 0 and no events (AC3)', async () => {
+    const { coordinators } = await fetchCoordinatorWorkload()
+
+    expect(coordinators.find((entry) => entry.coordinator === 'Colin Tay')).toEqual({
+      coordinator: 'Colin Tay',
+      active_count: 0,
+      event_requests: [],
+    })
+  })
+
+  it('keeps a coordinator whose every event was moved away, now with 0', async () => {
+    for (const reference of [
+      EVENTS.underReviewHeldByAisha,
+      EVENTS.safetyReviewHeldByAisha,
+      EVENTS.confirmedHeldByAisha,
+    ]) {
+      await reassign(reference, CHLOE.email)
+    }
+
+    const [aisha, chloe] = await workloadByName()
+
+    expect(aisha).toEqual({ coordinator: 'Aisha Karim', count: 0, references: [] })
+    expect(chloe?.count).toBe(6)
   })
 
   it('keeps the queue to submitted requests nobody holds, oldest first', async () => {
@@ -211,6 +250,7 @@ describe('SCRUM-96 Lead mock: the active list and the workload', () => {
 
     expect(await workloadByName()).toContainEqual({
       coordinator: 'Aisha Karim',
+      count: 4,
       references: [
         EVENTS.queuedSecond,
         EVENTS.underReviewHeldByAisha,
@@ -239,6 +279,7 @@ describe('SCRUM-96 Lead mock: reassigning an event', () => {
     expect(await workloadByName()).toEqual([
       {
         coordinator: 'Aisha Karim',
+        count: 4,
         references: [
           EVENTS.underReviewHeldByAisha,
           EVENTS.safetyReviewHeldByAisha,
@@ -248,8 +289,10 @@ describe('SCRUM-96 Lead mock: reassigning an event', () => {
       },
       {
         coordinator: 'Chloe Lim',
+        count: 2,
         references: [EVENTS.submittedHeldByChloe, EVENTS.awaitingClarificationHeldByChloe],
       },
+      ...IDLE_WORKLOADS,
     ])
   })
 

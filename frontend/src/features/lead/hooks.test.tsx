@@ -105,13 +105,10 @@ describe('SCRUM-96 the Lead oversight hooks', () => {
     await waitFor(() =>
       expect(readsOf(requests)).toEqual({ [QUEUE_PATH]: 2, [ACTIVE_PATH]: 2, [WORKLOAD_PATH]: 2 }),
     )
-    const names = result.current.workload.data?.coordinators.map((entry) => entry.coordinator)
-    expect(names).toEqual([
-      MOCK_ACCOUNTS.otherCoordinator.full_name,
-      MOCK_ACCOUNTS.coordinator.full_name,
-    ])
-    const heldByAisha = result.current.workload.data?.coordinators[0]?.event_requests ?? []
-    expect(heldByAisha.map((row) => row.reference)).toContain('EVR-MOCK0001')
+    const aisha = result.current.workload.data?.coordinators.find(
+      (entry) => entry.coordinator === MOCK_ACCOUNTS.otherCoordinator.full_name,
+    )
+    expect(aisha?.event_requests.map((row) => row.reference)).toContain('EVR-MOCK0001')
   })
 })
 
