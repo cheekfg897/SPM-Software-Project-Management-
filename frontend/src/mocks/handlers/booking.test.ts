@@ -885,6 +885,60 @@ describe('SCRUM-93 booking mock: who may change, withdraw or cancel', () => {
   )
 })
 
+describe('SCRUM-93 booking mock: only while the event is being planned (AC10)', () => {
+  const CONFIRMED_EVENT = MOCK_BOOKING_EVENTS.confirmed
+  const SAFETY_REVIEW_EVENT = MOCK_BOOKING_EVENTS.inSafetyReview
+  const { reviewedAuditorium } = MOCK_ARRANGEMENTS
+  /** An id no arrangement has, so a refusal for the event's status shows it is checked first. */
+  const UNKNOWN_ARRANGEMENT_ID = 424242
+  const ON_CONFIRMED_EVENT = {
+    change: () => change(CONFIRMED_EVENT.reference, UNKNOWN_ARRANGEMENT_ID, { purpose: 'x' }),
+    withdraw: () => withdraw(CONFIRMED_EVENT.reference, UNKNOWN_ARRANGEMENT_ID),
+    'cancel all': () => cancelAll(CONFIRMED_EVENT.reference),
+  }
+
+  it.each(Object.entries(ON_CONFIRMED_EVENT))(
+    'refuses %s on a confirmed event, naming its status, before looking at the arrangement',
+    async (_name, call) => {
+      const error = await errorOf(call())
+
+      expect([error.status, error.message]).toEqual([
+        409,
+        'Only an approved event or one in Safety Review can have its venue arrangements withdrawn, changed or cancelled; this one is confirmed.',
+      ])
+    },
+  )
+
+  it.each([
+    [
+      'change',
+      () => change(SAFETY_REVIEW_EVENT.reference, reviewedAuditorium.id, { purpose: 'x' }),
+      'Only a pending arrangement can be changed; this one is approved.',
+    ],
+    [
+      'withdraw',
+      () => withdraw(SAFETY_REVIEW_EVENT.reference, reviewedAuditorium.id),
+      withdrawRefusal('approved'),
+    ],
+    ['cancel all', () => cancelAll(SAFETY_REVIEW_EVENT.reference), withdrawRefusal('approved')],
+  ])(
+    'lets %s through to the arrangement while the event is in Safety Review',
+    async (_name, call, message) => {
+      const error = await errorOf(call())
+
+      expect([error.status, error.message]).toEqual([409, message])
+    },
+  )
+
+  it('still names a bad field of a change before looking at a confirmed event', async () => {
+    const error = await errorOf(
+      change(CONFIRMED_EVENT.reference, UNKNOWN_ARRANGEMENT_ID, { purpose: '   ' }),
+    )
+
+    expect([error.status, error.fieldErrors]).toEqual([400, { purpose: ['Must not be blank.'] }])
+  })
+})
+
 describe("SCRUM-24 booking mock: Venue Staff's list of events", () => {
   const EVENTS_URL = '/api/events/requests/with-venue-bookings'
 
