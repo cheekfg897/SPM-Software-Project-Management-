@@ -2785,7 +2785,7 @@ def release_event_arrangements(
     """Free every venue an event still has arranged, without committing (SCRUM-49 AC10).
 
     For an event rejected during planning, whose venues are released as a cancelled
-    event's are (SCRUM-61 AC3, AC8, ADR-0093). An arrangement Venue Staff haven't
+    event's are (SCRUM-61 AC2, AC6, ADR-0093). An arrangement Venue Staff haven't
     approved is withdrawn, with its history entry, as the coordinator would withdraw it
     (SCRUM-93). One that holds the venue, Approved or On Hold, is Released and its
     booking or hold cancelled, so the venue is free for that period again. Arrangements

@@ -1,7 +1,7 @@
 """SCRUM-63: an API-level end-to-end test of registration up to capacity.
 
 This is SCRUM-63's API-level end-to-end test of registration (extending SCRUM-53's
-journey). It exercises these user stories and acceptance criteria (SCRUM-63 AC5):
+journey). It exercises these user stories and acceptance criteria (SCRUM-63 AC3):
 
 - SCRUM-63 AC1: registration up to capacity, a refusal at capacity, a withdrawal, and a
   different Attendee then registering successfully for the freed place (SCRUM-54).
@@ -15,7 +15,7 @@ journey). It exercises these user stories and acceptance criteria (SCRUM-63 AC5)
   account and see the event in their list.
 - SCRUM-54 AC1, AC2, AC3: the event fills and is shown full, a further registration is
   refused, and a withdrawal frees a place that a further registration takes.
-- SCRUM-53 AC1, AC2, AC5: attendees see each registration's status, withdraw, and the
+- SCRUM-53 AC1, AC2, AC4: attendees see each registration's status, withdraw, and the
   place goes back to the event's capacity.
 - SCRUM-55 AC2, AC3, AC4: the coordinator's list of registrants shows each status and
   the count against the capacity.
@@ -33,12 +33,13 @@ confirmed event the whole time: it never counts against this event's places, and
 event loses only his. Every call goes through the real routes with Flask's test client
 (ADR-0031).
 
-SCRUM-63 AC2 (a confirmed event's date change flagging its venue booking and equipment
-reservation, through to Venue Staff reconfirming) waits for SCRUM-57, SCRUM-59 and
-SCRUM-60, and AC3 (the coordinator cancelling the event, releasing both) waits for
-SCRUM-61; none of them is built yet. AC4 is met by CI's backend job, which runs every
-test under ``tests/`` with no marker filter, this one included, and main's branch
-protection requires that job's check to pass before a merge (Product Owner, 20 Oct).
+The date-change journey (a confirmed event's date change flagging its venue booking
+and equipment reservation, through to Venue Staff reconfirming) is SCRUM-58 AC8, and
+the cancellation journey (the Organiser cancelling the event, releasing both) is
+SCRUM-61 AC9. They moved there on 29 Oct (Product Owner) and neither is built yet.
+SCRUM-63 AC2 is met by CI's backend job, which runs every test under ``tests/`` with
+no marker filter, this one included, and main's branch protection requires that
+job's check to pass before a merge (Product Owner, 20 Oct).
 
 Settled in SCRUM-63's question pass and the Product Owner's clarification of 26 Oct:
 
@@ -314,7 +315,7 @@ def test_attendees_fill_an_event_and_a_different_attendee_takes_a_freed_place(
     assert _places(client, approved_event) == (0, True)
 
     # --- Alice withdraws; the row stays, and the place is free (SCRUM-63 AC1,
-    # --- SCRUM-53 AC1, AC2, AC5) ---
+    # --- SCRUM-53 AC1, AC2, AC4) ---
     withdrawn = _body(alice.delete(registrations_path), 200)
     assert withdrawn["status"] == "withdrawn"
     assert _my_registration_statuses(alice) == ["withdrawn"]

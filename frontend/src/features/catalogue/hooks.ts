@@ -123,7 +123,7 @@ export function useWithdrawFromEvent() {
 /**
  * Why the last withdrawal from this event was refused, or null if it wasn't. Read from
  * TanStack's own record of the withdrawals, so the event's page can still show the refusal
- * after reading the event again has taken its Withdraw button away (SCRUM-53 AC4).
+ * after reading the event again has taken its Withdraw button away (SCRUM-53 AC3).
  */
 export function useWithdrawalRefusal(eventId: number): Error | null {
   const errors = useMutationState({

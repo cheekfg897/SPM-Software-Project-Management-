@@ -11,7 +11,7 @@ import { WithdrawAction } from './WithdrawAction'
 
 /**
  * Whether to offer withdrawing: a place still held, at an event under Upcoming. Everything under
- * Past has ended, so its withdrawals have closed (SCRUM-53 AC6, docs/adr/0083).
+ * Past has ended, so its withdrawals have closed (SCRUM-53 AC5, docs/adr/0083).
  */
 function canOfferWithdrawal(event: MyEvent, when: string): boolean {
   return when === MY_EVENTS_WHEN.UPCOMING && event.status === 'registered'

@@ -301,7 +301,7 @@ class EventRequest(db.Model):  # type: ignore[name-defined]
     registration_capacity: Mapped[int | None] = mapped_column(Integer, nullable=True)
     #: When Attendees can no longer withdraw, decided by the organiser and recorded by
     #: the assigned coordinator; NULL when none is set, so withdrawals close when the
-    #: event starts (SCRUM-69 AC6, SCRUM-53 AC3, ADR-0086).
+    #: event starts (SCRUM-69 AC6, SCRUM-53 AC2, ADR-0086).
     withdrawal_cut_off: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
     status: Mapped[EventRequestStatus] = mapped_column(
         Enum(

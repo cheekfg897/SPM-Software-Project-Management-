@@ -15,7 +15,7 @@ interface WithdrawActionProps {
 /**
  * Withdraw from one of the Attendee's events, after they confirm, since someone else may take
  * the place (SCRUM-53 AC2). Whether withdrawals are still open is the backend's to say: its
- * refusal is shown with when withdrawals closed, as it sends it (AC4).
+ * refusal is shown with when withdrawals closed, as it sends it (AC3).
  */
 export function WithdrawAction({ eventId, name }: WithdrawActionProps) {
   const [isConfirming, setIsConfirming] = useState(false)
