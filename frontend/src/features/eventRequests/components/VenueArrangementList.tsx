@@ -82,7 +82,7 @@ function ArrangementDetails({ arrangement }: { arrangement: RecordVenueArrangeme
         />
       )}
       {arrangement.flagged_after_change && (
-        <ArrangementFlag heading="Flagged after a change to the event" reasons={reassessments} />
+        <ArrangementFlag heading="Flagged for re-review" reasons={reassessments} />
       )}
     </>
   )

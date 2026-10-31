@@ -420,6 +420,7 @@ describe('SCRUM-33 an arrangement flagged after a change to the event', () => {
       "No longer suitable: Expected attendance of 250 exceeds the venue's capacity of 200.",
     ])
     expect(findAnotherVenueLinks(await item(bookedHall.purpose))).toHaveLength(1)
+    expect(await item(bookedHall.purpose)).toHaveTextContent('Flagged for re-review')
   })
 
   it('offers one venue search when its venue is also unavailable, listing both kinds of reason', async () => {

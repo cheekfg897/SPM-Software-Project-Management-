@@ -25,7 +25,7 @@ export function AlternativeVenueNotice({ reference, arrangement }: AlternativeVe
   const headingId = useId()
   const heading = arrangement.needs_alternative_venue
     ? 'Needs an alternative venue'
-    : 'Flagged after a change to the event'
+    : 'Flagged for re-review'
 
   return (
     <section

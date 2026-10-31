@@ -395,9 +395,9 @@ describe('SCRUM-24 AC10 event record: everything an organiser sees, at every sta
     ).toHaveTextContent(
       'Maintenance: Aircon repair. Unavailable from 1 Nov, 8:00 am until the venue is reactivated.',
     )
-    expect(
-      within(flagged).getByRole('list', { name: 'Flagged after a change to the event' }),
-    ).toHaveTextContent('Requires reconfirmation: The date changed.')
+    expect(within(flagged).getByRole('list', { name: 'Flagged for re-review' })).toHaveTextContent(
+      'Requires reconfirmation: The date changed.',
+    )
   })
 
   it("shows each line's technical notes, outcome, outcome note and who reviewed it", async () => {
