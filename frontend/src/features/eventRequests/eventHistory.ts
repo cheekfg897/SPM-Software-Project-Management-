@@ -26,6 +26,7 @@ export const EVENT_HISTORY_KIND = {
   VENUE_BOOKING_APPROVED: 'venue_booking_approved',
   VENUE_BOOKING_REJECTED: 'venue_booking_rejected',
   VENUE_BOOKING_RECONFIRMED: 'venue_booking_reconfirmed',
+  VENUE_BOOKING_CANCELLED: 'venue_booking_cancelled',
   VENUE_PREPARATION_UPDATED: 'venue_preparation_updated',
   EQUIPMENT_RESERVED: 'equipment_reserved',
   VENUE_ARRANGEMENT_CHANGED: 'venue_arrangement_changed',
@@ -271,6 +272,13 @@ const DESCRIBE_KIND: Record<EventHistoryKind, (details: Details) => DescribedEnt
       ['Reason', textIn(details, 'reason')],
     ]),
   venue_booking_reconfirmed: bookingReconfirmed,
+  /** The coordinator cancelled an approved booking, freeing the venue (SCRUM-111 AC5). */
+  venue_booking_cancelled: (details) =>
+    entry('Venue booking cancelled', [
+      ['Venue ID', numberIn(details, 'venue_id')],
+      ['When', periodIn(details, 'starts_at', 'ends_at')],
+      ['Reason', textIn(details, 'reason')],
+    ]),
   venue_preparation_updated: (details) =>
     entry('Venue preparation updated', [
       ['Venue ID', numberIn(details, 'venue_id')],
