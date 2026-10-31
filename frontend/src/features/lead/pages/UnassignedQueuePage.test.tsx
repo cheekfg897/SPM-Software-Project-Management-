@@ -3,7 +3,11 @@ import { http, HttpResponse } from 'msw'
 
 import { ROUTES, staffEventPath } from '@/config/routes'
 import { MOCK_ACCOUNTS, mockSessionFor } from '@/mocks/fixtures/accounts'
-import { EMPTY_QUEUE_MESSAGE, NOT_A_COORDINATOR_MESSAGE } from '@/mocks/handlers/lead'
+import {
+  EMPTY_QUEUE_MESSAGE,
+  eventByReference,
+  NOT_A_COORDINATOR_MESSAGE,
+} from '@/mocks/handlers/lead'
 import { server } from '@/mocks/server'
 import { recordRequests } from '@/test/recordRequests'
 import { renderApp } from '@/test/render'
@@ -13,6 +17,22 @@ const QUEUE_URL = '/api/events/requests/unassigned'
 /** The queue entry for one request, found by the name its heading gives it. */
 async function findRequest(name: string) {
   return within(await screen.findByRole('article', { name }))
+}
+
+/** Another Lead assigns the request in the mock backend while this Lead's page still shows it. */
+function assignedByAnotherLead(reference: string) {
+  const event = eventByReference(reference)
+  if (event === undefined) {
+    throw new Error(`The mock backend has no event ${reference}`)
+  }
+  event.coordinator_id = MOCK_ACCOUNTS.coordinator.id
+}
+
+/** How many times the page read the queue. */
+function queueReadsIn(requests: Request[]): number {
+  return requests.filter(
+    (request) => request.method === 'GET' && new URL(request.url).pathname === QUEUE_URL,
+  ).length
 }
 
 describe('SCRUM-95 the Lead queue screen', () => {
@@ -72,10 +92,7 @@ describe('SCRUM-95 the Lead queue screen', () => {
       ).not.toBeInTheDocument(),
     )
     expect(screen.getByRole('article', { name: 'Product Launch Evening' })).toBeInTheDocument()
-    const queueReads = requests.filter(
-      (request) => request.method === 'GET' && new URL(request.url).pathname === QUEUE_URL,
-    )
-    expect(queueReads).toHaveLength(2)
+    expect(queueReadsIn(requests)).toBe(2)
     const post = requests.find((request) => request.method === 'POST')
     expect(await post?.json()).toEqual({ coordinator_email: MOCK_ACCOUNTS.coordinator.email })
   })
@@ -116,6 +133,52 @@ describe('SCRUM-95 the Lead queue screen', () => {
     expect(await summit.findByRole('alert')).toHaveTextContent(
       'This event request already has a coordinator.',
     )
+    // The request is still queued, so its own card says why and nothing above repeats it.
+    expect(screen.getAllByRole('alert')).toHaveLength(1)
+  })
+
+  it('reads the queue again when another Lead assigned the request first, and says why it left (SCRUM-95 AC4)', async () => {
+    const requests = recordRequests()
+    const { user } = renderApp(ROUTES.LEAD_QUEUE, {
+      session: mockSessionFor(MOCK_ACCOUNTS.lead),
+    })
+    const summit = await findRequest('Annual Partner Summit')
+    assignedByAnotherLead('EVR-MOCK0001')
+
+    await user.type(summit.getByLabelText(/^Coordinator email/), MOCK_ACCOUNTS.coordinator.email)
+    await user.click(summit.getByRole('button', { name: /^Assign/ }))
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('article', { name: 'Annual Partner Summit' }),
+      ).not.toBeInTheDocument(),
+    )
+    const alert = screen.getByRole('alert')
+    expect(alert).toHaveTextContent('Annual Partner Summit (EVR-MOCK0001)')
+    expect(alert).toHaveTextContent('This event request already has a coordinator.')
+    expect(queueReadsIn(requests)).toBe(2)
+  })
+
+  it('clears that message once the Lead assigns another request', async () => {
+    const { user } = renderApp(ROUTES.LEAD_QUEUE, {
+      session: mockSessionFor(MOCK_ACCOUNTS.lead),
+    })
+    const summit = await findRequest('Annual Partner Summit')
+    assignedByAnotherLead('EVR-MOCK0001')
+    await user.type(summit.getByLabelText(/^Coordinator email/), MOCK_ACCOUNTS.coordinator.email)
+    await user.click(summit.getByRole('button', { name: /^Assign/ }))
+    await screen.findByRole('alert')
+
+    const launch = await findRequest('Product Launch Evening')
+    await user.type(launch.getByLabelText(/^Coordinator email/), MOCK_ACCOUNTS.coordinator.email)
+    await user.click(launch.getByRole('button', { name: /^Assign/ }))
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('article', { name: 'Product Launch Evening' }),
+      ).not.toBeInTheDocument(),
+    )
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('shows the backend message instead of a spinner when the queue is empty', async () => {

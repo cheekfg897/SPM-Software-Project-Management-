@@ -24,16 +24,24 @@ export function useCoordinatorWorkload() {
   return useQuery({ queryKey: leadKeys.workload(), queryFn: fetchCoordinatorWorkload })
 }
 
+interface AssignOutcome {
+  onAssigned: () => void
+  onRefused: (error: Error) => void
+}
+
 /**
- * Give a request to a coordinator. Afterwards every Lead list is read again: the request leaves
- * the queue and joins the coordinator's workload because the backend says so, not because the
- * cache was edited here.
+ * Give a request to a coordinator. Afterwards every Lead list is read again, whether the backend
+ * accepted or refused: an accepted request leaves the queue and joins the coordinator's workload,
+ * and a refused one may have been assigned by another Lead meanwhile (SCRUM-95 AC4), so it leaves
+ * the queue too. The lists change because the backend says so, not because the cache was edited.
  */
-export function useAssignCoordinator() {
+export function useAssignCoordinator({ onAssigned, onRefused }: AssignOutcome) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: assignCoordinator,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: leadKeys.all }),
+    onSuccess: onAssigned,
+    onError: onRefused,
+    onSettled: () => queryClient.invalidateQueries({ queryKey: leadKeys.all }),
   })
 }
 

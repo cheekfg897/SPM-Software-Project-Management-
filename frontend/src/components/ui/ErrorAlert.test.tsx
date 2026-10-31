@@ -22,6 +22,19 @@ describe('ErrorAlert', () => {
 
     expect(container).toBeEmptyDOMElement()
   })
+
+  it("names what the message is about, above the backend's message", () => {
+    render(
+      <ErrorAlert
+        title="Annual Partner Summit (EVR-MOCK0001)"
+        error={new ApiError(409, 'conflict', 'This event request already has a coordinator.')}
+      />,
+    )
+
+    const [title, message] = within(screen.getByRole('alert')).getAllByRole('paragraph')
+    expect(title).toHaveTextContent('Annual Partner Summit (EVR-MOCK0001)')
+    expect(message).toHaveTextContent('This event request already has a coordinator.')
+  })
 })
 
 describe('RefusalAlert', () => {

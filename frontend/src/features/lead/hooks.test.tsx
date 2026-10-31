@@ -15,6 +15,9 @@ import {
   useUnassignedQueue,
 } from './hooks'
 
+/** The assign hook's callbacks, when a test only cares what the hook sends and reads. */
+const IGNORE_OUTCOME = { onAssigned: () => undefined, onRefused: () => undefined }
+
 function wrapper({ children }: { children: ReactNode }) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -24,9 +27,12 @@ function wrapper({ children }: { children: ReactNode }) {
 
 /** The queue and the assign mutation sharing one query client, as the queue screen will. */
 function renderQueueAndAssign() {
-  return renderHook(() => ({ queue: useUnassignedQueue(), assign: useAssignCoordinator() }), {
-    wrapper,
-  })
+  return renderHook(
+    () => ({ queue: useUnassignedQueue(), assign: useAssignCoordinator(IGNORE_OUTCOME) }),
+    {
+      wrapper,
+    },
+  )
 }
 
 /** Every Lead query and both actions on one query client, as moving between the two pages would. */
@@ -36,7 +42,7 @@ function renderEveryLeadHook() {
       queue: useUnassignedQueue(),
       active: useActiveEvents(),
       workload: useCoordinatorWorkload(),
-      assign: useAssignCoordinator(),
+      assign: useAssignCoordinator(IGNORE_OUTCOME),
       reassign: useReassignCoordinator(),
     }),
     { wrapper },
