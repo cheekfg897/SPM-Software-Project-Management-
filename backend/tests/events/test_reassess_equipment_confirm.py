@@ -135,6 +135,27 @@ def test_after_two_changes_the_reservation_moves_to_the_latest_period(
     assert reservation_rows() == [(equipment_type.id, 3, NEW_STARTS_AT, NEW_ENDS_AT, False)]
 
 
+def test_confirming_one_type_leaves_another_types_marked_reservation_alone(
+    three_projectors: EventEquipmentLine,
+    microphone: EquipmentType,
+    reserve_and_review: ReserveAndReview,
+    equipment_type: EquipmentType,
+    edit_event: EditEvent,
+    reservation_rows: ReservationRows,
+) -> None:
+    """The date change marks both types; only the projectors are confirmed."""
+    reserve_and_review(microphone, quantity=4, reserved=4, provided=4)
+    edit_event(COORDINATOR_ID, MOVE_TO_THE_20TH)
+
+    confirmed = _confirm(equipment_type)
+
+    assert reservation_rows() == [
+        (equipment_type.id, 3, NEW_STARTS_AT, NEW_ENDS_AT, False),
+        (microphone.id, 4, OLD_STARTS_AT, OLD_ENDS_AT, True),
+    ]
+    assert [shown.equipment_type_id for shown in confirmed] == [equipment_type.id]
+
+
 def test_confirming_records_no_outcome(
     three_projectors: EventEquipmentLine,
     equipment_type: EquipmentType,

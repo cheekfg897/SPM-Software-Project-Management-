@@ -264,16 +264,24 @@ def test_an_outcome_on_a_line_with_nothing_marked_leaves_its_reservation_alone(
 def test_a_reopened_lines_fresh_outcome_moves_the_reservation_it_kept(
     equipment_type: EquipmentType,
     reserve_and_review: ReserveAndReview,
+    hold_on_the_20th: Callable[[int], EventRequest],
     edit_event: EditEvent,
     reservation_rows: ReservationRows,
 ) -> None:
-    """It keeps no more than it held: more units would be a new reservation."""
+    """It keeps no more than it held: more units would be a new reservation.
+
+    Two are free on the 20th, so keeping the 3 provided, not the 1 held, is refused.
+    """
     line = reserve_and_review(equipment_type, quantity=3, reserved=1, provided=1)
+    hold_on_the_20th(8)
     edit_event(COORDINATOR_ID, MOVE_TO_THE_20TH)
 
     _record(line, 3)
 
-    assert reservation_rows() == [(equipment_type.id, 1, NEW_STARTS_AT, NEW_ENDS_AT, False)]
+    assert reservation_rows() == [
+        (equipment_type.id, 1, NEW_STARTS_AT, NEW_ENDS_AT, False),
+        (equipment_type.id, 8, NEW_STARTS_AT, NEW_ENDS_AT, False),
+    ]
 
 
 # --------------------------------------------------------------------------
