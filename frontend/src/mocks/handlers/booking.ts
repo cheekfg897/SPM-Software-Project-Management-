@@ -30,12 +30,12 @@ import {
   MOCK_SAFETY_APPROVED_EVENT_IDS,
 } from './bookingFixtures'
 import type { MockBookingEvent } from './bookingFixtures'
+import { noticeTime } from './businessTime'
 import { MOCK_NOW } from './catalogueFixtures'
 import {
   capacityReasonMessage,
   driftAfter,
   NOT_FLAGGED_AFTER_CHANGE_MESSAGE,
-  noticeTime,
   outsideEventErrors,
   periodKeptErrors,
   reasonOf,
