@@ -5676,3 +5676,30 @@ def return_to_planning_after_cancellation(
         return
     if venue_services.count_active_arrangements(event_id, session=sess) == 0:
         _return_to_approved(event_request)
+
+
+def tell_safety_officers_of_cancelled_booking(
+    event: EventForBooking, detail: str, *, session: Session | None = None
+) -> None:
+    """Tell every Safety Officer a venue was dropped from an event in Safety Review.
+
+    SCRUM-111 AC2, once the cancellation is saved. ``event`` is the event as it was
+    before the cancellation, so only one that was in Safety Review is told of;
+    ``detail`` names the arrangement, its venue and its period. If the cancellation sent
+    the event back to Approved, the notice says so, as a significant change's does
+    (SCRUM-33 AC9, ADR-0107, ADR-0117).
+
+    Args:
+        event: The event before the cancellation.
+        detail: What was cancelled, as Venue Staff are told it.
+        session: Database session; defaults to ``db.session``.
+    """
+    if event.status is not EventRequestStatus.SAFETY_REVIEW:
+        return
+    sess = resolve_session(session)
+    event_request = sess.get(EventRequest, event.id)
+    if event_request.status is EventRequestStatus.APPROVED:
+        detail = f"{detail} {BACK_IN_PLANNING_DETAIL}"
+    _notify_safety_officers(
+        event_request, NotificationKind.SAFETY_REVIEW_VENUE_CANCELLED, sess, detail=detail
+    )
