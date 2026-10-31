@@ -28,7 +28,9 @@ from app.modules.events import services
 from app.modules.events.models import EventEquipmentLine, EventRequest
 from app.modules.events.services import remove_equipment_line, update_equipment_line
 
-pytestmark = pytest.mark.scrum_37
+#: Each test starts on an approved event, the first status its equipment lines change
+#: in (SCRUM-110); a test that needs another status sets it.
+pytestmark = [pytest.mark.scrum_37, pytest.mark.usefixtures("approved_event_request")]
 
 Save = Callable[..., None]
 #: A reservation as ``(event id, equipment type id, quantity)``.

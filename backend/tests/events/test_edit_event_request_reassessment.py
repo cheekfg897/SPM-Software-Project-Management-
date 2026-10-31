@@ -24,11 +24,13 @@ from sqlalchemy.exc import OperationalError
 
 from app.modules.auth.models import User
 from app.modules.equipment.models import EquipmentType
-from app.modules.events.models import EventEquipmentLine, EventRequest
+from app.modules.events.models import EventEquipmentLine, EventRequest, EventRequestStatus
 from app.modules.events.services import EventEdit, update_event_request
 from app.modules.notifications.services import NotificationKind
 
-pytestmark = pytest.mark.scrum_33
+#: Each test edits an approved event, the first status a direct edit is allowed in
+#: (SCRUM-110).
+pytestmark = [pytest.mark.scrum_33, pytest.mark.usefixtures("approved_event_request")]
 
 EditEvent = Callable[[int, dict[str, Any] | None], EventEdit]
 NotificationsOf = Callable[[int], list[tuple[Any, ...]]]
@@ -161,7 +163,9 @@ def test_a_failed_reassessment_notification_still_returns_the_edit(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """The edit is committed first; failing its reply would invite editing again."""
-    event_request = make_event_request(coordinator_id=COORDINATOR_ID)
+    event_request = make_event_request(
+        coordinator_id=COORDINATOR_ID, status=EventRequestStatus.APPROVED
+    )
     event_request.id = 1
     event_request.equipment_lines = [make_equipment_line(event_request, make_equipment_type())]
     # The request, then no safety check in its history (SCRUM-33 AC7).

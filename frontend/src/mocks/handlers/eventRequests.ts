@@ -28,7 +28,7 @@ import {
 import { PLANNING_EVENT_REQUESTS } from './eventPlanningFixtures'
 import { MOCK_EVENT_REQUESTS, NOTHING_RECORDED } from './eventRequestFixtures'
 import type { MockEventRequest } from './eventRequestFixtures'
-import { loadDecision, loadText } from './eventReviewRules'
+import { AWAITING_DECISION_STATUSES, loadDecision, loadText } from './eventReviewRules'
 import type { LoadedDecision } from './eventReviewRules'
 
 /**
@@ -67,12 +67,7 @@ const CLARIFICATION_NOT_ALLOWED_MESSAGE =
   'Clarification can only be requested while the event request is under review.'
 const NOT_AWAITING_CLARIFICATION_MESSAGE =
   'Only an event request awaiting clarification can be answered and resubmitted.'
-/** Statuses a request awaits its first decision in (ADR-0028, ADR-0029). */
-const AWAITING_DECISION_STATUSES: readonly EventRequestStatus[] = [
-  EVENT_REQUEST_STATUS.SUBMITTED,
-  EVENT_REQUEST_STATUS.UNDER_REVIEW,
-  EVENT_REQUEST_STATUS.AWAITING_CLARIFICATION,
-]
+
 /** Statuses a request has been decided in, and may be decided again in, with a reason. */
 const DECIDED_STATUSES: readonly EventRequestStatus[] = [
   EVENT_REQUEST_STATUS.APPROVED,

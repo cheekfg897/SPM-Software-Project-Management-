@@ -3,9 +3,12 @@ import { screen, waitFor, within } from '@testing-library/react'
 import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
 import type { EventRequestStatus } from '@/config/eventStatus'
 import { coordinatorEventPath, editEventPath, organiserRequestPath, ROUTES } from '@/config/routes'
-import { MOCK_ACCOUNTS, mockSessionFor } from '@/mocks/fixtures/accounts'
+import { MOCK_ACCOUNTS, mockSessionFor, mockTokenFor } from '@/mocks/fixtures/accounts'
 import { recordRequests } from '@/test/recordRequests'
 import { renderApp } from '@/test/render'
+import { sendRequestsAs } from '@/test/sendRequestsAs'
+
+import { decideEventRequest } from '../api'
 
 import { serveRecordInStatus, statusShownFor } from '../test/recordPage'
 
@@ -13,7 +16,8 @@ import { serveRecordInStatus, statusShownFor } from '../test/recordPage'
  * SCRUM-33 AC1 to AC3: the assigned coordinator changes an event's details, is told which
  * changes were significant and that the arrangements will be reassessed, and sees the backend's
  * refusals under the fields they are about (ADR-0025, ADR-0079). The mock's Partner Summit
- * (EVR-7K2M9QXA) is Chloe's, under review: 12 Nov, 9:00 am to 5:00 pm, 250 expected. Her
+ * (EVR-7K2M9QXA) is Chloe's, under review: 12 Nov, 9:00 am to 5:00 pm, 250 expected; the tests
+ * that save it approve it first, as she edits it only once approved (SCRUM-110, ADR-0116). Her
  * Year-End Town Hall (EVR-BOOK0102) is Confirmed, so it changes only through a change request
  * (AC8, ADR-0101). The mock's "today" is 5 Oct 2026.
  */
@@ -22,11 +26,8 @@ const COORDINATOR = mockSessionFor(MOCK_ACCOUNTS.coordinator)
 const ORGANISER = mockSessionFor(MOCK_ACCOUNTS.organiser)
 const PARTNER_SUMMIT = 'EVR-7K2M9QXA'
 const TOWN_HALL = 'EVR-BOOK0102'
-/** Every status before Confirmed, which the backend lets an edit through (AC8, ADR-0101). */
+/** Once approved, until Confirmed: the statuses the backend lets an edit through (SCRUM-110). */
 const EDIT_OFFERED_STATUSES: readonly EventRequestStatus[] = [
-  EVENT_REQUEST_STATUS.SUBMITTED,
-  EVENT_REQUEST_STATUS.UNDER_REVIEW,
-  EVENT_REQUEST_STATUS.AWAITING_CLARIFICATION,
   EVENT_REQUEST_STATUS.APPROVED,
   EVENT_REQUEST_STATUS.SAFETY_REVIEW,
 ]
@@ -36,6 +37,12 @@ const EDIT_NOT_OFFERED_STATUSES = Object.values(EVENT_REQUEST_STATUS).filter(
 )
 
 type App = ReturnType<typeof renderApp>
+
+/** Chloe approves Partner Summit in the mock, which seeds it under review (SCRUM-110 AC1). */
+async function approvePartnerSummit() {
+  sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.coordinator))
+  await decideEventRequest(PARTNER_SUMMIT, { outcome: 'approved' })
+}
 
 async function openEditForm(reference = PARTNER_SUMMIT): Promise<App> {
   const app = renderApp(editEventPath(reference), { session: COORDINATOR })
@@ -62,6 +69,8 @@ async function sentEdits(requests: Request[]): Promise<unknown[]> {
 }
 
 describe('SCRUM-33 AC1 the edit form', () => {
+  beforeEach(approvePartnerSummit)
+
   it('opens with what the event holds, its times to the minute', async () => {
     await openEditForm()
 
@@ -108,6 +117,8 @@ describe('SCRUM-33 AC1 the edit form', () => {
 })
 
 describe('SCRUM-33 AC2 a significant change', () => {
+  beforeEach(approvePartnerSummit)
+
   it('sends only what changed, marks it significant and says the arrangements will be reassessed', async () => {
     const app = await openEditForm()
     const requests = recordRequests()
@@ -192,6 +203,8 @@ describe('SCRUM-33 AC9 a significant change in Safety Review', () => {
 })
 
 describe("SCRUM-33 the backend's refusals", () => {
+  beforeEach(approvePartnerSummit)
+
   it('shows a field message under its field and moves to it', async () => {
     const app = await openEditForm()
 
@@ -264,7 +277,7 @@ describe('SCRUM-33 who reaches the edit form', () => {
   )
 
   it.each(EDIT_NOT_OFFERED_STATUSES)(
-    'offers no edit, and no Edit details section, for an event that is %s (AC8)',
+    'offers no edit, and no Edit details section, for an event that is %s (AC8, SCRUM-110)',
     async (status) => {
       await serveRecordInStatus(MOCK_ACCOUNTS.coordinator, PARTNER_SUMMIT, status)
       renderApp(coordinatorEventPath(PARTNER_SUMMIT), { session: COORDINATOR })

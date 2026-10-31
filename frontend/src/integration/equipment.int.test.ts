@@ -7,6 +7,7 @@ import {
 } from '@/features/equipment/api'
 import { fetchEquipmentTypes } from '@/features/equipmentCatalogue/api'
 import { fetchEventRequest } from '@/features/eventRequests/api'
+import { fetchNotifications } from '@/features/notifications/api'
 import { apiRequest } from '@/lib/api'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
 
@@ -21,7 +22,9 @@ import {
 } from './backend'
 import {
   approvedEvent,
+  assignedEvent,
   coordinatorPosts,
+  EVENT_DATE,
   LEAD,
   SAFETY_OFFICER,
   safetyApprovedEvent,
@@ -42,6 +45,20 @@ const UNKNOWN_EVENT_REFERENCE = 'EVR-NOSUCH00'
 const UNKNOWN_LINE_ID = 987654
 const NOT_FOUND_MESSAGE = 'Event request not found.'
 const MISSING_MESSAGE = 'Missing data for required field.'
+
+/** Every field of a listed line (EquipmentLine), and nothing more. */
+const EQUIPMENT_LINE_FIELDS = [
+  'equipment_type_id',
+  'id',
+  'notes',
+  'outcome_note',
+  'provided_quantity',
+  'quantity',
+  'reviewed_at',
+  'reviewed_by',
+  'shortfall',
+  'status',
+]
 
 /** Every field the frontend's EquipmentType reads, and nothing more. */
 const EQUIPMENT_TYPE_FIELDS = [
@@ -201,8 +218,32 @@ describe('SCRUM-37 equipment lines against the backend', () => {
     })
   })
 
-  it.todo(
-    "lists an assigned event's lines in the order added, each with exactly EquipmentLine's fields, and the event's reference, name, dates and times (needs an assigned event)",
+  it.skipIf(!canReviewALine)(
+    "lists an approved event's lines in the order added, each with exactly EquipmentLine's fields, and the event's reference, name, dates, times and status (SCRUM-110)",
+    async () => {
+      const firstTypeId = await newEquipmentType()
+      const secondTypeId = await newEquipmentType()
+      const event = await approvedEvent()
+      await addEquipmentLine(event.reference, { equipment_type_id: secondTypeId, quantity: 3 })
+      await addEquipmentLine(event.reference, { equipment_type_id: firstTypeId, quantity: 1 })
+
+      const listed = await fetchEventEquipmentLines(event.reference)
+
+      expect(listed.event).toEqual({
+        reference: event.reference,
+        name: event.name,
+        proposed_date: EVENT_DATE,
+        end_date: EVENT_DATE,
+        start_time: '09:00:00',
+        end_time: '17:00:00',
+        status: 'approved',
+      })
+      const listedTypes = listed.equipment_lines.map((line) => line.equipment_type_id)
+      expect(listedTypes).toEqual([secondTypeId, firstTypeId])
+      for (const line of listed.equipment_lines) {
+        expect(Object.keys(line).sort()).toEqual(EQUIPMENT_LINE_FIELDS)
+      }
+    },
   )
   it.todo('adds a line (201) answering exactly SavedEquipmentLine, with blank notes as null')
   it.todo('refuses a second line for the same equipment type (409 conflict)')
@@ -227,6 +268,32 @@ describe('SCRUM-37 equipment lines against the backend', () => {
         message:
           'Equipment can only be changed before the event is confirmed, and not once it is rejected or cancelled.',
       })
+    },
+  )
+
+  it.skipIf(!canReviewALine)(
+    'refuses a line before the request is approved (409 equipment_not_editable, with the backend wording), so Technical Support hear nothing (SCRUM-110 AC3)',
+    async () => {
+      const equipmentTypeId = await newEquipmentType()
+      const { reference } = await assignedEvent()
+      await signInAs(staffAccount())
+
+      const error = await refusal(
+        addEquipmentLine(reference, { equipment_type_id: equipmentTypeId, quantity: 1 }),
+      )
+
+      expect(error).toMatchObject({
+        status: 409,
+        code: 'equipment_not_editable',
+        message:
+          'Equipment can only be added, changed or removed once the event request is approved. ' +
+          "Until then, changes go through a clarification or the organiser's change request.",
+      })
+      expect((await fetchEventEquipmentLines(reference)).equipment_lines).toEqual([])
+      await signInAsTechSupport()
+      const notices = await fetchNotifications()
+      const aboutThisEvent = notices.filter((notice) => notice.event_reference === reference)
+      expect(aboutThisEvent).toEqual([])
     },
   )
 

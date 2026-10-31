@@ -34,6 +34,7 @@ import {
   QUANTITY_RANGE_MESSAGE,
   wholeNumberError,
 } from './equipmentValidation'
+import { AWAITING_DECISION_STATUSES, CHANGES_BEFORE_APPROVAL } from './eventReviewRules'
 
 /**
  * Each event's equipment lines (SCRUM-37), as backend/app/modules/events/routes.py answers them
@@ -50,14 +51,17 @@ const OUTCOME_PATH = `${LINE_PATH}/outcome`
 const LINE_WRITER_ROLES: readonly Role[] = [ROLE.EVENT_COORDINATOR]
 /** Only Technical Support record an outcome, on any event's line that will still run (SCRUM-48). */
 const OUTCOME_RECORDER_ROLES: readonly Role[] = [ROLE.TECHNICAL_SUPPORT_STAFF]
-/** While an event's equipment may change: until it is confirmed (EQUIPMENT_EDITABLE_STATUSES). */
+/**
+ * While an event's equipment may change: once the request is approved, until the event is
+ * confirmed (EQUIPMENT_EDITABLE_STATUSES, SCRUM-110 AC3).
+ */
 const EDITABLE_STATUSES: readonly EventRequestStatus[] = [
-  EVENT_REQUEST_STATUS.SUBMITTED,
-  EVENT_REQUEST_STATUS.UNDER_REVIEW,
-  EVENT_REQUEST_STATUS.AWAITING_CLARIFICATION,
   EVENT_REQUEST_STATUS.APPROVED,
   EVENT_REQUEST_STATUS.SAFETY_REVIEW,
 ]
+const NOT_YET_APPROVED_MESSAGE = `Equipment can only be added, changed or removed once the event request is approved. ${CHANGES_BEFORE_APPROVAL}`
+const NOT_EDITABLE_MESSAGE =
+  'Equipment can only be changed before the event is confirmed, and not once it is rejected or cancelled.'
 /** The fields a line body may carry (EditEquipmentLineSchema); adding needs the first two. */
 const LINE_FIELDS: readonly string[] = ['equipment_type_id', 'quantity', 'notes']
 const REQUIRED_TO_ADD: readonly string[] = ['equipment_type_id', 'quantity']
@@ -171,9 +175,17 @@ function shownLine(line: MockEquipmentLine) {
   }
 }
 
-/** The event as the list describes it (EQUIPMENT_EVENT_FIELDS). Every mock event shares one period. */
+/**
+ * The event as its lines come with it (EVENT_LIST_FIELDS): when it is, and its status
+ * (SCRUM-110). Every mock event shares one period.
+ */
 function eventShown(event: MockEvent) {
-  return { reference: event.reference, name: event.name, ...MOCK_EVENT_SCHEDULE }
+  return {
+    reference: event.reference,
+    name: event.name,
+    ...MOCK_EVENT_SCHEDULE,
+    status: event.status,
+  }
 }
 
 /** The decoded JSON body, or undefined for anything that is not a JSON object. */
@@ -248,20 +260,19 @@ function storedNotes(notes: unknown): string | null {
 }
 
 /**
- * The coordinator's own event, if its equipment may still change, or the refusal: another's,
- * an unassigned one or a draft is a 404, one past the edit window a 409.
+ * The coordinator's own event, if its equipment may change now, or the refusal: another's, an
+ * unassigned one or a draft is a 404; one not approved yet, or past the edit window, a 409.
  */
 function editableEventOrRefusal(caller: MockAccount, reference: string): MockEvent | Response {
   const event = eventForReader(caller, reference)
   if (event === undefined) {
     return eventNotFound()
   }
+  if (AWAITING_DECISION_STATUSES.includes(event.status)) {
+    return errorResponse(409, 'equipment_not_editable', NOT_YET_APPROVED_MESSAGE)
+  }
   if (!EDITABLE_STATUSES.includes(event.status)) {
-    return errorResponse(
-      409,
-      'equipment_not_editable',
-      'Equipment can only be changed before the event is confirmed, and not once it is rejected or cancelled.',
-    )
+    return errorResponse(409, 'equipment_not_editable', NOT_EDITABLE_MESSAGE)
   }
   return event
 }

@@ -6,7 +6,8 @@ import { logIn } from './logIn'
 
 /**
  * SCRUM-33 AC5 and SCRUM-55: a coordinator opens one of their events and reads what has happened
- * to it and who has registered (ADR-0076). Against the mock backend.
+ * to it and who has registered (ADR-0076); and, once they have approved one, edits it (SCRUM-33
+ * AC1, AC2, SCRUM-110). Against the mock backend.
  */
 
 test('SCRUM-33, SCRUM-55: a coordinator opens an event and sees its history and registrants', async ({
@@ -38,7 +39,7 @@ test('SCRUM-33, SCRUM-55: a coordinator opens an event and sees its history and 
   await expect(rows.nth(1)).toContainText('hannah.lee@example.com')
 })
 
-test('SCRUM-33: a coordinator changes the attendance, is told it is significant, and finds it in the history', async ({
+test('SCRUM-33, SCRUM-110: a coordinator approves a request, changes the attendance, is told it is significant, and finds it in the history', async ({
   page,
 }) => {
   await page.goto('/staff/login')
@@ -46,6 +47,12 @@ test('SCRUM-33: a coordinator changes the attendance, is told it is significant,
   await expect(page).toHaveURL('/staff')
 
   await page.goto('/events/EVR-7K2M9QXA')
+  // Under review, so its details change only once she approves it (SCRUM-110).
+  const approve = page.getByRole('button', { name: 'Approve' })
+  await expect(approve).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Edit event details' })).toHaveCount(0)
+  await approve.click()
+  await expect(page.getByRole('region', { name: 'Decision' })).toContainText('Approved')
   await page.getByRole('link', { name: 'Edit event details' }).click()
   await expect(page).toHaveURL('/events/EVR-7K2M9QXA/edit')
   const attendance = page.getByLabel('Expected attendance')

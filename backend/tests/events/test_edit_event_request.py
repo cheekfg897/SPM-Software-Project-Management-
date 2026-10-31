@@ -8,12 +8,13 @@ to Venue Staff and Technical Support Staff (equipment lines, a venue's setup/
 turnaround) cannot be edited here; like any field outside the edit, sending one is
 refused as an unknown field, not silently ignored. AC4: every change is written to
 the event history with who made it and when, in the same commit as the change itself.
-Only the request's assigned coordinator may edit it, and only before it is Confirmed:
-while it is submitted, under review, awaiting clarification, approved or in Safety
-Review (ADR-0101). AC8: a Confirmed event is refused, and the refusal says it changes
-only through a change request.
+Only the request's assigned coordinator may edit it, and only once they have approved
+it and before it is Confirmed: while it is approved or in Safety Review (SCRUM-110
+AC1, ADR-0116). Before approval the edit is refused, and the refusal points to a
+clarification or the organiser's change request (SCRUM-110 AC2). AC8: a Confirmed
+event is refused, and the refusal says it changes only through a change request.
 
-Runs against ``db_session`` with ``saved_users`` and ``saved_event_request``
+Runs against ``db_session`` with ``saved_users`` and ``approved_event_request``
 (``EVR-AAAAAAAA``, assigned to Event Coordinator 3), so lookups are real SQL; the
 one-commit test uses ``mock_session``. Payload validation (dates, times, notes) is in
 ``test_edit_event_request_validation.py``; equipment reassessment is in
@@ -47,7 +48,9 @@ from app.modules.events.services import (
     update_event_request,
 )
 
-pytestmark = pytest.mark.scrum_33
+#: Each test starts on an approved event, the first status a direct edit is allowed in
+#: (SCRUM-110); a test moves it on with ``set_status``.
+pytestmark = [pytest.mark.scrum_33, pytest.mark.usefixtures("approved_event_request")]
 
 MakeEventRequest = Callable[..., EventRequest]
 EditEvent = Callable[[int, dict[str, Any] | None], EventEdit]
@@ -60,22 +63,25 @@ REFERENCE = "EVR-AAAAAAAA"
 COORDINATOR_ID = 3
 OTHER_COORDINATOR_ID = 9
 
-#: Every status before Confirmed that a coordinator works in (SCRUM-33's status
-#: clarification, ADR-0101), written out so the test doesn't copy the code's own list.
-EDITABLE = [
+#: The statuses a coordinator edits an event in directly: once they have approved it,
+#: until it is Confirmed (SCRUM-110 AC1, ADR-0116). Written out so the test doesn't
+#: copy the code's own list.
+EDITABLE = [EventRequestStatus.APPROVED, EventRequestStatus.SAFETY_REVIEW]
+#: The statuses before approval, when a change goes through a clarification or the
+#: organiser's change request instead (SCRUM-110 AC2).
+NOT_YET_APPROVED = [
     EventRequestStatus.SUBMITTED,
     EventRequestStatus.UNDER_REVIEW,
     EventRequestStatus.AWAITING_CLARIFICATION,
-    EventRequestStatus.APPROVED,
-    EventRequestStatus.SAFETY_REVIEW,
 ]
 #: Every other status but Confirmed, which has its own message (AC8), and a draft,
 #: which staff never find (ADR-0024). Built from the enum so a status added later is
 #: checked too.
-REFUSED = [
+FINISHED = [
     status
     for status in EventRequestStatus
     if status not in EDITABLE
+    and status not in NOT_YET_APPROVED
     and status is not EventRequestStatus.CONFIRMED
     and status is not EventRequestStatus.DRAFT
 ]
@@ -278,7 +284,9 @@ def test_each_change_records_who_made_it_and_when(
 def test_the_changes_and_their_history_are_saved_in_one_commit(
     mock_session: MagicMock, make_event_request: MakeEventRequest, today: date
 ) -> None:
-    event_request = make_event_request(coordinator_id=COORDINATOR_ID)
+    event_request = make_event_request(
+        coordinator_id=COORDINATOR_ID, status=EventRequestStatus.APPROVED
+    )
     event_request.id = 1
     # The request, then no safety check in its history (SCRUM-33 AC7).
     mock_session.scalar.side_effect = [event_request, None]
@@ -315,7 +323,9 @@ def test_a_value_equal_to_the_current_one_is_not_a_change(
 def test_an_empty_edit_changes_nothing(
     mock_session: MagicMock, make_event_request: MakeEventRequest, today: date
 ) -> None:
-    event_request = make_event_request(coordinator_id=COORDINATOR_ID)
+    event_request = make_event_request(
+        coordinator_id=COORDINATOR_ID, status=EventRequestStatus.APPROVED
+    )
     mock_session.scalar.return_value = event_request
 
     edit = update_event_request(COORDINATOR_ID, REFERENCE, {}, session=mock_session, today=today)
@@ -414,8 +424,9 @@ def test_the_reference_ignores_case_and_surrounding_spaces(
     assert reload_event_request(saved_event_request.id).description == "Revised"
 
 
+@pytest.mark.scrum_110
 @pytest.mark.parametrize("status", EDITABLE, ids=lambda status: status.value)
-def test_an_event_not_yet_confirmed_can_be_edited_and_keeps_its_status(
+def test_an_approved_event_or_one_in_safety_review_can_be_edited_and_keeps_its_status(
     edit_event: EditEvent,
     set_status: SetStatus,
     reload_event_request: ReloadEventRequest,
@@ -429,6 +440,32 @@ def test_an_event_not_yet_confirmed_can_be_edited_and_keeps_its_status(
     reloaded = reload_event_request(saved_event_request.id)
     assert reloaded.description == "Revised"
     assert reloaded.status is status
+
+
+@pytest.mark.scrum_110
+@pytest.mark.parametrize("status", NOT_YET_APPROVED, ids=lambda status: status.value)
+def test_an_event_not_yet_approved_is_refused_and_pointed_to_a_clarification(
+    edit_event: EditEvent,
+    set_status: SetStatus,
+    history_of: HistoryOf,
+    reload_event_request: ReloadEventRequest,
+    saved_event_request: EventRequest,
+    status: EventRequestStatus,
+) -> None:
+    """SCRUM-110 AC2: before approval, changes go through SCRUM-32 or SCRUM-56."""
+    set_status(status)
+
+    refused = _refusal_to_edit(edit_event)
+
+    assert (refused.status_code, refused.error_code) == (409, "request_not_editable")
+    assert refused.message == (
+        "An event request can only be edited once it is approved. Until then, changes go "
+        "through a clarification or the organiser's change request."
+    )
+    reloaded = reload_event_request(saved_event_request.id)
+    assert reloaded.description is None
+    assert reloaded.status is status
+    assert history_of(saved_event_request.id) == []
 
 
 def test_a_confirmed_event_is_refused_and_pointed_to_a_change_request(
@@ -449,7 +486,7 @@ def test_a_confirmed_event_is_refused_and_pointed_to_a_change_request(
     assert history_of(saved_event_request.id) == []
 
 
-@pytest.mark.parametrize("status", REFUSED, ids=lambda status: status.value)
+@pytest.mark.parametrize("status", FINISHED, ids=lambda status: status.value)
 def test_a_finished_event_cannot_be_edited(
     edit_event: EditEvent,
     set_status: SetStatus,

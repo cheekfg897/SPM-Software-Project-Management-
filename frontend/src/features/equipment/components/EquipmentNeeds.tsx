@@ -1,5 +1,7 @@
 import { useState } from 'react'
 
+import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
+import type { EventRequestStatus } from '@/config/eventStatus'
 import { ROLE } from '@/config/roles'
 import type { Role } from '@/config/roles'
 import { Button, DataTable } from '@/components/ui'
@@ -24,6 +26,14 @@ import { RemoveLineConfirm } from './RemoveLineConfirm'
 const EQUIPMENT_LINE_EDITOR_ROLES: readonly Role[] = [ROLE.EVENT_COORDINATOR]
 /** Only Technical Support record a line's outcome, on any event (SCRUM-48, ADR-0040). */
 const EQUIPMENT_OUTCOME_RECORDER_ROLES: readonly Role[] = [ROLE.TECHNICAL_SUPPORT_STAFF]
+/**
+ * The statuses the backend lets the coordinator change the lines in: once the request is
+ * approved, until the event is confirmed (EQUIPMENT_EDITABLE_STATUSES, SCRUM-110 AC3, ADR-0116).
+ */
+const LINES_EDITABLE_STATUSES: readonly EventRequestStatus[] = [
+  EVENT_REQUEST_STATUS.APPROVED,
+  EVENT_REQUEST_STATUS.SAFETY_REVIEW,
+]
 
 /** Each status's colour, beside its words (ADR-0065). */
 const STATUS_TONES: Record<EquipmentLineStatus, string> = {
@@ -71,11 +81,13 @@ interface EquipmentNeedsProps {
 /**
  * What the event needs (SCRUM-37): its equipment lines in the order the backend sent them, each
  * with Technical Support's outcome (SCRUM-48). Its coordinator gets the controls to add, change
- * and remove lines, and Technical Support to record or revise each outcome, one at a time.
+ * and remove lines while the event's status allows it (SCRUM-110), and otherwise is told when
+ * it will; Technical Support record or revise each outcome, one at a time, in any status.
  */
 export function EquipmentNeeds({ reference, needs, equipmentTypes }: EquipmentNeedsProps) {
   const user = useAppSelector(selectSessionUser)
-  const canEdit = user !== null && EQUIPMENT_LINE_EDITOR_ROLES.includes(user.role)
+  const isLineEditor = user !== null && EQUIPMENT_LINE_EDITOR_ROLES.includes(user.role)
+  const canEdit = isLineEditor && LINES_EDITABLE_STATUSES.includes(needs.event.status)
   const canRecordOutcome = user !== null && EQUIPMENT_OUTCOME_RECORDER_ROLES.includes(user.role)
   const [selection, setSelection] = useState<LineSelection | null>(null)
   const lines = needs.equipment_lines
@@ -150,6 +162,12 @@ export function EquipmentNeeds({ reference, needs, equipmentTypes }: EquipmentNe
           rows={lines}
           getRowKey={(line) => line.id}
         />
+      )}
+      {isLineEditor && !canEdit && (
+        <p className="text-ink-muted">
+          Equipment can be added, changed or removed once the request is approved, until the event
+          is confirmed.
+        </p>
       )}
       {canEdit && selection === null && (
         <AddLineForm reference={reference} equipmentTypes={equipmentTypes} />

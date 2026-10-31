@@ -23,7 +23,7 @@ from sqlalchemy.exc import OperationalError
 from app.common.errors import ValidationError
 from app.modules.auth.models import User
 from app.modules.equipment.models import EquipmentType
-from app.modules.events.models import EventRequest
+from app.modules.events.models import EventRequest, EventRequestStatus
 from app.modules.events.services import (
     add_equipment_line,
     update_equipment_line,
@@ -34,7 +34,9 @@ from app.modules.notifications.services import (
     list_notifications_for_recipient,
 )
 
-pytestmark = pytest.mark.scrum_37
+#: Each test starts on an approved event, the first status its equipment lines change
+#: in (SCRUM-110); a test that needs another status sets it.
+pytestmark = [pytest.mark.scrum_37, pytest.mark.usefixtures("approved_event_request")]
 
 NotificationsOf = Callable[[int], list[tuple[Any, ...]]]
 
@@ -163,7 +165,9 @@ def test_a_failed_notification_write_still_returns_the_saved_line(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """The line is committed first; failing its reply would invite adding it again."""
-    event_request = make_event_request(coordinator_id=COORDINATOR_ID)
+    event_request = make_event_request(
+        coordinator_id=COORDINATOR_ID, status=EventRequestStatus.APPROVED
+    )
     event_request.id = 1
     # The request, then no safety check in its history (SCRUM-37 AC4).
     mock_session.scalar.side_effect = [event_request, None]

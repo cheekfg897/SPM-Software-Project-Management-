@@ -16,6 +16,7 @@ import { withSeconds } from './eventRequestRules'
 import { assignedOrRefusal } from './eventRequests'
 import { positiveWholeNumberError } from './equipmentValidation'
 import type { MockEventRequest } from './eventRequestFixtures'
+import { AWAITING_DECISION_STATUSES, CHANGES_BEFORE_APPROVAL } from './eventReviewRules'
 import { FLAGGABLE_STATUSES, reassessmentFlagsFor } from './reassessmentRules'
 import type { SignificantChange } from './reassessmentRules'
 
@@ -27,26 +28,26 @@ import type { SignificantChange } from './reassessmentRules'
  * in the planning the gates count (AC6, ADR-0094); in Safety Review, a flag sends the event back
  * to Approved (AC9, ADR-0107). The Safety Officers' notice isn't raised: the notifications mock
  * serves only its seeded notices. Checks run in the backend's order:
- * the coordinator's own event (404), a status that can be edited (409: every status before
- * Confirmed, and a Confirmed event is pointed to a change request; AC8, ADR-0101), then the
- * fields (400). The planning notes are kept here: the organiser's record and the staff record
- * read them, and the coordinator's own record doesn't (ADR-0095, ADR-0104).
+ * the coordinator's own event (404), a status that can be edited (409: Approved or Safety
+ * Review; before approval the refusal points to a clarification or the organiser's change
+ * request, SCRUM-110, ADR-0116; a Confirmed event is pointed to a change request, AC8, ADR-0101),
+ * then the fields (400). The planning notes are kept here: the organiser's record and the staff
+ * record read them, and the coordinator's own record doesn't (ADR-0095, ADR-0104).
  */
 
 const REQUESTS_PATH = '/api/events/requests'
+const NOT_YET_APPROVED_MESSAGE = `An event request can only be edited once it is approved. ${CHANGES_BEFORE_APPROVAL}`
 const NOT_EDITABLE_MESSAGE =
   'An event request can only be edited before it is confirmed, and not once it is rejected or cancelled.'
 const CONFIRMED_NOT_EDITABLE_MESSAGE =
   'A confirmed event can only be changed through a change request.'
 const NOT_NULL_MESSAGE = 'Field may not be null.'
-/** Every status before Confirmed (`EDITABLE_STATUSES`, SCRUM-33 AC8, ADR-0101). */
+/** Once approved, until Confirmed (`EDITABLE_STATUSES`, SCRUM-110 AC1, ADR-0116). */
 const EDITABLE_STATUSES: readonly EventRequestStatus[] = [
-  EVENT_REQUEST_STATUS.SUBMITTED,
-  EVENT_REQUEST_STATUS.UNDER_REVIEW,
-  EVENT_REQUEST_STATUS.AWAITING_CLARIFICATION,
   EVENT_REQUEST_STATUS.APPROVED,
   EVENT_REQUEST_STATUS.SAFETY_REVIEW,
 ]
+
 /** Where a withdrawn safety approval sends an event back to Approved (ADR-0087). */
 const RETURNED_TO_PLANNING_ON_WITHDRAWAL: readonly EventRequestStatus[] = [
   EVENT_REQUEST_STATUS.SAFETY_REVIEW,
@@ -349,6 +350,9 @@ export const eventEditHandlers: RequestHandler[] = [
       return found.refusal
     }
     const { coordinator, stored } = found
+    if (AWAITING_DECISION_STATUSES.includes(stored.request.status)) {
+      return errorResponse(409, 'request_not_editable', NOT_YET_APPROVED_MESSAGE)
+    }
     if (stored.request.status === EVENT_REQUEST_STATUS.CONFIRMED) {
       return errorResponse(409, 'request_not_editable', CONFIRMED_NOT_EDITABLE_MESSAGE)
     }
