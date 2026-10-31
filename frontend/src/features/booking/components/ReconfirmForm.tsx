@@ -10,16 +10,22 @@ import { toDateTimeInputValue } from '@/lib/formatDate'
 import type { FlaggedBooking, ReconfirmBooking } from '../api'
 import { useReconfirmFlaggedBooking, useRejectFlaggedBooking } from '../hooks'
 
+const ADJUSTABLE_HINT = "In Singapore time, within the event's new start and end."
+const KEPT_HINT = "The event's date and times haven't changed, so the period stays."
+
 /**
  * Reconfirm a flagged booking for a period, or reject it, with one reason field for both
  * (SCRUM-59 AC2, AC4, AC5). The period starts as the backend pre-fills it, in Singapore time, and
- * Venue Staff may adjust it. Whether it fits the event, whether a reason is needed and whether
- * the venue is free are the backend's to say: its field messages show under the fields, and any
- * other refusal, such as a clash, shows on its own.
+ * Venue Staff may adjust it once the event's date or times changed; otherwise the backend says it
+ * stays, and it is read-only (ADR-0112 decision 17). Whether it fits the event, whether a reason
+ * is needed and whether the venue is free are the backend's to say: its field messages show under
+ * the fields, and any other refusal, such as a clash, shows on its own.
  */
 export function ReconfirmForm({ flagged }: { flagged: FlaggedBooking }) {
   const { booking, reconfirm_with: reconfirmWith } = flagged
   const purpose = booking.purpose
+  const periodAdjustable = reconfirmWith.period_adjustable
+  const periodHint = periodAdjustable ? ADJUSTABLE_HINT : KEPT_HINT
   const [reason, setReason] = useState('')
   const reconfirm = useReconfirmFlaggedBooking(booking.id)
   const reject = useRejectFlaggedBooking(booking.id)
@@ -50,8 +56,9 @@ export function ReconfirmForm({ flagged }: { flagged: FlaggedBooking }) {
         name="starts_at"
         type="datetime-local"
         required
+        readOnly={!periodAdjustable}
         defaultValue={toDateTimeInputValue(reconfirmWith.starts_at)}
-        hint="In Singapore time, within the event's new start and end."
+        hint={periodHint}
         errors={fieldErrors.starts_at}
       />
       <TextField
@@ -59,6 +66,7 @@ export function ReconfirmForm({ flagged }: { flagged: FlaggedBooking }) {
         name="ends_at"
         type="datetime-local"
         required
+        readOnly={!periodAdjustable}
         defaultValue={toDateTimeInputValue(reconfirmWith.ends_at)}
         errors={fieldErrors.ends_at}
       />

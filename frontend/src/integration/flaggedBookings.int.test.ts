@@ -84,6 +84,7 @@ describe('SCRUM-59 flagged bookings against the backend', () => {
           starts_at: at(NEXT_DAY, '09:00'),
           ends_at: at(NEXT_DAY, '12:00'),
           expected_occupancy: 120,
+          period_adjustable: true,
         },
       })
       const outside = await refusal(
@@ -115,6 +116,30 @@ describe('SCRUM-59 flagged bookings against the backend', () => {
       expect(saved).toMatchObject({ starts_at: at(NEXT_DAY, '09:00'), flagged_after_change: false })
       const kinds = (await fetchNotifications()).map((notification) => notification.kind)
       expect(kinds).toContain('venue_booking_reconfirmed')
+    },
+  )
+
+  it.skipIf(needsAccounts)(
+    'keeps the period of a booking flagged by a change that left the date and times',
+    async () => {
+      const { reference, bookingId } = await bookedEvent()
+      await coordinatorEdits(reference, { venue_requirements: 'A stage.' })
+
+      expect((await listed(bookingId))?.reconfirm_with).toMatchObject({
+        starts_at: at(EVENT_DATE, '09:00'),
+        ends_at: at(EVENT_DATE, '12:00'),
+        period_adjustable: false,
+      })
+      const moved = await refusal(
+        reconfirmFlaggedBooking(bookingId, {
+          starts_at: at(EVENT_DATE, '10:00'),
+          ends_at: at(EVENT_DATE, '12:00'),
+        }),
+      )
+      expect(moved.status).toBe(400)
+      expect(moved.fieldErrors.starts_at).toEqual([
+        `The event's date and times haven't changed, so the booking keeps its period: ${EVENT_DATE} 09:00 to ${EVENT_DATE} 12:00.`,
+      ])
     },
   )
 

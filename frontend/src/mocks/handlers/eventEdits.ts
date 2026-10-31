@@ -292,43 +292,68 @@ function withdrawnSafetyApproval(
   ]
 }
 
-/** When an event starts, as milliseconds, from its date ("2026-11-12") and time ("09:00:00"). */
-function startInstant(date: unknown, time: unknown): number {
+/** An event's date and times, as the mock stores them ("2026-11-12", "09:00:00"). */
+interface Timing {
+  proposed_date: unknown
+  end_date: unknown
+  start_time: unknown
+  end_time: unknown
+}
+
+/** An instant, as milliseconds, from a date ("2026-11-12") and a time ("09:00:00"). */
+function businessInstant(date: unknown, time: unknown): number {
   return Date.parse(`${String(date)}T${withSeconds(String(time))}+08:00`)
 }
 
-/**
- * How far `changes` moved the event's start, in milliseconds, which the booking mock moves the
- * flagged bookings' pre-filled period by (SCRUM-59 AC2). `request` already holds the new values.
- */
-function startMovedBy(changes: FieldChange[], request: MockEventRequest['request']): number {
-  let dateBefore: unknown = request.proposed_date
-  let timeBefore: unknown = request.start_time
-  for (const change of changes) {
-    if (change.field === 'proposed_date') {
-      dateBefore = change.previous_value
-    }
-    if (change.field === 'start_time') {
-      timeBefore = change.previous_value
-    }
-  }
-  const startsNow = startInstant(request.proposed_date, request.start_time)
-  return startsNow - startInstant(dateBefore, timeBefore)
+/** When the event starts and ends, as milliseconds; with no end date, it ends on its date. */
+function spanOf(timing: Timing): [number, number] {
+  return [
+    businessInstant(timing.proposed_date, timing.start_time),
+    businessInstant(timing.end_date ?? timing.proposed_date, timing.end_time),
+  ]
 }
 
-/** What `changes` did to the event's venue arrangements, as `_flag_venue_arrangements` sees it. */
+/** The event's date and times before `changes`; `request` already holds the new values. */
+function timingBefore(changes: FieldChange[], request: MockEventRequest['request']): Timing {
+  const before: Timing = {
+    proposed_date: request.proposed_date,
+    end_date: request.end_date,
+    start_time: request.start_time,
+    end_time: request.end_time,
+  }
+  for (const change of changes) {
+    if (
+      change.field === 'proposed_date' ||
+      change.field === 'end_date' ||
+      change.field === 'start_time' ||
+      change.field === 'end_time'
+    ) {
+      before[change.field] = change.previous_value
+    }
+  }
+  return before
+}
+
+/**
+ * What `changes` did to the event's venue arrangements, as `_flag_venue_arrangements` sees it,
+ * with how far they moved its start and end, which the booking mock pre-fills flagged bookings'
+ * periods from (SCRUM-59 AC2, ADR-0112 decision 17).
+ */
 function significantChangeOf(
   changes: FieldChange[],
   previousAttendance: number,
   stored: MockEventRequest,
 ): SignificantChange {
   const changedFields = changes.map((change) => change.field)
+  const [startsBefore, endsBefore] = spanOf(timingBefore(changes, stored.request))
+  const [startsNow, endsNow] = spanOf(stored.request)
   return {
     timingChanged: changedFields.some((field) => TIMING_FIELDS.includes(field)),
     venueRequirementsChanged: changedFields.includes('venue_requirements'),
     previousAttendance,
     newAttendance: Number(stored.request.expected_attendance),
-    startMovedByMs: startMovedBy(changes, stored.request),
+    startMovedByMs: startsNow - startsBefore,
+    endMovedByMs: endsNow - endsBefore,
   }
 }
 

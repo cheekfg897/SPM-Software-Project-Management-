@@ -77,6 +77,29 @@ async function raiseAsCoordinator(reference: string, body: Record<string, unknow
   return raised
 }
 
+const HOUR_MS = 60 * 60_000
+const EXHIBITION = MOCK_ARRANGEMENTS.exhibitionHall
+
+/**
+ * A change to the earlier workshop that moved its start and end by as much, and changed its venue
+ * requirements, so its exhibition hall (13:00-16:00 on 20 November) is flagged whatever the move.
+ */
+function flagWorkshopAfterChange(startMovedByMs: number, endMovedByMs: number) {
+  flagArrangementsAfterChange(MOCK_BOOKING_EVENTS.earlierWorkshop.reference, {
+    timingChanged: startMovedByMs !== 0 || endMovedByMs !== 0,
+    venueRequirementsChanged: true,
+    previousAttendance: 80,
+    newAttendance: 80,
+    startMovedByMs,
+    endMovedByMs,
+  })
+}
+
+async function exhibitionReconfirmation() {
+  const flagged = await listFlagged()
+  return flagged.find((entry) => entry.booking.id === EXHIBITION.id)?.reconfirm_with
+}
+
 beforeEach(signInAsVenueStaff)
 
 describe('SCRUM-59 booking mock: the flagged bookings', () => {
@@ -94,9 +117,9 @@ describe('SCRUM-59 booking mock: the flagged bookings', () => {
 
     expect(flagged.map((entry) => entry.booking.id)).toEqual([HALL.id, WORKSHOP.id, STAGE.id])
     expect(flagged.map((entry) => entry.reconfirm_with)).toEqual([
-      { ...onTheNewDay('09:00', '12:00'), expected_occupancy: 120 },
-      { ...onTheNewDay('13:00', '15:00'), expected_occupancy: 10 },
-      { ...onTheNewDay('15:30', '17:00'), expected_occupancy: 120 },
+      { ...onTheNewDay('09:00', '12:00'), expected_occupancy: 120, period_adjustable: true },
+      { ...onTheNewDay('13:00', '15:00'), expected_occupancy: 10, period_adjustable: true },
+      { ...onTheNewDay('15:30', '17:00'), expected_occupancy: 120, period_adjustable: true },
     ])
   })
 
@@ -109,25 +132,33 @@ describe('SCRUM-59 booking mock: the flagged bookings', () => {
   })
 
   it('lists a booking an edit flags, moved by as much as the edit moved the start', async () => {
-    flagArrangementsAfterChange(MOCK_BOOKING_EVENTS.earlierWorkshop.reference, {
-      timingChanged: true,
-      venueRequirementsChanged: false,
-      previousAttendance: 80,
-      newAttendance: 80,
-      startMovedByMs: 2 * 60 * 60_000,
-    })
+    flagWorkshopAfterChange(2 * HOUR_MS, 2 * HOUR_MS)
 
-    const flagged = await listFlagged()
-
-    const exhibition = flagged.find(
-      (entry) => entry.booking.id === MOCK_ARRANGEMENTS.exhibitionHall.id,
-    )
-    expect(exhibition?.reconfirm_with).toEqual({
+    expect(await exhibitionReconfirmation()).toEqual({
       starts_at: '2026-11-20T15:00:00+08:00',
       ends_at: '2026-11-20T18:00:00+08:00',
       expected_occupancy: 10,
+      period_adjustable: true,
     })
   })
+
+  // ADR-0112 decision 17: the period may be adjusted only once the event's start or end moved.
+  it.each([
+    ['moved only its end', 0, HOUR_MS, true],
+    ['left its date and times', 0, 0, false],
+  ])(
+    'says whether the period may be adjusted after a change that %s',
+    async (_label, start, end, adjustable) => {
+      flagWorkshopAfterChange(start, end)
+
+      expect(await exhibitionReconfirmation()).toEqual({
+        starts_at: '2026-11-20T13:00:00+08:00',
+        ends_at: '2026-11-20T16:00:00+08:00',
+        expected_occupancy: 10,
+        period_adjustable: adjustable,
+      })
+    },
+  )
 })
 
 describe('SCRUM-59 booking mock: reconfirming a flagged booking', () => {
@@ -343,6 +374,29 @@ describe('SCRUM-59 booking mock: reconfirming a flagged booking', () => {
     const error = await errorOf(reconfirm(HALL.id, body))
 
     expect([error.status, error.fieldErrors]).toEqual([400, fieldErrors])
+  })
+
+  it("refuses a new period for a booking the change didn't retime, and keeps its own", async () => {
+    flagWorkshopAfterChange(0, 0)
+    const ownPeriod = {
+      starts_at: '2026-11-20T13:00:00+08:00',
+      ends_at: '2026-11-20T16:00:00+08:00',
+    }
+
+    const error = await errorOf(
+      reconfirm(EXHIBITION.id, { ...ownPeriod, starts_at: '2026-11-20T14:00:00+08:00' }),
+    )
+    const kept = await reconfirm(EXHIBITION.id, ownPeriod)
+
+    expect([error.status, error.fieldErrors]).toEqual([
+      400,
+      {
+        starts_at: [
+          "The event's date and times haven't changed, so the booking keeps its period: 2026-11-20 13:00 to 2026-11-20 16:00.",
+        ],
+      },
+    ])
+    expect(kept).toMatchObject({ ...ownPeriod, flagged_after_change: false })
   })
 
   it('takes a null reason as no reason, as the schema does', async () => {

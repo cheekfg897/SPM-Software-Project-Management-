@@ -37,6 +37,7 @@ import {
   NOT_FLAGGED_AFTER_CHANGE_MESSAGE,
   noticeTime,
   outsideEventErrors,
+  periodKeptErrors,
   reasonOf,
   reconfirmationOf,
   reconfirmErrors,
@@ -775,9 +776,9 @@ function waitingReplacementOf(booking: BookingRequest): BookingRequest | undefin
 }
 
 /**
- * Why the moved booking can't be reconfirmed for `moved`'s period, or null (AC3, AC4, AC6): the
- * backend's order, from a replacement waiting to the event's other arrangements at the venue. The
- * mock knows no venue hours or blocks, and leaves out setup and turnaround, as it does for an
+ * Why the moved booking can't be reconfirmed for `moved`'s period, or null (AC2, AC3, AC4, AC6):
+ * the backend's order, from a replacement waiting to the event's other arrangements at the venue.
+ * The mock knows no venue hours or blocks, and leaves out setup and turnaround, as it does for an
  * approval.
  */
 function reconfirmRefusal(booking: BookingRequest, moved: BookingRequest, reason: string | null) {
@@ -788,6 +789,14 @@ function reconfirmRefusal(booking: BookingRequest, moved: BookingRequest, reason
       'conflict',
       `Cannot reconfirm: replacement request #${String(replacement.id)} for this booking is still waiting for a decision.`,
     )
+  }
+  const kept = periodKeptErrors(
+    reconfirmationOf(booking, drifts.get(booking.id)),
+    Date.parse(moved.starts_at),
+    Date.parse(moved.ends_at),
+  )
+  if (Object.keys(kept).length > 0) {
+    return validationError(kept)
   }
   const outside = outsideEventErrors(
     booking,

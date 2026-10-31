@@ -25,6 +25,8 @@ export interface SignificantChange {
   newAttendance: number
   /** How far the change moved the event's start, in milliseconds; 0 when it didn't (SCRUM-59). */
   startMovedByMs: number
+  /** How far it moved the event's end, likewise (SCRUM-59, ADR-0112 decision 17). */
+  endMovedByMs: number
 }
 
 /** What reassessing an arrangement reads: its own expected occupancy and its venue's capacity. */

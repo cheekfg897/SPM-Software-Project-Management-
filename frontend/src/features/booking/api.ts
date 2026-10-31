@@ -151,6 +151,11 @@ export interface Reconfirmation {
   starts_at: string
   ends_at: string
   expected_occupancy: number
+  /**
+   * Whether Venue Staff may adjust the period: only once the event's date or times changed. When
+   * false, the booking keeps its own period (AC2, ADR-0112 decision 17).
+   */
+  period_adjustable: boolean
 }
 
 /** A booking a change flagged, as Venue Staff's queue lists it (SCRUM-59 AC1). */

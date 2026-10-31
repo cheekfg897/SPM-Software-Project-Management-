@@ -267,6 +267,7 @@ const ATTENDANCE_ROSE_FLAG: ReassessmentFlag = {
 }
 const MOVED_A_DAY_LATER: Drift = {
   startMovedByMs: 24 * 60 * 60_000,
+  endMovedByMs: 24 * 60 * 60_000,
   attendanceBefore: 80,
   attendanceNow: 120,
 }
