@@ -71,7 +71,7 @@ def test_it_adds_the_models_new_kinds_and_follows_0048(load_migration: LoadMigra
     assert len(migration.revision) <= 32
 
 
-def test_with_the_values_added_each_type_holds_exactly_the_models_values(
+def test_with_the_values_added_each_type_holds_only_the_models_values(
     load_migration: LoadMigration,
 ) -> None:
     migration = load_migration(MIGRATION)
@@ -81,8 +81,9 @@ def test_with_the_values_added_each_type_holds_exactly_the_models_values(
     }
     history_kinds = {*migration.PREVIOUS_HISTORY_KIND_VALUES, *migration.ADDED_HISTORY_KIND_VALUES}
 
-    assert notification_kinds == {kind.value for kind in NotificationKind}
-    assert history_kinds == {kind.value for kind in EventHistoryKind}
+    # Subset, not equality: a later migration (0051 SCRUM-111) adds further kinds.
+    assert notification_kinds <= {kind.value for kind in NotificationKind}
+    assert history_kinds <= {kind.value for kind in EventHistoryKind}
 
 
 def test_upgrade_adds_both_values_outside_the_transaction(

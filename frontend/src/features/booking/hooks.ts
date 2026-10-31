@@ -6,6 +6,7 @@ import type { PreparationUpdate } from '@/config/preparation'
 import {
   bookingKeys,
   cancelAllArrangements,
+  cancelBooking,
   changeArrangement,
   changeHoldExpiry,
   decideBookingRequest,
@@ -24,6 +25,7 @@ import type {
   ArrangementChange,
   BookingDecision,
   BookingRequest,
+  CancelBooking,
   HoldExpiry,
   RaiseBookingRequest,
   ReconfirmBooking,
@@ -109,6 +111,20 @@ export function useWithdrawArrangement(reference: string, arrangementId: number)
   return useMutation({
     mutationFn: () => withdrawArrangement(reference, arrangementId),
     onSuccess: reread,
+  })
+}
+
+/**
+ * Cancel one of the event's approved bookings, with a reason (SCRUM-111). The list is read again
+ * even after a refusal, which may come from a change the page hasn't seen, such as the event
+ * having been confirmed meanwhile.
+ */
+export function useCancelBooking(reference: string, arrangementId: number) {
+  const reread = useRereadEventRequests(reference)
+  return useMutation({
+    mutationFn: (cancellation: CancelBooking) =>
+      cancelBooking(reference, arrangementId, cancellation),
+    onSettled: reread,
   })
 }
 

@@ -55,6 +55,7 @@ from app.modules.venue.opening_hours import Period, covers_period
 from app.modules.venue.schemas import (
     BlockVenueSchema,
     BookingRequestAsShown,
+    CancelBookingSchema,
     ChangeArrangementSchema,
     DecideBookingRequestSchema,
     EditVenueSchema,
@@ -1834,9 +1835,9 @@ def cancel_all_arrangements(
     AC6 keeps one arrangement's fate from touching the others unless the coordinator
     asks for all of them, which is this call rather than a loop the client writes.
     Every pending or rejected arrangement is withdrawn. An approved one cannot be (its
-    booking would be left behind), so the call is refused while the event has one;
-    cancelling an approved booking is not yet in any story. An event with none is not
-    an error.
+    booking would be left behind), so the call is refused while the event has one: the
+    coordinator cancels each approved booking on its own, with a reason
+    (:func:`cancel_approved_booking`, SCRUM-111). An event with none is not an error.
 
     Returns:
         The retired arrangements, earliest period first, or an empty list.
@@ -2246,11 +2247,16 @@ def _booking_holding_venue(
     return _booking_made_by(arrangement, session)
 
 
-def _release_and_free_venue(arrangement: VenueBookingRequest, session: Session | None) -> None:
-    """Mark a live arrangement Released and cancel any booking or hold it has."""
+def _free_venue(arrangement: VenueBookingRequest, session: Session | None) -> None:
+    """Cancel the booking or hold that holds the arrangement's venue, if it has one."""
     booking = _booking_holding_venue(arrangement, session)
     if booking is not None:
         booking.status = BookingStatus.CANCELLED
+
+
+def _release_and_free_venue(arrangement: VenueBookingRequest, session: Session | None) -> None:
+    """Mark a live arrangement Released and cancel any booking or hold it has."""
+    _free_venue(arrangement, session)
     arrangement.status = BookingRequestStatus.RELEASED
 
 
@@ -2795,9 +2801,16 @@ def send_hold_expiry_warnings(
 RELEASED_DETAIL = "Venue arrangement {id} at {venue}, {starts} to {ends}, was released."
 
 
-def _released_detail(arrangement: VenueBookingRequest, session: Session | None) -> str:
+def _arrangement_detail(
+    template: str, arrangement: VenueBookingRequest, session: Session | None
+) -> str:
+    """``template`` filled in with the arrangement's id, venue name and period.
+
+    For what Venue Staff are told when a booking is released (ADR-0103) or cancelled
+    (SCRUM-111 AC3).
+    """
     venue = get_venue(arrangement.venue_id, session=session)
-    return RELEASED_DETAIL.format(
+    return template.format(
         id=arrangement.id,
         venue=venue.name,
         starts=_notice_time(arrangement.starts_at),
@@ -2815,7 +2828,7 @@ def release_event_arrangements(
     approved is withdrawn, with its history entry, as the coordinator would withdraw it
     (SCRUM-93). One that holds the venue, Approved or On Hold, is Released and its
     booking or hold cancelled, so the venue is free for that period again. Arrangements
-    already withdrawn or released are left as they are. The caller commits, with the
+    already retired are left as they are. The caller commits, with the
     rejection this is part of.
 
     Args:
@@ -2835,7 +2848,7 @@ def release_event_arrangements(
             _withdraw_and_record(arrangement, coordinator_id, session)
             continue
         _release_and_free_venue(arrangement, session)
-        released.append(_released_detail(arrangement, session))
+        released.append(_arrangement_detail(RELEASED_DETAIL, arrangement, session))
     return released
 
 
@@ -2849,6 +2862,81 @@ def tell_venue_staff_of_releases(
     :func:`release_event_arrangements`, sent once the rejection is saved.
     """
     _tell_venue_staff(event, details, NotificationKind.VENUE_BOOKING_RELEASED, session)
+
+
+# --------------------------------------------------------------------------
+# SCRUM-111 — cancel one approved venue booking while the event is being planned
+# --------------------------------------------------------------------------
+
+CANCEL_NOT_APPROVED_MESSAGE = "Only an approved booking can be cancelled; this one is {status}."
+#: What Venue Staff and the Safety Officers are told about the booking (AC2, AC3,
+#: ADR-0117): the arrangement, its venue and its period, in business time.
+CANCELLED_DETAIL = "Venue arrangement {id} at {venue}, {starts} to {ends}, was cancelled."
+
+
+def cancel_approved_booking(
+    reference: str,
+    arrangement_id: int,
+    payload: Mapping[str, Any] | None,
+    *,
+    coordinator_id: int,
+    session: Session | None = None,
+) -> BookingRequestAsShown:
+    """Cancel one of the event's approved bookings, with a reason (SCRUM-111).
+
+    Only the event's assigned coordinator may, while the event is Approved or in Safety
+    Review. The booking is cancelled, so the venue is free for that period again, and
+    the arrangement becomes Cancelled (AC1); the event's other arrangements are
+    untouched. An event in Safety Review goes back to Approved if the Safety Officer had
+    passed it or this was its last active venue (AC2,
+    ``return_to_planning_after_cancellation``). The cancellation, its history entry with
+    the reason (AC5) and any change to the event are saved in one commit. Then every
+    Venue Staff user is told, naming the event, the venue and the period (AC3), and, for
+    an event that was in Safety Review, every Safety Officer (AC2); a notice that can't
+    be saved loses only itself (ADR-0015). The coordinator is told nothing: they did
+    it. The checks run in this order: the reference and the coordinator, the event's
+    status, the arrangement, its status, then the payload (AC4). See ADR-0117.
+
+    Raises:
+        NotFoundError: 404 — no such event among the coordinator's own, or no such
+            arrangement on it.
+        ConflictError: 409 — the event isn't Approved or in Safety Review, or the
+            arrangement isn't approved; the message names the status.
+        ValidationError: 400 — no reason, or a field the body may not carry.
+    """
+    from app.modules.events import services as event_services  # circular at import time
+
+    sess = resolve_session(session)
+    event = event_services.get_event_for_booking_cancellation(
+        reference, coordinator_id, session=session
+    )
+    arrangement = _arrangement_of_event(event.id, arrangement_id, sess)
+    if arrangement.status is not BookingRequestStatus.APPROVED:
+        raise ConflictError(CANCEL_NOT_APPROVED_MESSAGE.format(status=arrangement.status.value))
+    cancellation = load_or_raise(CancelBookingSchema(), payload)
+
+    _free_venue(arrangement, session)
+    arrangement.status = BookingRequestStatus.CANCELLED
+    event_services.record_venue_booking_cancelled(
+        event.id,
+        actor_id=coordinator_id,
+        details={
+            "venue_booking_request_id": arrangement.id,
+            "venue_id": arrangement.venue_id,
+            "starts_at": as_utc(arrangement.starts_at).isoformat(),
+            "ends_at": as_utc(arrangement.ends_at).isoformat(),
+            "reason": cancellation["reason"],
+        },
+        session=session,
+    )
+    event_services.return_to_planning_after_cancellation(
+        event.id, arrangement.id, actor_id=coordinator_id, session=session
+    )
+    sess.commit()
+    detail = _arrangement_detail(CANCELLED_DETAIL, arrangement, session)
+    _tell_venue_staff(event, [detail], NotificationKind.VENUE_BOOKING_CANCELLED, session)
+    event_services.tell_safety_officers_of_cancelled_booking(event, detail, session=session)
+    return show_booking_request(arrangement, event)
 
 
 # --------------------------------------------------------------------------
@@ -2955,7 +3043,7 @@ def _live_arrangements_of(event_id: int, session: Session | None) -> list[VenueB
     """The event's arrangements that still hold or ask for their venue, earliest first.
 
     The statuses a significant change flags (ADR-0094 decision 2): a decided-against,
-    withdrawn or released arrangement has nothing to lose, and On Hold waits for its own
+    retired arrangement has nothing to lose, and On Hold waits for its own
     follow-up, though a venue becoming unavailable flags it (ADR-0100).
     """
     stmt = (

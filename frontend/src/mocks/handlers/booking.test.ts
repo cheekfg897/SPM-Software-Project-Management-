@@ -5,7 +5,7 @@ import { sendRequestsAs } from '@/test/sendRequestsAs'
 
 import { MOCK_ACCOUNTS, mockTokenFor } from '../fixtures/accounts'
 
-import { flagArrangementsAfterChange } from './booking'
+import { bookingEventByReference, flagArrangementsAfterChange, resetMockBooking } from './booking'
 import { MOCK_ARRANGEMENTS, MOCK_BOOKING_EVENTS, MOCK_BOOKING_VENUES } from './bookingFixtures'
 
 /**
@@ -357,6 +357,15 @@ function change(reference: string, arrangementId: number, body: Record<string, u
   })
 }
 
+const CANCEL_REASON = 'The talks moved to the side room.'
+
+function cancelBooking(reference: string, arrangementId: number, body: unknown) {
+  return apiRequest<Record<string, unknown>>(`${arrangementUrl(reference, arrangementId)}/cancel`, {
+    method: 'POST',
+    body,
+  })
+}
+
 function cancelAll(reference: string) {
   return apiRequest<Record<string, unknown>[]>(`${bookingUrl(reference)}/cancel-all`, {
     method: 'POST',
@@ -424,6 +433,10 @@ const ARRANGEMENT_IN: Record<BookingRequestStatus, () => Promise<[string, number
   on_hold: () => Promise.resolve([HELD_EVENT.reference, heldStudio.id]),
   expired: () => Promise.resolve([REPLACED_EVENT.reference, expiredGallery.id]),
   released: () => Promise.resolve([REPLACED_EVENT.reference, releasedHall.id]),
+  cancelled: async () => {
+    await cancelBooking(BOOKED_EVENT.reference, bookedHall.id, { reason: CANCEL_REASON })
+    return [BOOKED_EVENT.reference, bookedHall.id]
+  },
 }
 
 /** Every status but the ones allowed, which the caller writes out. */
@@ -1250,5 +1263,175 @@ describe('SCRUM-92 booking mock: raising a replacement for a flagged arrangement
       status: 'rejected',
       needs_alternative_venue: false,
     })
+  })
+})
+
+describe('SCRUM-111 booking mock: cancelling one approved booking', () => {
+  const { reviewedAuditorium } = MOCK_ARRANGEMENTS
+  const REVIEW_EVENT = MOCK_BOOKING_EVENTS.inSafetyReview
+  const NO_REASON = 'A reason is required to cancel a booking.'
+
+  function eventStatusOf(reference: string) {
+    return bookingEventByReference(reference)?.status
+  }
+
+  async function approveAsVenueStaff(requestId: unknown) {
+    sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.venueStaff))
+    try {
+      return await apiRequest<Record<string, unknown>>(
+        `/api/venues/booking-requests/${String(requestId)}/decision`,
+        { method: 'POST', body: { outcome: 'approved' } },
+      )
+    } finally {
+      sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.coordinator))
+    }
+  }
+
+  it('cancels the approved booking, which needs no other venue now, and leaves the rest as they were', async () => {
+    const cancelled = await cancelBooking(BOOKED_EVENT.reference, bookedHall.id, {
+      reason: CANCEL_REASON,
+    })
+
+    expect(cancelled).toMatchObject({
+      id: bookedHall.id,
+      status: 'cancelled',
+      needs_alternative_venue: false,
+    })
+    expect(await statusesOf(BOOKED_EVENT.reference)).toEqual([
+      `${bookedSideRoom.id} rejected`,
+      `${bookedHall.id} cancelled`,
+    ])
+  })
+
+  it('frees the venue, so another event’s request for that period can be approved', async () => {
+    const samePeriod = await raise(
+      APPROVED_EVENT.reference,
+      validPayload({ starts_at: bookedHall.starts_at, ends_at: bookedHall.ends_at }),
+    )
+    expect((await errorOf(approveAsVenueStaff(samePeriod.id))).status).toBe(409)
+
+    await cancelBooking(BOOKED_EVENT.reference, bookedHall.id, { reason: CANCEL_REASON })
+
+    expect((await approveAsVenueStaff(samePeriod.id)).status).toBe('approved')
+  })
+
+  it('leaves an approved event approved, even with no venue left', async () => {
+    await cancelBooking(BOOKED_EVENT.reference, bookedHall.id, { reason: CANCEL_REASON })
+
+    expect(eventStatusOf(BOOKED_EVENT.reference)).toBe('approved')
+  })
+
+  it('sends an event in Safety Review back to approved when it was its last active venue', async () => {
+    await cancelBooking(REVIEW_EVENT.reference, reviewedAuditorium.id, { reason: CANCEL_REASON })
+
+    expect(eventStatusOf(REVIEW_EVENT.reference)).toBe('approved')
+  })
+
+  it('keeps an event in Safety Review while another venue is still active', async () => {
+    await raise(
+      REVIEW_EVENT.reference,
+      validPayload({
+        venue_id: TINY_VENUE.id,
+        expected_occupancy: 5,
+        starts_at: reviewedAuditorium.starts_at,
+        ends_at: reviewedAuditorium.ends_at,
+        replaces_request_id: reviewedAuditorium.id,
+      }),
+    )
+
+    await cancelBooking(REVIEW_EVENT.reference, reviewedAuditorium.id, { reason: CANCEL_REASON })
+
+    expect(eventStatusOf(REVIEW_EVENT.reference)).toBe('safety_review')
+  })
+
+  it('puts the event’s status back when the mock is reset, so no test sees another’s', async () => {
+    await cancelBooking(REVIEW_EVENT.reference, reviewedAuditorium.id, { reason: CANCEL_REASON })
+
+    resetMockBooking()
+
+    expect(eventStatusOf(REVIEW_EVENT.reference)).toBe('safety_review')
+  })
+
+  it.each(statusesOtherThan(['approved']))(
+    'refuses to cancel an arrangement that is %s, naming its status',
+    async (status) => {
+      const [reference, id] = await ARRANGEMENT_IN[status]()
+
+      const error = await errorOf(cancelBooking(reference, id, { reason: CANCEL_REASON }))
+
+      expect([error.status, error.message]).toEqual([
+        409,
+        `Only an approved booking can be cancelled; this one is ${status}.`,
+      ])
+    },
+  )
+
+  it.each([
+    ['no reason', {}, NO_REASON],
+    ['a null reason', { reason: null }, NO_REASON],
+    ['a blank reason', { reason: '   ' }, 'Must not be blank.'],
+    ['a number', { reason: 5 }, 'Not a valid string.'],
+    ['a boolean', { reason: true }, 'Not a valid string.'],
+    ['a list', { reason: ['Merged'] }, 'Not a valid string.'],
+  ])('refuses %s (400) and cancels nothing', async (_name, body, message) => {
+    const error = await errorOf(cancelBooking(BOOKED_EVENT.reference, bookedHall.id, body))
+
+    expect([error.status, error.fieldErrors]).toEqual([400, { reason: [message] }])
+    expect(await statusesOf(BOOKED_EVENT.reference)).toContain(`${bookedHall.id} approved`)
+  })
+
+  it('refuses a field the body may not carry (400)', async () => {
+    const error = await errorOf(
+      cancelBooking(BOOKED_EVENT.reference, bookedHall.id, {
+        reason: CANCEL_REASON,
+        status: 'approved',
+      }),
+    )
+
+    expect([error.status, error.fieldErrors]).toEqual([400, { status: ['Unknown field.'] }])
+  })
+
+  it('refuses an event that is not being planned, naming its status, before looking for the arrangement', async () => {
+    const error = await errorOf(
+      cancelBooking(MOCK_BOOKING_EVENTS.confirmed.reference, 424242, { reason: CANCEL_REASON }),
+    )
+
+    expect([error.status, error.message]).toEqual([
+      409,
+      'Only an approved event or one in Safety Review can have a venue booking cancelled; this one is confirmed.',
+    ])
+  })
+
+  it('answers 404 for an arrangement of another event, or one that does not exist', async () => {
+    const otherEvents = await errorOf(
+      cancelBooking(BOOKED_EVENT.reference, reviewedAuditorium.id, { reason: CANCEL_REASON }),
+    )
+    const missing = await errorOf(
+      cancelBooking(BOOKED_EVENT.reference, 424242, { reason: CANCEL_REASON }),
+    )
+
+    expect([otherEvents.status, otherEvents.message]).toEqual([404, ARRANGEMENT_NOT_FOUND])
+    expect([missing.status, missing.message]).toEqual([404, ARRANGEMENT_NOT_FOUND])
+  })
+
+  it('answers 404 for an event the coordinator does not coordinate', async () => {
+    const error = await errorOf(
+      cancelBooking(MOCK_BOOKING_EVENTS.someoneElses.reference, 9001, { reason: CANCEL_REASON }),
+    )
+
+    expect([error.status, error.message]).toEqual([404, 'Event request not found.'])
+  })
+
+  it('refuses another role (403) and a caller without a token (401)', async () => {
+    sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.venueStaff))
+    const otherRole = await errorOf(
+      cancelBooking(BOOKED_EVENT.reference, bookedHall.id, { reason: CANCEL_REASON }),
+    )
+    sendRequestsAs(null)
+    const noToken = await errorOf(
+      cancelBooking(BOOKED_EVENT.reference, bookedHall.id, { reason: CANCEL_REASON }),
+    )
+
+    expect([otherRole.status, noToken.status]).toEqual([403, 401])
   })
 })

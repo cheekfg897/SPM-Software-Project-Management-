@@ -8,7 +8,8 @@ import { signInAs } from './signInAs'
 
 /**
  * SCRUM-93: a coordinator plans one event across two venues, changes one arrangement, withdraws
- * the other, then cancels what is left, each without disturbing the rest.
+ * the other, then cancels what is left, each without disturbing the rest. SCRUM-111: they cancel
+ * one approved booking, with a reason, and the event's other arrangement stays as it was.
  */
 
 // From src/mocks/handlers/bookingFixtures.ts, which Playwright can't import: it uses the `@/`
@@ -16,6 +17,8 @@ import { signInAs } from './signInAs'
 const APPROVED_EVENT_REFERENCE = 'EVR-BOOK0101'
 const ROOMY_VENUE_ID = 1
 const TINY_VENUE_ID = 2
+// The booked event: its "Main hall" is approved and its "Side room" rejected.
+const BOOKED_EVENT_REFERENCE = 'EVR-BOOK0107'
 
 async function raise(page: Page, purpose: string, venueId: number, occupancy: string) {
   const form = page
@@ -57,4 +60,24 @@ test('a coordinator changes, withdraws and cancels an event’s venue arrangemen
   await page.getByRole('button', { name: 'Withdraw them all' }).click()
   await expect(breakout).toContainText('Withdrawn')
   await expect(main).toContainText('Withdrawn')
+})
+
+test('a coordinator cancels one approved booking with a reason, leaving the rest', async ({
+  page,
+}) => {
+  await signInAs(page, MOCK_ACCOUNTS.coordinator)
+  await page.goto(venueRequestsPath(BOOKED_EVENT_REFERENCE))
+  const hall = page.getByRole('listitem', { name: 'Main hall' })
+  await expect(hall).toContainText('Approved')
+
+  await page.getByRole('button', { name: 'Cancel booking Main hall' }).click()
+  const form = page.getByRole('form', { name: 'Cancel booking Main hall' })
+  await form.getByRole('button', { name: 'Cancel booking' }).click()
+  await expect(form.getByText('A reason is required to cancel a booking.')).toBeVisible()
+  await form.getByLabel('Reason for cancelling').fill('The talks moved to the side room.')
+  await form.getByRole('button', { name: 'Cancel booking' }).click()
+
+  await expect(hall).toContainText('Cancelled')
+  await expect(hall.getByRole('button')).toHaveCount(0)
+  await expect(page.getByRole('listitem', { name: 'Side room' })).toContainText('Rejected')
 })
