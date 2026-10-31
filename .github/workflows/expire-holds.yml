@@ -62,11 +62,11 @@ jobs:
 
       - name: Check out
         if: steps.database.outputs.configured == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Python
         if: steps.database.outputs.configured == 'true'
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version-file: backend/.python-version
           cache: pip
