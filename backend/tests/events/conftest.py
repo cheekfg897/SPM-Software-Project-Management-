@@ -366,19 +366,6 @@ def reload_event_request(db_session: Session) -> Callable[[int], EventRequest]:
 
 
 @pytest.fixture()
-def set_status(
-    saved_event_request: EventRequest, save: Callable[..., None]
-) -> Callable[[EventRequestStatus], None]:
-    """Move ``saved_event_request`` to another status and save it."""
-
-    def _set(status: EventRequestStatus) -> None:
-        saved_event_request.status = status
-        save(saved_event_request)
-
-    return _set
-
-
-@pytest.fixture()
 def approved_for_safety(
     saved_event_request: EventRequest, save: Callable[..., None]
 ) -> Callable[[EventRequestStatus], EventRequest]:
@@ -520,19 +507,6 @@ def reload_equipment_line(db_session: Session) -> Callable[[int], EventEquipment
         return line
 
     return _reload
-
-
-@pytest.fixture()
-def approved_event_request(
-    saved_event_request: EventRequest, set_status: Callable[[EventRequestStatus], None]
-) -> EventRequest:
-    """``saved_event_request`` (``EVR-AAAAAAAA``), approved by Coordinator 3.
-
-    The first status in which its coordinator may edit its details or change its
-    equipment (SCRUM-110, ADR-0116). Set directly, so its history is still empty.
-    """
-    set_status(EventRequestStatus.APPROVED)
-    return saved_event_request
 
 
 @pytest.fixture()
