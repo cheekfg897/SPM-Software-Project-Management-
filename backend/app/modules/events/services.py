@@ -5812,3 +5812,36 @@ def tell_safety_officers_of_cancelled_booking(
     _notify_safety_officers(
         event_request, NotificationKind.SAFETY_REVIEW_VENUE_CANCELLED, sess, detail=detail
     )
+
+
+# --------------------------------------------------------------------------
+# SCRUM-93 AC10 — an event's venue arrangements change only while it is planned
+# --------------------------------------------------------------------------
+
+#: The refusal for an event that isn't being planned (SCRUM-93 AC10), naming its status.
+ARRANGEMENTS_NOT_IN_PLANNING_MESSAGE = (
+    "Only an approved event or one in Safety Review can have its venue arrangements"
+    " withdrawn, changed or cancelled; this one is {status}."
+)
+
+
+def get_event_for_arrangement_change(
+    reference: str, coordinator_id: int | str, *, session: Session | None = None
+) -> EventForBooking:
+    """The coordinator's own event, if its venue arrangements may still change.
+
+    SCRUM-93 AC10: withdrawing, changing or cancelling arrangements is allowed only
+    while the event is being planned, Approved or in Safety Review
+    (``PLANNING_STATUSES``, ADR-0118). Once it is Confirmed a change goes through
+    change review (SCRUM-56, SCRUM-57), and a Completed, Cancelled or Rejected event
+    is over.
+
+    Raises:
+        NotFoundError: 404 — no such event, or it isn't assigned to this coordinator.
+        ConflictError: 409 — the event isn't being planned; the message names its
+            status.
+    """
+    event = get_event_for_coordinator(reference, coordinator_id, session=session)
+    if event.status not in PLANNING_STATUSES:
+        raise ConflictError(ARRANGEMENTS_NOT_IN_PLANNING_MESSAGE.format(status=event.status.value))
+    return event
