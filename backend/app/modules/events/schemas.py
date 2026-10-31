@@ -502,13 +502,10 @@ EQUIPMENT_EVENT_FIELDS = (
 )
 
 #: What an event list shows at the least: the event's name, date and times as the
-#: equipment list shows them, and its status (SCRUM-24 AC8, ADR-0026).
+#: equipment list shows them, and its status (SCRUM-24 AC8, ADR-0026). An event's own
+#: equipment lines come with the same, so its coordinator is offered changes only
+#: while the lines can change (SCRUM-110, ADR-0116).
 EVENT_LIST_FIELDS = (*EQUIPMENT_EVENT_FIELDS, "status")
-
-#: What an event's own equipment lines come with: when it is, and its status, so its
-#: coordinator is offered changes only while the lines can change (SCRUM-110,
-#: ADR-0116).
-EQUIPMENT_LINES_EVENT_FIELDS = (*EQUIPMENT_EVENT_FIELDS, "status")
 
 
 class _CoordinatorEmailSchema(Schema):

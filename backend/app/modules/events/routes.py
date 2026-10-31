@@ -15,7 +15,6 @@ from marshmallow import Schema
 from app.common.decorators import requires_role
 from app.modules.auth.permissions import INTERNAL_ROLES, Role
 from app.modules.events.schemas import (
-    EQUIPMENT_LINES_EVENT_FIELDS,
     EVENT_LIST_FIELDS,
     ClarificationSchema,
     CoordinatorContactSchema,
@@ -90,7 +89,6 @@ _equipment_line_with_outcome_schema = EquipmentLineWithOutcomeSchema()
 _organiser_record_sections_schema = OrganiserRecordSectionsSchema()
 _record_venue_arrangement_schema = RecordVenueArrangementSchema()
 _safety_outcome_schema = SafetyOutcomeSchema()
-_equipment_event_schema = EventRequestSchema(only=EQUIPMENT_LINES_EVENT_FIELDS)
 _equipment_awaiting_action_schema = EquipmentAwaitingActionSchema()
 _awaiting_safety_review_schema = EventAwaitingSafetyReviewSchema()
 _edited_event_request_schema = EditedEventRequestSchema()
@@ -393,7 +391,7 @@ def list_equipment(reference: str) -> tuple[Response, int]:
         g.current_user_id, reference, viewer_role=Role(g.current_user_role)
     )
     body = {
-        "event": _equipment_event_schema.dump(event_request),
+        "event": _event_list_row_schema.dump(event_request),
         "equipment_lines": _equipment_line_with_outcome_schema.dump(
             equipment_lines_as_shown(lines), many=True
         ),
