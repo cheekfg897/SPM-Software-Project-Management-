@@ -4,9 +4,11 @@ AC1: only that booking is released, its arrangement becomes Cancelled and the ve
 free for that period again. AC2: the event's other bookings are untouched; an Approved
 event stays Approved; an event in Safety Review goes back to Approved if the Safety
 Officer had passed it (the pass no longer counts) or if the booking was its last active
-venue (SCRUM-97 AC3), and otherwise stays. AC4: the refusals. AC5: the history entry.
-ADR-0117 records what the ACs leave open. Runs against ``db_session``, so the queries
-really run.
+venue (SCRUM-97 AC3), and otherwise stays, and every Safety Officer is told. AC3: every
+Venue Staff user is told. AC4: the refusals. AC5: the history entry. ADR-0117 records
+what the ACs leave open: the Safety Officers are told when the event goes back too, and
+the coordinator is told nothing. Runs against ``db_session``, so the queries really
+run.
 """
 
 from __future__ import annotations
@@ -15,17 +17,28 @@ from collections.abc import Callable
 from typing import Any
 
 import pytest
+from sqlalchemy import delete
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.common.errors import ConflictError, NotFoundError, ValidationError
+from app.modules.auth.models import User
+from app.modules.auth.permissions import Role
 from app.modules.events.models import EventHistoryKind, EventRequest, EventRequestStatus
 from app.modules.events.services import has_safety_approval
+from app.modules.notifications.models import Notification
+from app.modules.notifications.schemas import MESSAGE_BY_KIND
+from app.modules.notifications.services import (
+    NotificationKind,
+    list_notifications_for_recipient,
+)
 from app.modules.venue import services
 from app.modules.venue.models import BookingRequestStatus, BookingStatus, Venue
 from app.modules.venue.schemas import BookingRequestAsShown
 from tests.venue.conftest import (
     COORDINATOR_ID,
     SECOND_PERIOD,
+    VENUE_STAFF_ID,
     SavedEvent,
     approve_safety,
     approved_arrangement,
@@ -373,3 +386,184 @@ def test_another_events_arrangement_is_not_found(
 
     assert refused.value.message == "Venue arrangement not found."
     assert _status_of(db_session, theirs) is BookingRequestStatus.APPROVED
+
+
+# --------------------------------------------------------------------------
+# AC3 — every Venue Staff user is told; AC2 — so is every Safety Officer
+# --------------------------------------------------------------------------
+
+#: A second Venue Staff user and two Safety Officers, beside ``saved_users``' own.
+OTHER_VENUE_STAFF_ID = 44
+SAFETY_OFFICER_IDS = [21, 22]
+#: What the notices say about the booking, in business time (ADR-0117).
+CANCELLED_DETAIL = (
+    "Venue arrangement {id} at Main Hall, 2026-11-01 09:00 to 2026-11-01 12:00, was cancelled."
+)
+BACK_IN_PLANNING = " It is back in planning until it can be sent to Safety Review again."
+
+
+def _notices(user_id: int) -> list[tuple[str, str, NotificationKind, str | None]]:
+    """The user's notices as (reference, event name, kind, detail), newest first."""
+    rows = []
+    for notice in list_notifications_for_recipient(user_id):
+        rows.append((notice.event_reference, notice.event_name, notice.kind, notice.detail))
+    return rows
+
+
+def _forget_earlier_notices(session: Session) -> None:
+    """Delete the notices raising and approving the bookings sent, before the act."""
+    session.execute(delete(Notification))
+    session.commit()
+
+
+@pytest.fixture()
+def staff(
+    db_session: Session, saved_users: list[User], make_user: Callable[..., User]
+) -> list[User]:
+    """``saved_users``, another Venue Staff user and two Safety Officers."""
+    others = [
+        make_user(email="staff44@example.com", role=Role.VENUE_STAFF, user_id=44),
+        make_user(email="safety21@example.com", role=Role.SAFETY_OFFICER, user_id=21),
+        make_user(email="safety22@example.com", role=Role.SAFETY_OFFICER, user_id=22),
+    ]
+    db_session.add_all(others)
+    db_session.commit()
+    return [*saved_users, *others]
+
+
+@pytest.mark.parametrize(
+    ("kind", "message"),
+    [
+        (
+            NotificationKind.VENUE_BOOKING_CANCELLED,
+            "The event's coordinator cancelled a venue booking, so the venue is free again.",
+        ),
+        (
+            NotificationKind.SAFETY_REVIEW_VENUE_CANCELLED,
+            "A venue was dropped from an event in Safety Review.",
+        ),
+    ],
+    ids=["venue-staff", "safety-officers"],
+)
+def test_each_notice_says_what_happened(kind: NotificationKind, message: str) -> None:
+    assert MESSAGE_BY_KIND[kind] == message
+
+
+@pytest.mark.usefixtures("staff")
+def test_every_venue_staff_user_is_told_naming_the_event_venue_and_period(
+    db_session: Session, event: EventRequest, booked: int
+) -> None:
+    _forget_earlier_notices(db_session)
+    _cancel(event, booked, db_session)
+
+    told = (
+        event.reference,
+        "Partner Summit",
+        NotificationKind.VENUE_BOOKING_CANCELLED,
+        CANCELLED_DETAIL.format(id=booked),
+    )
+    assert _notices(VENUE_STAFF_ID) == [told]
+    assert _notices(OTHER_VENUE_STAFF_ID) == [told]
+
+
+@pytest.mark.usefixtures("staff")
+def test_in_safety_review_every_safety_officer_is_told_the_venue_dropped(
+    db_session: Session, event: EventRequest, booked: int, also_booked: int
+) -> None:
+    _into(event, EventRequestStatus.SAFETY_REVIEW, db_session)
+
+    _forget_earlier_notices(db_session)
+    _cancel(event, booked, db_session)
+
+    for officer_id in SAFETY_OFFICER_IDS:
+        assert _notices(officer_id) == [
+            (
+                event.reference,
+                "Partner Summit",
+                NotificationKind.SAFETY_REVIEW_VENUE_CANCELLED,
+                CANCELLED_DETAIL.format(id=booked),
+            )
+        ]
+
+
+@pytest.mark.usefixtures("staff")
+@pytest.mark.parametrize("passed", [True, False], ids=["passed", "last-venue"])
+def test_an_event_sent_back_to_approved_tells_the_safety_officers_so(
+    db_session: Session, event: EventRequest, booked: int, passed: bool
+) -> None:
+    """ADR-0117: the SCRUM-33 AC9 notice's pattern, when the event leaves their list."""
+    _into(event, EventRequestStatus.SAFETY_REVIEW, db_session)
+    if passed:
+        approve_safety(event, db_session)
+
+    _forget_earlier_notices(db_session)
+    _cancel(event, booked, db_session)
+
+    for officer_id in SAFETY_OFFICER_IDS:
+        assert [detail for *_, detail in _notices(officer_id)] == [
+            CANCELLED_DETAIL.format(id=booked) + BACK_IN_PLANNING
+        ]
+
+
+@pytest.mark.usefixtures("staff")
+def test_an_approved_events_cancellation_tells_no_safety_officer(
+    db_session: Session, event: EventRequest, booked: int
+) -> None:
+    _forget_earlier_notices(db_session)
+    _cancel(event, booked, db_session)
+
+    for officer_id in SAFETY_OFFICER_IDS:
+        assert _notices(officer_id) == []
+
+
+@pytest.mark.usefixtures("staff")
+@pytest.mark.parametrize("status", CANCELLABLE_EVENT_STATUSES, ids=lambda status: status.value)
+def test_the_coordinator_who_cancelled_is_told_nothing(
+    db_session: Session, event: EventRequest, booked: int, status: EventRequestStatus
+) -> None:
+    """ADR-0117: they did it."""
+    _into(event, status, db_session)
+
+    _forget_earlier_notices(db_session)
+    _cancel(event, booked, db_session)
+
+    assert _notices(COORDINATOR_ID) == []
+
+
+@pytest.mark.usefixtures("staff")
+def test_a_refused_cancellation_tells_nobody(
+    db_session: Session, event: EventRequest, booked: int
+) -> None:
+    _into(event, EventRequestStatus.SAFETY_REVIEW, db_session)
+
+    _forget_earlier_notices(db_session)
+    with pytest.raises(ValidationError):
+        _cancel(event, booked, db_session, payload={})
+
+    assert _notices(VENUE_STAFF_ID) == []
+    assert _notices(SAFETY_OFFICER_IDS[0]) == []
+
+
+@pytest.mark.usefixtures("staff")
+def test_a_notice_that_cannot_be_saved_loses_only_itself(
+    db_session: Session,
+    event: EventRequest,
+    booked: int,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The cancellation is committed before anyone is told (ADR-0015)."""
+
+    def _fail(*_: object, **__: object) -> None:
+        raise SQLAlchemyError("notifications table is gone")
+
+    monkeypatch.setattr(services, "notify_users", _fail)
+
+    _forget_earlier_notices(db_session)
+    shown = _cancel(event, booked, db_session)
+
+    assert shown.request.status is BookingRequestStatus.CANCELLED
+    db_session.rollback()
+    assert _status_of(db_session, booked) is BookingRequestStatus.CANCELLED
+    assert [status for _, status in bookings(db_session)] == [BookingStatus.CANCELLED]
+    assert "venue_booking_notification_failed" in caplog.text
