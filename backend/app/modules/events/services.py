@@ -6107,24 +6107,29 @@ def withdraw_pending_change_request_on_cancel(
 
 
 # --------------------------------------------------------------------------
-# SCRUM-111 — cancel one approved venue booking while the event is being planned
+# SCRUM-93 AC10, SCRUM-111 — an event's venue arrangements change only while it is
+# planned, and one approved booking can be cancelled then
 # --------------------------------------------------------------------------
 
-#: The refusal for an event that isn't being planned (SCRUM-111 AC4), naming its status.
-NOT_IN_PLANNING_FOR_CANCELLATION_MESSAGE = (
-    "Only an approved event or one in Safety Review can have a venue booking cancelled;"
-    " this one is {status}."
+#: The refusal for an event that isn't being planned, naming its status: one rule for
+#: withdrawing, changing, cancelling one and cancelling all (SCRUM-93 AC10, SCRUM-111
+#: AC4, ADR-0118).
+ARRANGEMENTS_NOT_IN_PLANNING_MESSAGE = (
+    "Only an approved event or one in Safety Review can have its venue arrangements"
+    " withdrawn, changed or cancelled; this one is {status}."
 )
 
 
-def get_event_for_booking_cancellation(
+def get_event_for_arrangement_change(
     reference: str, coordinator_id: int | str, *, session: Session | None = None
 ) -> EventForBooking:
-    """The coordinator's own event, if one of its bookings may be cancelled (SCRUM-111).
+    """The coordinator's own event, if its venue arrangements may still change.
 
-    Only while it is being planned, Approved or in Safety Review (AC1). A Confirmed
-    event's venue changes through a change request (SCRUM-56), and a Completed,
-    Cancelled or Rejected one is over (AC4).
+    SCRUM-93 AC10 and SCRUM-111 AC1, AC4: withdrawing, changing or cancelling one or
+    all of an event's arrangements is allowed only while the event is being planned,
+    Approved or in Safety Review (``PLANNING_STATUSES``, ADR-0118). Once it is Confirmed
+    a change goes through change review (SCRUM-56, SCRUM-57), and a Completed, Cancelled
+    or Rejected event is over.
 
     Raises:
         NotFoundError: 404 — no such event, or it isn't assigned to this coordinator.
@@ -6133,9 +6138,7 @@ def get_event_for_booking_cancellation(
     """
     event = get_event_for_coordinator(reference, coordinator_id, session=session)
     if event.status not in PLANNING_STATUSES:
-        raise ConflictError(
-            NOT_IN_PLANNING_FOR_CANCELLATION_MESSAGE.format(status=event.status.value)
-        )
+        raise ConflictError(ARRANGEMENTS_NOT_IN_PLANNING_MESSAGE.format(status=event.status.value))
     return event
 
 
@@ -6223,36 +6226,3 @@ def tell_safety_officers_of_cancelled_booking(
     _notify_safety_officers(
         event_request, NotificationKind.SAFETY_REVIEW_VENUE_CANCELLED, sess, detail=detail
     )
-
-
-# --------------------------------------------------------------------------
-# SCRUM-93 AC10 — an event's venue arrangements change only while it is planned
-# --------------------------------------------------------------------------
-
-#: The refusal for an event that isn't being planned (SCRUM-93 AC10), naming its status.
-ARRANGEMENTS_NOT_IN_PLANNING_MESSAGE = (
-    "Only an approved event or one in Safety Review can have its venue arrangements"
-    " withdrawn, changed or cancelled; this one is {status}."
-)
-
-
-def get_event_for_arrangement_change(
-    reference: str, coordinator_id: int | str, *, session: Session | None = None
-) -> EventForBooking:
-    """The coordinator's own event, if its venue arrangements may still change.
-
-    SCRUM-93 AC10: withdrawing, changing or cancelling arrangements is allowed only
-    while the event is being planned, Approved or in Safety Review
-    (``PLANNING_STATUSES``, ADR-0118). Once it is Confirmed a change goes through
-    change review (SCRUM-56, SCRUM-57), and a Completed, Cancelled or Rejected event
-    is over.
-
-    Raises:
-        NotFoundError: 404 — no such event, or it isn't assigned to this coordinator.
-        ConflictError: 409 — the event isn't being planned; the message names its
-            status.
-    """
-    event = get_event_for_coordinator(reference, coordinator_id, session=session)
-    if event.status not in PLANNING_STATUSES:
-        raise ConflictError(ARRANGEMENTS_NOT_IN_PLANNING_MESSAGE.format(status=event.status.value))
-    return event

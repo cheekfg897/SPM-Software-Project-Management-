@@ -752,18 +752,6 @@ function cancelFieldErrors(body: Record<string, unknown>): FieldErrors {
   return errors
 }
 
-/** The backend's refusal of a cancellation on an event not being planned, or null (AC4). */
-function notInPlanningRefusal(event: MockBookingEvent) {
-  if (PLANNING_EVENT_STATUSES.includes(event.status)) {
-    return null
-  }
-  return errorResponse(
-    409,
-    'conflict',
-    `Only an approved event or one in Safety Review can have a venue booking cancelled; this one is ${event.status}.`,
-  )
-}
-
 /**
  * The backend's refusal to cancel this arrangement, or null (SCRUM-111 AC4): one that isn't
  * approved, then a replacement waiting for Venue Staff, then a body without a proper reason, the
@@ -1116,14 +1104,10 @@ export const bookingHandlers: RequestHandler[] = [
     if (refusal !== null || user === undefined) {
       return refusal
     }
-    const event = findOwnEvent(params.reference, user.id)
-    if (event === undefined) {
-      return notFound(EVENT_NOT_FOUND_MESSAGE)
-    }
     // The backend checks the event's status before it looks for the arrangement.
-    const statusRefusal = notInPlanningRefusal(event)
-    if (statusRefusal !== null) {
-      return statusRefusal
+    const event = eventToChange(params.reference, user.id)
+    if (event instanceof Response) {
+      return event
     }
     const arrangement = findArrangement(event, params.arrangementId)
     if (arrangement === undefined) {

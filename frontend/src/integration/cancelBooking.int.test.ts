@@ -266,7 +266,7 @@ describe('SCRUM-111 cancelling one approved venue booking against the backend', 
       expect(error).toMatchObject({
         status: 409,
         message:
-          'Only an approved event or one in Safety Review can have a venue booking cancelled; this one is confirmed.',
+          'Only an approved event or one in Safety Review can have its venue arrangements withdrawn, changed or cancelled; this one is confirmed.',
       })
     },
   )

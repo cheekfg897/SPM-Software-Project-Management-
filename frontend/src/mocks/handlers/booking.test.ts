@@ -1601,7 +1601,7 @@ describe('SCRUM-111 booking mock: cancelling one approved booking', () => {
 
     expect([error.status, error.message]).toEqual([
       409,
-      'Only an approved event or one in Safety Review can have a venue booking cancelled; this one is confirmed.',
+      'Only an approved event or one in Safety Review can have its venue arrangements withdrawn, changed or cancelled; this one is confirmed.',
     ])
   })
 
