@@ -5113,6 +5113,11 @@ def record_safety_outcome(
     )
     for line in reopened:
         _clear_outcome(line)
+        # As a new quantity does (SCRUM-60 AC8): the fresh outcome then settles the
+        # reservation, moving, trimming or releasing it (ADR-0113 decision 4).
+        equipment_services.mark_type_reservations_for_reassessment(
+            event_request.id, line.equipment_type_id, session=sess
+        )
     event_request.status = STATUS_AFTER_SAFETY_OUTCOME[outcome]
     record_event_history(
         event_request,
