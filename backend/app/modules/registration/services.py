@@ -57,6 +57,12 @@ MY_EVENT_NOT_FOUND_MESSAGE = "Event not found."
 #: What the Organiser's notice of a place taken or given back says about the places
 #: (SCRUM-62 AC4, ADR-0125).
 PLACES_LEFT_DETAIL = "{places_left} of {capacity} places left."
+#: What an Attendee is told when a replacement venue is approved for their event
+#: (SCRUM-62 AC6, ADR-0125): the event and both venues.
+REPLACEMENT_VENUE_DETAIL = (
+    "{unavailable_venue} is no longer available for {event}. {replacement_venue} has been"
+    " approved in its place."
+)
 
 #: The statuses of an event a change sent back to planning, where places stay held
 #: (ADR-0087): its page says the arrangements are being reviewed (SCRUM-24 AC11,
@@ -381,7 +387,7 @@ def list_catalogue(
 
 
 # --------------------------------------------------------------------------
-# Telling people a place was taken or given back (SCRUM-62 AC4, AC5)
+# Telling people about their places (SCRUM-62 AC4, AC5, AC6)
 # --------------------------------------------------------------------------
 
 
@@ -406,6 +412,49 @@ def _tell_of_place_change(
     detail = PLACES_LEFT_DETAIL.format(places_left=places_left, capacity=event.capacity)
     notify_users_after_commit(
         [event.organiser_id], event.summary, organiser_kind, session=session, detail=detail
+    )
+
+
+def _registered_attendee_ids(event_id: int, session: Session) -> list[int]:
+    """The Attendees holding a place at the event, in the order they registered."""
+    stmt = (
+        select(Registration.attendee_id)
+        .where(
+            Registration.event_request_id == event_id,
+            Registration.status == RegistrationStatus.REGISTERED,
+        )
+        .order_by(Registration.id)
+    )
+    return list(session.scalars(stmt))
+
+
+def notify_attendees_of_replacement_venue(
+    event_id: int,
+    *,
+    unavailable_venue: str,
+    replacement_venue: str,
+    session: Session | None = None,
+) -> None:
+    """Tell everyone holding a place that a replacement venue was approved.
+
+    SCRUM-62 AC6. For the venue module, after the decision's commit (ADR-0015). Every
+    Attendee who still holds a place is told, whether or not the venue sent the event
+    back from Confirmed: either way they now go somewhere else (ADR-0125). The notice
+    names the event and both venues, and nothing of its planning (SCRUM-21).
+    """
+    sess = resolve_session(session)
+    event = get_event_for_registration_notices(event_id, session=sess)
+    detail = REPLACEMENT_VENUE_DETAIL.format(
+        unavailable_venue=unavailable_venue,
+        event=event.summary.name,
+        replacement_venue=replacement_venue,
+    )
+    notify_users_after_commit(
+        _registered_attendee_ids(event_id, sess),
+        event.summary,
+        NotificationKind.REPLACEMENT_VENUE_APPROVED,
+        session=sess,
+        detail=detail,
     )
 
 

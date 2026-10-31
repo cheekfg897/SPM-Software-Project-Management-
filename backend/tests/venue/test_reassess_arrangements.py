@@ -29,6 +29,7 @@ from app.modules.auth.models import User
 from app.modules.events import services as event_services
 from app.modules.events.models import EventRequest, EventRequestStatus
 from app.modules.notifications.services import NotificationKind, list_notifications_for_recipient
+from app.modules.registration.models import Registration, RegistrationStatus
 from app.modules.venue.models import (
     BookingRequestStatus,
     ReassessmentFlag,
@@ -65,6 +66,8 @@ RISE_REASON = (
 RECONFIRM = "requires_reconfirmation"
 #: The ``saved_users`` organiser who submitted the event.
 ORGANISER_ID = 7
+#: An Attendee holding a place at the event (SCRUM-62 AC6).
+ATTENDEE_ID = 21
 #: The morning of the day after the event starts, clear of every booking it has.
 DAY_AFTER = {"starts_at": "2026-11-02T09:00:00+08:00", "ends_at": "2026-11-02T12:00:00+08:00"}
 UNSUITABLE = "no_longer_suitable"
@@ -568,6 +571,24 @@ def test_a_change_flagged_replacement_at_another_venue_may_take_a_new_period(
     )
 
 
+def _approve_a_change_flagged_replacement(
+    session: Session, breakout_room: Venue, auditorium: Venue, event: EventRequest, main_id: int
+) -> None:
+    """Approve a replacement for an arrangement only a change flagged.
+
+    The breakout room's block sends the Confirmed event back to Approved, but the
+    Auditorium arrangement being replaced was flagged only by the later change.
+    """
+    event.status = EventRequestStatus.CONFIRMED
+    session.commit()
+    block(breakout_room, at(13), at(14), session)
+    edit_event(session, event, {"end_time": "18:00"})
+    replacement = raise_booking(
+        auditorium, event, session, replaces_request_id=main_id, **DAY_AFTER
+    )
+    decide(replacement.id, "approved", session)
+
+
 @pytest.mark.scrum_92
 def test_a_change_flagged_replacement_tells_the_organiser_nothing_though_the_event_went_back(
     db_session: Session,
@@ -579,23 +600,40 @@ def test_a_change_flagged_replacement_tells_the_organiser_nothing_though_the_eve
 ) -> None:
     """SCRUM-92 AC9 is about AC7's replacement, for a venue that became unavailable.
 
-    The breakout room's block sent the Confirmed event back, but the Auditorium
-    arrangement it replaces was only flagged by the later change, so the Organiser
-    hears nothing of its approval (ADR-0108).
+    The Organiser hears nothing of this replacement's approval (ADR-0108).
     """
-    event.status = EventRequestStatus.CONFIRMED
-    db_session.commit()
-    block(breakout_room, at(13), at(14), db_session)
-    edit_event(db_session, event, {"end_time": "18:00"})
-    replacement = raise_booking(
-        auditorium, event, db_session, replaces_request_id=main_id, **DAY_AFTER
-    )
-
-    decide(replacement.id, "approved", db_session)
+    _approve_a_change_flagged_replacement(db_session, breakout_room, auditorium, event, main_id)
 
     kinds = [notice.kind for notice in list_notifications_for_recipient(ORGANISER_ID)]
     assert NotificationKind.ALTERNATIVE_VENUE_NEEDED in kinds
     assert NotificationKind.REPLACEMENT_VENUE_APPROVED not in kinds
+
+
+@pytest.mark.scrum_62
+def test_a_change_flagged_replacement_tells_the_attendees_nothing(
+    db_session: Session,
+    breakout_room: Venue,
+    auditorium: Venue,
+    event: EventRequest,
+    main_id: int,
+    breakout_id: int,
+) -> None:
+    """SCRUM-62 AC6 is about a venue that became unavailable (ADR-0125).
+
+    A change to the event is AC2's, which waits for SCRUM-57.
+    """
+    held = Registration(
+        event_request_id=event.id,
+        attendee_id=ATTENDEE_ID,
+        status=RegistrationStatus.REGISTERED,
+        registered_at=at(8),
+    )
+    db_session.add(held)
+    db_session.commit()
+
+    _approve_a_change_flagged_replacement(db_session, breakout_room, auditorium, event, main_id)
+
+    assert list_notifications_for_recipient(ATTENDEE_ID) == []
 
 
 def test_a_change_flagged_replacement_overlapping_its_own_booking_is_refused_at_approval(
