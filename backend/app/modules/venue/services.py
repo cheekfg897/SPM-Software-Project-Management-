@@ -1784,7 +1784,7 @@ def _arrangement_of_event(
     return arrangement
 
 
-def _release_hold(arrangement: VenueBookingRequest) -> None:
+def _cancel_hold(arrangement: VenueBookingRequest) -> None:
     """Cancel an On Hold arrangement's tentative hold, so its venue is free at once.
 
     For rejecting a hold (SCRUM-75 AC7) and withdrawing one (ADR-0118). The hold's
@@ -1809,7 +1809,7 @@ def _withdraw_and_record(
     if arrangement.status not in WITHDRAWABLE_REQUEST_STATUSES:
         raise ConflictError(WITHDRAW_NOT_ALLOWED_MESSAGE.format(status=arrangement.status.value))
     if arrangement.status is BookingRequestStatus.ON_HOLD:
-        _release_hold(arrangement)
+        _cancel_hold(arrangement)
     arrangement.status = BookingRequestStatus.WITHDRAWN
     event_services.record_venue_arrangement_withdrawn(
         arrangement.event_id,
@@ -2492,7 +2492,7 @@ def decide_booking_request(
         _release_replaced(request, decided_by, session)
     elif request.status is BookingRequestStatus.ON_HOLD:
         # Rejecting a hold releases the venue at once (SCRUM-75 AC7).
-        _release_hold(request)
+        _cancel_hold(request)
     request.decision_reason = reason
     _save_decision(request, decision, booking, decided_by=decided_by, session=session)
     _notify_about_booking(
