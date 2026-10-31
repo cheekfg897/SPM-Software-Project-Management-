@@ -1,6 +1,6 @@
 # ADR-0010: Opening venue search pre-filled from an event is deferred
 
-- **Status:** Accepted
+- **Status:** Superseded by [ADR-0124](0124-venue-search-pre-filled-from-an-event.md): the Product Owner accepted a partial pre-fill (SCRUM-90, 19 Oct)
 - **Date:** 2026-09-25
 - **Story:** SCRUM-35 Search and filter venues against event requirements (AC5: "The search can be opened from an event with its filters already populated from that event's recorded requirements")
 
