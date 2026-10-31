@@ -9,7 +9,7 @@
 - **Extends:** [ADR-0019](0019-event-equipment-lines.md), [ADR-0028](0028-review-and-decide.md), [ADR-0029](0029-clarification-requests.md)
 
 ## Context
-SCRUM-110 (31 Oct) moves the start of two windows to the coordinator's approval:
+SCRUM-110 (29 Oct) moves the start of two windows to the coordinator's approval:
 
 1. The assigned coordinator can edit the event details (SCRUM-33) only while the event is Approved or in Safety Review.
 2. An edit while Submitted, Under Review or Awaiting Clarification is refused. The message says the request has to be approved first, and that changes before then go through a clarification (SCRUM-32) or the Organiser's change request (SCRUM-56). The one exception is the amendment the coordinator records with a clarification response (SCRUM-32 AC2).
@@ -36,6 +36,7 @@ On `main` before this ADR, `EDITABLE_STATUSES` and `EQUIPMENT_EDITABLE_STATUSES`
    - the organiser's `/resubmit` keeps applying its amendments while the answer is awaited, through `_record_field_changes` and its own check (its tests are unchanged and pass);
    - **when SCRUM-56/57 are built,** approving a change request should apply it through those helpers under its own status rule ("any status where one can be raised"), not through `update_event_request` or the line services, which would refuse it before approval.
 7. **SCRUM-32 AC2's coordinator amendment is not built, and isn't built here.** Since ADR-0101 decision 5 is superseded, the coordinator can no longer record an amendment through the ordinary edit while the answer is awaited. Until SCRUM-32's rework adds the coordinator's "record the response" action, amendments before approval come only through the organiser's `/resubmit` (the API takes them; the web app's answer form sends the response alone). That action should check `awaiting_clarification` itself and apply its amendments through `_record_field_changes`, as `/resubmit` does, so this lock never touches it.
+   - **Open, needs the Product Owner:** this leaves AC2's exception partly met. The Product Owner's 29 Oct comment on SCRUM-32 makes the coordinator's amendment with a clarification response "the only way" they change event details before approval, and until SCRUM-32's rework the coordinator has no way at all. Either the Product Owner accepts that gap until the rework lands, or the rework merges before or with this change.
 8. **The web app offers each change only where the backend accepts it** (supersedes ADR-0101 decision 9's list).
    - The event page's "Edit details" section shows for the assigned coordinator only while the event is Approved or in Safety Review. The edit form still shows the backend's refusal in its own words if one comes back, for example on an event opened by its link.
    - **Default to review:** `GET /api/events/requests/<reference>/equipment` now names the event's `status` beside its date and times (`EVENT_LIST_FIELDS`, as the event lists send it; additive), so the Equipment page shows its coordinator the Add form and each line's Change and Remove only while the lines can change. Otherwise it says when they can: "Equipment can be added, changed or removed once the request is approved, until the event is confirmed." Technical Support's outcome controls don't depend on the status.
