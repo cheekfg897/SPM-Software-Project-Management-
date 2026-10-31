@@ -327,13 +327,13 @@ def test_the_previous_coordinator_can_no_longer_change_the_events_equipment(
 def test_the_new_coordinator_can_change_the_events_equipment(
     reassign: Reassign,
     valid_equipment_line_payload: dict[str, Any],
-    saved_event_request: EventRequest,
+    approved_event_request: EventRequest,
 ) -> None:
     reassign(NINE)
 
     line = add_equipment_line(9, REFERENCE, valid_equipment_line_payload)
 
-    assert (line.event_request_id, line.quantity) == (saved_event_request.id, 2)
+    assert (line.event_request_id, line.quantity) == (approved_event_request.id, 2)
 
 
 # --------------------------------------------------------------------------

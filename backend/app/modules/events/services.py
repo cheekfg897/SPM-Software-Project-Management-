@@ -1167,19 +1167,18 @@ def _tell_safety_officers_of_change(
 # SCRUM-37 — record what equipment an event needs
 # --------------------------------------------------------------------------
 
-#: Statuses in which an event's equipment may change: any time before the event is
-#: Confirmed (SCRUM-37 AC2, ADR-0092). That includes awaiting clarification: the
-#: organiser amends the request then, but never its equipment lines, which stay the
-#: coordinator's. A Confirmed event's lines change through a change request
-#: (SCRUM-56, SCRUM-57), and a completed, cancelled or rejected event is over.
+#: Statuses in which an event's equipment lines may be added, changed or removed: once
+#: the coordinator has approved the request, until the event is Confirmed (SCRUM-110
+#: AC3, SCRUM-37 AC2, ADR-0116). Before approval, Technical Support are never asked
+#: about an event that may still be rejected. A Confirmed event's lines change through
+#: a change request (SCRUM-56, SCRUM-57), and a completed, cancelled or rejected event
+#: is over.
 EQUIPMENT_EDITABLE_STATUSES: frozenset[EventRequestStatus] = frozenset(
-    {
-        EventRequestStatus.SUBMITTED,
-        EventRequestStatus.UNDER_REVIEW,
-        EventRequestStatus.AWAITING_CLARIFICATION,
-        EventRequestStatus.APPROVED,
-        EventRequestStatus.SAFETY_REVIEW,
-    }
+    {EventRequestStatus.APPROVED, EventRequestStatus.SAFETY_REVIEW}
+)
+EQUIPMENT_NOT_YET_APPROVED_MESSAGE = (
+    "Equipment can only be added, changed or removed once the event request is approved. "
+    f"{CHANGES_BEFORE_APPROVAL}"
 )
 EQUIPMENT_NOT_EDITABLE_MESSAGE = (
     "Equipment can only be changed before the event is confirmed, and not once it is "
@@ -1537,14 +1536,21 @@ def record_venue_hold_expired(
 def _event_request_with_editable_equipment(
     coordinator_id: int | str, reference: str, session: Session
 ) -> EventRequest:
-    """The coordinator's request, if its equipment may still change (SCRUM-37 AC2).
+    """The coordinator's request, if they may change its equipment lines (ADR-0116).
+
+    The status lock lives here, in the coordinator's own line changes: Technical
+    Support's outcome on a line recorded before approval (SCRUM-110 AC4), and
+    applying an approved change request (SCRUM-57, AC6), are held back by none of it.
 
     Raises:
         NotFoundError: 404 — no such request among the coordinator's own; a draft is
             never found (ADR-0024).
-        EquipmentNotEditableError: 409 — the request's equipment can no longer change.
+        EquipmentNotEditableError: 409 — the request isn't approved yet (SCRUM-110
+            AC3), or its equipment can no longer change (SCRUM-37 AC2).
     """
     event_request = _event_request_assigned_to(coordinator_id, reference, session)
+    if event_request.status in AWAITING_DECISION_STATUSES:
+        raise EquipmentNotEditableError(EQUIPMENT_NOT_YET_APPROVED_MESSAGE)
     if event_request.status not in EQUIPMENT_EDITABLE_STATUSES:
         raise EquipmentNotEditableError(EQUIPMENT_NOT_EDITABLE_MESSAGE)
     return event_request
@@ -1774,7 +1780,8 @@ def add_equipment_line(
     Raises:
         ValidationError: 400 — payload invalid, or no such equipment type.
         NotFoundError: 404 — no such event request among the coordinator's own.
-        EquipmentNotEditableError: 409 — the request's equipment can no longer change.
+        EquipmentNotEditableError: 409 — the request isn't approved yet, or its
+            equipment can no longer change (ADR-0116).
         ConflictError: 409 — the event already has a line for that equipment type.
     """
     data = load_or_raise(EditEquipmentLineSchema(), payload)
@@ -1892,7 +1899,8 @@ def update_equipment_line(
             equipment type.
         NotFoundError: 404 — no such event request among the coordinator's own, or no
             such line on it.
-        EquipmentNotEditableError: 409 — the request's equipment can no longer change.
+        EquipmentNotEditableError: 409 — the request isn't approved yet, or its
+            equipment can no longer change (ADR-0116).
         ConflictError: 409 — another line on the event already has that equipment type.
     """
     schema = EditEquipmentLineSchema()
@@ -1933,7 +1941,8 @@ def remove_equipment_line(
     Raises:
         NotFoundError: 404 — no such event request among the coordinator's own, or no
             such line on it.
-        EquipmentNotEditableError: 409 — the request's equipment can no longer change.
+        EquipmentNotEditableError: 409 — the request isn't approved yet, or its
+            equipment can no longer change (ADR-0116).
     """
     sess = resolve_session(session)
     event_request = _event_request_with_editable_equipment(coordinator_id, reference, sess)
