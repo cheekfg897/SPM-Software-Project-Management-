@@ -1517,6 +1517,113 @@ def record_venue_hold_expired(
     )
 
 
+def record_venue_booking_reconfirmed(
+    event_id: int,
+    *,
+    actor_id: int,
+    details: dict[str, Any],
+    session: Session | None = None,
+) -> EventHistoryEntry:
+    """Add the history entry for a reconfirmed booking, without committing (SCRUM-59).
+
+    The entry rides in the caller's transaction, so it is saved with the reconfirmation
+    it records or not at all (ADR-0018). It also marks when the arrangement's period was
+    last set (:func:`get_event_when_arranged`).
+    """
+    event_request = resolve_session(session).get(EventRequest, event_id)
+    return record_event_history(
+        event_request,
+        EventHistoryKind.VENUE_BOOKING_RECONFIRMED,
+        actor_id=actor_id,
+        details=details,
+        session=session,
+    )
+
+
+#: The history kinds that set an arrangement's period: raising it (SCRUM-42) and
+#: reconfirming it (SCRUM-59). Approving it books the period it already had.
+_PERIOD_SETTING_KINDS = frozenset(
+    {EventHistoryKind.VENUE_BOOKING_REQUESTED, EventHistoryKind.VENUE_BOOKING_RECONFIRMED}
+)
+#: How a reconfirmation reads each field it needs back from a ``field_changed`` entry,
+#: which holds a date or time as its ISO string and a number as itself (ADR-0025).
+_READ_FIELD_VALUE: dict[str, Callable[[Any], Any]] = {
+    "proposed_date": date.fromisoformat,
+    "start_time": time.fromisoformat,
+    "expected_attendance": int,
+}
+
+
+@dataclass(frozen=True)
+class EventWhenArranged:
+    """The event as it stood when an arrangement's period was last set (SCRUM-59).
+
+    What a reconfirmation measures the change against (ADR-0112): how far the event's
+    start has moved since (AC2), and whether the arrangement held the whole audience
+    (AC9).
+    """
+
+    #: The event's start, in UTC.
+    starts_at: datetime
+    expected_attendance: int
+
+
+def _entries_since_period_set(
+    event_request: EventRequest, arrangement_id: int, session: Session
+) -> list[EventHistoryEntry]:
+    """The event's history entries written after the arrangement's period was last set.
+
+    In the order they were written. Every entry when there is no record of the
+    arrangement being raised or reconfirmed, as for one saved before SCRUM-42 wrote
+    history.
+    """
+    stmt = (
+        select(EventHistoryEntry)
+        .where(EventHistoryEntry.event_request_id == event_request.id)
+        .order_by(EventHistoryEntry.id)
+    )
+    entries = list(session.scalars(stmt))
+    since_set = entries
+    for position, entry in enumerate(entries):
+        if entry.kind not in _PERIOD_SETTING_KINDS:
+            continue
+        if entry.details["venue_booking_request_id"] == arrangement_id:
+            since_set = entries[position + 1 :]
+    return since_set
+
+
+def get_event_when_arranged(
+    event_id: int, arrangement_id: int, *, session: Session | None = None
+) -> EventWhenArranged:
+    """The event's start and attendance when the arrangement's period was last set.
+
+    SCRUM-59 AC2 and AC9, ADR-0112: raised, or last reconfirmed. Each field is read
+    back from the first edit to it since then, which recorded its value from before;
+    a field no edit has touched since is as it is now.
+
+    Args:
+        event_id: The event the arrangement belongs to.
+        arrangement_id: The venue arrangement (booking request) being reconfirmed.
+        session: Database session; defaults to ``db.session``.
+    """
+    sess = resolve_session(session)
+    event_request = sess.get(EventRequest, event_id)
+    values = {}
+    for field in _READ_FIELD_VALUE:
+        values[field] = getattr(event_request, field)
+    read_back = set()
+    for entry in _entries_since_period_set(event_request, arrangement_id, sess):
+        if entry.kind is not EventHistoryKind.FIELD_CHANGED:
+            continue
+        field = entry.details["field"]
+        if field not in _READ_FIELD_VALUE or field in read_back:
+            continue
+        values[field] = _READ_FIELD_VALUE[field](entry.details["previous_value"])
+        read_back.add(field)
+    starts_at = as_utc(datetime.combine(values["proposed_date"], values["start_time"]))
+    return EventWhenArranged(starts_at=starts_at, expected_attendance=values["expected_attendance"])
+
+
 def _event_request_with_editable_equipment(
     coordinator_id: int | str, reference: str, session: Session
 ) -> EventRequest:

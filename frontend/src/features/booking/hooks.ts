@@ -11,9 +11,12 @@ import {
   decideBookingRequest,
   fetchApprovedBookingRequests,
   fetchBookingRequests,
+  fetchFlaggedBookings,
   fetchPendingBookingRequests,
   placeBookingHold,
   raiseBookingRequest,
+  reconfirmFlaggedBooking,
+  rejectFlaggedBooking,
   updateBookingPreparation,
   withdrawArrangement,
 } from './api'
@@ -23,6 +26,8 @@ import type {
   BookingRequest,
   HoldExpiry,
   RaiseBookingRequest,
+  ReconfirmBooking,
+  RejectFlaggedBooking,
 } from './api'
 import { readReplacementRequest } from './replacement'
 
@@ -36,15 +41,16 @@ function useRereadEventRequests(reference: string) {
 }
 
 /**
- * What to run after Venue Staff act on a request: their queue and their approved bookings are
- * read again, so a request leaves the queue, shows its new status, or moves down to the approved
- * bookings (SCRUM-84), because the backend says so.
+ * What to run after Venue Staff act on a request: their queue, their approved bookings and the
+ * bookings flagged after a change are read again, so a request leaves the queue, shows its new
+ * status, or moves between the lists (SCRUM-84, SCRUM-59), because the backend says so.
  */
 function useRereadQueue() {
   const queryClient = useQueryClient()
   return async () => {
     await queryClient.invalidateQueries({ queryKey: bookingKeys.pending() })
     await queryClient.invalidateQueries({ queryKey: bookingKeys.approved() })
+    await queryClient.invalidateQueries({ queryKey: bookingKeys.flagged() })
   }
 }
 
@@ -165,5 +171,33 @@ export function useUpdateBookingPreparation(requestId: number) {
   return useMutation({
     mutationFn: (update: PreparationUpdate) => updateBookingPreparation(requestId, update),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: bookingKeys.approved() }),
+  })
+}
+
+/** The bookings a change flagged, with what reconfirming each gives it (SCRUM-59 AC1). */
+export function useFlaggedBookings() {
+  return useQuery({ queryKey: bookingKeys.flagged(), queryFn: fetchFlaggedBookings })
+}
+
+/**
+ * Reconfirm one flagged booking (SCRUM-59 AC2). Venue Staff's lists are read again afterwards,
+ * even after a refusal, which may come from a change the page hasn't seen, such as a replacement
+ * raised meanwhile (AC6).
+ */
+export function useReconfirmFlaggedBooking(requestId: number) {
+  const reread = useRereadQueue()
+  return useMutation({
+    mutationFn: (reconfirmation: ReconfirmBooking) =>
+      reconfirmFlaggedBooking(requestId, reconfirmation),
+    onSettled: reread,
+  })
+}
+
+/** Reject one flagged booking with a reason (SCRUM-59 AC5); the lists are read again afterwards. */
+export function useRejectFlaggedBooking(requestId: number) {
+  const reread = useRereadQueue()
+  return useMutation({
+    mutationFn: (rejection: RejectFlaggedBooking) => rejectFlaggedBooking(requestId, rejection),
+    onSettled: reread,
   })
 }

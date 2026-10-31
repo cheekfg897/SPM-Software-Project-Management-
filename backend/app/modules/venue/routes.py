@@ -25,6 +25,7 @@ from app.modules.venue.schemas import (
     CalendarEntrySchema,
     CalendarQuerySchema,
     ConflictingBookingSchema,
+    FlaggedBookingSchema,
     OverlapWarningSchema,
     SuitabilityResultSchema,
     VenueBlockSchema,
@@ -44,6 +45,7 @@ _venue_block_schema = VenueBlockSchema()
 _conflicting_booking_schema = ConflictingBookingSchema()
 _suitability_result_schema = SuitabilityResultSchema()
 _booking_request_schema = VenueBookingRequestSchema()
+_flagged_booking_schema = FlaggedBookingSchema()
 
 #: SCRUM-35 AC4: what an empty search says.
 NO_MATCHES_MESSAGE = "No venues match your search criteria."
@@ -323,4 +325,37 @@ def place_booking_hold(request_id: int) -> tuple[Response, int]:
 def change_hold_expiry(request_id: int) -> tuple[Response, int]:
     """Move the expiry of the request's active hold."""
     shown = services.change_hold_expiry(request_id, request.get_json(silent=True))
+    return jsonify(_booking_request_schema.dump(shown)), 200
+
+
+# --------------------------------------------------------------------------
+# SCRUM-59 — Venue Staff reconfirm or reject a booking flagged after a change
+# --------------------------------------------------------------------------
+
+
+@bp.get("/booking-requests/flagged")
+@requires_role(Role.VENUE_STAFF)
+def list_flagged_bookings() -> tuple[Response, int]:
+    """Every booking a change flagged, with what reconfirming it gives it (AC1, AC2)."""
+    flagged = services.list_flagged_bookings()
+    return jsonify(_flagged_booking_schema.dump(flagged, many=True)), 200
+
+
+@bp.post("/booking-requests/<int:request_id>/reconfirm")
+@requires_role(Role.VENUE_STAFF)
+def reconfirm_flagged_booking(request_id: int) -> tuple[Response, int]:
+    """Reconfirm a flagged booking for its new period (AC2-AC4, AC9, AC10)."""
+    shown = services.reconfirm_flagged_booking(
+        request_id, request.get_json(silent=True), reconfirmed_by=int(g.current_user_id)
+    )
+    return jsonify(_booking_request_schema.dump(shown)), 200
+
+
+@bp.post("/booking-requests/<int:request_id>/reject")
+@requires_role(Role.VENUE_STAFF)
+def reject_flagged_booking(request_id: int) -> tuple[Response, int]:
+    """Reject a flagged booking with a reason, freeing its venue (AC5)."""
+    shown = services.reject_flagged_booking(
+        request_id, request.get_json(silent=True), rejected_by=int(g.current_user_id)
+    )
     return jsonify(_booking_request_schema.dump(shown)), 200

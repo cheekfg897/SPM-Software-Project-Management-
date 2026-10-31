@@ -1,6 +1,8 @@
-import type { BookingRequest } from '@/features/booking/api'
+import type { BookingRequest, ReassessmentFlag } from '@/features/booking/api'
 
 import { MOCK_ACCOUNTS } from '../fixtures/accounts'
+
+import type { Drift } from './flaggedBookingRules'
 
 /** An event as the booking mock knows it: only what a booking request carries from the event. */
 export interface MockBookingEvent {
@@ -118,6 +120,18 @@ export const MOCK_BOOKING_EVENTS = {
     start_time: '17:00:00',
     end_time: '23:00:00',
   },
+  /**
+   * Moved a day later, from 15 to 16 November, and up from 80 to 120 people since its venues were
+   * booked, so a change flagged them for Venue Staff to reconfirm or reject (SCRUM-59).
+   */
+  moved: {
+    ...APPROVED_EVENT,
+    id: 113,
+    reference: 'EVR-BOOK0113',
+    name: 'Moved Conference',
+    expected_attendance: 120,
+    proposed_date: '2026-11-16',
+  },
 } as const satisfies Record<string, MockBookingEvent>
 
 /**
@@ -213,6 +227,10 @@ function arrangementOf(
         | 'preparation_status'
         | 'preparation_notes'
         | 'required_layout'
+        | 'expected_occupancy'
+        | 'justification'
+        | 'flagged_after_change'
+        | 'reassessment_flags'
       >
     >,
 ): BookingRequest {
@@ -223,19 +241,34 @@ function arrangementOf(
     preparation_status: 'not_started',
     preparation_notes: null,
     required_layout: null,
-    ...arrangement,
-    event_id: event.id,
     expected_occupancy: 10,
     justification: null,
-    replaces_request_id: null,
     flagged_after_change: false,
     reassessment_flags: [],
+    ...arrangement,
+    event_id: event.id,
+    replaces_request_id: null,
     event_proposed_date: event.proposed_date,
     event_end_date: event.end_date,
     event_start_time: event.start_time,
     event_end_time: event.end_time,
     accessibility_needs: event.accessibility_needs,
   }
+}
+
+const TIMING_CHANGED_FLAG: ReassessmentFlag = {
+  kind: 'requires_reconfirmation',
+  reason: "The event's date or time changed.",
+}
+const ATTENDANCE_ROSE_FLAG: ReassessmentFlag = {
+  kind: 'requires_reconfirmation',
+  reason:
+    "The event's expected attendance rose from 80 to 120, above this arrangement's expected occupancy of 80.",
+}
+const MOVED_A_DAY_LATER: Drift = {
+  startMovedByMs: 24 * 60 * 60_000,
+  attendanceBefore: 80,
+  attendanceNow: 120,
 }
 
 /**
@@ -263,6 +296,11 @@ function arrangementOf(
  * The confirmed gala's dinner hall and reception room are approved, saved out of period order,
  * with Venue Staff's reasons and preparation, and its overflow room was withdrawn: its organiser
  * sees all three in full (SCRUM-24 AC10, ADR-0104).
+ *
+ * The moved event's arrangements were flagged when it moved a day later and grew to 120 people
+ * (SCRUM-59): an approved plenary hall that held everyone and must be reconfirmed for 120, a
+ * workshop room still waiting for a decision, an approved stage too small for 120, and an approved
+ * annex whose venue has since been blocked, which only a replacement settles.
  */
 export const MOCK_ARRANGEMENTS = {
   rejectedMain: arrangementOf(MOCK_BOOKING_EVENTS.multiVenue, {
@@ -425,4 +463,77 @@ export const MOCK_ARRANGEMENTS = {
     status: 'withdrawn',
     decision_reason: null,
   }),
+  movedHall: arrangementOf(MOCK_BOOKING_EVENTS.moved, {
+    id: 9114,
+    venue_id: MOCK_BOOKING_VENUES.roomy.id,
+    starts_at: '2026-11-15T09:00:00+08:00',
+    ends_at: '2026-11-15T12:00:00+08:00',
+    purpose: 'Plenary hall',
+    status: 'approved',
+    decision_reason: 'Booked',
+    expected_occupancy: 80,
+    flagged_after_change: true,
+    reassessment_flags: [TIMING_CHANGED_FLAG, ATTENDANCE_ROSE_FLAG],
+  }),
+  movedWorkshop: arrangementOf(MOCK_BOOKING_EVENTS.moved, {
+    id: 9115,
+    venue_id: MOCK_BOOKING_VENUES.tiny.id,
+    starts_at: '2026-11-15T13:00:00+08:00',
+    ends_at: '2026-11-15T15:00:00+08:00',
+    purpose: 'Workshop room',
+    status: 'pending',
+    decision_reason: null,
+    flagged_after_change: true,
+    reassessment_flags: [TIMING_CHANGED_FLAG],
+  }),
+  movedStage: arrangementOf(MOCK_BOOKING_EVENTS.moved, {
+    id: 9116,
+    venue_id: MOCK_BOOKING_VENUES.tiny.id,
+    starts_at: '2026-11-15T15:30:00+08:00',
+    ends_at: '2026-11-15T17:00:00+08:00',
+    purpose: 'Stage',
+    status: 'approved',
+    decision_reason: 'Booked',
+    expected_occupancy: 80,
+    justification: 'Standing only.',
+    flagged_after_change: true,
+    reassessment_flags: [
+      TIMING_CHANGED_FLAG,
+      {
+        kind: 'no_longer_suitable',
+        reason: "Expected attendance of 120 exceeds the venue's capacity of 20.",
+      },
+    ],
+  }),
+  movedAnnex: arrangementOf(MOCK_BOOKING_EVENTS.moved, {
+    id: 9117,
+    venue_id: MOCK_BOOKING_VENUES.roomy.id,
+    starts_at: '2026-11-15T13:00:00+08:00',
+    ends_at: '2026-11-15T14:00:00+08:00',
+    purpose: 'Annex',
+    status: 'approved',
+    decision_reason: 'Booked',
+    needs_alternative_venue: true,
+    unavailability: [
+      {
+        category: 'maintenance',
+        reason: 'Floor sanding',
+        starts_at: '2026-11-15T12:00:00+08:00',
+        ends_at: '2026-11-15T18:00:00+08:00',
+      },
+    ],
+    flagged_after_change: true,
+    reassessment_flags: [TIMING_CHANGED_FLAG],
+  }),
 } as const satisfies Record<string, BookingRequest>
+
+/**
+ * What changed under each flagged arrangement of the moved event since it was booked: the event's
+ * start moved a day later and its attendance rose from 80 to 120 (SCRUM-59, `Drift`).
+ */
+export const MOCK_FLAGGED_DRIFTS: Readonly<Record<number, Drift>> = {
+  [MOCK_ARRANGEMENTS.movedHall.id]: MOVED_A_DAY_LATER,
+  [MOCK_ARRANGEMENTS.movedWorkshop.id]: MOVED_A_DAY_LATER,
+  [MOCK_ARRANGEMENTS.movedStage.id]: MOVED_A_DAY_LATER,
+  [MOCK_ARRANGEMENTS.movedAnnex.id]: MOVED_A_DAY_LATER,
+}

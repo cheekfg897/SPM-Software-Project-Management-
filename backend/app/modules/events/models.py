@@ -169,6 +169,13 @@ class EventHistoryKind(str, enum.Enum):
     #: approval no longer counts; ``details`` names the replacement arrangement and
     #: ``actor_id`` is the Venue Staff user who approved it (SCRUM-92 AC10, ADR-0053).
     SAFETY_APPROVAL_WITHDRAWN = "safety_approval_withdrawn"
+    #: Venue Staff reconfirmed an arrangement a change flagged, so it moved to the new
+    #: period. ``details`` holds ``venue_booking_request_id``, ``venue_id``, the period
+    #: and expected occupancy before and after, the ``reason`` (``None`` when none was
+    #: given) and the ``flags`` it cleared; ``actor_id`` is the Venue Staff user
+    #: (SCRUM-59 AC2, ADR-0112). It also marks when the arrangement's period was last
+    #: set, which the next reconfirmation's pre-filled period is worked out from.
+    VENUE_BOOKING_RECONFIRMED = "venue_booking_reconfirmed"
 
 
 class SafetyOutcome(str, enum.Enum):
