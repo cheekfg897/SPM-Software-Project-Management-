@@ -41,6 +41,7 @@ from app.modules.events.services import (
     OrganiserEventRecord,
     add_equipment_line,
     assign_coordinator_to_request,
+    cancel_event_request,
     complete_event_request,
     confirm_event_request,
     decide_event_request,
@@ -610,6 +611,28 @@ def resubmit_request(reference: str) -> tuple[Response, int]:
     request, back under review.
     """
     event_request = resubmit_event_request(
+        g.current_user_id, reference, request.get_json(silent=True)
+    )
+    return jsonify(_event_request_schema.dump(event_request)), 200
+
+
+# --------------------------------------------------------------------------
+# SCRUM-61 — the Event Organiser cancels their event
+# --------------------------------------------------------------------------
+
+
+@bp.post("/requests/<reference>/cancel")
+@requires_role(Role.EVENT_ORGANISER)
+def cancel_request(reference: str) -> tuple[Response, int]:
+    """Cancel an event of the caller's organisation, with a reason (SCRUM-61, ADR-0122).
+
+    The body is ``{"reason": ...}``. Any organiser of the event's client organisation
+    may, from Submitted to Confirmed; the service refuses any other status with a
+    ``409``. It takes effect at once: its venues are released and its equipment
+    returned, and the coordinator, registered Attendees and Venue Staff are told.
+    Returns ``200`` with the request, now cancelled.
+    """
+    event_request = cancel_event_request(
         g.current_user_id, reference, request.get_json(silent=True)
     )
     return jsonify(_event_request_schema.dump(event_request)), 200
