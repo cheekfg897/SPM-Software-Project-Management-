@@ -26,8 +26,12 @@ const COORDINATOR = mockSessionFor(MOCK_ACCOUNTS.coordinator)
 const ORGANISER = mockSessionFor(MOCK_ACCOUNTS.organiser)
 const PARTNER_SUMMIT = 'EVR-7K2M9QXA'
 const TOWN_HALL = 'EVR-BOOK0102'
-/** Once approved, until Confirmed: the statuses the backend lets an edit through (SCRUM-110). */
+/**
+ * The statuses the backend lets an edit through: while the organiser's answer is awaited, for
+ * the amendments that come with it, and once approved, until Confirmed (SCRUM-110 AC1, AC2).
+ */
 const EDIT_OFFERED_STATUSES: readonly EventRequestStatus[] = [
+  EVENT_REQUEST_STATUS.AWAITING_CLARIFICATION,
   EVENT_REQUEST_STATUS.APPROVED,
   EVENT_REQUEST_STATUS.SAFETY_REVIEW,
 ]
