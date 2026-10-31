@@ -4600,6 +4600,39 @@ def find_public_event(reference: str, *, session: Session | None = None) -> Publ
     return PublicEvent(**asdict(heading), description=event_request.description or "")
 
 
+@dataclass(frozen=True)
+class EventForRegistrationNotices:
+    """What the registration module's notices name, and whom they may tell (SCRUM-62).
+
+    ``organiser_id`` is the Organiser who submitted the event, as for every other notice
+    to an organiser (ADR-0028, ADR-0125). ``capacity`` is ``None`` for an event that
+    never had one set (SCRUM-69); one that has registrations always has one, since a
+    capacity can't be removed once set (ADR-0043).
+    """
+
+    summary: EventSummary
+    organiser_id: int
+    capacity: int | None
+
+
+def get_event_for_registration_notices(
+    event_id: int, *, session: Session | None = None
+) -> EventForRegistrationNotices:
+    """The event's name, reference, organiser and capacity, whatever its status.
+
+    For notices raised after a registration's own commit, so the event exists.
+    """
+    event_request = resolve_session(session).get(EventRequest, event_id)
+    summary = EventSummary(
+        id=event_request.id, reference=event_request.reference, name=event_request.name
+    )
+    return EventForRegistrationNotices(
+        summary=summary,
+        organiser_id=event_request.organiser_id,
+        capacity=event_request.registration_capacity,
+    )
+
+
 # --------------------------------------------------------------------------
 # SCRUM-97 — submit an event for operational safety check
 # --------------------------------------------------------------------------

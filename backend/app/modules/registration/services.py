@@ -4,8 +4,10 @@ These functions are the module's public API: routes call them, tests call them
 directly, and the events module calls :func:`count_registered`.
 
 Facts about events come from :mod:`app.modules.events.services`, never from the events
-table (module boundary). Every function takes an optional ``session`` so unit tests can
-pass their own database session; in production the default ``db.session`` is used.
+table (module boundary). Registering and withdrawing tell the Attendee and the event's
+Organiser through :mod:`app.modules.notifications.services` (SCRUM-62). Every function
+takes an optional ``session`` so unit tests can pass their own database session; in
+production the default ``db.session`` is used.
 """
 
 from __future__ import annotations
@@ -31,10 +33,12 @@ from app.modules.events.services import (
     RegistrableEvent,
     find_public_event,
     get_event_capacity_for_viewer,
+    get_event_for_registration_notices,
     get_registrable_event_for_update,
     list_event_headings,
     list_registrable_events,
 )
+from app.modules.notifications.services import NotificationKind, notify_users_after_commit
 from app.modules.registration.models import Registration, RegistrationStatus
 from app.modules.registration.schemas import (
     CatalogueQuerySchema,
@@ -50,6 +54,9 @@ REGISTRATION_NOT_FOUND_MESSAGE = "Registration not found."
 ALREADY_WITHDRAWN_MESSAGE = "You have already withdrawn from this event."
 WITHDRAWAL_CLOSED_MESSAGE = "Withdrawals for this event have closed."
 MY_EVENT_NOT_FOUND_MESSAGE = "Event not found."
+#: What the Organiser's notice of a place taken or given back says about the places
+#: (SCRUM-62 AC4, ADR-0125).
+PLACES_LEFT_DETAIL = "{places_left} of {capacity} places left."
 
 #: The statuses of an event a change sent back to planning, where places stay held
 #: (ADR-0087): its page says the arrangements are being reviewed (SCRUM-24 AC11,
@@ -214,6 +221,13 @@ def count_registered(event_id: int, *, session: Session | None = None) -> int:
     return resolve_session(session).scalar(stmt)
 
 
+def _places_left(capacity: int | None, registered_count: int) -> int | None:
+    """Places still free: none left rather than fewer, and ``None`` with no capacity."""
+    if capacity is None:
+        return None
+    return max(capacity - registered_count, 0)
+
+
 def _registered_counts(event_ids: list[int], session: Session) -> dict[int, int]:
     """How many places are taken at each event; an event nobody joined is absent."""
     stmt = (
@@ -367,6 +381,35 @@ def list_catalogue(
 
 
 # --------------------------------------------------------------------------
+# Telling people a place was taken or given back (SCRUM-62 AC4, AC5)
+# --------------------------------------------------------------------------
+
+
+def _tell_of_place_change(
+    registration: Registration,
+    attendee_kind: NotificationKind,
+    organiser_kind: NotificationKind,
+    session: Session,
+) -> None:
+    """Tell the attendee their place changed, and the organiser how many are left.
+
+    After the registration's own commit (ADR-0015). Every place taken or given back
+    changes the places available, so the Organiser who submitted the event hears of
+    each one (SCRUM-62 AC4, ADR-0125). A registration needs a capacity, so there always
+    is one here (ADR-0043).
+    """
+    event = get_event_for_registration_notices(registration.event_request_id, session=session)
+    notify_users_after_commit(
+        [registration.attendee_id], event.summary, attendee_kind, session=session
+    )
+    places_left = _places_left(event.capacity, count_registered(event.summary.id, session=session))
+    detail = PLACES_LEFT_DETAIL.format(places_left=places_left, capacity=event.capacity)
+    notify_users_after_commit(
+        [event.organiser_id], event.summary, organiser_kind, session=session, detail=detail
+    )
+
+
+# --------------------------------------------------------------------------
 # Registering (SCRUM-52 AC2, AC3, AC4; SCRUM-54 AC1, AC2, AC4)
 # --------------------------------------------------------------------------
 
@@ -439,6 +482,12 @@ def register_for_event(
     registration.registered_at = now
     registration.withdrawn_at = None
     _commit_or_already_registered(sess)
+    _tell_of_place_change(
+        registration,
+        NotificationKind.REGISTRATION_CONFIRMED,
+        NotificationKind.ATTENDEE_REGISTERED,
+        sess,
+    )
     return registration
 
 
@@ -507,6 +556,12 @@ def withdraw_registration(
     registration.status = RegistrationStatus.WITHDRAWN
     registration.withdrawn_at = now
     sess.commit()
+    _tell_of_place_change(
+        registration,
+        NotificationKind.REGISTRATION_WITHDRAWN,
+        NotificationKind.ATTENDEE_WITHDRAWN,
+        sess,
+    )
     return registration
 
 
@@ -677,13 +732,6 @@ def get_my_registered_event(
 # --------------------------------------------------------------------------
 # Who has registered for an event (SCRUM-55)
 # --------------------------------------------------------------------------
-
-
-def _places_left(capacity: int | None, registered_count: int) -> int | None:
-    """Places still free: none left rather than fewer, and ``None`` with no capacity."""
-    if capacity is None:
-        return None
-    return max(capacity - registered_count, 0)
 
 
 def list_registrants(
