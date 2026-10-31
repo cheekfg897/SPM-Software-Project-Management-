@@ -300,6 +300,10 @@ describe('SCRUM-24 mock of the read-only staff record', () => {
       'Projector',
       'Wireless microphone',
     ])
+    // The record sends no line id (ADR-0104), though the Safety Officer's list does.
+    for (const line of record.equipment_lines) {
+      expect(line).not.toHaveProperty('id')
+    }
   })
 
   it('names the coordinator the Lead holds the event with now', async () => {
