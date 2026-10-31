@@ -1,8 +1,10 @@
 import { fetchCurrentUser, register } from '@/features/auth/api'
 import {
+  decideEventRequest,
   editEventRequest,
   fetchEventHistory,
   fetchRegistrants,
+  startEventRequestReview,
   submitEventRequest,
 } from '@/features/eventRequests/api'
 import { assignCoordinator } from '@/features/lead/api'
@@ -93,6 +95,17 @@ async function assignToStaffCoordinator(reference: string) {
   await signInAs(staffAccount())
   const coordinator = await fetchCurrentUser()
   return { leadName: lead.full_name, coordinatorName: coordinator.full_name }
+}
+
+/**
+ * As assignToStaffCoordinator, and the staff account then reviews and approves the request: its
+ * details are edited only once it is approved (SCRUM-110 AC1).
+ */
+async function approvedByStaffCoordinator(reference: string) {
+  const names = await assignToStaffCoordinator(reference)
+  await startEventRequestReview(reference)
+  await decideEventRequest(reference, { outcome: 'approved' })
+  return names
 }
 
 afterEach(() => sendRequestsAs(null))
@@ -208,7 +221,7 @@ describe('SCRUM-33 AC1 to AC4 the coordinator edit against the backend', () => {
     'changes the fields sent, says which are significant, and records each in the history',
     async () => {
       const { reference } = await submittedByNewOrganiser()
-      const { coordinatorName } = await assignToStaffCoordinator(reference)
+      const { coordinatorName } = await approvedByStaffCoordinator(reference)
 
       const edited = await editEventRequest(reference, {
         expected_attendance: 75,
@@ -240,7 +253,7 @@ describe('SCRUM-33 AC1 to AC4 the coordinator edit against the backend', () => {
 
   it.skipIf(!hasLead)('moves the end date with a date moved on its own', async () => {
     const { reference } = await submittedByNewOrganiser()
-    await assignToStaffCoordinator(reference)
+    await approvedByStaffCoordinator(reference)
     const later = daysFromNow(37)
 
     const edited = await editEventRequest(reference, { proposed_date: later })
@@ -256,7 +269,7 @@ describe('SCRUM-33 AC1 to AC4 the coordinator edit against the backend', () => {
     'shows the organiser the planning notes change in the history (SCRUM-24 AC10, ADR-0104)',
     async () => {
       const { organiser, reference } = await submittedByNewOrganiser()
-      await assignToStaffCoordinator(reference)
+      await approvedByStaffCoordinator(reference)
 
       const edited = await editEventRequest(reference, { internal_planning_notes: 'Call AV.' })
       const coordinatorsEdits = await editsInHistory(reference)
@@ -277,7 +290,7 @@ describe('SCRUM-33 AC1 to AC4 the coordinator edit against the backend', () => {
     [{ end_time: '08:00' }, 'end_time', 'Event must end after it starts.'],
   ])('refuses %j with the message on %s', async (changes, field, message) => {
     const { reference } = await submittedByNewOrganiser()
-    await assignToStaffCoordinator(reference)
+    await approvedByStaffCoordinator(reference)
 
     const error = await refusal(editEventRequest(reference, changes))
 

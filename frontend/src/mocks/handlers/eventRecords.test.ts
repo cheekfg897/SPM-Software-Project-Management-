@@ -4,6 +4,7 @@ import { decideBookingRequest, raiseBookingRequest } from '@/features/booking/ap
 import { recordEquipmentOutcome, reserveEquipment } from '@/features/equipment/api'
 import {
   completeEvent,
+  decideEventRequest,
   editEventRequest,
   fetchAssignedEventRequests,
   fetchEventRequest,
@@ -463,6 +464,8 @@ describe('SCRUM-24 AC10 mock of everything on the organiser record, at every sta
 
   it('shows the organiser the planning notes the coordinator saved', async () => {
     signInAs(MOCK_ACCOUNTS.coordinator)
+    // She edits it only once she has approved it (SCRUM-110 AC1).
+    await decideEventRequest(COORDINATORS_UNDER_REVIEW, { outcome: 'approved' })
     await editEventRequest(COORDINATORS_UNDER_REVIEW, { internal_planning_notes: 'Call AV.' })
     signInAs(MOCK_ACCOUNTS.organiser)
 

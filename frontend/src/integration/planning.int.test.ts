@@ -51,7 +51,8 @@ import type { Credentials } from './backend'
  * (AC12, ADR-0106), and what a closed event's equipment requests then refuse (SCRUM-48 AC8). A
  * significant change in Safety Review tells the Safety Officer and, when it unsettles an
  * arrangement, sends the event back to Approved (SCRUM-33 AC9, ADR-0107). Also the decision a venue booking request locks (SCRUM-31 AC7,
- * ADR-0084), and the statuses the coordinator's edit is allowed in (SCRUM-33 AC8, ADR-0101).
+ * ADR-0084), and the statuses the coordinator's edit is allowed in (SCRUM-33 AC8, ADR-0101;
+ * SCRUM-110, ADR-0116).
  *
  * The refusals that need no event of the coordinator's run with the staff account every run has
  * (an Event Coordinator) and new organisers. An event of the coordinator's needs a Lead to assign
@@ -651,7 +652,7 @@ describe('SCRUM-31 AC7 a venue booking request locks the decision against the ba
   )
 })
 
-describe('SCRUM-33 AC8 the statuses an event can be edited in, against the backend', () => {
+describe('SCRUM-33 AC8, SCRUM-110 the statuses an event can be edited in, against the backend', () => {
   /** An edit to the description, which the backend must refuse. */
   function refusedNote(reference: string) {
     return refusal(editEventRequest(reference, { description: 'A late note.' }))
@@ -694,18 +695,38 @@ describe('SCRUM-33 AC8 the statuses an event can be edited in, against the backe
   )
 
   it.skipIf(!canAssign)(
-    "lets the coordinator record an amendment while the organiser's answer is awaited",
+    'refuses an edit before approval, pointing to a clarification or a change request, in each status (SCRUM-110 AC2)',
     async () => {
+      const NOT_YET_APPROVED = {
+        status: 409,
+        code: 'request_not_editable',
+        message:
+          'An event request can only be edited once it is approved. ' +
+          "Until then, changes go through a clarification or the organiser's change request.",
+      }
       const { reference } = await assignedEvent()
+
+      expect(await refusedNote(reference)).toMatchObject(NOT_YET_APPROVED)
       await startEventRequestReview(reference)
+      expect(await refusedNote(reference)).toMatchObject(NOT_YET_APPROVED)
       await requestClarification(reference, 'Which hall would suit?')
+      expect(await refusedNote(reference)).toMatchObject(NOT_YET_APPROVED)
+
+      expect(await fetchEventRequest(reference)).toMatchObject({
+        status: 'awaiting_clarification',
+        description: null,
+      })
+    },
+  )
+
+  it.skipIf(!canAssign)(
+    'lets the coordinator edit once they have approved the request (SCRUM-110 AC1)',
+    async () => {
+      const { reference } = await approvedEvent()
 
       const edited = await editEventRequest(reference, { description: 'The main hall.' })
 
-      expect(edited).toMatchObject({
-        status: 'awaiting_clarification',
-        description: 'The main hall.',
-      })
+      expect(edited).toMatchObject({ status: 'approved', description: 'The main hall.' })
     },
   )
 })
@@ -817,9 +838,11 @@ describe('SCRUM-48 no equipment outcome on a closed event against the backend', 
   it.skipIf(!canRecordOutcome)(
     'refuses an outcome once the coordinator has rejected the event, naming its status, and keeps the line as it was (AC8)',
     async () => {
-      const { reference } = await assignedEvent()
+      // A line is added only once the event is approved (SCRUM-110), so the coordinator then
+      // rejects it during planning (SCRUM-49).
+      const { reference } = await approvedEvent()
       const lineId = await addEquipmentRequest(reference)
-      await decideEventRequest(reference, { outcome: 'rejected', reason: 'It clashes with exams.' })
+      await rejectEvent(reference, { reason: 'It clashes with exams.' })
       await signInAs(required(TECH_SUPPORT))
 
       const error = await refusal(

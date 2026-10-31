@@ -7,6 +7,7 @@ import {
   updateReservationPreparation,
 } from '@/features/equipment/api'
 import {
+  decideEventRequest,
   editEventRequest,
   fetchEventHistory,
   fetchStaffEventRecord,
@@ -138,6 +139,8 @@ describe('SCRUM-24 mock of the read-only staff record', () => {
 
   it('shows the internal planning notes the coordinator saved', async () => {
     signInAs(MOCK_ACCOUNTS.coordinator)
+    // She edits it only once she has approved it (SCRUM-110 AC1).
+    await decideEventRequest(UNDER_REVIEW, { outcome: 'approved' })
     await editEventRequest(UNDER_REVIEW, { internal_planning_notes: 'Client prefers mornings.' })
     signInAs(MOCK_ACCOUNTS.venueStaff)
 

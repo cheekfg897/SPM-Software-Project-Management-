@@ -9,6 +9,7 @@ import {
 import type { RaiseBookingRequest } from '@/features/booking/api'
 import {
   confirmEvent,
+  decideEventRequest,
   editEventRequest,
   fetchEventHistory,
   fetchEventRequest,
@@ -25,28 +26,38 @@ import type { MockAccount } from '../fixtures/accounts'
  * the backend does (SCRUM-33 AC1 to AC4; ADR-0025): only the fields sent change, a change to
  * the date, times, attendance or requirements is significant, every change is written to the
  * history, and the refusals come with the backend's codes and messages. An event can be edited
- * in every status before Confirmed, and a Confirmed one is refused with a pointer to a change
- * request (AC8, ADR-0101). The mock's "today" is 5 Oct 2026.
+ * once it is approved and until it is Confirmed (SCRUM-110, ADR-0116): before approval the
+ * refusal points to a clarification or the organiser's change request, and a Confirmed event to
+ * a change request (AC8, ADR-0101). The mock's "today" is 5 Oct 2026.
  */
 
-/** Chloe's, under review: 12 Nov, 9:00 am to 5:00 pm, 250 expected. */
+/**
+ * Chloe's, under review: 12 Nov, 9:00 am to 5:00 pm, 250 expected. The tests of what an edit
+ * changes approve it first (approvePartnerSummit).
+ */
 const PARTNER_SUMMIT = 'EVR-7K2M9QXA'
 /** Marcus's. */
 const NOT_CHLOES = 'EVR-W9CR5E7M'
 const MOCK_NOW = '2026-10-05T12:00:00+08:00'
 const NOT_EDITABLE_MESSAGE =
   'An event request can only be edited before it is confirmed, and not once it is rejected or cancelled.'
+const NOT_YET_APPROVED_MESSAGE =
+  'An event request can only be edited once it is approved. ' +
+  "Until then, changes go through a clarification or the organiser's change request."
 
 /** Every status but a draft's, which no coordinator is assigned. */
 type AssignedStatus = Exclude<EventRequestStatus, typeof EVENT_REQUEST_STATUS.DRAFT>
 
-/** Every status before Confirmed (SCRUM-33 AC8 and its status clarification, ADR-0101). */
+/** Once approved, until Confirmed (SCRUM-110 AC1, ADR-0116). */
 const EDITABLE_STATUSES: readonly AssignedStatus[] = [
+  EVENT_REQUEST_STATUS.APPROVED,
+  EVENT_REQUEST_STATUS.SAFETY_REVIEW,
+]
+/** Before approval, when changes go through a clarification or a change request (AC2). */
+const NOT_YET_APPROVED_STATUSES: readonly AssignedStatus[] = [
   EVENT_REQUEST_STATUS.SUBMITTED,
   EVENT_REQUEST_STATUS.UNDER_REVIEW,
   EVENT_REQUEST_STATUS.AWAITING_CLARIFICATION,
-  EVENT_REQUEST_STATUS.APPROVED,
-  EVENT_REQUEST_STATUS.SAFETY_REVIEW,
 ]
 /**
  * Every other assigned status but Confirmed, which has its own message. Built from the statuses,
@@ -56,7 +67,8 @@ const REFUSED_STATUSES = Object.values(EVENT_REQUEST_STATUS).filter(
   (status): status is AssignedStatus =>
     status !== EVENT_REQUEST_STATUS.DRAFT &&
     status !== EVENT_REQUEST_STATUS.CONFIRMED &&
-    !EDITABLE_STATUSES.includes(status),
+    !EDITABLE_STATUSES.includes(status) &&
+    !NOT_YET_APPROVED_STATUSES.includes(status),
 )
 /** A mock event in each assigned status, with the coordinator it is assigned to. */
 const EVENT_IN_STATUS: Record<AssignedStatus, [MockAccount, string]> = {
@@ -75,6 +87,15 @@ function signInAs(account: MockAccount) {
   sendRequestsAs(mockTokenFor(account))
 }
 
+/**
+ * Chloe approves Partner Summit, which the mock seeds under review: she edits it directly only
+ * once it is approved (SCRUM-110 AC1). The mock's decision adds nothing to the history.
+ */
+async function approvePartnerSummit() {
+  signInAs(MOCK_ACCOUNTS.coordinator)
+  await decideEventRequest(PARTNER_SUMMIT, { outcome: 'approved' })
+}
+
 /** An edit to the description, which the mock must refuse. */
 function refusedNote(reference: string) {
   return refusal(editEventRequest(reference, { description: 'x' }))
@@ -87,6 +108,8 @@ async function fieldErrorsOf(changes: Record<string, unknown>) {
 }
 
 describe('SCRUM-33 mock of an edit: what changes', () => {
+  beforeEach(approvePartnerSummit)
+
   it('changes only the fields sent, and answers with each change and whether it is significant', async () => {
     signInAs(MOCK_ACCOUNTS.coordinator)
 
@@ -213,6 +236,8 @@ describe('SCRUM-33 mock of an edit: what changes', () => {
 })
 
 describe('SCRUM-33 mock of an edit: what is refused', () => {
+  beforeEach(approvePartnerSummit)
+
   it.each([
     [{ proposed_date: '2026-10-04' }, 'proposed_date', 'Proposed date cannot be in the past.'],
     [{ expected_attendance: 0 }, 'expected_attendance', 'Expected attendance must be at least 1.'],
@@ -262,7 +287,9 @@ describe('SCRUM-33 mock of an edit: what is refused', () => {
 
     expect((await fetchEventRequest(PARTNER_SUMMIT)).description).toBeNull()
   })
+})
 
+describe('SCRUM-110 mock of an edit: the statuses it is allowed in', () => {
   it.each(EDITABLE_STATUSES)(
     'lets the coordinator edit an event that is %s, and keeps its status',
     async (status) => {
@@ -275,7 +302,22 @@ describe('SCRUM-33 mock of an edit: what is refused', () => {
     },
   )
 
-  it('refuses a Confirmed event, pointing to a change request, and changes nothing (AC8)', async () => {
+  it.each(NOT_YET_APPROVED_STATUSES)(
+    'refuses an event that is %s, pointing to a clarification or a change request, and changes nothing (AC2)',
+    async (status) => {
+      const [account, reference] = EVENT_IN_STATUS[status]
+      signInAs(account)
+
+      expect(await refusedNote(reference)).toMatchObject({
+        status: 409,
+        code: 'request_not_editable',
+        message: NOT_YET_APPROVED_MESSAGE,
+      })
+      expect(await fetchEventRequest(reference)).toMatchObject({ status, description: null })
+    },
+  )
+
+  it('refuses a Confirmed event, pointing to a change request, and changes nothing (SCRUM-33 AC8)', async () => {
     const [account, reference] = EVENT_IN_STATUS.confirmed
     signInAs(account)
 

@@ -7,6 +7,7 @@ import {
 } from '@/features/equipment/api'
 import { fetchEquipmentTypes } from '@/features/equipmentCatalogue/api'
 import { fetchEventRequest } from '@/features/eventRequests/api'
+import { fetchNotifications } from '@/features/notifications/api'
 import { apiRequest } from '@/lib/api'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
 
@@ -21,6 +22,7 @@ import {
 } from './backend'
 import {
   approvedEvent,
+  assignedEvent,
   coordinatorPosts,
   EVENT_DATE,
   LEAD,
@@ -266,6 +268,32 @@ describe('SCRUM-37 equipment lines against the backend', () => {
         message:
           'Equipment can only be changed before the event is confirmed, and not once it is rejected or cancelled.',
       })
+    },
+  )
+
+  it.skipIf(!canReviewALine)(
+    'refuses a line before the request is approved (409 equipment_not_editable, with the backend wording), so Technical Support hear nothing (SCRUM-110 AC3)',
+    async () => {
+      const equipmentTypeId = await newEquipmentType()
+      const { reference } = await assignedEvent()
+      await signInAs(staffAccount())
+
+      const error = await refusal(
+        addEquipmentLine(reference, { equipment_type_id: equipmentTypeId, quantity: 1 }),
+      )
+
+      expect(error).toMatchObject({
+        status: 409,
+        code: 'equipment_not_editable',
+        message:
+          'Equipment can only be added, changed or removed once the event request is approved. ' +
+          "Until then, changes go through a clarification or the organiser's change request.",
+      })
+      expect((await fetchEventEquipmentLines(reference)).equipment_lines).toEqual([])
+      await signInAsTechSupport()
+      const notices = await fetchNotifications()
+      const aboutThisEvent = notices.filter((notice) => notice.event_reference === reference)
+      expect(aboutThisEvent).toEqual([])
     },
   )
 
