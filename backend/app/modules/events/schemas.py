@@ -556,29 +556,39 @@ class DecideEventRequestSchema(Schema):
         return data
 
 
+def _required_reason(missing_message: str) -> fields.String:
+    """A required, non-blank ``reason``; ``missing_message`` if it is left out."""
+    return fields.String(
+        required=True,
+        validate=not_blank,
+        error_messages={"required": missing_message, "null": missing_message},
+    )
+
+
+class _RequiredReasonSchema(Schema):
+    """A body holding only a required ``reason``, which is trimmed once loaded.
+
+    Each subclass declares ``reason`` with :func:`_required_reason`, for its own
+    message when the reason is missing.
+    """
+
+    @post_load
+    def _trim_reason(self, data: dict[str, Any], **_: Any) -> dict[str, Any]:
+        data["reason"] = data["reason"].strip()
+        return data
+
+
 PLANNING_REJECTION_REASON_REQUIRED_MESSAGE = "A reason is required to reject the event."
 
 
-class RejectEventSchema(Schema):
+class RejectEventSchema(_RequiredReasonSchema):
     """Payload for ``POST .../<reference>/reject`` (SCRUM-49 AC9, ADR-0093).
 
     ``reason`` is why the event can't go ahead: required, not ``null``, not blank, and
     trimmed.
     """
 
-    reason = fields.String(
-        required=True,
-        validate=not_blank,
-        error_messages={
-            "required": PLANNING_REJECTION_REASON_REQUIRED_MESSAGE,
-            "null": PLANNING_REJECTION_REASON_REQUIRED_MESSAGE,
-        },
-    )
-
-    @post_load
-    def _trim_reason(self, data: dict[str, Any], **_: Any) -> dict[str, Any]:
-        data["reason"] = data["reason"].strip()
-        return data
+    reason = _required_reason(PLANNING_REJECTION_REASON_REQUIRED_MESSAGE)
 
 
 SAFETY_REASON_REQUIRED_MESSAGE = "A reason is required to reject the event or request changes."
