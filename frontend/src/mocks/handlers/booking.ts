@@ -124,6 +124,12 @@ const REPLACEMENT_EVENT_STATUSES: readonly MockBookingEvent['status'][] = [
   'safety_review',
 ]
 /**
+ * As the backend's PLANNING_STATUSES (events/services.py): an event's arrangements can be
+ * withdrawn, changed or cancelled only while it is Approved or in Safety Review (SCRUM-93 AC10,
+ * ADR-0118).
+ */
+const PLANNING_EVENT_STATUSES: readonly MockBookingEvent['status'][] = ['approved', 'safety_review']
+/**
  * As the backend's WITHDRAWABLE_REQUEST_STATUSES: a rejected arrangement stays active until
  * withdrawn, a conflicting one (SCRUM-44) may be withdrawn like a pending one, and so may one
  * whose hold expired (SCRUM-94), or one on hold, whose hold goes with it (ADR-0118). An approved
@@ -675,6 +681,27 @@ function releaseReplaced(approved: BookingRequest): void {
   moveTo(replaced, 'released')
 }
 
+/**
+ * The coordinator's own event, if its arrangements may still be withdrawn, changed or cancelled,
+ * as the backend's get_event_for_arrangement_change finds it; otherwise the response to send: 404
+ * for an event that isn't theirs, 409 naming the status of one that isn't being planned (SCRUM-93
+ * AC10).
+ */
+function eventToChange(reference: unknown, coordinatorId: number): MockBookingEvent | Response {
+  const event = findOwnEvent(reference, coordinatorId)
+  if (event === undefined) {
+    return notFound(EVENT_NOT_FOUND_MESSAGE)
+  }
+  if (!PLANNING_EVENT_STATUSES.includes(event.status)) {
+    return errorResponse(
+      409,
+      'conflict',
+      `Only an approved event or one in Safety Review can have its venue arrangements withdrawn, changed or cancelled; this one is ${event.status}.`,
+    )
+  }
+  return event
+}
+
 function withdrawRefusal(arrangement: BookingRequest) {
   return errorResponse(
     409,
@@ -849,9 +876,9 @@ export const bookingHandlers: RequestHandler[] = [
     if (refusal !== null || user === undefined) {
       return refusal
     }
-    const event = findOwnEvent(params.reference, user.id)
-    if (event === undefined) {
-      return notFound(EVENT_NOT_FOUND_MESSAGE)
+    const event = eventToChange(params.reference, user.id)
+    if (event instanceof Response) {
+      return event
     }
     const arrangement = findArrangement(event, params.arrangementId)
     if (arrangement === undefined) {
@@ -870,9 +897,9 @@ export const bookingHandlers: RequestHandler[] = [
     if (refusal !== null || user === undefined) {
       return refusal
     }
-    const event = findOwnEvent(params.reference, user.id)
-    if (event === undefined) {
-      return notFound(EVENT_NOT_FOUND_MESSAGE)
+    const event = eventToChange(params.reference, user.id)
+    if (event instanceof Response) {
+      return event
     }
     const active = requestsOf(event).filter(isActive)
     // The backend commits once, so one it cannot withdraw means none of them is.
@@ -898,9 +925,9 @@ export const bookingHandlers: RequestHandler[] = [
       return validationError(invalid)
     }
 
-    const event = findOwnEvent(params.reference, user.id)
-    if (event === undefined) {
-      return notFound(EVENT_NOT_FOUND_MESSAGE)
+    const event = eventToChange(params.reference, user.id)
+    if (event instanceof Response) {
+      return event
     }
     const arrangement = findArrangement(event, params.arrangementId)
     if (arrangement === undefined) {
