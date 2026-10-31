@@ -1,0 +1,65 @@
+# ADR-0117: The coordinator cancels one approved venue booking with a reason, and an event in Safety Review goes back to Approved when its pass or its last venue goes
+
+- **Status:** Accepted; the new Cancelled status, SCRUM-49 and SCRUM-97 ignoring it, what happens to an event in Safety Review and who is refused are the Product Owner's (SCRUM-111 as written on 31 Oct); everything else below is a default to review
+- **Date:** 2026-10-31
+- **Story:** SCRUM-111 Cancel one approved venue booking while the event is being planned (AC1-AC5)
+- **Extends:** [ADR-0039](0039-venue-arrangements.md) (an event's arrangements, and which ones are retired), [ADR-0087](0087-withdrawn-safety-approval-returns-the-event-to-approved.md) (a withdrawn safety approval sends the event back to Approved), [ADR-0093](0093-reject-an-event-during-planning.md) (releasing a booking during planning), [ADR-0103](0103-tell-venue-staff-of-released-bookings.md) (telling Venue Staff a booking was released), [ADR-0107](0107-tell-the-safety-officer-of-changes-in-safety-review.md) (telling the Safety Officers of a change in Safety Review), [ADR-0015](0015-in-app-notifications.md)
+
+## Context
+SCRUM-93 lets the coordinator withdraw an arrangement Venue Staff haven't approved, and refuses to withdraw an approved one, because its booking would be left behind. `cancel_all_arrangements` said "cancelling an approved booking is not yet in any story". SCRUM-111, moved out of SCRUM-61 on 29 Oct and answered by the Product Owner on 31 Oct, is that story:
+
+* **AC1:** on an event that is Approved or in Safety Review, the assigned coordinator cancels an approved booking with a reason. Only that booking is released, its arrangement becomes **Cancelled**, and the venue is available for that period again.
+* **AC2:** the event's other bookings are untouched. An Approved event stays Approved. An event in Safety Review returns to Approved if the Safety Officer had passed it (the pass no longer counts) or the booking was its last active venue arrangement (SCRUM-97 AC3); otherwise it stays, and every Safety Officer is told, naming the event and the venue dropped.
+* **AC3:** Venue Staff for that venue are told, naming the event, the venue and the period.
+* **AC4:** refused without a reason, for a booking that isn't approved (a pending or held one is withdrawn instead), on a Confirmed, Completed, Cancelled or Rejected event, and for anyone but the event's assigned coordinator. The refusal says which.
+* **AC5:** the cancellation and its reason are in the event's history.
+
+The story's "Changed during planning" note adds that SCRUM-49 and SCRUM-97 ignore a Cancelled arrangement like a Withdrawn one.
+
+## Decision
+### The status (agreed)
+1. **`BookingRequestStatus.CANCELLED` (`cancelled`), not `released`.** Released stays SCRUM-92's and SCRUM-49's: the system released the booking. Cancelled is the coordinator's choice. The booking itself goes to `BookingStatus.CANCELLED`, as a released one does, which frees the venue for the period: the calendar, the clash check and the search all ignore a cancelled booking already.
+2. **Cancelled is retired** (`RETIRED_REQUEST_STATUSES`), like Withdrawn and Released. So the Safety Review gate (SCRUM-97) and confirmation (SCRUM-49) ignore it, and so do everything else that counts an event's active venues through the same definition: SCRUM-75's multi-venue test, Venue Staff's list of events (SCRUM-24 AC4, ADR-0085), the decision lock (SCRUM-31 AC7, ADR-0084), the Safety Officer's list of venues and rejecting an event during planning (ADR-0093). No other status list names it: a cancelled arrangement is never flagged, decided, held, withdrawn or prepared.
+3. **Migration `0054_add_booking_cancelled`**, on top of SCRUM-56's 0053, adds `cancelled` to `booking_request_status`, `venue_booking_cancelled` and `safety_review_venue_cancelled` to `notification_kind`, and `venue_booking_cancelled` to `event_history_entry_kind`, outside the transaction as 0039 and 0049 do. **Default to review:** its downgrade turns a cancelled arrangement into a released one (neither holds its venue) and deletes the new notices and history entries, then rebuilds the types as 0053 leaves them.
+
+### Cancelling (agreed, with defaults on the details)
+4. **`POST /api/venues/events/<reference>/booking-requests/<id>/cancel`** with `{"reason"}`, Event Coordinator only, beside SCRUM-93's withdraw and cancel-all. It answers 200 with the arrangement, now `cancelled`. The service is `venue.services.cancel_approved_booking`; the events module owns the event's side (`get_event_for_booking_cancellation`, `record_venue_booking_cancelled`, `return_to_planning_after_cancellation`, `tell_safety_officers_of_cancelled_booking`), so neither module imports the other's models.
+5. **Refusals, in the order they are checked, each saying which (AC4).** **Default to review on the order and the wording:**
+   * another role: 403; no token: 401;
+   * another coordinator's event, a draft or an unknown reference: 404 "Event request not found.", as every coordinator action answers (ADR-0019), so other coordinators' events aren't discoverable;
+   * an event that isn't Approved or in Safety Review: 409 "Only an approved event or one in Safety Review can have a venue booking cancelled; this one is confirmed." (any other status, named as the API names it);
+   * another event's arrangement or an unknown id: 404 "Venue arrangement not found.";
+   * an arrangement that isn't approved: 409 "Only an approved booking can be cancelled; this one is pending." (every other status, retired ones included, named as the API names it);
+   * then the body: no reason or `null` 400 "A reason is required to cancel a booking."; blank "Must not be blank."; not text "Not a valid string."; any other field "Unknown field.". The reason is trimmed, with no length limit, as the reason for rejecting an event during planning is (ADR-0093).
+6. **A flagged booking can be cancelled** (needs an alternative venue, SCRUM-92, or flagged after a change, SCRUM-33 AC6): it is still approved. Its flags stay on it as the record of why, and stop counting. **Default to review:** if a replacement was already raised for it and Venue Staff later approve that replacement, the cancelled booking is left cancelled and the event's safety approval is withdrawn as for any replacement (ADR-0053).
+7. **What stays where. Default to review:** the reason, the arrangement and its venue and period are kept in the `venue_booking_cancelled` history entry (`venue_booking_request_id`, `venue_id`, `starts_at`, `ends_at` in UTC, `reason`), with the coordinator as its actor (AC5). The arrangement's own `decision_reason` stays Venue Staff's.
+8. **One commit** holds the cancelled booking and arrangement, the history entry and any change to the event; the notices follow it (ADR-0015).
+
+### The event's status (agreed)
+9. **An Approved event stays Approved,** even with no venue left: it can't be sent to Safety Review until it has one again (SCRUM-97 AC3).
+10. **In Safety Review, a pass no longer counts.** If the Safety Officer had recorded Approve, `withdraw_safety_approval` withdraws it, as a significant change (SCRUM-33 AC7) or a replacement venue (SCRUM-92 AC10) does: a `safety_approval_withdrawn` entry with `{"venue_booking_request_id": <id>}` and the coordinator as its actor, and the event back to Approved (ADR-0087). No second mechanism.
+11. **In Safety Review, the last active venue going sends the event back to Approved,** with no history entry of its own beyond the cancellation's. **Default to review:** as ADR-0107 decision 7 doesn't write one for its move. "Active" is the retired definition in decision 2, so a withdrawn or released arrangement doesn't keep the event in Safety Review.
+12. **Both at once move the event once,** through the withdrawal. **Otherwise the event stays in Safety Review.**
+
+### Who is told
+13. **Venue Staff: every Venue Staff user** (AC3), with a `venue_booking_cancelled` notice: "The event's coordinator cancelled a venue booking, so the venue is free again." Its detail names the arrangement, the venue and the period in business time, as a released booking's does (ADR-0103): "Venue arrangement 12 at Main Hall, 2026-11-20 09:00 to 2026-11-20 12:00, was cancelled." The notice names the event, as every notice does. **Default to review:** "Venue Staff for that venue" is all of them, since Venue Staff aren't assigned to venues (SCRUM-93's Week 7 note); and the reason isn't in the notice: it is in the event's history.
+14. **Safety Officers: every one,** with a `safety_review_venue_cancelled` notice, "A venue was dropped from an event in Safety Review.", with the same detail, when the event was in Safety Review (AC2). **Default to review (the brief's, not a Product Owner question):** they are told when the cancellation sends the event back to Approved too, the detail then ending "It is back in planning until it can be sent to Safety Review again.", as SCRUM-33 AC9's notice does (ADR-0107 decision 3). AC2 asks for it only when the event stays; the event leaving their list is news to them as well. No Safety Officer is told about an Approved event's cancellation.
+15. **Default to review: the coordinator is told nothing,** since they did it, and neither is the Event Organiser, whom AC2 and AC3 don't name; the organiser sees the cancelled arrangement and the history entry on the event record (SCRUM-24 AC10).
+
+### SCRUM-93's cancel all
+16. **Unchanged.** It still refuses while the event has an approved booking; its docstring now says the coordinator cancels each approved booking first, with a reason.
+
+### The web app and the mock
+17. **The action sits on the event's Venue requests page** (`/events/<reference>/venue-requests`), on each approved booking, beside SCRUM-93's Change and Withdraw, which live there too. **Default to review:** not on the event page itself, which lists the arrangements read-only; keeping every arrangement action on one page keeps the booking feature in one place. "Cancel booking" opens a form in place that says what it does, takes the reason and sends it; "Keep it" closes it. The reason is sent only when typed, so the backend's message shows under the box; any other refusal shows above it in the backend's words. The list is read again after either outcome. The event page shows the arrangement as "Cancelled", and its history the "Venue booking cancelled" entry with the venue, the period and the reason. The notices need nothing new: the bell shows every kind's message and detail as the backend sends them.
+18. **The booking mock** answers the route in the backend's order of checks, with its messages, cancels the arrangement and moves an event in Safety Review back to approved under decisions 10 to 12; its events and safety approvals are now copies, reset after every test. The planning mock counts a cancelled arrangement as retired. **Not mirrored:** the notifications mock serves only seeded notices, so it raises none (as ADR-0103 decision 5), and the booking mock writes no history, as its withdraw doesn't. No mock event is in Safety Review with a pass, so that branch of the mock has no mock test; the integration test covers it against the backend.
+
+## Consequences
+- The coordinator can drop one venue while planning without touching the others, and the venue is free for others at once.
+- An event in Safety Review is never reviewed against a venue it no longer has: either the officer is told it changed, or it leaves their list and must be sent again.
+- Tests: `tests/venue/test_cancel_approved_booking.py`, `tests/venue/test_booking_cancelled_migration.py`, the route in `tests/venue/test_booking_request_permissions.py` (marker `scrum_111`), and `cancelled` added to the shared retired list in `tests/events/cases.py`, which the SCRUM-24, 31, 49 and 97 tests use; the booking mock's tests, `VenueRequestsPage.cancelBooking.test.tsx`, the history and event page tests, `cancelBooking.int.test.ts` against the backend and the venue arrangements e2e journey.
+
+## Revisit when
+- Venue Staff are assigned to venues: tell only that venue's (decision 13).
+- The team wants the reason in the notices, or the organiser told (decisions 13, 15).
+- SCRUM-93's withdrawal of an On Hold arrangement lands: AC4's "a held one is withdrawn instead" relies on it, and today a held arrangement can be neither withdrawn nor cancelled.
+- SCRUM-56/57 build change requests for a Confirmed event: cancelling its booking then goes through them.
