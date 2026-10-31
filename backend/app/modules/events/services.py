@@ -1545,13 +1545,6 @@ def record_venue_booking_reconfirmed(
 _PERIOD_SETTING_KINDS = frozenset(
     {EventHistoryKind.VENUE_BOOKING_REQUESTED, EventHistoryKind.VENUE_BOOKING_RECONFIRMED}
 )
-#: How a reconfirmation reads each field it needs back from a ``field_changed`` entry,
-#: which holds a date or time as its ISO string and a number as itself (ADR-0025).
-_READ_FIELD_VALUE: dict[str, Callable[[Any], Any]] = {
-    "proposed_date": date.fromisoformat,
-    "start_time": time.fromisoformat,
-    "expected_attendance": int,
-}
 
 
 @dataclass(frozen=True)
@@ -1592,6 +1585,22 @@ def _entries_since_period_set(
     return since_set
 
 
+def _values_before_edits(entries: list[EventHistoryEntry]) -> dict[str, Any]:
+    """Each field the edits in ``entries`` changed, with its value before the first one.
+
+    As the history stores it (ADR-0025): a date or time as its ISO string, a number as
+    itself. A field no edit changed is left out.
+    """
+    before: dict[str, Any] = {}
+    for entry in entries:
+        if entry.kind is not EventHistoryKind.FIELD_CHANGED:
+            continue
+        field = entry.details["field"]
+        if field not in before:
+            before[field] = entry.details["previous_value"]
+    return before
+
+
 def get_event_when_arranged(
     event_id: int, arrangement_id: int, *, session: Session | None = None
 ) -> EventWhenArranged:
@@ -1608,20 +1617,20 @@ def get_event_when_arranged(
     """
     sess = resolve_session(session)
     event_request = sess.get(EventRequest, event_id)
-    values = {}
-    for field in _READ_FIELD_VALUE:
-        values[field] = getattr(event_request, field)
-    read_back = set()
-    for entry in _entries_since_period_set(event_request, arrangement_id, sess):
-        if entry.kind is not EventHistoryKind.FIELD_CHANGED:
-            continue
-        field = entry.details["field"]
-        if field not in _READ_FIELD_VALUE or field in read_back:
-            continue
-        values[field] = _READ_FIELD_VALUE[field](entry.details["previous_value"])
-        read_back.add(field)
-    starts_at = as_utc(datetime.combine(values["proposed_date"], values["start_time"]))
-    return EventWhenArranged(starts_at=starts_at, expected_attendance=values["expected_attendance"])
+    before = _values_before_edits(_entries_since_period_set(event_request, arrangement_id, sess))
+
+    proposed_date = event_request.proposed_date
+    if "proposed_date" in before:
+        proposed_date = date.fromisoformat(before["proposed_date"])
+    start_time = event_request.start_time
+    if "start_time" in before:
+        start_time = time.fromisoformat(before["start_time"])
+    expected_attendance = event_request.expected_attendance
+    if "expected_attendance" in before:
+        expected_attendance = before["expected_attendance"]
+
+    starts_at = as_utc(datetime.combine(proposed_date, start_time))
+    return EventWhenArranged(starts_at=starts_at, expected_attendance=expected_attendance)
 
 
 def _event_request_with_editable_equipment(
