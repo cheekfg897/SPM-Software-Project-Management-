@@ -1,3 +1,4 @@
+import type { EventRequestStatus } from '@/config/eventStatus'
 import type { PreparationStatus, PreparationUpdate } from '@/config/preparation'
 import { apiRequest } from '@/lib/api'
 
@@ -82,7 +83,10 @@ export interface EquipmentLine extends SavedEquipmentLine {
   reviewed_at: string | null
 }
 
-/** The event the lines belong to, and when it is: when the equipment is needed by. */
+/**
+ * The event the lines belong to, when it is (when the equipment is needed by), and its status,
+ * which decides whether its coordinator may change the lines (SCRUM-110, ADR-0116).
+ */
 export interface EquipmentLinesEvent {
   reference: string
   name: string
@@ -90,6 +94,7 @@ export interface EquipmentLinesEvent {
   end_date: string
   start_time: string
   end_time: string
+  status: EventRequestStatus
 }
 
 /** An event's equipment lines, in the order they were added. */

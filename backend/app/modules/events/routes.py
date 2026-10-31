@@ -15,7 +15,7 @@ from marshmallow import Schema
 from app.common.decorators import requires_role
 from app.modules.auth.permissions import INTERNAL_ROLES, Role
 from app.modules.events.schemas import (
-    EQUIPMENT_EVENT_FIELDS,
+    EQUIPMENT_LINES_EVENT_FIELDS,
     EVENT_LIST_FIELDS,
     ClarificationSchema,
     CoordinatorContactSchema,
@@ -88,7 +88,7 @@ _equipment_line_schema = EquipmentLineSchema()
 _equipment_line_with_outcome_schema = EquipmentLineWithOutcomeSchema()
 _organiser_record_sections_schema = OrganiserRecordSectionsSchema()
 _record_venue_arrangement_schema = RecordVenueArrangementSchema()
-_equipment_event_schema = EventRequestSchema(only=EQUIPMENT_EVENT_FIELDS)
+_equipment_event_schema = EventRequestSchema(only=EQUIPMENT_LINES_EVENT_FIELDS)
 _equipment_awaiting_action_schema = EquipmentAwaitingActionSchema()
 _awaiting_safety_review_schema = EventAwaitingSafetyReviewSchema()
 _edited_event_request_schema = EditedEventRequestSchema()
@@ -375,7 +375,8 @@ def list_equipment(reference: str) -> tuple[Response, int]:
     """An event request's equipment lines with their status (SCRUM-37 AC4, ADR-0019).
 
     The event's date and times come too, so Technical Support know by when the
-    equipment is needed.
+    equipment is needed, and its status, so its coordinator is offered changes only
+    while the lines can change (SCRUM-110, ADR-0116).
     """
     event_request, lines = list_equipment_lines(
         g.current_user_id, reference, viewer_role=Role(g.current_user_role)
