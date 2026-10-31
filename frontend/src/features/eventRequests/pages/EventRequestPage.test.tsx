@@ -5,7 +5,11 @@ import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
 import type { EventRequestStatus } from '@/config/eventStatus'
 import { coordinatorEventPath, organiserRequestPath, ROUTES } from '@/config/routes'
 import { raiseBookingRequest, withdrawArrangement } from '@/features/booking/api'
-import { editEventRequest, fetchEventRequest } from '@/features/eventRequests/api'
+import {
+  decideEventRequest,
+  editEventRequest,
+  fetchEventRequest,
+} from '@/features/eventRequests/api'
 import type { EventRecord, RecordVenueArrangement } from '@/features/eventRequests/api'
 import { MOCK_ACCOUNTS, mockSessionFor, mockTokenFor } from '@/mocks/fixtures/accounts'
 import { server } from '@/mocks/server'
@@ -436,6 +440,8 @@ describe('SCRUM-24 AC10 event record: everything an organiser sees, at every sta
 
   it('shows the planning notes the coordinator saved (SCRUM-33 AC1)', async () => {
     sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.coordinator))
+    // Chloe edits it only once she has approved it (SCRUM-110 AC1).
+    await decideEventRequest('EVR-7K2M9QXA', { outcome: 'approved' })
     await editEventRequest('EVR-7K2M9QXA', { internal_planning_notes: 'Client prefers mornings.' })
     sendRequestsAs(null)
     openAsOrganiser('EVR-7K2M9QXA')

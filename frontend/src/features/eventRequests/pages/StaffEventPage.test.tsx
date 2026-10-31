@@ -4,7 +4,7 @@ import { STAFF_RECORD_READER_ROLES } from '@/config/roles'
 import { eventEquipmentPath, ROUTES, staffEventPath } from '@/config/routes'
 import { homeFor } from '@/features/auth/roleHome'
 import { reserveEquipment } from '@/features/equipment/api'
-import { editEventRequest } from '@/features/eventRequests/api'
+import { decideEventRequest, editEventRequest } from '@/features/eventRequests/api'
 import { MOCK_ACCOUNTS, mockSessionFor, mockTokenFor } from '@/mocks/fixtures/accounts'
 import type { MockAccount } from '@/mocks/fixtures/accounts'
 import { recordRequests } from '@/test/recordRequests'
@@ -119,6 +119,8 @@ describe('SCRUM-24 AC9, AC10 the read-only staff record', () => {
 
   it('shows the planning notes the coordinator saved (SCRUM-33 AC1)', async () => {
     sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.coordinator))
+    // Chloe edits it only once she has approved it (SCRUM-110 AC1).
+    await decideEventRequest(PARTNER_SUMMIT, { outcome: 'approved' })
     await editEventRequest(PARTNER_SUMMIT, { internal_planning_notes: 'Client prefers mornings.' })
     sendRequestsAs(null)
     openAs(MOCK_ACCOUNTS.venueStaff, PARTNER_SUMMIT)

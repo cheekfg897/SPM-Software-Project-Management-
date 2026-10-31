@@ -56,14 +56,25 @@ const OUTCOME_PATH = `${LINE_PATH}/outcome`
 const LINE_WRITER_ROLES: readonly Role[] = [ROLE.EVENT_COORDINATOR]
 /** Only Technical Support record an outcome, on any event's line that will still run (SCRUM-48). */
 const OUTCOME_RECORDER_ROLES: readonly Role[] = [ROLE.TECHNICAL_SUPPORT_STAFF]
-/** While an event's equipment may change: until it is confirmed (EQUIPMENT_EDITABLE_STATUSES). */
+/**
+ * While an event's equipment may change: once the request is approved, until the event is
+ * confirmed (EQUIPMENT_EDITABLE_STATUSES, SCRUM-110 AC3).
+ */
 const EDITABLE_STATUSES: readonly EventRequestStatus[] = [
-  EVENT_REQUEST_STATUS.SUBMITTED,
-  EVENT_REQUEST_STATUS.UNDER_REVIEW,
-  EVENT_REQUEST_STATUS.AWAITING_CLARIFICATION,
   EVENT_REQUEST_STATUS.APPROVED,
   EVENT_REQUEST_STATUS.SAFETY_REVIEW,
 ]
+/** Before approval (AWAITING_DECISION_STATUSES): refused with its own message. */
+const NOT_YET_APPROVED_STATUSES: readonly EventRequestStatus[] = [
+  EVENT_REQUEST_STATUS.SUBMITTED,
+  EVENT_REQUEST_STATUS.UNDER_REVIEW,
+  EVENT_REQUEST_STATUS.AWAITING_CLARIFICATION,
+]
+const NOT_YET_APPROVED_MESSAGE =
+  'Equipment can only be added, changed or removed once the event request is approved. ' +
+  "Until then, changes go through a clarification or the organiser's change request."
+const NOT_EDITABLE_MESSAGE =
+  'Equipment can only be changed before the event is confirmed, and not once it is rejected or cancelled.'
 /** The fields a line body may carry (EditEquipmentLineSchema); adding needs the first two. */
 const LINE_FIELDS: readonly string[] = ['equipment_type_id', 'quantity', 'notes']
 const REQUIRED_TO_ADD: readonly string[] = ['equipment_type_id', 'quantity']
@@ -270,20 +281,19 @@ function storedNotes(notes: unknown): string | null {
 }
 
 /**
- * The coordinator's own event, if its equipment may still change, or the refusal: another's,
- * an unassigned one or a draft is a 404, one past the edit window a 409.
+ * The coordinator's own event, if its equipment may change now, or the refusal: another's, an
+ * unassigned one or a draft is a 404; one not approved yet, or past the edit window, a 409.
  */
 function editableEventOrRefusal(caller: MockAccount, reference: string): MockEvent | Response {
   const event = eventForReader(caller, reference)
   if (event === undefined) {
     return eventNotFound()
   }
+  if (NOT_YET_APPROVED_STATUSES.includes(event.status)) {
+    return errorResponse(409, 'equipment_not_editable', NOT_YET_APPROVED_MESSAGE)
+  }
   if (!EDITABLE_STATUSES.includes(event.status)) {
-    return errorResponse(
-      409,
-      'equipment_not_editable',
-      'Equipment can only be changed before the event is confirmed, and not once it is rejected or cancelled.',
-    )
+    return errorResponse(409, 'equipment_not_editable', NOT_EDITABLE_MESSAGE)
   }
   return event
 }

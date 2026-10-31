@@ -105,14 +105,20 @@ export async function coordinatorPosts(reference: string, action: string, body?:
   await apiRequest(`/api/events/requests/${reference}/${action}`, { method: 'POST', body })
 }
 
-/** A submitted event, assigned by the Lead to the staff account, who reviews and approves it. */
-export async function approvedEvent(): Promise<PlannedEvent> {
+/** A submitted event, assigned by the Lead to the staff account. Leaves the Lead signed in. */
+export async function assignedEvent(): Promise<PlannedEvent> {
   const event = await submittedEvent()
   await signInAs(required(LEAD))
   await assignCoordinator({
     reference: event.reference,
     coordinator_email: staffAccount().email,
   })
+  return event
+}
+
+/** A submitted event, assigned by the Lead to the staff account, who reviews and approves it. */
+export async function approvedEvent(): Promise<PlannedEvent> {
+  const event = await assignedEvent()
   await coordinatorPosts(event.reference, 'review')
   await coordinatorPosts(event.reference, 'decide', { outcome: 'approved' })
   return event
