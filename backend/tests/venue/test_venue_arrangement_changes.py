@@ -18,7 +18,14 @@ from app.modules.events.models import EventHistoryEntry, EventHistoryKind, Event
 from app.modules.venue import services
 from app.modules.venue.models import BookingRequestStatus, Venue
 from app.modules.venue.schemas import BookingRequestAsShown
-from tests.venue.conftest import COORDINATOR_ID, SavedEvent, raise_booking, two_arrangements
+from tests.venue.conftest import (
+    COORDINATOR_ID,
+    SavedEvent,
+    raise_booking,
+    reload_request,
+    two_arrangements,
+    two_venues,
+)
 
 pytestmark = pytest.mark.scrum_93
 
@@ -252,6 +259,37 @@ def test_a_blank_purpose_is_a_validation_error(
         _change(event, arrangement.id, db_session, purpose="   ")
 
     assert "purpose" in caught.value.details
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["venue_id", "starts_at", "ends_at"],
+)
+def test_a_change_cannot_move_the_venue_or_the_period(
+    db_session: Session,
+    make_venue: Callable[..., Venue],
+    save: Callable[..., None],
+    saved_event: SavedEvent,
+    field: str,
+) -> None:
+    """AC9: the venue, date and times stay; to move them, withdraw and raise another."""
+    event = saved_event()
+    auditorium, breakout = two_venues(make_venue, save)
+    arrangement = raise_booking(auditorium, event, db_session)
+    slot_before = (arrangement.venue_id, arrangement.starts_at, arrangement.ends_at)
+    moved = {
+        "venue_id": breakout.id,
+        "starts_at": THIRD_PERIOD["starts_at"],
+        "ends_at": THIRD_PERIOD["ends_at"],
+    }
+
+    with pytest.raises(ValidationError) as caught:
+        _change(event, arrangement.id, db_session, **{field: moved[field]})
+
+    assert caught.value.details == {field: ["Unknown field."]}
+    kept = reload_request(db_session, arrangement.id)
+    assert (kept.venue_id, kept.starts_at, kept.ends_at) == slot_before
+    assert _changed_entries(db_session) == []
 
 
 def test_another_events_arrangement_cannot_be_changed(
