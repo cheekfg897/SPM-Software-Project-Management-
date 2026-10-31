@@ -13,6 +13,7 @@ import importlib.util
 import io
 from collections.abc import Callable, Iterator
 from datetime import date, datetime, time, timezone
+from functools import cache
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -24,6 +25,7 @@ from alembic.runtime.migration import MigrationContext
 from flask import Flask
 from flask_jwt_extended import create_access_token
 from sqlalchemy.orm import Session
+from werkzeug.security import generate_password_hash
 
 from app import create_app
 from app.common.decorators import ROLE_CLAIM
@@ -205,6 +207,18 @@ def save(db_session: Session) -> Callable[..., None]:
     return _save
 
 
+@cache
+def _password_hash(password: str) -> str:
+    """Hash ``password`` once for the whole run.
+
+    Werkzeug's scrypt is slow on purpose (about a tenth of a second a hash), and
+    hashing the same password for every user took almost 90% of the suite's time
+    (SCRUM-5).
+    Sharing one salt between test users loses nothing a test checks.
+    """
+    return generate_password_hash(password)
+
+
 @pytest.fixture()
 def make_user() -> Callable[..., User]:
     """Factory for in-memory ``User`` objects (never persisted)."""
@@ -227,7 +241,7 @@ def make_user() -> Callable[..., User]:
             organisation_id=organisation_id,
         )
         user.id = user_id if user_id is not None else counter["id"]
-        user.set_password(password)
+        user.password_hash = _password_hash(password)
         return user
 
     return _make
