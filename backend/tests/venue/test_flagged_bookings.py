@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import datetime, time
+from typing import Any
 
 import pytest
 from sqlalchemy.orm import Session
@@ -30,7 +31,7 @@ from app.modules.auth.models import User
 from app.modules.events.models import EventRequest
 from app.modules.venue import services
 from app.modules.venue.models import BookingRequestStatus, Venue, VenueBookingRequest
-from app.modules.venue.schemas import FlaggedBookingAsShown, FlaggedBookingSchema
+from app.modules.venue.schemas import FlaggedBookingAsShown, FlaggedBookingSchema, Reconfirmation
 from tests.venue.conftest import (
     COORDINATOR_ID,
     SECOND_PERIOD,
@@ -58,17 +59,22 @@ def _listed_ids(session: Session) -> list[int]:
     return [flagged.shown.request.id for flagged in _flagged(session)]
 
 
-def _reconfirm_with(session: Session, request_id: int) -> tuple[datetime, datetime, int]:
-    """What reconfirming the flagged booking gives it: (starts, ends, occupancy)."""
+def _listed_reconfirmation(session: Session, request_id: int) -> Reconfirmation:
+    """What reconfirming the flagged booking gives it, as the list has it."""
     for flagged in _flagged(session):
         if flagged.shown.request.id == request_id:
-            reconfirmation = flagged.reconfirm_with
-            return (
-                reconfirmation.starts_at,
-                reconfirmation.ends_at,
-                reconfirmation.expected_occupancy,
-            )
+            return flagged.reconfirm_with
     raise AssertionError(f"booking {request_id} is not listed")
+
+
+def _reconfirm_with(session: Session, request_id: int) -> tuple[datetime, datetime, int]:
+    """What reconfirming the flagged booking gives it: (starts, ends, occupancy)."""
+    reconfirmation = _listed_reconfirmation(session, request_id)
+    return (
+        reconfirmation.starts_at,
+        reconfirmation.ends_at,
+        reconfirmation.expected_occupancy,
+    )
 
 
 @pytest.fixture()
@@ -198,6 +204,7 @@ def test_the_listed_booking_dumps_with_what_reconfirming_gives_it(
         "starts_at": "2026-11-02T09:00:00+08:00",
         "ends_at": "2026-11-02T12:00:00+08:00",
         "expected_occupancy": 80,
+        "period_adjustable": True,
     }
 
 
@@ -254,6 +261,42 @@ def test_a_change_that_does_not_move_the_start_leaves_the_period_as_it_is(
     edit_event(db_session, event, payload)
 
     assert _reconfirm_with(db_session, breakout_id) == (at(13), at(16), 30)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [NEXT_DAY, {"start_time": "10:30"}, {"end_time": "18:00"}, {"end_date": "2026-11-03"}],
+    ids=["date", "start-time", "end-time", "end-date"],
+)
+def test_a_change_to_the_events_date_or_times_lets_the_period_be_adjusted(
+    db_session: Session, event: EventRequest, main_id: int, payload: dict[str, str]
+) -> None:
+    edit_event(db_session, event, payload)
+
+    assert _listed_reconfirmation(db_session, main_id).period_adjustable is True
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [{"expected_attendance": 90}, {"venue_requirements": "A stage."}],
+    ids=["attendance", "venue-requirements"],
+)
+def test_a_change_that_leaves_the_date_and_times_keeps_the_period(
+    db_session: Session, event: EventRequest, main_id: int, payload: dict[str, Any]
+) -> None:
+    """AC2: the period stays, and Venue Staff may only reconfirm it as it is (A75)."""
+    edit_event(db_session, event, payload)
+
+    assert _listed_reconfirmation(db_session, main_id).period_adjustable is False
+
+
+def test_edits_that_move_the_event_and_back_again_keep_the_period(
+    db_session: Session, event: EventRequest, main_id: int
+) -> None:
+    edit_event(db_session, event, NEXT_DAY)
+    edit_event(db_session, event, {"proposed_date": "2026-11-01", "end_date": "2026-11-02"})
+
+    assert _listed_reconfirmation(db_session, main_id).period_adjustable is False
 
 
 def test_a_booking_with_no_record_of_being_raised_moves_by_every_change_to_the_start(

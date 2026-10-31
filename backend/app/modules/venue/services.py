@@ -3078,6 +3078,11 @@ SETTLED_BY_REPLACEMENT_MESSAGE = (
 REPLACEMENT_PENDING_MESSAGE = (
     "Cannot reconfirm: replacement request #{id} for this booking is still waiting for a decision."
 )
+#: AC2: the event's date and times didn't change, so the period stays.
+PERIOD_KEPT_MESSAGE = (
+    "The event's date and times haven't changed, so the booking keeps its period:"
+    " {starts} to {ends}."
+)
 OUTSIDE_EVENT_MESSAGE = "The period must lie within the event's start and end: {starts} to {ends}."
 CAPACITY_REASON_REQUIRED_MESSAGE = (
     "A reason is required because the venue's capacity of {capacity} is below the booking's"
@@ -3107,6 +3112,15 @@ REASON_DETAIL = " Reason: {reason}"
 Span = tuple[datetime, datetime]
 
 
+def _event_ends_at(event: EventForBooking) -> datetime:
+    """When the event ends, in UTC; the event stores it in business time.
+
+    An event past its draft always has an end date
+    (``ck_event_requests_details_unless_draft``), and only an approved one has bookings.
+    """
+    return as_utc(datetime.combine(event.end_date, event.end_time))  # type: ignore[arg-type]
+
+
 def _reconfirmation_of(
     arrangement: VenueBookingRequest, event: EventForBooking, session: Session | None
 ) -> Reconfirmation:
@@ -3116,16 +3130,21 @@ def _reconfirmation_of(
     arrangement's period was last set, raised or reconfirmed, however many edits that
     took (ADR-0112 decision 1). A change that didn't move the start leaves it where it
     is. The move is worked out in UTC, which is the same as in business time because
-    Singapore has no daylight saving. AC10: an arrangement that held the whole audience,
-    and that the attendance has since outgrown, is reconfirmed for the attendance as it
-    is now.
+    Singapore has no daylight saving. Venue Staff may adjust the period only when the
+    event's start or end has moved since; an earlier end can leave the booking running
+    past the event (ADR-0112 decision 17). AC10: an arrangement that held the whole
+    audience, and that the attendance has since outgrown, is reconfirmed for the
+    attendance as it is now.
     """
     from app.modules.events import services as event_services  # circular at import time
 
     when_arranged = event_services.get_event_when_arranged(
         arrangement.event_id, arrangement.id, session=session
     )
-    moved_by = _event_starts_at(event) - when_arranged.starts_at
+    event_starts_at = _event_starts_at(event)
+    moved_by = event_starts_at - when_arranged.starts_at
+    start_moved = event_starts_at != when_arranged.starts_at
+    end_moved = _event_ends_at(event) != when_arranged.ends_at
     occupancy = arrangement.expected_occupancy
     if _outgrown(occupancy, when_arranged.expected_attendance, event.expected_attendance):
         occupancy = event.expected_attendance
@@ -3133,6 +3152,7 @@ def _reconfirmation_of(
         starts_at=as_utc(arrangement.starts_at) + moved_by,
         ends_at=as_utc(arrangement.ends_at) + moved_by,
         expected_occupancy=occupancy,
+        period_adjustable=start_moved or end_moved,
     )
 
 
@@ -3210,13 +3230,30 @@ def _refuse_while_replacement_pending(
         raise ConflictError(REPLACEMENT_PENDING_MESSAGE.format(id=replacement.id))
 
 
-def _event_ends_at(event: EventForBooking) -> datetime:
-    """When the event ends, in UTC; the event stores it in business time.
+def _require_period_kept(reconfirmation: Reconfirmation, period: Span) -> None:
+    """Refuse a new period for a booking whose event the change didn't retime (AC2).
 
-    An event past its draft always has an end date
-    (``ck_event_requests_details_unless_draft``), and only an approved one has bookings.
+    When the event's date and times are as they were when the booking's period was
+    set, the period stays: Venue Staff adjust it only to apply a change the coordinator
+    made (customer, Week 4, A75). Such a booking's pre-filled period is its own.
+
+    Raises:
+        ValidationError: 400 — on ``starts_at`` or ``ends_at``, whichever was changed;
+            the message gives the period it keeps.
     """
-    return as_utc(datetime.combine(event.end_date, event.end_time))  # type: ignore[arg-type]
+    if reconfirmation.period_adjustable:
+        return
+    starts_at, ends_at = period
+    message = PERIOD_KEPT_MESSAGE.format(
+        starts=_notice_time(reconfirmation.starts_at), ends=_notice_time(reconfirmation.ends_at)
+    )
+    details = {}
+    if starts_at != reconfirmation.starts_at:
+        details["starts_at"] = [message]
+    if ends_at != reconfirmation.ends_at:
+        details["ends_at"] = [message]
+    if details:
+        raise ValidationError("Invalid request.", details=details)
 
 
 def _require_within_event(event: EventForBooking, period: Span) -> None:
@@ -3385,19 +3422,19 @@ def reconfirm_flagged_booking(
 ) -> BookingRequestAsShown:
     """Reconfirm a booking a change flagged, for its new period (SCRUM-59, ADR-0112).
 
-    The period, which the queue pre-fills, must lie within the event (AC2) and inside
-    the venue's hours, and, with the venue's setup and turnaround, clear of other
-    bookings, live holds, blocks and the event's other arrangements at the venue (AC3).
-    A booking that held everyone takes the new attendance as its occupancy (AC10), and a
-    venue too small for it needs a reason, which is kept as Venue Staff's reason (AC4).
+    The period, which the queue pre-fills, stays unless the event's date or times
+    changed, and must lie within the event (AC2) and inside the venue's hours, and,
+    with the venue's setup and turnaround, clear of other bookings, live holds, blocks
+    and the event's other arrangements at the venue (AC3). A booking that held everyone
+    takes the new attendance as its occupancy (AC10), and a venue too small for it
+    needs a reason, which is kept as Venue Staff's reason (AC4).
 
     The booking moves, with its venue booking, and its flags are cleared; preparation
     details are kept (AC9), and the event's other bookings are untouched (AC8). A
     request Venue Staff haven't decided only moves, and waits in the queue as Pending
-    (AC11).
-    Other Pending requests the new period clashes with are marked Conflicting, as an
-    approval marks them (SCRUM-44). The history entry is saved in the same commit, and
-    the event's current coordinator is told in a second (ADR-0015).
+    (AC11). Other Pending requests the new period clashes with are marked Conflicting,
+    as an approval marks them (SCRUM-44). The history entry is saved in the same
+    commit, and the event's current coordinator is told in a second (ADR-0015).
 
     Args:
         request_id: The booking request's own id, as the queue lists it.
@@ -3413,8 +3450,9 @@ def reconfirm_flagged_booking(
         NotFoundError: 404 — no such booking.
         ConflictError: 409 — not flagged after a change, needing an alternative venue,
             a replacement waiting for a decision (AC6), or a conflict, which is named.
-        ValidationError: 400 — payload invalid, a period outside the event or the
-            venue's hours, or no reason for a venue too small.
+        ValidationError: 400 — payload invalid, a new period for an event whose date
+            and times didn't change, a period outside the event or the venue's hours, or
+            no reason for a venue too small.
     """
     from app.modules.events import services as event_services  # circular at import time
 
@@ -3424,10 +3462,12 @@ def reconfirm_flagged_booking(
     period = (data["starts_at"], data["ends_at"])
     _refuse_while_replacement_pending(arrangement, session)
     event = _event_of(arrangement, session)
+    reconfirmation = _reconfirmation_of(arrangement, event, session)
+    _require_period_kept(reconfirmation, period)
     _require_within_event(event, period)
     venue = _lock_venue(arrangement.venue_id, session)
     _require_within_opening_hours(venue, *period)
-    occupancy = _reconfirmation_of(arrangement, event, session).expected_occupancy
+    occupancy = reconfirmation.expected_occupancy
     _require_reason_if_too_small(venue, occupancy, reason)
     own_booking = _own_booking(arrangement, session)
     _refuse_booking_clash(venue, period, own_booking, session)

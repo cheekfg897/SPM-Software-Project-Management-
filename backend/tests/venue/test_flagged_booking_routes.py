@@ -62,11 +62,15 @@ ROUTE_IDS = [route[0] for route in ROUTES]
 
 @pytest.fixture()
 def flagged(shown: BookingRequestAsShown) -> FlaggedBookingAsShown:
-    """The ``shown`` request, listed as flagged, to be moved to 2 November."""
+    """The ``shown`` request, listed as flagged, to be moved to 2 November.
+
+    Not adjustable, so the JSON shows ``false`` as well as the service tests' ``true``.
+    """
     reconfirmation = Reconfirmation(
         starts_at=datetime(2026, 11, 2, 1, 0, tzinfo=UTC),
         ends_at=datetime(2026, 11, 2, 4, 0, tzinfo=UTC),
         expected_occupancy=90,
+        period_adjustable=False,
     )
     return FlaggedBookingAsShown(shown=shown, reconfirm_with=reconfirmation)
 
@@ -154,6 +158,7 @@ def test_the_flagged_list_returns_200_with_each_booking_and_its_reconfirmation(
         "starts_at": "2026-11-02T09:00:00+08:00",
         "ends_at": "2026-11-02T12:00:00+08:00",
         "expected_occupancy": 90,
+        "period_adjustable": False,
     }
     mock_services["list_flagged_bookings"].assert_called_once_with()
 

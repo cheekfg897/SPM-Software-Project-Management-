@@ -505,14 +505,16 @@ class BookingRequestAsShown:
 class Reconfirmation:
     """What reconfirming a flagged booking gives it (SCRUM-59 AC2, AC10, ADR-0112).
 
-    The period, moved by as much as the event's start moved, which Venue Staff may
-    adjust, and the expected occupancy, raised to the new attendance when the booking
-    held the whole audience. Times are in UTC.
+    The period, moved by as much as the event's start moved, and the expected
+    occupancy, raised to the new attendance when the booking held the whole audience.
+    Times are in UTC. Venue Staff may adjust the period only to apply a change to the
+    event's date or times; otherwise it stays (AC2, customer Week 4 A75).
     """
 
     starts_at: datetime
     ends_at: datetime
     expected_occupancy: int
+    period_adjustable: bool
 
 
 @dataclass(frozen=True)
@@ -688,6 +690,7 @@ class ReconfirmationSchema(Schema):
     starts_at = BusinessDateTime(dump_only=True)
     ends_at = BusinessDateTime(dump_only=True)
     expected_occupancy = fields.Integer(dump_only=True)
+    period_adjustable = fields.Boolean(dump_only=True)
 
 
 class FlaggedBookingSchema(Schema):
