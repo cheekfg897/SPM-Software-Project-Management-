@@ -56,6 +56,7 @@ from tests.venue.conftest import (
     flags_on,
     history_entries,
     hours_from_now,
+    locked_request_reads,
     locked_venue_reads,
     raise_booking,
     reload_event,
@@ -590,6 +591,13 @@ def test_the_venue_is_read_under_a_lock_while_the_period_is_checked(
 ) -> None:
     """ADR-0045: two reconfirmations or approvals at one venue take turns."""
     reads = locked_venue_reads(db_session, lambda: _reconfirm_as_listed(db_session, main_id))
+
+    assert len(reads) == 1
+
+
+def test_the_booking_is_read_under_a_lock(db_session: Session, main_id: int, moved: None) -> None:
+    """ADR-0112 decision 7: two Venue Staff settling one booking take turns."""
+    reads = locked_request_reads(db_session, lambda: _reconfirm_as_listed(db_session, main_id))
 
     assert len(reads) == 1
 
