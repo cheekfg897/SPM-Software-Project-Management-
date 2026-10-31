@@ -1,6 +1,8 @@
 """Unit tests for SCRUM-42 — who may raise and list venue booking requests.
 
-Only the Event Coordinator may call either route. The registered view functions run
+Also SCRUM-93's routes for changing, withdrawing and cancelling arrangements, and
+SCRUM-111's for cancelling one approved booking. Only the Event Coordinator may call
+any of them. The registered view functions run
 inside a request context, so the real decorators decide; a refused caller must never
 reach the service layer. A coordinator who isn't assigned to the event is refused by
 the real service, which the listing route passes on as a 404.
@@ -39,6 +41,7 @@ ROUTES = [
     ("venue.withdraw_arrangement", "POST", "withdraw_arrangement"),
     ("venue.cancel_all_arrangements", "POST", "cancel_all_arrangements"),
     ("venue.change_arrangement", "PATCH", "change_arrangement"),
+    ("venue.cancel_approved_booking", "POST", "cancel_approved_booking"),
 ]
 ROUTE_IDS = [route[0] for route in ROUTES]
 
@@ -55,6 +58,7 @@ def mock_services(
             "withdraw_arrangement": shown,
             "cancel_all_arrangements": [shown],
             "change_arrangement": shown,
+            "cancel_approved_booking": shown,
         },
     )
 
@@ -179,6 +183,28 @@ def test_cancelling_all_arrangements_returns_200_with_each_retired_request(
     assert [entry["id"] for entry in response.get_json()] == [11]
     mock_services["cancel_all_arrangements"].assert_called_once_with(
         REFERENCE, coordinator_id=COORDINATOR_ID
+    )
+
+
+@pytest.mark.scrum_111
+def test_cancelling_a_booking_passes_the_body_on_and_returns_200_with_the_request(
+    call_route: CallRoute, mock_services: dict[str, MagicMock], coordinator_token: str
+) -> None:
+    body = {"reason": "The workshop moved online."}
+
+    response, status = call_route(
+        "venue.cancel_approved_booking",
+        "POST",
+        f"{PATH}/77/cancel",
+        {"reference": REFERENCE, "arrangement_id": 77},
+        coordinator_token,
+        body=body,
+    )
+
+    assert status == 200
+    assert response.get_json()["id"] == 11
+    mock_services["cancel_approved_booking"].assert_called_once_with(
+        REFERENCE, 77, body, coordinator_id=COORDINATOR_ID
     )
 
 
