@@ -45,6 +45,8 @@ from tests.venue.conftest import (
     at,
     bookings,
     decide,
+    edit_event,
+    flags_on,
     history_entries,
     period,
     raise_booking,
@@ -386,6 +388,53 @@ def test_another_events_arrangement_is_not_found(
 
     assert refused.value.message == "Venue arrangement not found."
     assert _status_of(db_session, theirs) is BookingRequestStatus.APPROVED
+
+
+def test_an_unknown_arrangement_is_not_found(db_session: Session, event: EventRequest) -> None:
+    with pytest.raises(NotFoundError) as refused:
+        _cancel(event, 9999, db_session)
+
+    assert refused.value.message == "Venue arrangement not found."
+
+
+# --------------------------------------------------------------------------
+# ADR-0117 decision 6 — a flagged booking, and a replacement raised for it
+# --------------------------------------------------------------------------
+
+
+def test_a_flagged_booking_is_cancelled_keeping_its_flags_as_the_record(
+    db_session: Session, event: EventRequest, booked: int
+) -> None:
+    edit_event(db_session, event, {"venue_requirements": "A stage for the band."})
+    flags = flags_on(db_session, booked)
+    assert flags != []
+
+    _cancel(event, booked, db_session)
+
+    assert _status_of(db_session, booked) is BookingRequestStatus.CANCELLED
+    assert flags_on(db_session, booked) == flags
+    assert reload_request(db_session, booked).is_flagged_after_change is False
+
+
+def test_a_replacement_approved_after_its_original_was_cancelled_leaves_it_cancelled(
+    db_session: Session, event: EventRequest, venue: Venue, booked: int, second_venue: Venue
+) -> None:
+    """The replacement stays approvable and adds its venue back.
+
+    The coordinator may withdraw it instead (default to review, ADR-0117 decision 6).
+    """
+    edit_event(db_session, event, {"venue_requirements": "A stage for the band."})
+    replacement = raise_booking(second_venue, event, db_session, replaces_request_id=booked)
+    _cancel(event, booked, db_session)
+
+    decide(replacement.id, "approved", db_session)
+
+    assert _status_of(db_session, booked) is BookingRequestStatus.CANCELLED
+    assert _status_of(db_session, replacement.id) is BookingRequestStatus.APPROVED
+    assert bookings(db_session) == [
+        (venue.id, BookingStatus.CANCELLED),
+        (second_venue.id, BookingStatus.CONFIRMED),
+    ]
 
 
 # --------------------------------------------------------------------------
