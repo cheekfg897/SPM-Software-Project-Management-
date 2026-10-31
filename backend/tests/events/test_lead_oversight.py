@@ -1,14 +1,18 @@
 """Unit tests for SCRUM-96 "Lead reassigns events and oversees coordinator assignments".
 
-AC3 and AC4: only the Event Coordinator Lead may reassign an event, whichever
+AC numbers are the story's as they read since 17 Oct.
+
+AC4 and AC5: only the Event Coordinator Lead may reassign an event, whichever
 coordinator holds it, and the reassignment is still audited with the Lead as its
 actor. The coordinator who loses the event loses its history too. The refusals
 SCRUM-87 built stay as they were: an event with no coordinator, an event that is
 over, and a move to the coordinator who already holds it.
 
-AC5: the coordinator who loses the event is told, as well as the new coordinator
-and the organiser. AC1 and AC2: the Lead's two lists, every active event and each
-coordinator's active events.
+AC6 and AC7: the coordinator who loses the event is told, as well as the new
+coordinator and the organiser. AC1 to AC3: the Lead's two lists (ADR-0120). Every
+active event, where an event is active only once it has a coordinator (AC2, and
+SCRUM-95's rule that an event is in the queue or the active list, never both), and
+every Event Coordinator's active events, an idle one listed with none (AC3).
 
 Runs against ``db_session`` with ``saved_users``, ``saved_leads`` and
 ``saved_event_request`` (``EVR-AAAAAAAA``, assigned to Event Coordinator 3).
@@ -47,7 +51,7 @@ PREVIOUS_COORDINATOR_DETAIL = (
 
 
 # --------------------------------------------------------------------------
-# AC5 — the coordinator who loses the event is told
+# AC6, AC7 — the coordinator who loses the event is told
 # --------------------------------------------------------------------------
 
 
@@ -75,7 +79,7 @@ def test_a_reassignment_tells_exactly_the_new_coordinator_the_organiser_and_the_
 
 
 # --------------------------------------------------------------------------
-# AC4 — the previous coordinator loses access to the event's history too
+# AC5 — the previous coordinator loses access to the event's history too
 # --------------------------------------------------------------------------
 
 
@@ -92,7 +96,7 @@ def test_the_previous_coordinator_can_no_longer_read_the_events_history(
 
 
 # --------------------------------------------------------------------------
-# AC1 — every active event, with its coordinator and status
+# AC1, AC2 — every active event, with its coordinator and status
 # --------------------------------------------------------------------------
 
 ONE_EVENT_IN_EACH_STATUS = {
@@ -149,9 +153,11 @@ def test_the_active_list_names_each_events_coordinator_and_status(
     make_event_request: Callable[..., EventRequest],
     save: Callable[..., None],
 ) -> None:
-    held = make_event_request(reference="EVR-HELD0001", coordinator_id=9)
-    waiting = make_event_request(reference="EVR-WAIT0001", coordinator_id=None)
-    save(held, waiting)
+    held_by_nine = make_event_request(reference="EVR-NINE0001", coordinator_id=9)
+    held_by_three = make_event_request(
+        reference="EVR-THREE001", status=EventRequestStatus.CONFIRMED, coordinator_id=3
+    )
+    save(held_by_nine, held_by_three)
 
     shown = {
         row.event_request.reference: (row.event_request.status, row.coordinator_name)
@@ -159,9 +165,33 @@ def test_the_active_list_names_each_events_coordinator_and_status(
     }
 
     assert shown == {
-        "EVR-HELD0001": (EventRequestStatus.SUBMITTED, "Coordinator Nine"),
-        "EVR-WAIT0001": (EventRequestStatus.SUBMITTED, None),
+        "EVR-NINE0001": (EventRequestStatus.SUBMITTED, "Coordinator Nine"),
+        "EVR-THREE001": (EventRequestStatus.CONFIRMED, "Coordinator Three"),
     }
+
+
+@pytest.mark.scrum_95
+@pytest.mark.parametrize("status", sorted(ACTIVE_STATUSES, key=lambda status: status.value))
+def test_an_event_with_no_coordinator_is_not_in_the_active_list(
+    saved_users: list[Any],
+    make_event_request: Callable[..., EventRequest],
+    save: Callable[..., None],
+    status: EventRequestStatus,
+) -> None:
+    """AC2: an event is active only once it has a coordinator, whatever its status.
+
+    A submitted one is in the Lead's queue instead, never in both lists (SCRUM-95).
+    No other status can be reached without a coordinator; they are listed so the test
+    pins the rule to the coordinator, not to the status.
+    """
+    save(
+        make_event_request(reference="EVR-WAIT0001", status=status, coordinator_id=None),
+        make_event_request(reference="EVR-HELD0001", status=status, coordinator_id=9),
+    )
+
+    references = [row.event_request.reference for row in list_active_requests()]
+
+    assert references == ["EVR-HELD0001"]
 
 
 def test_the_active_list_is_newest_first(
@@ -180,7 +210,7 @@ def test_the_active_list_is_newest_first(
 
 
 # --------------------------------------------------------------------------
-# AC2 — each coordinator's active events
+# AC3 — every Event Coordinator's active events, an idle one with none
 # --------------------------------------------------------------------------
 
 
@@ -206,29 +236,47 @@ def test_each_coordinator_with_active_events_is_listed_with_their_events(
     ]
 
 
-def test_a_coordinator_with_no_active_event_is_left_out(
+def test_a_coordinator_with_no_active_event_is_still_listed_with_none(
     one_event_in_each_status: dict[EventRequestStatus, EventRequest],
     make_event_request: Callable[..., EventRequest],
     save: Callable[..., None],
 ) -> None:
-    """Coordinator 9 holds only a completed event, so has nothing to supervise."""
+    """Coordinator 9 holds only a completed event, so is free to take a new one.
+
+    AC3 lists them anyway, so the Lead can see who is free (ADR-0120).
+    """
     save(
         make_event_request(
             reference="EVR-NINE0001", status=EventRequestStatus.COMPLETED, coordinator_id=9
         )
     )
 
+    shown = [
+        (w.coordinator_id, w.coordinator_name, len(w.assigned))
+        for w in list_requests_for_each_coordinator()
+    ]
+
+    assert shown == [(9, "Coordinator Nine", 0), (3, "Coordinator Three", 6)]
+
+
+def test_only_event_coordinators_are_listed(saved_users: list[Any], saved_leads: list[Any]) -> None:
+    """Venue Staff, Technical Support, the organiser and the Leads hold no events."""
     coordinator_ids = [w.coordinator_id for w in list_requests_for_each_coordinator()]
 
-    assert coordinator_ids == [3]
+    assert coordinator_ids == [9, 3]
+
+
+def test_with_no_event_coordinator_account_the_list_is_empty(db_session: Session) -> None:
+    assert list_requests_for_each_coordinator() == []
 
 
 def test_an_inactive_event_is_not_counted_in_a_coordinators_events(
     one_event_in_each_status: dict[EventRequestStatus, EventRequest],
 ) -> None:
-    (workload,) = list_requests_for_each_coordinator()
+    nine, three = list_requests_for_each_coordinator()
 
-    assert {event.id for event in workload.assigned} == {
+    assert nine.assigned == []
+    assert {event.id for event in three.assigned} == {
         one_event_in_each_status[status].id for status in ACTIVE_STATUSES
     }
 
@@ -240,4 +288,6 @@ def test_an_event_waiting_for_the_lead_is_in_nobodys_workload(
 ) -> None:
     save(make_event_request(coordinator_id=None))
 
-    assert list_requests_for_each_coordinator() == []
+    held = [(w.coordinator_id, w.assigned) for w in list_requests_for_each_coordinator()]
+
+    assert held == [(9, []), (3, [])]

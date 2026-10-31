@@ -1,9 +1,10 @@
-"""Unit tests for SCRUM-96's two Lead-only list routes (AC1, AC2, AC3).
+"""Unit tests for SCRUM-96's two Lead-only list routes (AC1 to AC4, as since 17 Oct).
 
 ``GET /api/events/requests/active`` lists every active event with its coordinator and
-status, and ``GET /api/events/coordinators/workload`` lists each coordinator with their
-active events. Only the Event Coordinator Lead may call either: an Event Coordinator
-is refused by ``@requires_role``, with the service never reached. As in
+status, and ``GET /api/events/coordinators/workload`` lists every Event Coordinator
+with how many active events they hold and those events (ADR-0120). Only the Event
+Coordinator Lead may call either: an Event Coordinator is refused by
+``@requires_role``, with the service never reached. As in
 ``test_lead_assignment_permissions.py``, the registered view runs inside a request
 context with the service replaced by a mock.
 """
@@ -144,20 +145,6 @@ def test_the_lead_sees_each_active_event_with_its_status_and_coordinator(
     }
 
 
-def test_an_event_nobody_holds_yet_shows_no_coordinator(
-    call_route: CallRoute,
-    token_for: Callable[..., str],
-    replace_services: ReplaceServices,
-    make_event_request: Callable[..., EventRequest],
-) -> None:
-    replace_services(routes, {"list_active_requests": [ActiveRequest(make_event_request(), None)]})
-    endpoint, path, _ = ROUTES["active"]
-
-    response, _ = call_route(endpoint, "GET", path, {}, token_for(role=Role.EVENT_COORDINATOR_LEAD))
-
-    assert response.get_json()["event_requests"][0]["coordinator"] is None
-
-
 def test_the_lead_sees_each_coordinator_with_their_events_and_no_user_id(
     call_route: CallRoute, token_for: Callable[..., str], listing_services: dict[str, MagicMock]
 ) -> None:
@@ -170,17 +157,35 @@ def test_the_lead_sees_each_coordinator_with_their_events_and_no_user_id(
     assert status == 200
     listing_services["list_requests_for_each_coordinator"].assert_called_once_with()
     (coordinator,) = response.get_json()["coordinators"]
-    assert set(coordinator) == {"coordinator", "event_requests"}
+    assert set(coordinator) == {"coordinator", "active_count", "event_requests"}
     assert coordinator["coordinator"] == "Coordinator Three"
+    assert coordinator["active_count"] == 1
     assert [event["reference"] for event in coordinator["event_requests"]] == ["EVR-AAAAAAAA"]
     assert coordinator["event_requests"][0]["status"] == "approved"
+
+
+def test_a_coordinator_with_no_active_event_is_sent_with_a_count_of_0(
+    call_route: CallRoute, token_for: Callable[..., str], replace_services: ReplaceServices
+) -> None:
+    """AC3: the Lead sees who is free, and the web app shows the count (ADR-0120)."""
+    idle = CoordinatorWorkload(9, "Coordinator Nine", [])
+    replace_services(routes, {"list_requests_for_each_coordinator": [idle]})
+    endpoint, path, _ = ROUTES["workload"]
+
+    response, _ = call_route(endpoint, "GET", path, {}, token_for(role=Role.EVENT_COORDINATOR_LEAD))
+
+    assert response.get_json() == {
+        "coordinators": [
+            {"coordinator": "Coordinator Nine", "active_count": 0, "event_requests": []}
+        ]
+    }
 
 
 @pytest.mark.parametrize(
     ("route", "list_name", "message"),
     [
         ("active", "event_requests", "There are no active event requests."),
-        ("workload", "coordinators", "No coordinator has an active event request."),
+        ("workload", "coordinators", "There are no Event Coordinators."),
     ],
 )
 def test_an_empty_list_says_so(

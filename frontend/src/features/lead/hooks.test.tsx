@@ -15,6 +15,9 @@ import {
   useUnassignedQueue,
 } from './hooks'
 
+/** The assign hook's callbacks, when a test only cares what the hook sends and reads. */
+const IGNORE_OUTCOME = { onAssigned: () => undefined, onRefused: () => undefined }
+
 function wrapper({ children }: { children: ReactNode }) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -24,9 +27,12 @@ function wrapper({ children }: { children: ReactNode }) {
 
 /** The queue and the assign mutation sharing one query client, as the queue screen will. */
 function renderQueueAndAssign() {
-  return renderHook(() => ({ queue: useUnassignedQueue(), assign: useAssignCoordinator() }), {
-    wrapper,
-  })
+  return renderHook(
+    () => ({ queue: useUnassignedQueue(), assign: useAssignCoordinator(IGNORE_OUTCOME) }),
+    {
+      wrapper,
+    },
+  )
 }
 
 /** Every Lead query and both actions on one query client, as moving between the two pages would. */
@@ -36,7 +42,7 @@ function renderEveryLeadHook() {
       queue: useUnassignedQueue(),
       active: useActiveEvents(),
       workload: useCoordinatorWorkload(),
-      assign: useAssignCoordinator(),
+      assign: useAssignCoordinator(IGNORE_OUTCOME),
       reassign: useReassignCoordinator(),
     }),
     { wrapper },
@@ -105,13 +111,10 @@ describe('SCRUM-96 the Lead oversight hooks', () => {
     await waitFor(() =>
       expect(readsOf(requests)).toEqual({ [QUEUE_PATH]: 2, [ACTIVE_PATH]: 2, [WORKLOAD_PATH]: 2 }),
     )
-    const names = result.current.workload.data?.coordinators.map((entry) => entry.coordinator)
-    expect(names).toEqual([
-      MOCK_ACCOUNTS.otherCoordinator.full_name,
-      MOCK_ACCOUNTS.coordinator.full_name,
-    ])
-    const heldByAisha = result.current.workload.data?.coordinators[0]?.event_requests ?? []
-    expect(heldByAisha.map((row) => row.reference)).toContain('EVR-MOCK0001')
+    const aisha = result.current.workload.data?.coordinators.find(
+      (entry) => entry.coordinator === MOCK_ACCOUNTS.otherCoordinator.full_name,
+    )
+    expect(aisha?.event_requests.map((row) => row.reference)).toContain('EVR-MOCK0001')
   })
 })
 

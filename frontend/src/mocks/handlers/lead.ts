@@ -20,13 +20,14 @@ import { accountForRequest } from './auth'
 /**
  * The Event Coordinator Lead's endpoints, as the backend on main answers them: the queue and the
  * first assignment (SCRUM-95, ADR-0036), and the active list, the workload and reassignment
- * (SCRUM-96, ADR-0041). Only the Lead may use them. One store of events lies behind all five, so
- * a request assigned from the queue joins its coordinator's workload, as it does on the backend.
+ * (SCRUM-96, ADR-0041, ADR-0120). Only the Lead may use them. One store of events lies behind all
+ * five, so a request assigned from the queue joins its coordinator's workload, as it does on the
+ * backend.
  */
 
 export const EMPTY_QUEUE_MESSAGE = 'No event requests are waiting to be assigned.'
 const NO_ACTIVE_EVENTS_MESSAGE = 'There are no active event requests.'
-const NO_WORKLOAD_MESSAGE = 'No coordinator has an active event request.'
+const NO_WORKLOAD_MESSAGE = 'There are no Event Coordinators.'
 export const NOT_A_COORDINATOR_MESSAGE = 'No Event Coordinator has this email address.'
 const ALREADY_HAS_COORDINATOR_MESSAGE = 'This event request already has a coordinator.'
 const NOT_ASSIGNABLE_MESSAGE = 'Only a submitted event request can be assigned to a coordinator.'
@@ -270,10 +271,12 @@ export function eventByReference(reference: string): LeadMockEvent | undefined {
   )
 }
 
+function eventCoordinators(): MockAccount[] {
+  return Object.values(MOCK_ACCOUNTS).filter((account) => account.role === ROLE.EVENT_COORDINATOR)
+}
+
 function coordinatorWithEmail(email: string): MockAccount | undefined {
-  return Object.values(MOCK_ACCOUNTS).find(
-    (account) => account.role === ROLE.EVENT_COORDINATOR && account.email === email,
-  )
+  return eventCoordinators().find((account) => account.email === email)
 }
 
 function coordinatorNameOf(coordinatorId: number): string {
@@ -285,8 +288,17 @@ function isActive(event: LeadMockEvent): boolean {
   return ACTIVE_STATUSES.includes(event.status)
 }
 
-function activeNewestFirst(): LeadMockEvent[] {
-  const active = events.filter(isActive)
+/** An event the Lead's two lists show: held by a coordinator and active (ADR-0120). */
+interface HeldEvent extends LeadMockEvent {
+  coordinator_id: number
+}
+
+function isHeldAndActive(event: LeadMockEvent): event is HeldEvent {
+  return event.coordinator_id !== null && isActive(event)
+}
+
+function activeNewestFirst(): HeldEvent[] {
+  const active = events.filter(isHeldAndActive)
   return active.sort((a, b) => b.created_at.localeCompare(a.created_at))
 }
 
@@ -332,28 +344,27 @@ function queueBody() {
 function activeBody() {
   const rows = activeNewestFirst().map((event) => ({
     ...listRow(event),
-    coordinator: event.coordinator_id === null ? null : coordinatorNameOf(event.coordinator_id),
+    coordinator: coordinatorNameOf(event.coordinator_id),
   }))
   return listBody('event_requests', rows, NO_ACTIVE_EVENTS_MESSAGE)
 }
 
-/** Each coordinator holding an active event, by name then id, with those events newest first. */
+/**
+ * Every Event Coordinator by name then id, an idle one included, with the active events they
+ * hold, newest first, and how many (ADR-0120).
+ */
 function workloadBody() {
-  const heldBy = new Map<number, LeadMockEvent[]>()
-  for (const event of activeNewestFirst()) {
-    if (event.coordinator_id === null) {
-      continue
+  const coordinators = eventCoordinators()
+  coordinators.sort((a, b) => a.full_name.localeCompare(b.full_name) || a.id - b.id)
+  const active = activeNewestFirst()
+  const rows = coordinators.map((coordinator) => {
+    const held = active.filter((event) => event.coordinator_id === coordinator.id)
+    return {
+      coordinator: coordinator.full_name,
+      active_count: held.length,
+      event_requests: held.map(listRow),
     }
-    const held = heldBy.get(event.coordinator_id) ?? []
-    held.push(event)
-    heldBy.set(event.coordinator_id, held)
-  }
-  const workloads = [...heldBy].map(([id, held]) => ({ id, name: coordinatorNameOf(id), held }))
-  workloads.sort((a, b) => a.name.localeCompare(b.name) || a.id - b.id)
-  const rows = workloads.map((workload) => ({
-    coordinator: workload.name,
-    event_requests: workload.held.map(listRow),
-  }))
+  })
   return listBody('coordinators', rows, NO_WORKLOAD_MESSAGE)
 }
 

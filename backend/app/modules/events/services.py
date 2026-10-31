@@ -119,17 +119,17 @@ class CoordinatorContact:
 class ActiveRequest:
     """One active event with the name of its coordinator, for the Lead (SCRUM-96 AC1).
 
-    No user id: the coordinator is shown by name. ``coordinator_name`` is ``None``
-    while a submitted request waits for the Lead to assign it.
+    No user id: the coordinator is shown by name. An active event always has one
+    (AC2, ADR-0120).
     """
 
     event_request: EventRequest
-    coordinator_name: str | None
+    coordinator_name: str
 
 
 @dataclass(frozen=True)
 class CoordinatorWorkload:
-    """A coordinator and their active events, for the Lead (SCRUM-96 AC2)."""
+    """An Event Coordinator and their active events, for the Lead (SCRUM-96 AC3)."""
 
     coordinator_id: int
     coordinator_name: str
@@ -2658,32 +2658,38 @@ def list_unassigned_requests(*, session: Session | None = None) -> list[EventReq
 
 
 def _active_requests_newest_first(session: Session) -> list[EventRequest]:
-    """Every request in an :data:`ACTIVE_STATUSES` status, newest first."""
-    return _list_event_requests_newest_first(EventRequest.status.in_(ACTIVE_STATUSES), session)
+    """Every active event, newest first (SCRUM-96 AC2, ADR-0120).
+
+    Active means it has a coordinator and is in an :data:`ACTIVE_STATUSES` status. A
+    submitted request with no coordinator is waiting in the Lead's queue instead, so an
+    event is in one of the Lead's lists, never both (SCRUM-95).
+    """
+    is_active = and_(
+        EventRequest.coordinator_id.is_not(None), EventRequest.status.in_(ACTIVE_STATUSES)
+    )
+    return _list_event_requests_newest_first(is_active, session)
 
 
 def list_active_requests(*, session: Session | None = None) -> list[ActiveRequest]:
-    """Every active event with its coordinator's name, newest first (SCRUM-96 AC1).
+    """Every active event with its coordinator's name, newest first (SCRUM-96 AC1, AC2).
 
-    "Active" is :data:`ACTIVE_STATUSES`, the same set a reassignment accepts (ADR-0041):
-    drafts, and completed, cancelled and rejected events, are left out. The Lead
-    supervises every coordinator, so the list is not filtered by Lead (SCRUM-96
-    Assumption). A submitted request still waiting to be assigned is active, and is
-    listed with no coordinator.
+    Drafts, events nobody holds yet, and completed, cancelled and rejected events are
+    left out (ADR-0120). The Lead supervises every coordinator, so the list is not
+    filtered by Lead (SCRUM-96 Assumption).
 
     Args:
         session: Database session; defaults to ``db.session``.
 
     Returns:
-        The active events, each with its coordinator's full name or ``None``.
+        The active events, each with its coordinator's full name.
     """
     sess = resolve_session(session)
     event_requests = _active_requests_newest_first(sess)
-    coordinator_ids = {r.coordinator_id for r in event_requests if r.coordinator_id is not None}
+    coordinator_ids = {event_request.coordinator_id for event_request in event_requests}
     names = get_user_full_names(coordinator_ids, session=sess)
     active = []
     for event_request in event_requests:
-        coordinator_name = names.get(event_request.coordinator_id)
+        coordinator_name = names[event_request.coordinator_id]
         active.append(ActiveRequest(event_request, coordinator_name))
     return active
 
@@ -2691,24 +2697,28 @@ def list_active_requests(*, session: Session | None = None) -> list[ActiveReques
 def list_requests_for_each_coordinator(
     *, session: Session | None = None
 ) -> list[CoordinatorWorkload]:
-    """Each coordinator's active events, coordinators by name (SCRUM-96 AC2).
+    """Every Event Coordinator's active events, coordinators by name (SCRUM-96 AC3).
 
-    A coordinator with no active event is left out rather than listed empty, so the
-    list shows who has work to supervise; a request nobody holds yet is in no one's
-    list. A coordinator's events are newest first, as in :func:`list_active_requests`.
+    A coordinator with no active event is listed with none, so the Lead can see who is
+    free to take a new event (ADR-0120). Only Event Coordinators are listed, and every
+    active event is held by one: the first assignment and a reassignment both accept
+    only that role, and no route changes a role. A request nobody holds yet is in no
+    one's list. A coordinator's events are newest first, as in
+    :func:`list_active_requests`.
 
     Args:
         session: Database session; defaults to ``db.session``.
 
     Returns:
-        One entry per coordinator who holds an active event, ordered by name then id.
+        One entry per Event Coordinator, ordered by name then id; empty only when there
+        is no Event Coordinator account.
     """
     sess = resolve_session(session)
     held_by: dict[int, list[EventRequest]] = {}
+    for coordinator_id in list_user_ids_with_role(Role.EVENT_COORDINATOR, session=sess):
+        held_by[coordinator_id] = []
     for event_request in _active_requests_newest_first(sess):
-        if event_request.coordinator_id is None:
-            continue
-        held_by.setdefault(event_request.coordinator_id, []).append(event_request)
+        held_by[event_request.coordinator_id].append(event_request)
     names = get_user_full_names(held_by, session=sess)
     workloads = [
         CoordinatorWorkload(coordinator_id, names[coordinator_id], assigned)
@@ -2727,12 +2737,29 @@ def _request_waiting_for_the_lead(reference: str, session: Session) -> EventRequ
     because it has its own answer; the status check then covers a cancelled or rejected
     request, which has no coordinator and is no longer waiting.
 
+    The row is read under a lock, as a venue booking decision is (ADR-0084): two Leads
+    assigning the same request at once would otherwise both find it unassigned, and
+    the second would overwrite the first. The second now waits until the first
+    commits, then finds its coordinator and is refused, so the first assignment is
+    kept (SCRUM-95 AC4, ADR-0120). ``populate_existing`` is needed with it, because a
+    copy the session loaded earlier may predate the other assignment's commit, and the
+    locked row has to overwrite it rather than be skipped as already known.
+
     Raises:
         NotFoundError: 404 — no such request, or it is still a draft.
         ConflictError: 409 — the request already has a coordinator.
         RequestNotAssignableError: 409 — the request isn't waiting for the Lead.
     """
-    event_request = _event_request_for_staff(reference, session)
+    # The same lookup as _event_request_for_staff (no drafts, ADR-0024), but locked.
+    locked = (
+        select(EventRequest)
+        .where(EventRequest.reference == _normalise_reference(reference), _not_a_draft())
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    event_request = session.scalar(locked)
+    if event_request is None:
+        raise NotFoundError(EVENT_REQUEST_NOT_FOUND_MESSAGE)
     if event_request.coordinator_id is not None:
         raise ConflictError(ALREADY_HAS_COORDINATOR_MESSAGE)
     if event_request.status is not WAITING_FOR_LEAD_STATUS:

@@ -8,12 +8,13 @@ import type { CoordinatorWorkload } from '../api'
 import { formatEventDates, formatProposedTimes } from '../formatRequest'
 
 /**
- * One coordinator and the active events they hold, in the backend's order, each opening its
- * read-only record (SCRUM-24 AC10, ADR-0095).
+ * One coordinator, how many active events the backend counted for them (0 when they are free,
+ * SCRUM-96 AC3), and those events in the backend's order, each opening its read-only record
+ * (SCRUM-24 AC10, ADR-0095).
  */
 export function WorkloadCard({ workload }: { workload: CoordinatorWorkload }) {
   const headingId = useId()
-  const { coordinator, event_requests: events } = workload
+  const { coordinator, active_count: count, event_requests: events } = workload
 
   return (
     <article
@@ -23,9 +24,10 @@ export function WorkloadCard({ workload }: { workload: CoordinatorWorkload }) {
       <h3 id={headingId} className="font-display text-lg font-semibold">
         {coordinator}
       </h3>
-      {events.length === 0 ? (
-        <p className="text-ink-faint mt-3 text-sm">No active events.</p>
-      ) : (
+      <p className="text-ink-faint mt-1 text-sm">
+        {count === 1 ? '1 active event' : `${count} active events`}
+      </p>
+      {events.length > 0 && (
         <ul className="mt-3 space-y-3">
           {events.map((event) => (
             <li key={event.reference} className="flex items-start justify-between gap-3">
