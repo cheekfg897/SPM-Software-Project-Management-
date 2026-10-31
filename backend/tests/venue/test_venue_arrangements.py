@@ -426,6 +426,25 @@ def test_the_hold_is_released_in_the_same_commit_as_the_withdrawal(
     assert withdrawn.booking.status is BookingStatus.CANCELLED
 
 
+def test_withdrawing_a_request_leaves_a_booking_for_the_same_slot_alone(
+    db_session: Session, venue: Venue, saved_event: SavedEvent, saved_users: list[object]
+) -> None:
+    """ADR-0118 decision 5: only a hold is freed when an arrangement is withdrawn.
+
+    A second request for an approved slot holds nothing, and looking for its booking by
+    period would find the approved one's.
+    """
+    event = saved_event()
+    booked = raise_booking(venue, event, db_session)
+    decide(booked.id, "approved", db_session)
+    second_ask = raise_booking(venue, event, db_session)
+
+    _withdraw(event, second_ask.id, db_session)
+
+    assert bookings(db_session) == [(venue.id, BookingStatus.CONFIRMED)]
+    assert reload_request(db_session, booked.id).status is BookingRequestStatus.APPROVED
+
+
 def test_withdrawing_a_hold_frees_the_venue_for_another_event(
     db_session: Session,
     multi_venue_event: EventRequest,
