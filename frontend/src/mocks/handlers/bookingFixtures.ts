@@ -286,7 +286,8 @@ const MOVED_A_DAY_LATER: Drift = {
 
 /**
  * Arrangements no longer waiting for Venue Staff, so the queue never shows them (SCRUM-93).
- * The multi-venue event has two rejected and one withdrawn; the booked event has an approved
+ * The multi-venue event has two rejected, the main programme with an alternative Venue Staff
+ * suggested (SCRUM-70), and one withdrawn; the booked event has an approved
  * one, which nothing can withdraw and whose venue has since been blocked, so it is flagged as
  * needing an alternative venue (SCRUM-92), and a rejected one. Each event's are saved out of period
  * order, and two start together, so the list's order (period, then id) is visible.
@@ -324,6 +325,10 @@ export const MOCK_ARRANGEMENTS = {
     purpose: 'Main programme',
     status: 'rejected',
     decision_reason: 'Hall closed for repairs',
+    // Venue Staff suggested the Garden Pavilion the next afternoon instead (SCRUM-70).
+    suggested_venue_id: 33,
+    suggested_starts_at: '2026-11-26T13:00:00+08:00',
+    suggested_ends_at: '2026-11-26T17:00:00+08:00',
   }),
   rejectedBreakout: arrangementOf(MOCK_BOOKING_EVENTS.multiVenue, {
     id: 9103,

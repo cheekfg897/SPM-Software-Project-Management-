@@ -24,7 +24,6 @@ import { accountForRequest } from './auth'
 import {
   MOCK_ARRANGEMENTS,
   MOCK_BOOKING_EVENTS,
-  MOCK_BOOKING_VENUES,
   MOCK_FLAGGED_DRIFTS,
   MOCK_PENDING_DECISIONS,
   MOCK_SAFETY_APPROVED_EVENT_IDS,
@@ -171,10 +170,17 @@ const CHANGEABLE_FIELDS = ['purpose', 'expected_occupancy', 'required_layout', '
 const LAYOUT_ERROR_MESSAGE = `Must be one of: ${LAYOUT_OPTIONS.map((option) => option.value).join(', ')}.`
 
 const events: MockBookingEvent[] = Object.values(MOCK_BOOKING_EVENTS)
-const venues = Object.values(MOCK_BOOKING_VENUES)
 let requests: BookingRequest[] = []
 /** What changed under each arrangement since its period was set, by its id (SCRUM-59). */
 let drifts = new Map<number, Drift>()
+
+/**
+ * A venue of the catalogue, as the backend reads it for a request: any venue may be asked for,
+ * such as one Venue Staff suggested instead of another (SCRUM-70).
+ */
+function venueById(venueId: number) {
+  return currentMockVenues().find((venue) => venue.id === venueId)
+}
 
 /**
  * Forget the requests raised since, and put back the waiting ones and the decided
@@ -486,7 +492,7 @@ function findOwnEvent(reference: unknown, coordinatorId: number): MockBookingEve
 
 /** The mock's suitability check: the venue must hold the request's own occupancy. */
 function needsJustification(candidate: BookingRequest): boolean {
-  const venue = venues.find((existing) => existing.id === candidate.venue_id)
+  const venue = venueById(candidate.venue_id)
   const tooSmall = venue !== undefined && candidate.expected_occupancy > venue.capacity
   return tooSmall && candidate.justification === null
 }
@@ -607,7 +613,7 @@ export function flagArrangementsAfterChange(reference: string, change: Significa
     }
     // The backend reads every change since the period was set back from the history (SCRUM-59).
     drifts.set(existing.id, driftAfter(drifts.get(existing.id), change))
-    const venueCapacity = venues.find((venue) => venue.id === existing.venue_id)?.capacity ?? 0
+    const venueCapacity = venueById(existing.venue_id)?.capacity ?? 0
     const size = { expectedOccupancy: existing.expected_occupancy, venueCapacity }
     const flags = reassessmentFlagsFor(size, change)
     if (flags.length === 0) {
@@ -826,7 +832,7 @@ function reconfirmRefusal(booking: BookingRequest, moved: BookingRequest, reason
   if (Object.keys(outside).length > 0) {
     return validationError(outside)
   }
-  const capacity = venues.find((venue) => venue.id === booking.venue_id)?.capacity ?? 0
+  const capacity = venueById(booking.venue_id)?.capacity ?? 0
   if (moved.expected_occupancy > capacity && reason === null) {
     return validationError({ reason: [capacityReasonMessage(capacity, moved.expected_occupancy)] })
   }
@@ -900,8 +906,7 @@ export const bookingHandlers: RequestHandler[] = [
     }
 
     const created = toRequest(event, body, requests.length + 1)
-    const venue = venues.find((candidate) => candidate.id === created.venue_id)
-    if (venue === undefined) {
+    if (venueById(created.venue_id) === undefined) {
       return validationError({ venue_id: ['Venue not found.'] })
     }
     if (needsJustification(created)) {
