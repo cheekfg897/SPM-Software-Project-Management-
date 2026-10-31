@@ -2803,9 +2803,16 @@ def send_hold_expiry_warnings(
 RELEASED_DETAIL = "Venue arrangement {id} at {venue}, {starts} to {ends}, was released."
 
 
-def _released_detail(arrangement: VenueBookingRequest, session: Session | None) -> str:
+def _arrangement_detail(
+    template: str, arrangement: VenueBookingRequest, session: Session | None
+) -> str:
+    """``template`` filled in with the arrangement's id, venue name and period.
+
+    For what Venue Staff are told when a booking is released (ADR-0103) or cancelled
+    (SCRUM-111 AC3).
+    """
     venue = get_venue(arrangement.venue_id, session=session)
-    return RELEASED_DETAIL.format(
+    return template.format(
         id=arrangement.id,
         venue=venue.name,
         starts=_notice_time(arrangement.starts_at),
@@ -2843,7 +2850,7 @@ def release_event_arrangements(
             _withdraw_and_record(arrangement, coordinator_id, session)
             continue
         _release_and_free_venue(arrangement, session)
-        released.append(_released_detail(arrangement, session))
+        released.append(_arrangement_detail(RELEASED_DETAIL, arrangement, session))
     return released
 
 
@@ -2864,6 +2871,9 @@ def tell_venue_staff_of_releases(
 # --------------------------------------------------------------------------
 
 CANCEL_NOT_APPROVED_MESSAGE = "Only an approved booking can be cancelled; this one is {status}."
+#: What Venue Staff and the Safety Officers are told about the booking (AC2, AC3,
+#: ADR-0117): the arrangement, its venue and its period, in business time.
+CANCELLED_DETAIL = "Venue arrangement {id} at {venue}, {starts} to {ends}, was cancelled."
 
 
 def cancel_approved_booking(
@@ -2882,9 +2892,12 @@ def cancel_approved_booking(
     untouched. An event in Safety Review goes back to Approved if the Safety Officer had
     passed it or this was its last active venue (AC2,
     ``return_to_planning_after_cancellation``). The cancellation, its history entry with
-    the reason (AC5) and any change to the event are saved in one commit. The checks
-    run in this order: the reference and the coordinator, the event's status, the
-    arrangement, its status, then the payload (AC4). See ADR-0117.
+    the reason (AC5) and any change to the event are saved in one commit. Then every
+    Venue Staff user is told, naming the event, the venue and the period (AC3), and, for
+    an event that was in Safety Review, every Safety Officer (AC2); a notice that can't
+    be saved loses only itself (ADR-0015). The coordinator is told nothing: they did
+    it. The checks run in this order: the reference and the coordinator, the event's
+    status, the arrangement, its status, then the payload (AC4). See ADR-0117.
 
     Raises:
         NotFoundError: 404 — no such event among the coordinator's own, or no such
@@ -2922,6 +2935,9 @@ def cancel_approved_booking(
         event.id, arrangement.id, actor_id=coordinator_id, session=session
     )
     sess.commit()
+    detail = _arrangement_detail(CANCELLED_DETAIL, arrangement, session)
+    _tell_venue_staff(event, [detail], NotificationKind.VENUE_BOOKING_CANCELLED, session)
+    event_services.tell_safety_officers_of_cancelled_booking(event, detail, session=session)
     return show_booking_request(arrangement, event)
 
 
