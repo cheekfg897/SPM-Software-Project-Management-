@@ -64,7 +64,7 @@ export function driftAfter(before: Drift | undefined, change: SignificantChange)
 /**
  * What reconfirming the booking gives it (`_reconfirmation_of`): its period moved by as much as the
  * event's start moved (AC2), and the attendance now as its occupancy when it held everyone and was
- * outgrown (AC9). With no drift, nothing has moved.
+ * outgrown (AC10). With no drift, nothing has moved.
  */
 export function reconfirmationOf(
   booking: BookingRequest,

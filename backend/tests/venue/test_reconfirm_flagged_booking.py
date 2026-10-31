@@ -6,10 +6,10 @@ venue's setup and turnaround runs into another booking or a live hold, falls out
 the venue's hours, overlaps a block or overlaps another of the event's arrangements at
 the venue (AC3). A venue too small for the booking's occupancy needs a reason (AC4).
 It is refused while a replacement is waiting for a decision (AC6). Each booking is
-reconfirmed on its own (AC8), its preparation details are kept, a booking that held
-everyone is raised to the new attendance (AC9), and a request Venue Staff haven't
-decided is only moved (AC10). The flags clear, the event's history records it and the
-event's coordinator is told (AC2, ADR-0112).
+reconfirmed on its own (AC8), its preparation details are kept (AC9), a booking that
+held everyone is raised to the new attendance (AC10), and a request Venue Staff
+haven't decided is only moved (AC11). The flags clear, the event's history records it
+and the event's coordinator is told (AC2, ADR-0112).
 
 The services run against ``db_session``. The event is the ``saved_event`` fixture's:
 approved, 80 attending, from 09:00 on 1 November 2026 to 17:30 the next day. The
@@ -595,7 +595,7 @@ def test_the_venue_is_read_under_a_lock_while_the_period_is_checked(
 
 
 # --------------------------------------------------------------------------
-# AC4 and AC9 — capacity, against the booking's own occupancy
+# AC4 and AC10 — capacity, against the booking's own occupancy
 # --------------------------------------------------------------------------
 
 
@@ -682,7 +682,7 @@ def test_a_breakout_room_keeps_its_occupancy_whatever_the_attendance(
 
 
 # --------------------------------------------------------------------------
-# AC6, AC8 and preparation — what else reconfirming leaves alone, or waits for
+# AC6, AC8 and AC9 — what else reconfirming leaves alone, or waits for
 # --------------------------------------------------------------------------
 
 
@@ -740,7 +740,7 @@ def test_the_bookings_preparation_details_are_kept(
 
 
 # --------------------------------------------------------------------------
-# AC10 — a request Venue Staff haven't decided is moved, not approved
+# AC11 — a request Venue Staff haven't decided is moved, not approved
 # --------------------------------------------------------------------------
 
 

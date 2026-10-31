@@ -344,7 +344,7 @@ def list_flagged_bookings() -> tuple[Response, int]:
 @bp.post("/booking-requests/<int:request_id>/reconfirm")
 @requires_role(Role.VENUE_STAFF)
 def reconfirm_flagged_booking(request_id: int) -> tuple[Response, int]:
-    """Reconfirm a flagged booking for its new period (AC2-AC4, AC9, AC10)."""
+    """Reconfirm a flagged booking for its new period (AC2-AC4, AC10, AC11)."""
     shown = services.reconfirm_flagged_booking(
         request_id, request.get_json(silent=True), reconfirmed_by=int(g.current_user_id)
     )

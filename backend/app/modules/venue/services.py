@@ -3094,7 +3094,7 @@ RECONFIRM_SAME_EVENT_MESSAGE = (
     "Cannot reconfirm: the new period overlaps venue arrangement #{id} of the same event at"
     " this venue."
 )
-#: What the coordinator is told (AC2, AC4, AC10, ADR-0112), in business time.
+#: What the coordinator is told (AC2, AC4, AC11, ADR-0112), in business time.
 RECONFIRMED_DETAIL = "Venue arrangement {id} at {venue} is reconfirmed for {starts} to {ends}."
 MOVED_DETAIL = (
     "Venue arrangement {id} at {venue} moved to {starts} to {ends} and waits for Venue"
@@ -3116,7 +3116,7 @@ def _reconfirmation_of(
     arrangement's period was last set, raised or reconfirmed, however many edits that
     took (ADR-0112 decision 1). A change that didn't move the start leaves it where it
     is. The move is worked out in UTC, which is the same as in business time because
-    Singapore has no daylight saving. AC9: an arrangement that held the whole audience,
+    Singapore has no daylight saving. AC10: an arrangement that held the whole audience,
     and that the attendance has since outgrown, is reconfirmed for the attendance as it
     is now.
     """
@@ -3156,9 +3156,9 @@ def _bookings_to_reassess(session: Session | None) -> list[VenueBookingRequest]:
 def list_flagged_bookings(*, session: Session | None = None) -> list[FlaggedBookingAsShown]:
     """Every booking a change flagged, the earliest event first (SCRUM-59 AC1).
 
-    Approved bookings and requests Venue Staff haven't decided yet (AC10), each with
+    Approved bookings and requests Venue Staff haven't decided yet (AC11), each with
     its flags and their reasons, and with the period and occupancy reconfirming it
-    gives it (AC2, AC9). Any Venue Staff member sees all of them, as for the queue
+    gives it (AC2, AC10). Any Venue Staff member sees all of them, as for the queue
     (ADR-0035 decision 1).
     """
     flagged = []
@@ -3242,7 +3242,7 @@ def _require_within_event(event: EventForBooking, period: Span) -> None:
 
 
 def _require_reason_if_too_small(venue: Venue, occupancy: int, reason: str | None) -> None:
-    """A venue too small for the booking's occupancy needs a reason (AC4, AC9).
+    """A venue too small for the booking's occupancy needs a reason (AC4, AC10).
 
     Capacity is the one thing checked; layout, facilities and accessibility are left to
     Venue Staff's judgement.
@@ -3259,7 +3259,7 @@ def _require_reason_if_too_small(venue: Venue, occupancy: int, reason: str | Non
 def _own_booking(arrangement: VenueBookingRequest, session: Session | None) -> Booking | None:
     """The booking an approved arrangement holds its venue through, if it has one yet.
 
-    A Pending or Conflicting request has no booking of its own yet (AC10).
+    A Pending or Conflicting request has no booking of its own yet (AC11).
     """
     if arrangement.status is not BookingRequestStatus.APPROVED:
         return None
@@ -3355,7 +3355,7 @@ def _flags_as_recorded(arrangement: VenueBookingRequest) -> list[dict[str, str]]
 def _reconfirmed_detail(
     arrangement: VenueBookingRequest, venue: Venue, previous_occupancy: int, reason: str | None
 ) -> str:
-    """What the coordinator is told about the reconfirmation (AC2, AC4, AC10).
+    """What the coordinator is told about the reconfirmation (AC2, AC4, AC11).
 
     An undecided request was only moved, so its notice says it still waits for Venue
     Staff. A raised occupancy and any reason are added.
@@ -3388,12 +3388,13 @@ def reconfirm_flagged_booking(
     The period, which the queue pre-fills, must lie within the event (AC2) and inside
     the venue's hours, and, with the venue's setup and turnaround, clear of other
     bookings, live holds, blocks and the event's other arrangements at the venue (AC3).
-    A booking that held everyone takes the new attendance as its occupancy (AC9), and a
+    A booking that held everyone takes the new attendance as its occupancy (AC10), and a
     venue too small for it needs a reason, which is kept as Venue Staff's reason (AC4).
 
     The booking moves, with its venue booking, and its flags are cleared; preparation
-    details are kept, and the event's other bookings are untouched (AC8). A request
-    Venue Staff haven't decided only moves, and waits in the queue as Pending (AC10).
+    details are kept (AC9), and the event's other bookings are untouched (AC8). A
+    request Venue Staff haven't decided only moves, and waits in the queue as Pending
+    (AC11).
     Other Pending requests the new period clashes with are marked Conflicting, as an
     approval marks them (SCRUM-44). The history entry is saved in the same commit, and
     the event's current coordinator is told in a second (ADR-0015).
@@ -3448,7 +3449,7 @@ def reconfirm_flagged_booking(
     arrangement.expected_occupancy = occupancy
     if reason is not None:
         arrangement.decision_reason = reason
-    # Moved clear of every booking, a Conflicting request no longer clashes (AC10).
+    # Moved clear of every booking, a Conflicting request no longer clashes (AC11).
     if arrangement.status is BookingRequestStatus.CONFLICTING:
         arrangement.status = BookingRequestStatus.PENDING
     arrangement.reassessment_flags.clear()
@@ -3492,7 +3493,7 @@ def reject_flagged_booking(
     period again. The booking shows as Rejected, with the reason, and keeps its flags as
     the record of why; it stays active, holding back Safety Review and confirmation,
     until the coordinator withdraws or replaces it (SCRUM-93). A request Venue Staff
-    haven't decided is rejected as the queue rejects one (AC10). The event stays
+    haven't decided is rejected as the queue rejects one (AC11). The event stays
     Approved, its other bookings are untouched (AC8), and the history entry is saved in
     the same commit. The event's current coordinator is told the reason in a second
     (ADR-0015).

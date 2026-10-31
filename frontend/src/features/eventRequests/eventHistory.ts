@@ -155,7 +155,7 @@ function periodIn(details: Details, startKey: string, endKey: string): string | 
   return `${formatShortDate(startsAt)}, ${formatTimeRange(startsAt, endsAt)}`
 }
 
-/** e.g. "80 → 120": a reconfirmed booking's expected occupancy before and after (SCRUM-59 AC9). */
+/** e.g. "80 → 120": a reconfirmed booking's expected occupancy before and after (SCRUM-59 AC10). */
 function occupancyChange(details: Details): string | null {
   const before = numberIn(details, 'previous_expected_occupancy')
   const after = numberIn(details, 'expected_occupancy')

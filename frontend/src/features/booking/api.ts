@@ -144,7 +144,7 @@ export interface BookingRequest {
 
 /**
  * What reconfirming a flagged booking gives it unless Venue Staff adjust the period (SCRUM-59 AC2,
- * AC9): the period moved by as much as the event's start moved, in business time, and the expected
+ * AC10): the period moved by as much as the event's start moved, in business time, and the expected
  * occupancy, raised to the new attendance when the booking held the whole audience.
  */
 export interface Reconfirmation {
@@ -282,7 +282,7 @@ export function fetchFlaggedBookings(): Promise<FlaggedBooking[]> {
 
 /**
  * Reconfirm a flagged booking for a period (SCRUM-59 AC2): an approved one is booked for it, and
- * one Venue Staff haven't decided only moves to it (AC10).
+ * one Venue Staff haven't decided only moves to it (AC11).
  */
 export function reconfirmFlaggedBooking(
   requestId: number,

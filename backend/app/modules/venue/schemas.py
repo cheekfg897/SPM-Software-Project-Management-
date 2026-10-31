@@ -503,7 +503,7 @@ class BookingRequestAsShown:
 
 @dataclass(frozen=True)
 class Reconfirmation:
-    """What reconfirming a flagged booking gives it (SCRUM-59 AC2, AC9, ADR-0112).
+    """What reconfirming a flagged booking gives it (SCRUM-59 AC2, AC10, ADR-0112).
 
     The period, moved by as much as the event's start moved, which Venue Staff may
     adjust, and the expected occupancy, raised to the new attendance when the booking
@@ -694,7 +694,7 @@ class FlaggedBookingSchema(Schema):
     """A booking a change flagged, as Venue Staff's queue lists it (SCRUM-59 AC1).
 
     The booking as every other list shows it, with its flags and their reasons, and
-    what reconfirming it gives it, which the reconfirm form starts from (AC2, AC9).
+    what reconfirming it gives it, which the reconfirm form starts from (AC2, AC10).
     """
 
     booking = fields.Nested(VenueBookingRequestSchema, attribute="shown", dump_only=True)

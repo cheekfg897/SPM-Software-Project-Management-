@@ -1560,7 +1560,7 @@ class EventWhenArranged:
 
     What a reconfirmation measures the change against (ADR-0112): how far the event's
     start has moved since (AC2), and whether the arrangement held the whole audience
-    (AC9).
+    (AC10).
     """
 
     #: The event's start, in UTC.
@@ -1597,7 +1597,7 @@ def get_event_when_arranged(
 ) -> EventWhenArranged:
     """The event's start and attendance when the arrangement's period was last set.
 
-    SCRUM-59 AC2 and AC9, ADR-0112: raised, or last reconfirmed. Each field is read
+    SCRUM-59 AC2 and AC10, ADR-0112: raised, or last reconfirmed. Each field is read
     back from the first edit to it since then, which recorded its value from before;
     a field no edit has touched since is as it is now.
 
