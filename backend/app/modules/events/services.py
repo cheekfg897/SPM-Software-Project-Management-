@@ -2982,7 +2982,7 @@ def list_event_requests_with_venue_bookings(
 
     Whatever the event's status or date, and whatever Venue Staff made of the request:
     this is everything Venue Staff are involved in, as Technical Support's list is for
-    equipment. A withdrawn or released request no longer counts (ADR-0085), and a draft
+    equipment. A retired request no longer counts (ADR-0085), and a draft
     never shows, as on every staff list (ADR-0024). Every Venue Staff user sees the
     same list, since none is assigned to particular venues (ADR-0035 decision 1).
     """
@@ -3869,7 +3869,7 @@ def _has_arrangements(event_request: EventRequest, session: Session) -> bool:
     """Whether arrangements have been made for the event (SCRUM-31 AC7, ADR-0028).
 
     An equipment request, or a venue booking request that is still one of the event's
-    arrangements, whatever Venue Staff made of it. A withdrawn or released one is not,
+    arrangements, whatever Venue Staff made of it. A retired one is not,
     just as a removed equipment request is gone (ADR-0084).
     """
     from app.modules.venue import services as venue_services  # circular at import time
@@ -4976,7 +4976,7 @@ def submit_for_safety_review(
     """Send an approved event to the Safety Officer (SCRUM-97 AC1, AC2, ADR-0047).
 
     Only the event's assigned coordinator may. The event must be approved, have at
-    least one venue arranged, every active arrangement approved (a Withdrawn one is
+    least one venue arranged, every active arrangement approved (a retired one is
     ignored) and every equipment request an outcome from Technical Support; an event
     with no equipment requests passes that check. The ``safety_review`` status and a
     ``safety_review_requested`` history entry naming the coordinator are saved in one
@@ -5649,7 +5649,7 @@ def confirm_event_request(
     Only the event's assigned coordinator may, and only by asking: nothing confirms an
     event on its own (AC3). The event must be in Safety Review with the Safety
     Officer's approval (``has_safety_approval``), have at least one venue arranged,
-    every active arrangement Approved (a Withdrawn one is ignored) and every equipment
+    every active arrangement Approved (a retired one is ignored) and every equipment
     request an outcome; an event with no equipment requests passes that check (AC2).
     The ``confirmed`` status and an ``event_confirmed`` history entry naming the
     coordinator are saved in one commit. The organiser who submitted the request is
