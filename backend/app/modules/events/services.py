@@ -2737,12 +2737,29 @@ def _request_waiting_for_the_lead(reference: str, session: Session) -> EventRequ
     because it has its own answer; the status check then covers a cancelled or rejected
     request, which has no coordinator and is no longer waiting.
 
+    The row is read under a lock, as a venue booking decision is (ADR-0084): two Leads
+    assigning the same request at once would otherwise both find it unassigned, and
+    the second would overwrite the first. The second now waits until the first
+    commits, then finds its coordinator and is refused, so the first assignment is
+    kept (SCRUM-95 AC4, ADR-0120). ``populate_existing`` is needed with it, because a
+    copy the session loaded earlier may predate the other assignment's commit, and the
+    locked row has to overwrite it rather than be skipped as already known.
+
     Raises:
         NotFoundError: 404 — no such request, or it is still a draft.
         ConflictError: 409 — the request already has a coordinator.
         RequestNotAssignableError: 409 — the request isn't waiting for the Lead.
     """
-    event_request = _event_request_for_staff(reference, session)
+    # The same lookup as _event_request_for_staff (no drafts, ADR-0024), but locked.
+    locked = (
+        select(EventRequest)
+        .where(EventRequest.reference == _normalise_reference(reference), _not_a_draft())
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    event_request = session.scalar(locked)
+    if event_request is None:
+        raise NotFoundError(EVENT_REQUEST_NOT_FOUND_MESSAGE)
     if event_request.coordinator_id is not None:
         raise ConflictError(ALREADY_HAS_COORDINATOR_MESSAGE)
     if event_request.status is not WAITING_FOR_LEAD_STATUS:

@@ -17,14 +17,15 @@ that now calls :func:`assign_coordinator_to_request`.
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from datetime import date, datetime, timezone
 from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy import event, insert, select, update
+from sqlalchemy.dialects import postgresql
+from sqlalchemy.orm import ORMExecuteState, Session
 
 from app.common.errors import AppError, ConflictError, NotFoundError, ValidationError
 from app.modules.auth.models import User
@@ -622,3 +623,78 @@ def test_the_first_failure_decides_the_answer(
         assign_coordinator_to_request(
             REFERENCE, {"coordinator_email": "nobody@example.com"}, assigned_by=LEAD_ID
         )
+
+
+# --------------------------------------------------------------------------
+# Several Leads (AC4 as numbered since 15 Oct) — two at once, the first is kept
+# --------------------------------------------------------------------------
+
+#: The other Lead ``saved_leads`` saves, whose assignment lands first here.
+OTHER_LEAD_ID = 12
+
+
+@pytest.fixture()
+def another_lead_assigns_while_locking(
+    db_session: Session, saved_leads: list[User], waiting_request: EventRequest
+) -> Iterator[None]:
+    """Lead 12 gives the request to coordinator 9 at the moment it is locked.
+
+    Stands in for another Lead whose assignment committed while this one waited for
+    the lock. SQLite has no row locks, so one request can't be made to wait for
+    another here. What the test checks is what Postgres relies on: the request is
+    selected ``FOR UPDATE`` (as Postgres would receive it), and the row read under the
+    lock replaces the copy the session already holds, so the other Lead's coordinator
+    is seen (ADR-0120).
+    """
+
+    def _on_execute(state: ORMExecuteState) -> None:
+        sql = str(state.statement.compile(dialect=postgresql.dialect()))
+        if "FROM event_requests" not in sql or "FOR UPDATE" not in sql:
+            return
+        connection = state.session.connection()
+        assigned = (
+            update(EventRequest)
+            .where(EventRequest.id == waiting_request.id)
+            .values(coordinator_id=9)
+        )
+        connection.execute(assigned)
+        recorded = insert(EventHistoryEntry).values(
+            event_request_id=waiting_request.id,
+            kind=EventHistoryKind.COORDINATOR_ASSIGNED,
+            actor_id=OTHER_LEAD_ID,
+            details={"coordinator_id": 9},
+            occurred_at=datetime.now(timezone.utc),
+        )
+        connection.execute(recorded)
+
+    session = db_session()
+    event.listen(session, "do_orm_execute", _on_execute)
+    yield
+    event.remove(session, "do_orm_execute", _on_execute)
+
+
+def test_the_second_of_two_leads_assigning_at_once_is_refused_and_the_first_kept(
+    waiting_request: EventRequest,
+    another_lead_assigns_while_locking: None,
+    coordinator_of: CoordinatorOf,
+    history_of: HistoryOf,
+    notifications_of: NotificationsOf,
+) -> None:
+    """SCRUM-95 AC4 (since 15 Oct): the request keeps one coordinator, the first.
+
+    The session's copy of the request is loaded before the other Lead assigns, as a
+    copy read earlier in the same request would be, so the test also fails if the
+    locked read is answered from that stale copy.
+    """
+    assert waiting_request.coordinator_id is None
+
+    with pytest.raises(ConflictError) as exc_info:
+        assign_coordinator_to_request(REFERENCE, {"coordinator_email": THREE}, assigned_by=LEAD_ID)
+
+    refused = exc_info.value
+    assert (refused.status_code, refused.message) == (409, ALREADY_HAS_COORDINATOR_MESSAGE)
+    assert coordinator_of(waiting_request.id) == 9
+    assert history_of(waiting_request.id) == [
+        (EventHistoryKind.COORDINATOR_ASSIGNED, OTHER_LEAD_ID, {"coordinator_id": 9})
+    ]
+    assert notifications_of(3) == []

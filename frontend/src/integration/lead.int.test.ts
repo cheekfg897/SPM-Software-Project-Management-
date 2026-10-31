@@ -37,9 +37,11 @@ async function eventHeldByTheStaffAccount(): Promise<PlannedEvent> {
 
 /**
  * SCRUM-95: the Lead's queue against the real backend. Staff accounts can only be made with
- * `flask create-staff-user` (ADR-0023). The queue's rows are checked when the run has a Lead
- * account (INTEGRATION_LEAD_*, which CI makes); the other checks wait here as todos, and the mock
- * handlers in src/mocks/handlers/lead.ts stand in for the backend.
+ * `flask create-staff-user` (ADR-0023). The queue's rows and the assignment's refusals are checked
+ * when the run has a Lead account (INTEGRATION_LEAD_*, which CI makes); the other checks wait here
+ * as todos, and the mock handlers in src/mocks/handlers/lead.ts stand in for the backend. Two Leads
+ * assigning at the very same moment can't be staged from here; the backend's unit test covers the
+ * row lock that decides it (ADR-0120).
  */
 describe('SCRUM-95 Lead queue contract (ADR-0036)', () => {
   afterEach(() => sendRequestsAs(null))
@@ -72,7 +74,36 @@ describe('SCRUM-95 Lead queue contract (ADR-0036)', () => {
     'assigns by coordinator_email and answers the request with its coordinator, including the full-schema fields the mock omits (status, the dates and so on)',
   )
   it.todo('takes an assigned request out of the queue')
-  it.todo('answers 404 for an unknown reference and 409 for one that already has a coordinator')
+  it.skipIf(LEAD === null)(
+    'refuses to assign a request that already has a coordinator with 409, as the second of two Leads is (AC4)',
+    async () => {
+      const held = await eventHeldByTheStaffAccount()
+
+      const second = assignCoordinator({
+        reference: held.reference,
+        coordinator_email: staffAccount().email,
+      })
+
+      const error = await refusal(second)
+      expect([error.status, error.code, error.message]).toEqual([
+        409,
+        'conflict',
+        'This event request already has a coordinator.',
+      ])
+      const { event_requests: active } = await fetchActiveEvents()
+      expect(active.filter((row) => row.reference === held.reference)).toHaveLength(1)
+    },
+  )
+  it.skipIf(LEAD === null)('answers 404 for an unknown reference', async () => {
+    await signInAs(required(LEAD))
+
+    const assign = assignCoordinator({
+      reference: 'EVR-NOSUCH00',
+      coordinator_email: staffAccount().email,
+    })
+
+    expect((await refusal(assign)).status).toBe(404)
+  })
   it.todo('answers 400 on coordinator_email for an unknown or non-coordinator email, checked last')
 })
 
