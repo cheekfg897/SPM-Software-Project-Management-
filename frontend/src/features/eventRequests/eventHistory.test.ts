@@ -37,6 +37,7 @@ describe('SCRUM-33 the kinds of history entry', () => {
       'equipment_outcome_recorded',
       'equipment_preparation_updated',
       'equipment_reserved',
+      'event_cancelled',
       'event_completed',
       'event_confirmed',
       'field_changed',
@@ -358,6 +359,14 @@ describe('SCRUM-33 describing the venue arrangements', () => {
         ['When', '10 Nov, 9:00 am – 12:00 pm'],
         ['Reason', 'The talks moved to the main hall.'],
       ]),
+    )
+  })
+})
+
+describe('SCRUM-61 describing a cancelled event', () => {
+  it('says the event was cancelled and gives the organiser’s reason', () => {
+    expect(described('event_cancelled', { reason: 'Our keynote speaker has withdrawn.' })).toEqual(
+      plain('Event cancelled', [['Reason', 'Our keynote speaker has withdrawn.']]),
     )
   })
 })
