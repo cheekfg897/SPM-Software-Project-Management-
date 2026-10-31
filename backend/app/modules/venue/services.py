@@ -3434,15 +3434,15 @@ def reconfirm_flagged_booking(
     _refuse_block(venue, period, session)
     _refuse_same_event_overlap(arrangement, venue, period, session)
 
+    previous_occupancy = arrangement.expected_occupancy
     details = {
         "venue_booking_request_id": arrangement.id,
         "venue_id": arrangement.venue_id,
         "previous_starts_at": as_utc(arrangement.starts_at).isoformat(),
         "previous_ends_at": as_utc(arrangement.ends_at).isoformat(),
-        "previous_expected_occupancy": arrangement.expected_occupancy,
+        "previous_expected_occupancy": previous_occupancy,
         "flags": _flags_as_recorded(arrangement),
     }
-    previous_occupancy = arrangement.expected_occupancy
     arrangement.starts_at, arrangement.ends_at = period
     if own_booking is not None:
         own_booking.start_time, own_booking.end_time = period
