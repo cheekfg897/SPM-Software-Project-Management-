@@ -149,8 +149,29 @@ describe('SCRUM-96 Lead oversight contract (ADR-0041, ADR-0120)', () => {
     expect(references.indexOf(newer.reference)).toBeGreaterThanOrEqual(0)
     expect(references.indexOf(newer.reference)).toBeLessThan(references.indexOf(older.reference))
   })
+  it.skipIf(LEAD === null)(
+    'lists each Event Coordinator with their count and exactly the list fields of their events (ADR-0120)',
+    async () => {
+      const held = await eventHeldByTheStaffAccount()
+
+      const { coordinators } = await fetchCoordinatorWorkload()
+
+      const names = coordinators.map((entry) => entry.coordinator)
+      expect(names).toEqual([...names].sort())
+      for (const entry of coordinators) {
+        expect(keysOf(entry)).toEqual(['active_count', 'coordinator', 'event_requests'])
+        expect(entry.active_count).toBe(entry.event_requests.length)
+      }
+      const holder = coordinators.find((entry) =>
+        entry.event_requests.some((row) => row.reference === held.reference),
+      )
+      const row = holder?.event_requests.find((listed) => listed.reference === held.reference)
+      expect(keysOf(row)).toEqual(LIST_FIELDS)
+      expect(row).toMatchObject({ name: held.name, status: 'submitted' })
+    },
+  )
   it.todo(
-    'lists each coordinator holding an active event, ordered by name, with exactly the list fields of those events',
+    'lists an Event Coordinator who holds no active event with 0 (the run has no coordinator account it can keep idle)',
   )
   it.todo('answers an empty active list and an empty workload with their messages')
   it.todo(

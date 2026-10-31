@@ -66,16 +66,21 @@ export interface ActiveEvents {
   message?: string
 }
 
-/** One coordinator, by name, and the active events they hold, newest first. */
+/**
+ * One Event Coordinator, by name, and the active events they hold, newest first. An idle one is
+ * sent too, with a count of 0 and no events (docs/adr/0120).
+ */
 export interface CoordinatorWorkload {
   coordinator: string
+  /** How many active events they hold, counted by the backend so the page shows it as sent. */
+  active_count: number
   event_requests: ListedEvent[]
 }
 
 export interface Workload {
-  /** Ordered by name. */
+  /** Every Event Coordinator, ordered by name. */
   coordinators: CoordinatorWorkload[]
-  /** Only present when no coordinator holds an active event. */
+  /** Only present when there is no Event Coordinator. */
   message?: string
 }
 
