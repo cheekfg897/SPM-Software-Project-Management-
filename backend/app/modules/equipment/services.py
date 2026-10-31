@@ -791,6 +791,30 @@ def settle_reassessment(
     return keep
 
 
+def _quantity_to_confirm(
+    need: events_services.EventEquipmentNeed, equipment_type: EquipmentType, session: Session
+) -> int:
+    """At most how many units confirming keeps of the type's marked reservations.
+
+    What the line's outcome provides (SCRUM-60 AC3); a line with no current outcome is
+    settled by recording one instead (AC8, AC12). A type the event has no line for has
+    no outcome to record: it was reserved up to what was free (ADR-0114 decision 18),
+    so confirming is its review, and keeps what is free for the event's period now
+    (decision 22).
+
+    Raises:
+        ConflictError: 409 — the type's line has no current outcome.
+    """
+    if equipment_type.id not in need.requested:
+        return _free_for_reassessment(equipment_type, need, session)
+    provided = events_services.provided_quantity_of_line(
+        need.event_id, equipment_type.id, session=session
+    )
+    if provided is None:
+        raise ConflictError(RECORD_THE_OUTCOME_MESSAGE)
+    return provided
+
+
 def confirm_reservation_move(
     reference: str,
     equipment_type_id: int,
@@ -802,9 +826,10 @@ def confirm_reservation_move(
 
     AC3: when every reserved unit is free for the event's period, confirming moves the
     reservations there and unmarks them; it is the review, so no outcome is recorded.
-    The period is the event's now, so after several changes the latest wins (ADR-0114
-    decision 1). Preparation details are kept (AC11). A safety approval is withdrawn
-    (AC10). Once saved, the coordinator is told once (ADR-0015).
+    For a type the event has no line for, it keeps what is free and releases the rest
+    (ADR-0114 decision 22). The period is the event's now, so after several changes
+    the latest wins (decision 1). Preparation details are kept (AC11). A safety
+    approval is withdrawn (AC10). Once saved, the coordinator is told once (ADR-0015).
 
     Args:
         reference: The event's ``EVR-…`` reference.
@@ -832,14 +857,10 @@ def confirm_reservation_move(
         raise EquipmentNotReservableError(events_services.RESERVATIONS_CLOSED_MESSAGE)
     if not has_reservations_to_reassess(need.event_id, equipment_type_id, session=sess):
         raise NotFoundError(NOTHING_TO_REASSESS_MESSAGE)
-    provided = events_services.provided_quantity_of_line(
-        need.event_id, equipment_type_id, session=sess
-    )
-    if provided is None:
-        raise ConflictError(RECORD_THE_OUTCOME_MESSAGE)
+    equipment_type = get_equipment_type(equipment_type_id, session=sess)
+    provided = _quantity_to_confirm(need, equipment_type, sess)
 
     kept = settle_reassessment(need, equipment_type_id, provided, session=sess)
-    equipment_type = get_equipment_type(equipment_type_id, session=sess)
     events_services.withdraw_safety_approval(
         need.event_id,
         actor_id=int(confirmed_by),

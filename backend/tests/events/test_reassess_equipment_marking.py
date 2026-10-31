@@ -151,6 +151,31 @@ def test_technical_support_are_told_once_of_a_timing_change(
     assert kinds == [NotificationKind.SIGNIFICANT_CHANGE]
 
 
+@pytest.mark.parametrize("technical_support_id", [2, 5])
+def test_technical_support_are_told_of_a_timing_change_to_a_reservation_without_a_line(
+    projectors_without_a_line: None,
+    edit_event: EditEvent,
+    notifications_of: NotificationsOf,
+    technical_support_id: int,
+) -> None:
+    """The event has no equipment line, but the change marked its reservation."""
+    edit_event(COORDINATOR_ID, {"start_time": "10:00"})
+
+    kinds = [notification[3] for notification in notifications_of(technical_support_id)]
+    assert kinds == [NotificationKind.SIGNIFICANT_CHANGE]
+
+
+def test_an_attendance_change_marks_nothing_so_tells_nobody_of_a_reservation_without_a_line(
+    projectors_without_a_line: None,
+    edit_event: EditEvent,
+    notifications_of: NotificationsOf,
+) -> None:
+    """AC7: attendance marks no reservation, so with no line there is nothing to see."""
+    edit_event(COORDINATOR_ID, {"expected_attendance": 80})
+
+    assert notifications_of(5) == []
+
+
 def test_a_fulfilled_line_keeps_its_outcome_while_its_reservation_is_marked(
     two_projectors: EventEquipmentLine,
     edit_event: EditEvent,
