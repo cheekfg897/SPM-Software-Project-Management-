@@ -159,6 +159,20 @@ def moved(db_session: Session, event: EventRequest, main_id: int, breakout_id: i
     edit_event(db_session, event, NEXT_DAY)
 
 
+@pytest.fixture()
+def buffered(
+    db_session: Session, event: EventRequest, venue_with_buffers: VenueWithBuffers
+) -> tuple[Venue, int]:
+    """A venue with 30 minutes of setup and 30 of turnaround, and the booking there.
+
+    The booking is approved for 10:00-12:00, and the move to the next day flagged it.
+    """
+    venue = venue_with_buffers(30, 30)
+    request_id = approved_arrangement(venue, event, db_session, starts_at=at(10).isoformat())
+    edit_event(db_session, event, NEXT_DAY)
+    return venue, request_id
+
+
 # --------------------------------------------------------------------------
 # AC2 — reconfirming moves the booking to the new period
 # --------------------------------------------------------------------------
@@ -371,16 +385,13 @@ def test_a_period_that_runs_into_another_booking_is_refused_naming_it(
 )
 def test_the_venues_setup_and_turnaround_count_towards_a_clash(
     db_session: Session,
-    event: EventRequest,
-    venue_with_buffers: VenueWithBuffers,
+    buffered: tuple[Venue, int],
     confirmed_booking: SaveBooking,
     ends_at: datetime,
     clashes: bool,
 ) -> None:
     """30 minutes of turnaround and 30 of setup must fit before the 13:00 booking."""
-    venue = venue_with_buffers(30, 30)
-    request_id = approved_arrangement(venue, event, db_session, starts_at=at(10).isoformat())
-    edit_event(db_session, event, NEXT_DAY)
+    venue, request_id = buffered
     confirmed_booking(venue, at(13, day=2), at(14, day=2), event_id=99)
 
     if clashes:
@@ -451,6 +462,24 @@ def test_a_period_that_overlaps_a_block_is_refused_naming_it(
     )
 
 
+def test_the_venues_turnaround_counts_towards_a_block(
+    db_session: Session, buffered: tuple[Venue, int]
+) -> None:
+    """A block isn't padded, so only the 30 minutes of turnaround must fit before it."""
+    venue, request_id = buffered
+    block(venue, at(13, day=2), at(14, day=2), db_session)
+
+    with pytest.raises(ConflictError) as excinfo:
+        _reconfirm(db_session, request_id, at(10, day=2), at(12, 31, day=2))
+    assert excinfo.value.message == (
+        "Cannot reconfirm: the venue is blocked from 2026-11-02 13:00 to 2026-11-02 14:00"
+        " (maintenance)."
+    )
+
+    _reconfirm(db_session, request_id, at(10, day=2), at(12, 30, day=2))
+    assert _period(db_session, request_id) == (at(10, day=2), at(12, 30, day=2))
+
+
 def test_a_period_that_overlaps_another_of_the_events_arrangements_at_the_venue_is_refused(
     db_session: Session, event: EventRequest, auditorium: Venue, main_id: int, moved: None
 ) -> None:
@@ -469,6 +498,33 @@ def test_a_period_that_overlaps_another_of_the_events_arrangements_at_the_venue_
         f"Cannot reconfirm: the new period overlaps venue arrangement #{other.id} of the"
         " same event at this venue."
     )
+
+
+def test_the_venues_setup_and_turnaround_count_towards_the_events_other_arrangements(
+    db_session: Session, event: EventRequest, buffered: tuple[Venue, int]
+) -> None:
+    """30 minutes of turnaround and 30 of setup must fit before the 13:00 request.
+
+    The request is Pending, so it has no booking of its own for the clash check to find.
+    """
+    venue, request_id = buffered
+    other = raise_booking(
+        venue,
+        event,
+        db_session,
+        starts_at=at(13, day=2).isoformat(),
+        ends_at=at(14, day=2).isoformat(),
+    )
+
+    with pytest.raises(ConflictError) as excinfo:
+        _reconfirm(db_session, request_id, at(10, day=2), at(12, 1, day=2))
+    assert excinfo.value.message == (
+        f"Cannot reconfirm: the new period overlaps venue arrangement #{other.id} of the"
+        " same event at this venue."
+    )
+
+    _reconfirm(db_session, request_id, at(10, day=2), at(12, day=2))
+    assert _period(db_session, request_id) == (at(10, day=2), at(12, day=2))
 
 
 def test_the_events_arrangements_at_other_venues_do_not_conflict(
