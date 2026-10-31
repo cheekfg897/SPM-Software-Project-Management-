@@ -74,6 +74,10 @@ def raise_booking(
     return shown.request
 
 
+#: A cancel-all body: the reason is required and goes on each booking cancelled.
+CANCEL_ALL_BODY = {"reason": "The event no longer needs these venues."}
+
+
 def withdraw_as_coordinator(event: EventRequest, arrangement_id: int, session: Session) -> object:
     """Withdraw one of ``event``'s arrangements as its coordinator (SCRUM-93)."""
     return services.withdraw_arrangement(
@@ -103,7 +107,7 @@ def cancel_all_as_coordinator(
     and a test can be parametrised over them (``ARRANGEMENT_ACTIONS``).
     """
     return services.cancel_all_arrangements(
-        event.reference, coordinator_id=COORDINATOR_ID, session=session
+        event.reference, CANCEL_ALL_BODY, coordinator_id=COORDINATOR_ID, session=session
     )
 
 
