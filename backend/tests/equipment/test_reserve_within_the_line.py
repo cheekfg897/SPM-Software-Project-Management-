@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 from app.common.errors import ValidationError
 from app.modules.equipment.models import EquipmentReservation, EquipmentType
 from app.modules.equipment.services import reserve_equipment
-from app.modules.events.models import EventEquipmentLine, EventRequest
+from app.modules.events.models import EventEquipmentLine, EventRequest, EventRequestStatus
 from app.modules.events.services import update_equipment_line
 
 pytestmark = pytest.mark.scrum_60
@@ -51,9 +51,14 @@ def line_of_three(
     make_equipment_line: Callable[..., EventEquipmentLine],
     save: Save,
 ) -> EventEquipmentLine:
-    """The event asks for three of the ten projectors."""
+    """The event, approved, asks for three of the ten projectors.
+
+    Approved, so its coordinator may change the line (SCRUM-37, and SCRUM-110 once a
+    request is approved).
+    """
+    saved_event_request.status = EventRequestStatus.APPROVED
     line = make_equipment_line(saved_event_request, equipment_type, quantity=3)
-    save(line)
+    save(saved_event_request, line)
     return line
 
 

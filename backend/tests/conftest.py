@@ -674,16 +674,19 @@ def reserve_and_review(
 ) -> ReserveAndReview:
     """Save a line on ``saved_event_request``, reserve for it and record its outcome.
 
-    The line asks for ``quantity`` of ``equipment_type``; Technical Support user 5
-    reserves ``reserved`` units for the event's period (none when 0) and records that
-    they will provide ``provided``, with a note when that is short (SCRUM-46, SCRUM-48).
+    The event is approved first, so its coordinator may then change its date, time
+    or lines (SCRUM-33, SCRUM-37, and SCRUM-110 once a request is approved). The line
+    asks for ``quantity`` of ``equipment_type``; Technical Support user 5 reserves
+    ``reserved`` units for the event's period (none when 0) and records that they
+    will provide ``provided``, with a note when that is short (SCRUM-46, SCRUM-48).
     """
 
     def _reserve_and_review(
         equipment_type: EquipmentType, *, quantity: int, reserved: int, provided: int
     ) -> EventEquipmentLine:
+        saved_event_request.status = EventRequestStatus.APPROVED
         line = make_equipment_line(saved_event_request, equipment_type, quantity=quantity)
-        save(line)
+        save(saved_event_request, line)
         if reserved > 0:
             units = {"equipment_type_id": equipment_type.id, "quantity": reserved}
             reserve_equipment(saved_event_request.reference, units, reserved_by=5)

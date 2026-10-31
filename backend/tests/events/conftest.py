@@ -885,11 +885,18 @@ def hold_on_the_20th(
 
 @pytest.fixture()
 def projectors_without_a_line(
-    saved_users: list[User], saved_event_request: EventRequest, equipment_type: EquipmentType
+    saved_users: list[User],
+    saved_event_request: EventRequest,
+    equipment_type: EquipmentType,
+    save: Callable[..., None],
 ) -> None:
     """Two projectors reserved for ``saved_event_request``, which has no projector line.
 
-    Reserving a type the event has no line for is allowed (ADR-0114 decision 18).
+    Reserving a type the event has no line for is allowed (ADR-0114 decision 18). The
+    event is approved first, so its coordinator may then change its date or time
+    (SCRUM-33, and SCRUM-110 once a request is approved).
     """
+    saved_event_request.status = EventRequestStatus.APPROVED
+    save(saved_event_request)
     units = {"equipment_type_id": equipment_type.id, "quantity": 2}
     reserve_equipment(saved_event_request.reference, units, reserved_by=5)
