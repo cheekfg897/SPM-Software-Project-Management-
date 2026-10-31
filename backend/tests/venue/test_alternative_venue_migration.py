@@ -71,10 +71,11 @@ def test_the_migrations_values_are_the_models_values(load_migration: LoadMigrati
     migration = load_migration(MIGRATION)
 
     assert set(migration.CATEGORY_VALUES) == _model_values(UnavailabilityCategory)
+    # Subset, not equality: a later migration (0051 SCRUM-111) adds a further status.
     assert {
         *migration.PREVIOUS_REQUEST_STATUS_VALUES,
         *migration.ADDED_REQUEST_STATUS_VALUES,
-    } == _model_values(BookingRequestStatus)
+    } <= _model_values(BookingRequestStatus)
     # Subset, not equality: a later migration (0049 SCRUM-59) adds a further kind.
     assert {
         *migration.PREVIOUS_HISTORY_KIND_VALUES,
