@@ -6,8 +6,9 @@ that booking's period (SCRUM-92), so only a venue may be suggested for it. AC2: 
 suggested venue must be active, and the suggested period is not checked until the
 coordinator raises a request for it. AC3: the suggestion is on the request and in the
 decision's history entry. AC4: the coordinator raises an ordinary new request from it,
-and the rejected one stays as it is. AC5: a suggestion books and holds nothing
-(ADR-0123).
+and the rejected one stays as it is. AC5: a suggestion books and holds nothing. AC6:
+the event's current coordinator is told once, by the rejection notice, which names the
+suggestion before the reason (SCRUM-115, ADR-0123).
 
 The services run against ``db_session``. The request to reject is at the Auditorium,
 09:00 to 12:00 on 1 November 2026; the Breakout room is suggested instead.
@@ -20,11 +21,13 @@ from datetime import UTC, date, datetime, time
 from typing import Any
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.common.errors import ValidationError
 from app.modules.auth.models import User
 from app.modules.events.models import EventHistoryKind, EventRequest
+from app.modules.notifications.models import Notification, NotificationKind
 from app.modules.venue import services
 from app.modules.venue.models import (
     BookingRequestStatus,
@@ -36,6 +39,7 @@ from app.modules.venue.models import (
 )
 from app.modules.venue.schemas import BookingRequestAsShown, VenueBookingRequestSchema
 from tests.venue.conftest import (
+    COORDINATOR_ID,
     VENUE_STAFF_ID,
     SavedEvent,
     at,
@@ -610,3 +614,87 @@ def test_another_event_may_book_the_suggested_venue_for_the_suggested_period(
     approved = decide(other_event.id, "approved", db_session)
 
     assert approved.status is BookingRequestStatus.APPROVED
+
+
+# --------------------------------------------------------------------------
+# AC6 — the current coordinator is told once, by the rejection notice
+# --------------------------------------------------------------------------
+
+#: The other Event Coordinator ``saved_users`` saves, for an event reassigned to them.
+OTHER_COORDINATOR_ID = 9
+SUGGESTED_WHEN = "from 2026-11-03 14:00 to 2026-11-03 17:00"
+
+
+def _decision_notices(session: Session) -> list[tuple[int, NotificationKind, str | None]]:
+    """Each notice about a decision as (recipient, kind, detail), oldest first."""
+    stmt = (
+        select(Notification)
+        .where(
+            Notification.kind.in_(
+                [NotificationKind.VENUE_BOOKING_APPROVED, NotificationKind.VENUE_BOOKING_REJECTED]
+            )
+        )
+        .order_by(Notification.id)
+    )
+    notices = []
+    for notice in session.scalars(stmt):
+        notices.append((notice.recipient_id, notice.kind, notice.detail))
+    return notices
+
+
+def _rejection_notice(session: Session, rejectable: Rejectable, **suggestion: Any) -> str | None:
+    """Reject with ``suggestion``; what the coordinator's one notice says."""
+    _decide(rejectable.request.id, session, **suggestion)
+    [(recipient, kind, detail)] = _decision_notices(session)
+    assert (recipient, kind) == (COORDINATOR_ID, NotificationKind.VENUE_BOOKING_REJECTED)
+    return detail
+
+
+def test_the_notice_names_a_suggested_venue_and_period_before_the_reason(
+    db_session: Session, rejectable: Rejectable
+) -> None:
+    detail = _rejection_notice(
+        db_session, rejectable, suggested_venue_id=rejectable.other.id, **SUGGESTED_TIMES
+    )
+
+    assert detail == f"Suggested instead: Breakout room {SUGGESTED_WHEN}. Reason: {REASON}"
+
+
+def test_the_notice_names_a_suggested_venue_for_the_same_period(
+    db_session: Session, rejectable: Rejectable
+) -> None:
+    detail = _rejection_notice(db_session, rejectable, suggested_venue_id=rejectable.other.id)
+
+    assert detail == f"Suggested instead: Breakout room for the same period. Reason: {REASON}"
+
+
+def test_the_notice_names_a_suggested_period_at_the_same_venue(
+    db_session: Session, rejectable: Rejectable
+) -> None:
+    detail = _rejection_notice(db_session, rejectable, **SUGGESTED_TIMES)
+
+    assert detail == f"Suggested instead: the same venue {SUGGESTED_WHEN}. Reason: {REASON}"
+
+
+def test_a_notice_with_no_suggestion_is_the_reason_alone(
+    db_session: Session, rejectable: Rejectable
+) -> None:
+    assert _rejection_notice(db_session, rejectable) == REASON
+
+
+def test_only_the_current_coordinator_is_told_of_the_suggestion(
+    db_session: Session, rejectable: Rejectable
+) -> None:
+    """Reassigned after the request was raised: the new coordinator plans the event."""
+    rejectable.event.coordinator_id = OTHER_COORDINATOR_ID
+    db_session.commit()
+
+    _decide(rejectable.request.id, db_session, suggested_venue_id=rejectable.other.id)
+
+    assert _decision_notices(db_session) == [
+        (
+            OTHER_COORDINATOR_ID,
+            NotificationKind.VENUE_BOOKING_REJECTED,
+            f"Suggested instead: Breakout room for the same period. Reason: {REASON}",
+        )
+    ]

@@ -2413,6 +2413,35 @@ def _suggestion_details(request: VenueBookingRequest) -> dict[str, Any]:
     return details
 
 
+#: How the rejection notice names a suggestion, then the reason (SCRUM-70 AC6). The
+#: reason comes last because it is Venue Staff's own words, punctuated or not.
+SUGGESTION_DETAIL = "Suggested instead: {venue} {period}. Reason: {reason}"
+SAME_VENUE = "the same venue"
+SAME_PERIOD = "for the same period"
+
+
+def _decision_detail(request: VenueBookingRequest, session: Session | None) -> str | None:
+    """What the coordinator's notice says about the decision (SCRUM-43 AC6).
+
+    The reason, after any suggestion, so the one rejection notice carries both
+    (SCRUM-70 AC6): the venue by name and the period in business time, for example
+    ``"Suggested instead: Breakout room from 2026-11-03 14:00 to 2026-11-03 17:00.
+    Reason: The hall is being repainted."``.
+    """
+    venue_id = request.suggested_venue_id
+    starts_at = request.suggested_starts_at
+    ends_at = request.suggested_ends_at
+    if venue_id is None and starts_at is None:
+        return request.decision_reason
+    venue = SAME_VENUE
+    if venue_id is not None:
+        venue = get_venue(venue_id, session=session).name
+    period = SAME_PERIOD
+    if starts_at is not None and ends_at is not None:
+        period = f"from {_notice_time(starts_at)} to {_notice_time(ends_at)}"
+    return SUGGESTION_DETAIL.format(venue=venue, period=period, reason=request.decision_reason)
+
+
 def _save_decision(
     request: VenueBookingRequest,
     decision: BookingDecision,
@@ -2478,9 +2507,15 @@ def decide_booking_request(
     event's safety approval, in the same commit (SCRUM-92 AC7, AC10, ADR-0053). For an
     event a venue sent back from Confirmed, the organiser is then told (AC9, ADR-0108).
 
+    A rejection may suggest another venue, another period, or both (SCRUM-70 AC1,
+    ADR-0123). The suggestion is kept on the request and in the history entry, books
+    nothing, and the coordinator's one rejection notice names it (AC5, AC6).
+
     Args:
         request_id: The request's own id, as the queue lists it.
-        payload: Decoded JSON body: ``outcome`` and an optional ``reason``.
+        payload: Decoded JSON body: ``outcome``, an optional ``reason``, and an
+            optional suggestion: ``suggested_venue_id``, ``suggested_starts_at`` and
+            ``suggested_ends_at``.
         decided_by: The deciding Venue Staff user's id, taken from their token.
         session: Database session; defaults to ``db.session``.
 
@@ -2491,7 +2526,9 @@ def decide_booking_request(
         NotFoundError: 404 — no such request.
         ConflictError: 409 — the request was decided already, approving it clashes with
             a booking or live hold (the body names it), or its hold has expired.
-        ValidationError: 400 — payload invalid, or a rejection without a reason.
+        ValidationError: 400 — payload invalid, a rejection without a reason, or a
+            suggestion with an approval, of a venue that is not active, or of another
+            period for a replacement that keeps its period.
     """
     request = _request_to_decide(request_id, session)
     data = load_or_raise(DecideBookingRequestSchema(), payload)
@@ -2521,7 +2558,7 @@ def decide_booking_request(
         [event.coordinator_id],
         event,
         _NOTIFICATION_BY_DECISION[decision],
-        detail=reason,
+        detail=_decision_detail(request, session),
         session=session,
     )
     if decision is BookingDecision.APPROVED:
