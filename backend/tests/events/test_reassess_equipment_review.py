@@ -20,6 +20,7 @@ from typing import Any
 import pytest
 
 from app.common.errors import NotFoundError
+from app.modules.auth.models import User
 from app.modules.auth.permissions import Role
 from app.modules.equipment.models import (
     EquipmentOutOfService,
@@ -33,7 +34,12 @@ from app.modules.equipment.services import (
     mark_event_reservations_for_reassessment,
     reserve_equipment,
 )
-from app.modules.events.models import EquipmentLineStatus, EventEquipmentLine, EventRequest
+from app.modules.events.models import (
+    EquipmentLineStatus,
+    EventEquipmentLine,
+    EventRequest,
+    EventRequestStatus,
+)
 from app.modules.events.services import (
     EquipmentAwaitingAction,
     EventEdit,
@@ -429,4 +435,94 @@ def test_each_listed_event_names_only_its_own_types_to_reassess(
     assert _listed(awaiting) == [
         (REFERENCE, [two_projectors.id], [equipment_type.id]),
         (OTHER_REFERENCE, [other_events_reserved_line.id], [equipment_type.id]),
+    ]
+
+
+@pytest.fixture()
+def speaker_without_a_line(
+    saved_users: list[User],
+    saved_event_request: EventRequest,
+    make_equipment_type: Callable[..., EquipmentType],
+    save: Save,
+) -> EquipmentType:
+    """One speaker reserved for the approved event, which has no speaker line.
+
+    Reserving a type the event has no line for is allowed (ADR-0114 decision 18).
+    """
+    speaker = make_equipment_type(name="Speaker", total_quantity=6)
+    saved_event_request.status = EventRequestStatus.APPROVED
+    save(speaker, saved_event_request)
+    units = {"equipment_type_id": speaker.id, "quantity": 1}
+    reserve_equipment(REFERENCE, units, reserved_by=TECHNICAL_SUPPORT_ID)
+    return speaker
+
+
+def test_an_event_whose_marked_reservation_has_no_line_is_listed(
+    speaker_without_a_line: EquipmentType, edit_event: EditEvent
+) -> None:
+    """AC6: back on the list, with no line to show, only the type to reassess."""
+    edit_event(COORDINATOR_ID, EARLIER_START)
+
+    awaiting = list_equipment_requests_awaiting_action(today=TODAY)
+
+    assert _listed(awaiting) == [(REFERENCE, [], [speaker_without_a_line.id])]
+    assert awaiting[0].days_remaining == 14
+
+
+@pytest.mark.parametrize(
+    ("status", "today"),
+    [
+        (EventRequestStatus.CANCELLED, TODAY),
+        (EventRequestStatus.APPROVED, date(2026, 10, 16)),
+    ],
+    ids=["cancelled", "already-held"],
+)
+def test_an_event_that_wont_run_is_not_listed_for_a_reservation_with_no_line(
+    saved_event_request: EventRequest,
+    speaker_without_a_line: EquipmentType,
+    save: Save,
+    status: EventRequestStatus,
+    today: date,
+) -> None:
+    """The list's own rule (SCRUM-38 AC1) holds for these events too."""
+    mark_event_reservations_for_reassessment(saved_event_request.id)
+    saved_event_request.status = status
+    save(saved_event_request)
+
+    assert list_equipment_requests_awaiting_action(today=today) == []
+
+
+def test_an_event_listed_for_a_reservation_with_no_line_keeps_its_place_by_date(
+    other_event: EventRequest,
+    equipment_type: EquipmentType,
+    speaker_without_a_line: EquipmentType,
+    make_equipment_line: Callable[..., EventEquipmentLine],
+    edit_event: EditEvent,
+    save: Save,
+) -> None:
+    """This event now starts at 08:00, before the other's 09:00 on the same day."""
+    other_line = make_equipment_line(other_event, equipment_type, quantity=1)
+    save(other_line)
+    edit_event(COORDINATOR_ID, EARLIER_START)
+
+    awaiting = list_equipment_requests_awaiting_action(today=TODAY)
+
+    assert _listed(awaiting) == [
+        (REFERENCE, [], [speaker_without_a_line.id]),
+        (OTHER_REFERENCE, [other_line.id], []),
+    ]
+
+
+def test_an_event_listed_for_a_line_also_names_its_no_line_type(
+    two_projectors: EventEquipmentLine,
+    equipment_type: EquipmentType,
+    speaker_without_a_line: EquipmentType,
+    edit_event: EditEvent,
+) -> None:
+    edit_event(COORDINATOR_ID, EARLIER_START)
+
+    awaiting = list_equipment_requests_awaiting_action(today=TODAY)
+
+    assert _listed(awaiting) == [
+        (REFERENCE, [two_projectors.id], [equipment_type.id, speaker_without_a_line.id])
     ]
