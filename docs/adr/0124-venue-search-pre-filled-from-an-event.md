@@ -1,6 +1,6 @@
 # ADR-0124: Venue search opens from an event with its date, times and attendance filled in
 
-- **Status:** Accepted. Partial pre-fill, empty layout, facilities and accessibility, and the event's own words beside them are the Product Owner's (SCRUM-90, 19 Oct). Reading the event on the search page, searching only when asked, the link's place and wording, and what the note says are the team's defaults to review.
+- **Status:** Accepted. Partial pre-fill, empty layout, facilities and accessibility, and the event's own words beside them are the Product Owner's (SCRUM-90, 19 Oct). Reading the event on the search page, searching only when asked, which fields carry over, leaving a value the event hasn't recorded empty, the link's place and wording, and the empty form after a refused read are the team's decisions (31 Oct). What the note says and the parameter's name are defaults to review.
 - **Date:** 2026-10-31
 - **Story:** SCRUM-90 Open venue search from an event with its filters pre-filled (split from SCRUM-35 AC5); SCRUM-113 records this decision
 - **Supersedes:** [ADR-0010](0010-search-prefill-deferred.md), and [ADR-0073](0073-venue-search-and-suitability-screen.md) decision 9 (SCRUM-90 stays deferred)
