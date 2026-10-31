@@ -23,6 +23,12 @@ const REPLACING_EVENT = 'event'
 const REPLACED_ARRANGEMENT = 'replaces'
 const REPLACED_VENUE = 'instead_of'
 
+/**
+ * The URL parameter naming the event the search was opened from (SCRUM-90): its recorded details
+ * fill the form in until the coordinator searches.
+ */
+const SEARCHED_FOR_EVENT = 'for_event'
+
 /** The filters with one value each, named as the form fields and URL parameters are. */
 const SINGLE_FILTERS = [
   'date',
@@ -184,4 +190,18 @@ export function replacementSearchPath(
     [REPLACED_VENUE]: String(replacement.venueId),
   })
   return `${ROUTES.VENUE_SEARCH}?${withFilters(params, filters).toString()}`
+}
+
+/** The EVR- reference of the event the search was opened from, or null (SCRUM-90). */
+export function readEventToSearchFor(params: URLSearchParams): string | null {
+  return params.get(SEARCHED_FOR_EVENT)
+}
+
+/**
+ * The search page opened from an event: it names only the event, so nothing is searched until
+ * the coordinator has checked the filters its details fill in (SCRUM-90 AC4, ADR-0124).
+ */
+export function venueSearchForEventPath(reference: string): string {
+  const params = new URLSearchParams({ [SEARCHED_FOR_EVENT]: reference })
+  return `${ROUTES.VENUE_SEARCH}?${params.toString()}`
 }
