@@ -3,7 +3,9 @@
 Event Coordinators add, edit and remove an event's equipment lines (AC1, AC2);
 coordinators and Technical Support Staff read them, with the event's date and times
 so Technical Support know by when it is needed, and the coordinator sees them on
-the event record (AC4, ADR-0019). The organiser's own view of them is in
+the event record (AC4, ADR-0019), with the event's status so the coordinator is
+offered changes only while the lines can change (SCRUM-110, ADR-0116). The
+organiser's own view of them is in
 ``test_organiser_equipment_view.py`` (AC5, ADR-0098). Each route passes the caller's
 id on, so the services can limit a coordinator to the events assigned to them
 (ADR-0019).
@@ -27,7 +29,7 @@ from app.common.errors import AuthenticationError, AuthorizationError
 from app.modules.auth.models import User
 from app.modules.auth.permissions import ALL_ROLES, Role
 from app.modules.events import routes
-from app.modules.events.models import EventEquipmentLine, EventRequest
+from app.modules.events.models import EventEquipmentLine, EventRequest, EventRequestStatus
 from app.modules.events.services import CoordinatorEventRecord, EquipmentLineAsShown
 
 pytestmark = pytest.mark.scrum_37
@@ -213,7 +215,7 @@ def test_the_list_route_shows_the_lines_and_when_the_event_is(
 
     assert status == 200
     assert response.get_json() == {
-        "event": event_as_shown,
+        "event": {**event_as_shown, "status": "submitted"},
         "equipment_lines": [
             {
                 "id": 7,
@@ -231,6 +233,21 @@ def test_the_list_route_shows_the_lines_and_when_the_event_is(
     }
     mock_services[LIST.service].assert_called_once_with(CALLER_ID, REFERENCE, viewer_role=role)
     mock_services["equipment_lines_as_shown"].assert_called_once_with([shown_line])
+
+
+@pytest.mark.scrum_110
+def test_the_list_route_says_which_status_the_event_is_in(
+    call_route: CallRoute,
+    token_for: TokenFor,
+    mock_services: dict[str, MagicMock],
+    shown_event: EventRequest,
+) -> None:
+    """The coordinator is offered changes only while lines can change (SCRUM-110)."""
+    shown_event.status = EventRequestStatus.SAFETY_REVIEW
+
+    response, _ = _call(call_route, LIST, token_for(role=Role.EVENT_COORDINATOR))
+
+    assert response.get_json()["event"]["status"] == "safety_review"
 
 
 def test_the_coordinators_detail_route_shows_the_equipment_lines_with_their_notes(
