@@ -63,7 +63,6 @@ def test_the_arrangement_is_read_under_a_row_lock(
     [
         pytest.param(withdraw_as_coordinator, WITHDRAW_REFUSAL, id="withdraw"),
         pytest.param(change_purpose_as_coordinator, CHANGE_REFUSAL, id="change"),
-        pytest.param(cancel_all_as_coordinator, WITHDRAW_REFUSAL, id="cancel all"),
     ],
 )
 def test_an_approval_saved_meanwhile_is_seen_and_refuses_the_action(
@@ -73,7 +72,10 @@ def test_an_approval_saved_meanwhile_is_seen_and_refuses_the_action(
     action: ArrangementAction,
     refusal: str,
 ) -> None:
-    """Without the locked read, the stale Pending copy would be withdrawn or changed."""
+    """Without the locked read, the stale Pending copy would be withdrawn or changed.
+
+    Cancel-all, which cancels an approved booking rather than refusing, is below.
+    """
     event = saved_event()
     arrangement = raise_booking(venue, event, db_session)
     _approved_underneath(arrangement, db_session)
@@ -85,3 +87,16 @@ def test_an_approval_saved_meanwhile_is_seen_and_refuses_the_action(
     db_session.commit()
     kept = reload_request(db_session, arrangement.id)
     assert (kept.status, kept.purpose) == (BookingRequestStatus.APPROVED, "Main hall")
+
+
+def test_cancel_all_sees_an_approval_saved_meanwhile_and_cancels_the_booking(
+    db_session: Session, venue: Venue, saved_event: SavedEvent
+) -> None:
+    """Without the locked read, the stale Pending copy would be withdrawn instead."""
+    event = saved_event()
+    arrangement = raise_booking(venue, event, db_session)
+    _approved_underneath(arrangement, db_session)
+
+    cancel_all_as_coordinator(event, arrangement.id, db_session)
+
+    assert reload_request(db_session, arrangement.id).status is BookingRequestStatus.CANCELLED

@@ -1910,45 +1910,6 @@ def withdraw_arrangement(
     return show_booking_request(arrangement, event)
 
 
-def cancel_all_arrangements(
-    reference: str, *, coordinator_id: int, session: Session | None = None
-) -> list[BookingRequestAsShown]:
-    """Retire every arrangement the event still has (AC6's explicit "cancel all").
-
-    AC6 keeps one arrangement's fate from touching the others unless the coordinator
-    asks for all of them, which is this call rather than a loop the client writes.
-    Every arrangement not yet approved is withdrawn, and an On Hold one's hold
-    released (ADR-0118). An approved one cannot be (its booking would be left
-    behind), so the call is refused while the event has one: the coordinator cancels
-    each approved booking on its own, with a reason (:func:`cancel_approved_booking`,
-    SCRUM-111). An event with none is not an error. The event must be Approved or in
-    Safety Review (AC10).
-
-    Returns:
-        The retired arrangements, earliest period first, or an empty list.
-
-    Raises:
-        NotFoundError: 404 — no such event among the coordinator's own.
-        ConflictError: 409 — the event isn't being planned, naming its status, or an
-            arrangement is approved; nothing is withdrawn.
-    """
-    from app.modules.events import services as event_services  # circular at import time
-
-    sess = resolve_session(session)
-    event = event_services.get_event_for_arrangement_change(
-        reference, coordinator_id, session=session
-    )
-    retired = []
-    for listed in list_active_arrangements(event.id, session=session):
-        # Each row is locked and read afresh, earliest period first, before it is
-        # withdrawn, so a decision Venue Staff saved meanwhile is seen (ADR-0118).
-        arrangement = _arrangement_of_event(event.id, listed.id, sess)
-        _withdraw_and_record(arrangement, coordinator_id, session)
-        retired.append(arrangement)
-    sess.commit()
-    return [show_booking_request(arrangement, event) for arrangement in retired]
-
-
 def _changes_to_apply(
     arrangement: VenueBookingRequest, data: Mapping[str, Any]
 ) -> dict[str, dict[str, Any]]:
@@ -2971,6 +2932,51 @@ def _refuse_cancel_while_replacement_waits(
         raise ConflictError(CANCEL_REPLACEMENT_WAITING_MESSAGE)
 
 
+def _cancel_and_record(
+    arrangement: VenueBookingRequest, reason: str, coordinator_id: int, session: Session | None
+) -> None:
+    """Cancel one approved booking and write its history entry, without committing.
+
+    The booking is cancelled, so the venue is free for that period again, and the
+    arrangement becomes Cancelled (SCRUM-111 AC1). The entry carries the reason (AC5).
+    """
+    from app.modules.events import services as event_services  # circular at import time
+
+    _free_venue(arrangement, session)
+    arrangement.status = BookingRequestStatus.CANCELLED
+    event_services.record_venue_booking_cancelled(
+        arrangement.event_id,
+        actor_id=coordinator_id,
+        details={
+            "venue_booking_request_id": arrangement.id,
+            "venue_id": arrangement.venue_id,
+            "starts_at": as_utc(arrangement.starts_at).isoformat(),
+            "ends_at": as_utc(arrangement.ends_at).isoformat(),
+            "reason": reason,
+        },
+        session=session,
+    )
+
+
+def _tell_of_cancellations(
+    event: EventForBooking, cancelled: list[VenueBookingRequest], session: Session | None
+) -> None:
+    """Tell everyone who needs to know of each booking cancelled, after the commit.
+
+    Every Venue Staff user (SCRUM-111 AC3) and, for an event that was in Safety Review,
+    every Safety Officer (AC2) get one notice per booking, naming its venue and period.
+    ``event`` is the event as it was before the cancellation.
+    """
+    from app.modules.events import services as event_services  # circular at import time
+
+    details = []
+    for arrangement in cancelled:
+        details.append(_arrangement_detail(CANCELLED_DETAIL, arrangement, session))
+    _tell_venue_staff(event, details, NotificationKind.VENUE_BOOKING_CANCELLED, session)
+    for detail in details:
+        event_services.tell_safety_officers_of_cancelled_booking(event, detail, session=session)
+
+
 def cancel_approved_booking(
     reference: str,
     arrangement_id: int,
@@ -3015,28 +3021,82 @@ def cancel_approved_booking(
     _refuse_cancel_while_replacement_waits(arrangement, session)
     cancellation = load_or_raise(CancelBookingSchema(), payload)
 
-    _free_venue(arrangement, session)
-    arrangement.status = BookingRequestStatus.CANCELLED
-    event_services.record_venue_booking_cancelled(
-        event.id,
-        actor_id=coordinator_id,
-        details={
-            "venue_booking_request_id": arrangement.id,
-            "venue_id": arrangement.venue_id,
-            "starts_at": as_utc(arrangement.starts_at).isoformat(),
-            "ends_at": as_utc(arrangement.ends_at).isoformat(),
-            "reason": cancellation["reason"],
-        },
-        session=session,
-    )
+    _cancel_and_record(arrangement, cancellation["reason"], coordinator_id, session)
     event_services.return_to_planning_after_cancellation(
         event.id, arrangement.id, actor_id=coordinator_id, session=session
     )
     sess.commit()
-    detail = _arrangement_detail(CANCELLED_DETAIL, arrangement, session)
-    _tell_venue_staff(event, [detail], NotificationKind.VENUE_BOOKING_CANCELLED, session)
-    event_services.tell_safety_officers_of_cancelled_booking(event, detail, session=session)
+    _tell_of_cancellations(event, [arrangement], session)
     return show_booking_request(arrangement, event)
+
+
+# --------------------------------------------------------------------------
+# SCRUM-93 AC6, AC10 — cancel all of an event's arrangements, bookings included
+# --------------------------------------------------------------------------
+
+
+def cancel_all_arrangements(
+    reference: str,
+    payload: Mapping[str, Any] | None,
+    *,
+    coordinator_id: int,
+    session: Session | None = None,
+) -> list[BookingRequestAsShown]:
+    """Retire every arrangement the event still has (AC6's explicit "cancel all").
+
+    AC6 keeps one arrangement's fate from touching the others unless the coordinator
+    asks for all of them, which is this call rather than a loop the client writes. An
+    approved booking is cancelled with the coordinator's reason, as SCRUM-111 cancels
+    one; every other arrangement is withdrawn, an On Hold one's hold released with it
+    (ADR-0118). Each row is locked and read afresh, earliest period first, so a decision
+    Venue Staff saved meanwhile is seen. If any arrangement was retired, SCRUM-111
+    AC2's Safety Review rules apply once for the whole action: a pass no longer counts,
+    and an event left with no venue goes back to Approved. All of it is one commit;
+    then Venue Staff, and for an event that was in Safety Review the Safety Officers,
+    are told of each booking cancelled. An event with no arrangements is not an error.
+    The checks run in this order: the reference and the coordinator, the event's status
+    (AC10), then the payload.
+
+    Args:
+        reference: The ``EVR-…`` reference; case and surrounding spaces are ignored.
+        payload: Decoded JSON body: ``reason``, required as for cancelling one booking.
+        coordinator_id: The caller's user id, taken from their token.
+        session: Database session; defaults to ``db.session``.
+
+    Returns:
+        The retired arrangements, earliest period first, or an empty list.
+
+    Raises:
+        NotFoundError: 404 — no such event among the coordinator's own.
+        ConflictError: 409 — the event isn't being planned; the message names its
+            status.
+        ValidationError: 400 — no reason, or a field the body may not carry.
+    """
+    from app.modules.events import services as event_services  # circular at import time
+
+    sess = resolve_session(session)
+    event = event_services.get_event_for_arrangement_change(
+        reference, coordinator_id, session=session
+    )
+    reason = load_or_raise(CancelBookingSchema(), payload)["reason"]
+
+    retired = []
+    cancelled = []
+    for listed in list_active_arrangements(event.id, session=session):
+        arrangement = _arrangement_of_event(event.id, listed.id, sess)
+        if arrangement.status is BookingRequestStatus.APPROVED:
+            _cancel_and_record(arrangement, reason, coordinator_id, session)
+            cancelled.append(arrangement)
+        else:
+            _withdraw_and_record(arrangement, coordinator_id, session)
+        retired.append(arrangement)
+    if retired:
+        event_services.return_to_planning_after_cancellation(
+            event.id, retired[0].id, actor_id=coordinator_id, session=session
+        )
+    sess.commit()
+    _tell_of_cancellations(event, cancelled, session)
+    return [show_booking_request(arrangement, event) for arrangement in retired]
 
 
 # --------------------------------------------------------------------------

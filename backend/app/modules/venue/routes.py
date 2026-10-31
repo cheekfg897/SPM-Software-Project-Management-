@@ -243,8 +243,10 @@ def withdraw_arrangement(reference: str, arrangement_id: int) -> tuple[Response,
 @bp.post("/events/<reference>/booking-requests/cancel-all")
 @requires_role(Role.EVENT_COORDINATOR)
 def cancel_all_arrangements(reference: str) -> tuple[Response, int]:
-    """Retire every venue arrangement the coordinator's event still has."""
-    shown = services.cancel_all_arrangements(reference, coordinator_id=int(g.current_user_id))
+    """Retire every arrangement the coordinator's event still has, with a reason."""
+    shown = services.cancel_all_arrangements(
+        reference, request.get_json(silent=True), coordinator_id=int(g.current_user_id)
+    )
     return jsonify(_booking_request_schema.dump(shown, many=True)), 200
 
 
