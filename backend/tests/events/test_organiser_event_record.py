@@ -412,6 +412,9 @@ def test_the_route_sends_each_arrangement_in_full_in_business_time(
             "justification": "Only hall free that week.",
             "status": "on_hold",
             "decision_reason": "Held while the partner confirms.",
+            "suggested_venue_name": None,
+            "suggested_starts_at": None,
+            "suggested_ends_at": None,
             "hold_expires_at": "2026-10-30T17:00:00+08:00",
             "needs_alternative_venue": True,
             "unavailability": [

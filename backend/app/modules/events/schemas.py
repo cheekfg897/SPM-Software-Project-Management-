@@ -1106,6 +1106,10 @@ class RecordVenueArrangementSchema(Schema):
     justification = fields.String(dump_only=True, allow_none=True)
     status = fields.String(attribute="status.value", dump_only=True)
     decision_reason = fields.String(dump_only=True, allow_none=True)
+    #: The alternative suggested with a rejection, if any (SCRUM-70 AC3).
+    suggested_venue_name = fields.String(dump_only=True, allow_none=True)
+    suggested_starts_at = BusinessDateTime(dump_only=True, allow_none=True)
+    suggested_ends_at = BusinessDateTime(dump_only=True, allow_none=True)
     hold_expires_at = BusinessDateTime(dump_only=True, allow_none=True)
     needs_alternative_venue = fields.Boolean(dump_only=True)
     unavailability = fields.Nested(RecordUnavailabilitySchema, many=True, dump_only=True)

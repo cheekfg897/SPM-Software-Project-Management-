@@ -4,11 +4,12 @@ AC1: rejecting may suggest one alternative venue, one alternative period, or bot
 only rejecting may; a replacement for a booking whose venue became unavailable keeps
 that booking's period (SCRUM-92), so only a venue may be suggested for it. AC2: the
 suggested venue must be active, and the suggested period is not checked until the
-coordinator raises a request for it. AC3: the suggestion is on the request and in the
-decision's history entry. AC4: the coordinator raises an ordinary new request from it,
-and the rejected one stays as it is. AC5: a suggestion books and holds nothing. AC6:
-the event's current coordinator is told once, by the rejection notice, which names the
-suggestion before the reason (SCRUM-115, ADR-0123).
+coordinator raises a request for it. AC3: the suggestion is on the request, in the
+decision's history entry and on the event's record, the venue by name. AC4: the
+coordinator raises an ordinary new request from it, and the rejected one stays as it
+is. AC5: a suggestion books and holds nothing. AC6: the event's current coordinator is
+told once, by the rejection notice, which names the suggestion before the reason
+(SCRUM-115, ADR-0123).
 
 The services run against ``db_session``. The request to reject is at the Auditorium,
 09:00 to 12:00 on 1 November 2026; the Breakout room is suggested instead.
@@ -27,6 +28,7 @@ from sqlalchemy.orm import Session
 from app.common.errors import ValidationError
 from app.modules.auth.models import User
 from app.modules.events.models import EventHistoryKind, EventRequest
+from app.modules.events.schemas import RecordVenueArrangementSchema
 from app.modules.notifications.models import Notification, NotificationKind
 from app.modules.venue import services
 from app.modules.venue.models import (
@@ -562,6 +564,54 @@ def test_a_decision_with_no_suggestion_records_none(
     details = history_entries(db_session, rejectable.event.id)[-1].details
     assert "suggested_venue_id" not in details
     assert "suggested_starts_at" not in details
+
+
+def test_the_event_record_shows_the_suggested_venue_by_name_and_the_period(
+    db_session: Session, rejectable: Rejectable
+) -> None:
+    """What the organiser and every staff reader see (SCRUM-24, ADR-0104)."""
+    _decide(
+        rejectable.request.id,
+        db_session,
+        suggested_venue_id=rejectable.other.id,
+        **SUGGESTED_TIMES,
+    )
+
+    [shown] = services.list_every_arrangement_for_record(rejectable.event.id, session=db_session)
+
+    assert shown.decision_reason == REASON
+    assert shown.suggested_venue_name == "Breakout room"
+    assert shown.suggested_starts_at == SUGGESTED_STARTS_UTC
+    assert shown.suggested_ends_at == SUGGESTED_ENDS_UTC
+
+
+def test_a_suggested_period_alone_shows_no_venue_on_the_record(
+    db_session: Session, rejectable: Rejectable
+) -> None:
+    _decide(rejectable.request.id, db_session, **SUGGESTED_TIMES)
+
+    [shown] = services.list_every_arrangement_for_record(rejectable.event.id, session=db_session)
+
+    assert shown.suggested_venue_name is None
+    assert shown.suggested_starts_at == SUGGESTED_STARTS_UTC
+
+
+def test_the_records_arrangement_shows_the_suggestion_in_business_time(
+    db_session: Session, rejectable: Rejectable
+) -> None:
+    _decide(
+        rejectable.request.id,
+        db_session,
+        suggested_venue_id=rejectable.other.id,
+        **SUGGESTED_TIMES,
+    )
+    [shown] = services.list_every_arrangement_for_record(rejectable.event.id, session=db_session)
+
+    body = RecordVenueArrangementSchema().dump(shown)
+
+    assert body["suggested_venue_name"] == "Breakout room"
+    assert body["suggested_starts_at"] == "2026-11-03T14:00:00+08:00"
+    assert body["suggested_ends_at"] == "2026-11-03T17:00:00+08:00"
 
 
 # --------------------------------------------------------------------------
