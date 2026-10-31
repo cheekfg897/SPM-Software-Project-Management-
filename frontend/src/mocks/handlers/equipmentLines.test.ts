@@ -45,18 +45,27 @@ const DUPLICATE_MESSAGE =
 const MISSING_MESSAGE = 'Missing data for required field.'
 const NOT_AN_INTEGER_MESSAGE = 'Not a valid integer.'
 
-/** Statuses in which an event's equipment may change (EQUIPMENT_EDITABLE_STATUSES). */
-const EDITABLE_STATUSES: readonly EventRequestStatus[] = [
+const NOT_YET_APPROVED_MESSAGE =
+  'Equipment can only be added, changed or removed once the event request is approved. ' +
+  "Until then, changes go through a clarification or the organiser's change request."
+
+/** Statuses in which an event's equipment may change (EQUIPMENT_EDITABLE_STATUSES, SCRUM-110). */
+const EDITABLE_STATUSES: readonly EventRequestStatus[] = ['approved', 'safety_review']
+/** Statuses before approval, when Technical Support must not be asked yet (SCRUM-110 AC3). */
+const NOT_YET_APPROVED_STATUSES: readonly EventRequestStatus[] = [
   'submitted',
   'under_review',
   'awaiting_clarification',
-  'approved',
-  'safety_review',
 ]
 /** The rest, but a draft, which staff never find. Built from every status, so a new one is tested. */
 const LOCKED_STATUSES = Object.values(EVENT_REQUEST_STATUS).filter(
-  (status) => status !== 'draft' && !EDITABLE_STATUSES.includes(status),
+  (status) =>
+    status !== 'draft' &&
+    !EDITABLE_STATUSES.includes(status) &&
+    !NOT_YET_APPROVED_STATUSES.includes(status),
 )
+/** The line seeded on the coordinator's event awaiting clarification (equipmentFixtures.ts). */
+const AWAITING_CLARIFICATION_LINE_ID = 51
 
 const LECTERN: EquipmentLineBody = { equipment_type_id: LECTERN_TYPE_ID, quantity: 2 }
 
@@ -262,8 +271,8 @@ describe('SCRUM-37 equipment line mock: adding (AC1, AC3)', () => {
   it('gives each new line its own id', async () => {
     signInAs(MOCK_ACCOUNTS.coordinator)
 
-    const first = await addEquipmentLine(eventIn('submitted'), LECTERN)
-    const second = await addEquipmentLine(eventIn('under_review'), LECTERN)
+    const first = await addEquipmentLine(eventIn('approved'), LECTERN)
+    const second = await addEquipmentLine(eventIn('safety_review'), LECTERN)
 
     expect(second.id).not.toBe(first.id)
     expect([first.id, second.id]).not.toContain(PROJECTOR_LINE_ID)
@@ -398,6 +407,19 @@ describe('SCRUM-37 equipment line mock: adding (AC1, AC3)', () => {
       equipment_type_id: LECTERN_TYPE_ID,
     })
   })
+
+  it.each(NOT_YET_APPROVED_STATUSES)(
+    'refuses a line on an event that is %s, until the request is approved (SCRUM-110)',
+    async (status) => {
+      signInAs(MOCK_ACCOUNTS.coordinator)
+
+      await expect(addEquipmentLine(eventIn(status), LECTERN)).rejects.toMatchObject({
+        status: 409,
+        code: 'equipment_not_editable',
+        message: NOT_YET_APPROVED_MESSAGE,
+      })
+    },
+  )
 
   it.each(LOCKED_STATUSES)('refuses a line on an event that is %s', async (status) => {
     signInAs(MOCK_ACCOUNTS.coordinator)
@@ -585,7 +607,7 @@ describe('SCRUM-37 equipment line mock: changing (AC2, AC3)', () => {
 
   it("answers 404 for a line that is not this event's", async () => {
     signInAs(MOCK_ACCOUNTS.coordinator)
-    const elsewhere = await addEquipmentLine(eventIn('submitted'), LECTERN)
+    const elsewhere = await addEquipmentLine(eventIn('approved'), LECTERN)
 
     for (const lineId of [UNKNOWN_ID, elsewhere.id]) {
       await expect(change(lineId, { quantity: 2 })).rejects.toMatchObject({
@@ -623,6 +645,38 @@ describe('SCRUM-37 equipment line mock: changing (AC2, AC3)', () => {
     await expect(
       change(UNKNOWN_ID, { quantity: 2 }, MOCK_OTHER_COORDINATORS_EVENT_REFERENCE),
     ).rejects.toMatchObject({ status: 404, message: NOT_FOUND_MESSAGE })
+  })
+
+  it('keeps a line recorded before approval as it is, refusing to change or remove it (SCRUM-110 AC4)', async () => {
+    signInAs(MOCK_ACCOUNTS.coordinator)
+    const reference = eventIn('awaiting_clarification')
+    const refused = {
+      status: 409,
+      code: 'equipment_not_editable',
+      message: NOT_YET_APPROVED_MESSAGE,
+    }
+
+    await expect(
+      change(AWAITING_CLARIFICATION_LINE_ID, { quantity: 5 }, reference),
+    ).rejects.toMatchObject(refused)
+    await expect(
+      removeEquipmentLine(reference, AWAITING_CLARIFICATION_LINE_ID),
+    ).rejects.toMatchObject(refused)
+    await expect(fetchEventEquipmentLines(reference)).resolves.toMatchObject({
+      equipment_lines: [{ id: AWAITING_CLARIFICATION_LINE_ID, quantity: 2, status: 'requested' }],
+    })
+  })
+
+  it('lets Technical Support record the outcome of a line recorded before approval (SCRUM-110 AC4)', async () => {
+    signInAs(MOCK_ACCOUNTS.technicalSupport)
+    const reference = eventIn('awaiting_clarification')
+
+    const reviewed = await recordEquipmentOutcome(reference, {
+      lineId: AWAITING_CLARIFICATION_LINE_ID,
+      body: { provided_quantity: 2 },
+    })
+
+    expect(reviewed).toMatchObject({ status: 'fulfilled', provided_quantity: 2 })
   })
 
   it('checks the line before the equipment type', async () => {
@@ -667,7 +721,7 @@ describe('SCRUM-37 equipment line mock: removing (AC2)', () => {
 
   it("answers 404 for a line that is not this event's", async () => {
     signInAs(MOCK_ACCOUNTS.coordinator)
-    const elsewhere = await addEquipmentLine(eventIn('submitted'), LECTERN)
+    const elsewhere = await addEquipmentLine(eventIn('approved'), LECTERN)
 
     for (const lineId of [UNKNOWN_ID, elsewhere.id]) {
       await expect(removeEquipmentLine(MOCK_OPEN_EVENT_REFERENCE, lineId)).rejects.toMatchObject({
@@ -675,7 +729,7 @@ describe('SCRUM-37 equipment line mock: removing (AC2)', () => {
         message: LINE_NOT_FOUND_MESSAGE,
       })
     }
-    await expect(fetchEventEquipmentLines(eventIn('submitted'))).resolves.toMatchObject({
+    await expect(fetchEventEquipmentLines(eventIn('approved'))).resolves.toMatchObject({
       equipment_lines: [{ id: elsewhere.id }],
     })
   })
