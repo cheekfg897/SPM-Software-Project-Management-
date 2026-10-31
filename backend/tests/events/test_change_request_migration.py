@@ -65,19 +65,6 @@ def test_it_adds_the_models_new_kinds_and_status_and_follows_main(
     assert len(migration.revision) <= 32
 
 
-def test_with_the_kinds_added_the_type_holds_exactly_the_models_kinds(
-    load_migration: LoadMigration,
-) -> None:
-    """The newest migration to change ``notification_kind`` leaves no kind out."""
-    migration = load_migration(MIGRATION)
-    notification_kinds = {
-        *migration.PREVIOUS_NOTIFICATION_KIND_VALUES,
-        *migration.ADDED_NOTIFICATION_KIND_VALUES,
-    }
-
-    assert notification_kinds == {kind.value for kind in NotificationKind}
-
-
 def test_upgrade_creates_the_table_and_its_pending_index_then_adds_the_kinds(
     load_migration: LoadMigration, render_migration_sql: RenderMigrationSql
 ) -> None:

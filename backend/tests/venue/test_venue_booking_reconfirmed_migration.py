@@ -81,10 +81,10 @@ def test_with_the_values_added_each_type_holds_the_models_values(
     }
     history_kinds = {*migration.PREVIOUS_HISTORY_KIND_VALUES, *migration.ADDED_HISTORY_KIND_VALUES}
 
-    # Subset, not equality, for the notification kinds: migration 0053 (SCRUM-56) adds
-    # two more. It is still the last to change the history kinds.
+    # Subset, not equality: later migrations (0053 SCRUM-56, 0054 SCRUM-111) add further
+    # kinds.
     assert notification_kinds <= {kind.value for kind in NotificationKind}
-    assert history_kinds == {kind.value for kind in EventHistoryKind}
+    assert history_kinds <= {kind.value for kind in EventHistoryKind}
 
 
 def test_upgrade_adds_both_values_outside_the_transaction(
