@@ -109,6 +109,7 @@ REASSESSMENT = services.ReservationReassessment(
     ends_at=datetime(2026, 10, 17, 9, 0, tzinfo=timezone.utc),
     available=1,
     shortfall=2,
+    confirmable=True,
 )
 #: Times in business time, as every equipment route shows them (ADR-0009).
 REASSESSMENT_JSON = {
@@ -120,6 +121,7 @@ REASSESSMENT_JSON = {
     "ends_at": "2026-10-17T17:00:00+08:00",
     "available": 1,
     "shortfall": 2,
+    "confirmable": True,
 }
 
 
