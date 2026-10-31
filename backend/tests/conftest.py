@@ -263,6 +263,17 @@ def now() -> datetime:
 
 
 @pytest.fixture()
+def saved_attendees(make_user: Callable[..., User], save: Callable[..., None]) -> list[User]:
+    """Attendees 22, 20 and 21, saved out of id order so a query has to sort them."""
+    attendees = []
+    for attendee_id in (22, 20, 21):
+        email = f"attendee{attendee_id}@example.com"
+        attendees.append(make_user(email=email, role=Role.ATTENDEE, user_id=attendee_id))
+    save(*attendees)
+    return attendees
+
+
+@pytest.fixture()
 def make_registration(save: Callable[..., None], now: datetime) -> Callable[..., Registration]:
     """Factory for saved registrations; ``registered_at`` defaults to ``now``."""
 

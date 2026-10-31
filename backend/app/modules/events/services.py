@@ -5868,6 +5868,20 @@ def _event_request_cancellable_by(
     return event_request
 
 
+def _notify_registered_attendees(event_request: EventRequest, session: Session) -> None:
+    """Tell every Attendee holding a place that the event is cancelled (SCRUM-61 AC4).
+
+    With no ``detail``: the organiser's reason was written for the coordinator
+    (ADR-0122). Their registrations are left as they are; the event's status says it
+    is off (ADR-0109).
+    """
+    # Imported here because the registration module imports this one for event facts.
+    from app.modules.registration.services import list_registered_attendee_ids
+
+    attendee_ids = list_registered_attendee_ids(event_request.id, session=session)
+    _raise_notifications(attendee_ids, event_request, NotificationKind.EVENT_CANCELLED, session)
+
+
 def cancel_event_request(
     organiser_id: int | str,
     reference: str,
@@ -5885,11 +5899,11 @@ def cancel_event_request(
     arranged for the event, as for a rejection during planning (ADR-0093): its venue
     arrangements withdrawn or released, bookings and holds included (AC2, AC6), and its
     reserved equipment returned (AC3). Its open equipment requests close with the
-    status (AC7). Then the assigned coordinator is told, with the reason (AC1), and
-    every Venue Staff user about each booking or hold released (AC8); a notice that
-    can't be saved loses only itself (ADR-0015). The checks run in this order: the
-    organiser's organisation, the reference, the status, then the payload. See
-    ADR-0122.
+    status (AC7). Then the assigned coordinator is told, with the reason (AC1), every
+    registered Attendee, without it (AC4), and every Venue Staff user about each
+    booking or hold released (AC8); a notice that can't be saved loses only itself
+    (ADR-0015). The checks run in this order: the organiser's organisation, the
+    reference, the status, then the payload. See ADR-0122.
 
     Args:
         organiser_id: The caller's user id, taken from their token.
@@ -5926,6 +5940,7 @@ def cancel_event_request(
     _notify_assigned_coordinator(
         event_request, NotificationKind.EVENT_CANCELLED, sess, detail=reason
     )
+    _notify_registered_attendees(event_request, sess)
     venue_services.tell_venue_staff_of_cancellation_releases(
         _for_booking(event_request), released, session=sess
     )
