@@ -7,7 +7,7 @@ import type { MockCoordinator, MockEventRequest } from './eventRequestFixtures'
 
 /** A venue arrangement's status, as the venue module names it (BookingRequestStatus). */
 export type MockArrangementStatus =
-  'pending' | 'withdrawn' | 'approved' | 'rejected' | 'conflicting' | 'released'
+  'pending' | 'withdrawn' | 'approved' | 'rejected' | 'conflicting' | 'released' | 'cancelled'
 
 /**
  * One of the event's venue arrangements: what the gates read (its id, its status and each reason a
