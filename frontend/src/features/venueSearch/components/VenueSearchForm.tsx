@@ -2,29 +2,42 @@ import type { FormEvent } from 'react'
 
 import { Button, SelectField, TextAreaField, TextField } from '@/components/ui'
 import { LAYOUT_OPTIONS } from '@/config/roomLayouts'
+import type { EventRequest } from '@/features/eventRequests/api'
 import { fieldErrorsOf } from '@/lib/api'
 
+import { filtersFromEvent } from '../eventFilters'
 import { useVenueSearch, useVenueSearchFilters } from '../hooks'
 import { listMessages } from '../listMessages'
 import { filtersFrom } from '../searchParams'
 
+import { EventRequirementsNote } from './EventRequirementsNote'
+
+interface VenueSearchFormProps {
+  /** The event the search was opened from, whose details fill the form until it is searched. */
+  event?: EventRequest
+}
+
 /**
  * What the event needs, as filters for the search. Its values come from the URL, so a shared link
- * fills it in, and the backend's messages show under the fields they name.
+ * fills it in, and the backend's messages show under the fields they name. Opened from an event
+ * with nothing searched yet, the event's recorded details fill it in instead (SCRUM-90), and
+ * its own words sit beside the filters they could not fill.
  */
-export function VenueSearchForm() {
+export function VenueSearchForm({ event }: VenueSearchFormProps) {
   const { filters, applyFilters } = useVenueSearchFilters()
   const { error, isFetching } = useVenueSearch(filters)
   const fieldErrors = fieldErrorsOf(error)
+  const eventFilters = event === undefined ? null : filtersFromEvent(event)
+  const shown = filters ?? eventFilters
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    applyFilters(filtersFrom(new FormData(event.currentTarget)))
+  function handleSubmit(submitted: FormEvent<HTMLFormElement>) {
+    submitted.preventDefault()
+    applyFilters(filtersFrom(new FormData(submitted.currentTarget)))
   }
 
   return (
     // Drawn again when the URL's filters change (Back, a shared link), so it shows them.
-    <form key={JSON.stringify(filters)} onSubmit={handleSubmit} className="space-y-5">
+    <form key={JSON.stringify(shown)} onSubmit={handleSubmit} className="space-y-5">
       <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
         <TextField
           label="Date"
@@ -32,14 +45,14 @@ export function VenueSearchForm() {
           type="date"
           required
           hint="In Singapore time."
-          defaultValue={filters?.date}
+          defaultValue={shown?.date}
         />
         <TextField
           label="Start time"
           name="start"
           type="time"
           required
-          defaultValue={filters?.start}
+          defaultValue={shown?.start}
           errors={fieldErrors.start_time}
         />
         <TextField
@@ -47,7 +60,7 @@ export function VenueSearchForm() {
           name="end"
           type="time"
           required
-          defaultValue={filters?.end}
+          defaultValue={shown?.end}
           errors={fieldErrors.end_time}
         />
         <TextField
@@ -55,10 +68,10 @@ export function VenueSearchForm() {
           name="end_date"
           type="date"
           hint="Only for an event that ends on a later day."
-          defaultValue={filters?.end_date}
+          defaultValue={shown?.end_date}
         />
       </div>
-      <div className="grid gap-5 sm:grid-cols-3">
+      <div className="grid gap-5 sm:grid-cols-2">
         <TextField
           label="Minimum capacity"
           name="min_capacity"
@@ -66,37 +79,38 @@ export function VenueSearchForm() {
           min={1}
           required
           hint="The number of people expected."
-          defaultValue={filters?.min_capacity}
+          defaultValue={shown?.min_capacity}
           errors={fieldErrors.min_capacity}
         />
         <TextField
           label="Location"
           name="location"
           hint="Venues whose location contains this text."
-          defaultValue={filters?.location}
+          defaultValue={shown?.location}
           errors={fieldErrors.location}
         />
+      </div>
+      {event !== undefined && <EventRequirementsNote event={event} />}
+      <div className="grid gap-5 sm:grid-cols-3">
         <SelectField
           label="Room layout"
           name="required_layout"
           options={LAYOUT_OPTIONS}
-          defaultValue={filters?.required_layout}
+          defaultValue={shown?.required_layout}
           errors={fieldErrors.required_layout}
         />
-      </div>
-      <div className="grid gap-5 sm:grid-cols-2">
         <TextAreaField
           label="Facilities"
           name="required_facilities"
           hint="One per line, for example projector."
-          defaultValue={filters?.required_facilities.join('\n')}
+          defaultValue={shown?.required_facilities.join('\n')}
           errors={listMessages(fieldErrors, 'required_facilities')}
         />
         <TextAreaField
           label="Accessibility requirements"
           name="required_accessibility"
           hint="One per line, for example step-free access."
-          defaultValue={filters?.required_accessibility.join('\n')}
+          defaultValue={shown?.required_accessibility.join('\n')}
           errors={listMessages(fieldErrors, 'required_accessibility')}
         />
       </div>

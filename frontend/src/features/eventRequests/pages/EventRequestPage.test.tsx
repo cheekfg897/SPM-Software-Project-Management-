@@ -570,3 +570,23 @@ describe('SCRUM-24 event record: who reaches which address', () => {
     expect(router.state.location.pathname).toBe(ROUTES.STAFF_LOGIN)
   })
 })
+
+describe('SCRUM-90 event record: opening venue search from the event', () => {
+  const FIND_A_VENUE = 'Find a venue for this event'
+
+  it('gives the assigned coordinator a link to venue search for this event (AC1)', async () => {
+    const { user, router } = openAsCoordinator('EVR-7K2M9QXA')
+
+    await user.click(await screen.findByRole('link', { name: FIND_A_VENUE }))
+
+    expect(router.state.location.pathname).toBe(ROUTES.VENUE_SEARCH)
+    expect(router.state.location.search).toBe('?for_event=EVR-7K2M9QXA')
+  })
+
+  it('gives an organiser no link to venue search', async () => {
+    openAsOrganiser('EVR-7K2M9QXA')
+
+    await section('About the event')
+    expect(screen.queryByRole('link', { name: FIND_A_VENUE })).not.toBeInTheDocument()
+  })
+})

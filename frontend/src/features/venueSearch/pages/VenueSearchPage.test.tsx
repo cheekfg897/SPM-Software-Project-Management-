@@ -8,41 +8,14 @@ import { server } from '@/mocks/server'
 import { recordRequests } from '@/test/recordRequests'
 import { renderApp } from '@/test/render'
 
+import { fill, search, SEARCH_URL, searchesSent, typeInto } from '../test/searchForm'
+
 const COORDINATOR = { session: mockSessionFor(MOCK_ACCOUNTS.coordinator) }
-const SEARCH_URL = '/api/venues/search'
 /**
  * 20 November, 09:00 to 17:00, for 120 people: the Garden Pavilion, Harbourfront Hall, Lawn
  * Marquee and Marina Hall fit.
  */
 const SEARCHED_PATH = `${ROUTES.VENUE_SEARCH}?date=2026-11-20&start=09:00&end=17:00&min_capacity=120`
-
-type View = ReturnType<typeof renderApp>
-
-async function typeInto(view: View, label: string, text: string) {
-  const field = await view.findByLabelText(label)
-  await view.user.clear(field)
-  await view.user.type(field, text)
-}
-
-/** Fill the four filters the form requires, then any others. */
-async function fill(view: View, others: Record<string, string> = {}) {
-  await typeInto(view, 'Date', '2026-11-20')
-  await typeInto(view, 'Start time', '09:00')
-  await typeInto(view, 'End time', '17:00')
-  await typeInto(view, 'Minimum capacity', '120')
-  for (const [label, text] of Object.entries(others)) {
-    await typeInto(view, label, text)
-  }
-}
-
-async function search(view: View, others: Record<string, string> = {}) {
-  await fill(view, others)
-  await view.user.click(view.getByRole('button', { name: 'Search venues' }))
-}
-
-function searchesSent(requests: Request[]): Request[] {
-  return requests.filter((request) => new URL(request.url).pathname === SEARCH_URL)
-}
 
 function resultsList(): HTMLElement {
   return screen.getByRole('list', { name: 'Venues that match' })
