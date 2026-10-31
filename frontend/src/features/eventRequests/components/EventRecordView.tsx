@@ -3,6 +3,7 @@ import { ButtonLink } from '@/components/ui'
 import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
 import { ROLE } from '@/config/roles'
 import { eventEquipmentPath, venueRequestsPath } from '@/config/routes'
+import { venueSearchForEventPath } from '@/features/venueSearch/searchParams'
 import { selectSessionUser, useAppSelector } from '@/store'
 
 import { isRecordEquipmentLine } from '../api'
@@ -41,10 +42,16 @@ function AnswerClarification({ reference }: { reference: string }) {
   )
 }
 
-/** Where the event's assigned coordinator plans it next. Only they may open these pages. */
+/**
+ * Where the event's assigned coordinator plans it next. Only they may open these pages. Venue
+ * search opens with the event's details filled in (SCRUM-90).
+ */
 function CoordinatorLinks({ reference }: { reference: string }) {
   return (
     <div className="mt-8 flex flex-wrap gap-3">
+      <ButtonLink to={venueSearchForEventPath(reference)} variant="secondary">
+        Find a venue for this event
+      </ButtonLink>
       <ButtonLink to={venueRequestsPath(reference)} variant="secondary">
         Venue requests
       </ButtonLink>
