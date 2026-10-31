@@ -9,11 +9,13 @@ import { RecordSection } from './RecordSection'
 
 /**
  * The statuses the backend lets the coordinator's edit through: once they have approved the
- * request, until it is Confirmed (SCRUM-110 AC1, ADR-0116). Before approval, changes go through a
- * clarification or the organiser's change request; a Confirmed event changes only through a
- * change request (SCRUM-33 AC8).
+ * request, until it is Confirmed (SCRUM-110 AC1, ADR-0116), and while the organiser's answer is
+ * awaited, to record the amendments that come with it (AC2's exception, SCRUM-32 AC2). Otherwise,
+ * before approval, changes go through a clarification or the organiser's change request; a
+ * Confirmed event changes only through a change request (SCRUM-33 AC8).
  */
 const EDITABLE_STATUSES: readonly EventRequestStatus[] = [
+  EVENT_REQUEST_STATUS.AWAITING_CLARIFICATION,
   EVENT_REQUEST_STATUS.APPROVED,
   EVENT_REQUEST_STATUS.SAFETY_REVIEW,
 ]
