@@ -519,17 +519,23 @@ describe('SCRUM-99 naming what to rework', () => {
     expect(body).not.toHaveProperty('flagged_arrangement_ids')
   })
 
-  it("shows the backend's message under what to rework when an approval names something", async () => {
-    const { user } = renderList()
-    const gala = await openForm(user, GALA)
-    await fillChecklist(user, gala)
-    await user.click(gala.getByRole('checkbox', { name: BALLROOM_LABEL }))
+  it.each([
+    ['a venue', BALLROOM_LABEL],
+    ['an equipment line', MICROPHONES_LABEL],
+  ])(
+    "shows the backend's message under what to rework when an approval names %s",
+    async (_named, label) => {
+      const { user } = renderList()
+      const gala = await openForm(user, GALA)
+      await fillChecklist(user, gala)
+      await user.click(gala.getByRole('checkbox', { name: label }))
 
-    await user.click(gala.getByRole('button', { name: `Approve ${GALA}` }))
+      await user.click(gala.getByRole('button', { name: `Approve ${GALA}` }))
 
-    expect(
-      await gala.findByText('Only a rejection or a request for changes can name what to rework.'),
-    ).toBeInTheDocument()
-    expect(gala.getByRole('checkbox', { name: BALLROOM_LABEL })).toBeInvalid()
-  })
+      expect(
+        await gala.findByText('Only a rejection or a request for changes can name what to rework.'),
+      ).toBeInTheDocument()
+      expect(gala.getByRole('checkbox', { name: label })).toBeInvalid()
+    },
+  )
 })
