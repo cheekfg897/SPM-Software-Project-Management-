@@ -34,6 +34,7 @@ import {
   QUANTITY_RANGE_MESSAGE,
   wholeNumberError,
 } from './equipmentValidation'
+import { AWAITING_DECISION_STATUSES, CHANGES_BEFORE_APPROVAL } from './eventReviewRules'
 
 /**
  * Each event's equipment lines (SCRUM-37), as backend/app/modules/events/routes.py answers them
@@ -58,15 +59,7 @@ const EDITABLE_STATUSES: readonly EventRequestStatus[] = [
   EVENT_REQUEST_STATUS.APPROVED,
   EVENT_REQUEST_STATUS.SAFETY_REVIEW,
 ]
-/** Before approval (AWAITING_DECISION_STATUSES): refused with its own message. */
-const NOT_YET_APPROVED_STATUSES: readonly EventRequestStatus[] = [
-  EVENT_REQUEST_STATUS.SUBMITTED,
-  EVENT_REQUEST_STATUS.UNDER_REVIEW,
-  EVENT_REQUEST_STATUS.AWAITING_CLARIFICATION,
-]
-const NOT_YET_APPROVED_MESSAGE =
-  'Equipment can only be added, changed or removed once the event request is approved. ' +
-  "Until then, changes go through a clarification or the organiser's change request."
+const NOT_YET_APPROVED_MESSAGE = `Equipment can only be added, changed or removed once the event request is approved. ${CHANGES_BEFORE_APPROVAL}`
 const NOT_EDITABLE_MESSAGE =
   'Equipment can only be changed before the event is confirmed, and not once it is rejected or cancelled.'
 /** The fields a line body may carry (EditEquipmentLineSchema); adding needs the first two. */
@@ -275,7 +268,7 @@ function editableEventOrRefusal(caller: MockAccount, reference: string): MockEve
   if (event === undefined) {
     return eventNotFound()
   }
-  if (NOT_YET_APPROVED_STATUSES.includes(event.status)) {
+  if (AWAITING_DECISION_STATUSES.includes(event.status)) {
     return errorResponse(409, 'equipment_not_editable', NOT_YET_APPROVED_MESSAGE)
   }
   if (!EDITABLE_STATUSES.includes(event.status)) {

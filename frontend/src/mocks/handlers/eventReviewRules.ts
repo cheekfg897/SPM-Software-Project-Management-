@@ -1,3 +1,5 @@
+import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
+import type { EventRequestStatus } from '@/config/eventStatus'
 import type { Decision } from '@/features/eventRequests/api'
 import type { FieldErrors } from '@/lib/api'
 
@@ -17,6 +19,20 @@ const UNKNOWN_FIELD_MESSAGE = 'Unknown field.'
 const OUTCOME_MESSAGE = 'Outcome must be approved or rejected.'
 const DECISION_FIELDS: readonly string[] = ['outcome', 'reason']
 const REJECTION_REASON_REQUIRED_MESSAGE = 'A reason is required to reject the event.'
+
+/**
+ * Statuses a request awaits its first decision in (AWAITING_DECISION_STATUSES, ADR-0028,
+ * ADR-0029). Until it is approved, the coordinator edits neither its details nor its equipment
+ * lines (SCRUM-110, ADR-0116).
+ */
+export const AWAITING_DECISION_STATUSES: readonly EventRequestStatus[] = [
+  EVENT_REQUEST_STATUS.SUBMITTED,
+  EVENT_REQUEST_STATUS.UNDER_REVIEW,
+  EVENT_REQUEST_STATUS.AWAITING_CLARIFICATION,
+]
+/** How such a request can still change: the end of both refusals (CHANGES_BEFORE_APPROVAL). */
+export const CHANGES_BEFORE_APPROVAL =
+  "Until then, changes go through a clarification or the organiser's change request."
 
 /** One of the two outcomes a decision may have. */
 function isOutcome(value: unknown): value is Decision['outcome'] {
