@@ -944,6 +944,7 @@ describe('SCRUM-92 booking mock: raising a replacement for a flagged arrangement
       previousAttendance: 10,
       newAttendance: 10,
       startMovedByMs: 0,
+      endMovedByMs: 0,
     })
     return {
       id: Number(raised.id),

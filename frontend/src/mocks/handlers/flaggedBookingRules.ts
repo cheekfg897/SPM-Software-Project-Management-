@@ -36,11 +36,13 @@ export function businessIso(instant: number): string {
 
 /**
  * What changed under a booking since its period was last set, raised or reconfirmed: how far the
- * event's start moved, and the attendance before the first change and now. The backend reads it
- * back from the event's history (get_event_when_arranged); the mock keeps it as the edits arrive.
+ * event's start and end moved, and the attendance before the first change and now. The backend
+ * reads it back from the event's history (get_event_when_arranged); the mock keeps it as the edits
+ * arrive.
  */
 export interface Drift {
   startMovedByMs: number
+  endMovedByMs: number
   attendanceBefore: number
   attendanceNow: number
 }
@@ -50,12 +52,14 @@ export function driftAfter(before: Drift | undefined, change: SignificantChange)
   if (before === undefined) {
     return {
       startMovedByMs: change.startMovedByMs,
+      endMovedByMs: change.endMovedByMs,
       attendanceBefore: change.previousAttendance,
       attendanceNow: change.newAttendance,
     }
   }
   return {
     startMovedByMs: before.startMovedByMs + change.startMovedByMs,
+    endMovedByMs: before.endMovedByMs + change.endMovedByMs,
     attendanceBefore: before.attendanceBefore,
     attendanceNow: change.newAttendance,
   }
@@ -63,14 +67,17 @@ export function driftAfter(before: Drift | undefined, change: SignificantChange)
 
 /**
  * What reconfirming the booking gives it (`_reconfirmation_of`): its period moved by as much as the
- * event's start moved (AC2), and the attendance now as its occupancy when it held everyone and was
- * outgrown (AC10). With no drift, nothing has moved.
+ * event's start moved, adjustable only once the start or end moved (AC2, ADR-0112 decision 17), and
+ * the attendance now as its occupancy when it held everyone and was outgrown (AC10). With no
+ * drift, nothing has moved.
  */
 export function reconfirmationOf(
   booking: BookingRequest,
   drift: Drift | undefined,
 ): Reconfirmation {
   const movedBy = drift?.startMovedByMs ?? 0
+  const periodAdjustable =
+    drift !== undefined && (drift.startMovedByMs !== 0 || drift.endMovedByMs !== 0)
   let occupancy = booking.expected_occupancy
   if (drift !== undefined && isOutgrown(occupancy, drift.attendanceBefore, drift.attendanceNow)) {
     occupancy = drift.attendanceNow
@@ -79,7 +86,27 @@ export function reconfirmationOf(
     starts_at: businessIso(Date.parse(booking.starts_at) + movedBy),
     ends_at: businessIso(Date.parse(booking.ends_at) + movedBy),
     expected_occupancy: occupancy,
+    period_adjustable: periodAdjustable,
   }
+}
+
+/**
+ * The backend's 400 details for a new period when the event's date and times didn't change
+ * (`_require_period_kept`, AC2): on whichever of the start and end differs from the booking's own.
+ */
+export function periodKeptErrors(kept: Reconfirmation, starts: number, ends: number): FieldErrors {
+  if (kept.period_adjustable) {
+    return {}
+  }
+  const message = `The event's date and times haven't changed, so the booking keeps its period: ${noticeTime(Date.parse(kept.starts_at))} to ${noticeTime(Date.parse(kept.ends_at))}.`
+  const errors: FieldErrors = {}
+  if (starts !== Date.parse(kept.starts_at)) {
+    errors.starts_at = [message]
+  }
+  if (ends !== Date.parse(kept.ends_at)) {
+    errors.ends_at = [message]
+  }
+  return errors
 }
 
 /**

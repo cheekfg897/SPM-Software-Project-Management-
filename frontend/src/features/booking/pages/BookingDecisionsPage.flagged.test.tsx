@@ -77,7 +77,34 @@ describe('SCRUM-59 flagged bookings on the venue booking page', () => {
 
     expect(hall.getByLabelText('New start for Plenary hall')).toHaveValue('2026-11-16T09:00')
     expect(hall.getByLabelText('New end for Plenary hall')).toHaveValue('2026-11-16T12:00')
+    expect(hall.getByLabelText('New start for Plenary hall')).not.toHaveAttribute('readonly')
     expect(hall.getByText('Expected occupancy once reconfirmed: 120')).toBeInTheDocument()
+  })
+
+  it("shows the period read-only when the event's date and times haven't changed", async () => {
+    server.use(
+      http.get(FLAGGED_URL, () =>
+        HttpResponse.json([
+          {
+            booking: HALL,
+            reconfirm_with: {
+              starts_at: '2026-11-15T09:00:00+08:00',
+              ends_at: '2026-11-15T12:00:00+08:00',
+              expected_occupancy: 80,
+              period_adjustable: false,
+            },
+          },
+        ]),
+      ),
+    )
+    renderPage()
+    const hall = await findFlagged('Plenary hall')
+
+    expect(hall.getByLabelText('New start for Plenary hall')).toHaveAttribute('readonly')
+    expect(hall.getByLabelText('New end for Plenary hall')).toHaveAttribute('readonly')
+    expect(
+      hall.getByText("The event's date and times haven't changed, so the period stays."),
+    ).toBeInTheDocument()
   })
 
   it('says a request still waiting for a decision only moves', async () => {
@@ -102,6 +129,7 @@ describe('SCRUM-59 flagged bookings on the venue booking page', () => {
               starts_at: '2026-11-16T13:00:00+08:00',
               ends_at: '2026-11-16T15:00:00+08:00',
               expected_occupancy: 10,
+              period_adjustable: true,
             },
           },
         ]),
