@@ -25,12 +25,14 @@ import {
   MOCK_OTHER_COORDINATORS_EVENT_REFERENCE,
   mockStatusEventReference,
 } from './equipmentFixtures'
+import { markReservationsOfType, saveReservation } from './equipmentReservations'
 
 /**
  * SCRUM-60 in the mock backend, pinned to what backend/app/modules/equipment answers (ADR-0114):
  * what a change left to reassess and its shortfall (AC2), confirming it for the event's period now
  * (AC3) with each refusal, an outcome settling it (AC4, AC9, AC12), a new quantity marking it
- * (AC8), a reservation capped at its line (AC9), and the queue listing it again (AC6). The moved
+ * (AC8), a reservation capped at its line (AC9), the queue listing it again (AC6), and whether
+ * confirming settles it, a type with no line included (ADR-0114 decisions 22, 23). The moved
  * event's reservations were marked by a date change, which the mock starts with: its event store
  * isn't the edit mock's. The integration tests check the same against the running backend.
  */
@@ -64,6 +66,24 @@ async function reassessmentNumbers(reference = MOCK_MOVED_EVENT_REFERENCE) {
   ])
 }
 
+/** Save `quantity` microphones for the event in `period`, as Technical Support would. */
+function saveMicrophones(
+  reference: string,
+  quantity: number,
+  period: { starts_at: string; ends_at: string },
+) {
+  saveReservation(reference, {
+    equipment_type_id: MICROPHONE,
+    equipment_type_name: 'Microphone',
+    quantity,
+    ...period,
+    reserved_by: MOCK_ACCOUNTS.technicalSupport.full_name,
+    created_at: '2026-10-02T09:10:00+08:00',
+    preparation_status: 'not_started',
+    preparation_notes: null,
+  })
+}
+
 afterEach(() => sendRequestsAs(null))
 
 describe('SCRUM-60 mock: what a change left to reassess (AC2)', () => {
@@ -93,6 +113,7 @@ describe('SCRUM-60 mock: what a change left to reassess (AC2)', () => {
       ...MOCK_EVENT_PERIOD,
       available: 2,
       shortfall: 0,
+      confirmable: false,
     })
     expect(projector).toMatchObject({ reserved_quantity: 3, available: 6, shortfall: 0 })
   })
@@ -373,5 +394,43 @@ describe("SCRUM-60 mock: the queue lists a marked reservation's line again (AC6)
       [72, 'requested'],
     ])
     expect(moved?.equipment_type_ids_to_reassess).toEqual([PROJECTOR, LECTERN])
+  })
+})
+
+describe('SCRUM-60 mock: whether confirming settles it (ADR-0114 decisions 22, 23)', () => {
+  it('says a line with an outcome can be confirmed, and one with no outcome cannot', async () => {
+    signInAs(MOCK_ACCOUNTS.technicalSupport)
+
+    const reassessments = await fetchEventReassessments(MOCK_MOVED_EVENT_REFERENCE)
+
+    expect(reassessments.map((row) => [row.equipment_type_name, row.confirmable])).toEqual([
+      ['Lectern', false],
+      ['Projector', true],
+    ])
+  })
+
+  it("says one short of what its line's outcome keeps cannot be confirmed", async () => {
+    await reserveProjectorsForTheOpenEvent(4)
+
+    const [, projector] = await fetchEventReassessments(MOCK_MOVED_EVENT_REFERENCE)
+
+    expect(projector).toMatchObject({ shortfall: 1, confirmable: false })
+  })
+
+  it('confirms a type the event has no line for, keeping what is free and releasing the rest', async () => {
+    signInAs(MOCK_ACCOUNTS.technicalSupport)
+    saveMicrophones(MOCK_MOVED_EVENT_REFERENCE, 2, MOCK_OLD_EVENT_PERIOD)
+    markReservationsOfType(MOCK_MOVED_EVENT_REFERENCE, MICROPHONE)
+    saveMicrophones(MOCK_OTHER_COORDINATORS_EVENT_REFERENCE, 11, MOCK_EVENT_PERIOD)
+    const [, microphone] = await fetchEventReassessments(MOCK_MOVED_EVENT_REFERENCE)
+    expect(microphone).toMatchObject({ reserved_quantity: 2, shortfall: 1, confirmable: true })
+
+    const confirmed = await confirmReassessment(MOCK_MOVED_EVENT_REFERENCE, MICROPHONE)
+
+    expect(confirmed).toEqual([expect.objectContaining({ quantity: 1, ...MOCK_EVENT_PERIOD })])
+    expect(await reassessmentNumbers()).toEqual([
+      ['Lectern', 1, 2, 0],
+      ['Projector', 3, 6, 0],
+    ])
   })
 })

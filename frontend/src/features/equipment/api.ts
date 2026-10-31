@@ -74,6 +74,11 @@ export interface ReservationReassessment {
   ends_at: string
   available: number
   shortfall: number
+  /**
+   * Whether confirming would settle them now (ADR-0114 decision 23). If not, the line's outcome
+   * settles them instead (AC4, AC8, AC12).
+   */
+  confirmable: boolean
 }
 
 export interface ReserveEquipmentBody {
