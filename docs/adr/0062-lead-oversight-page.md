@@ -1,6 +1,7 @@
 # ADR-0062: The Lead's oversight page shows the backend's workload and active events, and reassigns by email
 
-- **Status:** Accepted; decisions 2, 4, 5 and 7 are defaults to review with the team
+- **Status:** Accepted; decisions 5 and 7 are defaults to review with the team; decisions 2 and 4
+  superseded by [ADR-0120](0120-lead-oversight-active-events-and-every-coordinator.md)
 - **Date:** 2026-10-17
 - **Story:** SCRUM-96 Lead reassigns events and oversees coordinator assignments (AC1, AC3, AC4),
   with SCRUM-24 AC3 ("separately all active events with the coordinator assigned to each")
@@ -42,6 +43,9 @@ but still follows ADR-0041 for AC2 and AC3, so the screen shows what it sends.
    form.** `/reassign` would answer it with `409` "This event request has no coordinator to
    reassign from."; the queue is where a first assignment is made. *Default to review.* Once the
    backend follows AC2, such rows stop arriving and this branch is never taken.
+   *Superseded by [ADR-0120](0120-lead-oversight-active-events-and-every-coordinator.md): the
+   backend now follows AC2, so the "Not assigned" text and the queue link are gone, and every
+   active row has the reassign form.*
 3. **Reassignment is the event's own form, a typed email, as the queue's assignment is.** No
    picker, because no route lists coordinators with their emails (ADR-0036 decision 8). The
    queue's form is generalised into one `CoordinatorEmailForm` used by both pages, so the two
@@ -51,7 +55,9 @@ but still follows ADR-0041 for AC2 and AC3, so the screen shows what it sends.
    A coordinator whose list is empty reads "No active events."** The page shows no count: the
    checklist forbids counting in the browser, and the list is the count. *Default to review:*
    AC3's "shown with 0" needs the backend to list idle coordinators (and, if a number is wanted,
-   to send it).
+   to send it). *Superseded by [ADR-0120](0120-lead-oversight-active-events-and-every-coordinator.md):
+   the backend lists every Event Coordinator and sends each one's `active_count`, which the card
+   shows ("0 active events" for someone free) above their events.*
 5. **Rows don't open the event.** `GET /requests/<reference>` admits the organiser and the
    assigned coordinator only (ADR-0036's consequences), so a link would lead to a refusal.
    *Default to review*, with the "Lead's view of an event" ADR-0036 deferred.
@@ -74,6 +80,7 @@ but still follows ADR-0041 for AC2 and AC3, so the screen shows what it sends.
   setup can make an Event Coordinator but not a Lead.
 
 ## Revisit when
-- The backend follows SCRUM-96's 17 Oct ACs (AC2, AC3).
+- ~~The backend follows SCRUM-96's 17 Oct ACs (AC2, AC3).~~ Done by
+  [ADR-0120](0120-lead-oversight-active-events-and-every-coordinator.md).
 - A route lists the Event Coordinators: the form could become a picker (ADR-0036 decision 8).
 - The Lead is given a view of an event's record: rows could link to it.

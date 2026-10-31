@@ -102,6 +102,10 @@ SCRUM-97's gate would then pass on stale data.
 
 ### 1.8 Should a submitted-but-unassigned event appear in two of the Lead's lists?
 
+**Status: resolved. No: SCRUM-96 AC2 (changed 17 Oct) says an event is active only once it has
+a coordinator, so an unassigned one is only in the queue. Built by
+[ADR-0120](adr/0120-lead-oversight-active-events-and-every-coordinator.md) decision 1.**
+
 **Yes, as built.** `ACTIVE_STATUSES` includes `submitted`, and AC1 says *all* active events, so
 an event nobody holds yet shows in both the unassigned queue and the active list. The two serve
 different purposes — one is a to-do, the other oversight — but the overlap is visible.
@@ -109,6 +113,11 @@ different purposes — one is a to-do, the other oversight — but the overlap i
 **Cost if wrong:** the Lead sees the same item twice and may act on it twice.
 
 ### 1.9 Should idle coordinators appear in the Lead's workload view?
+
+**Status: resolved. Yes: SCRUM-96 AC3 (changed 17 Oct) lists every Event Coordinator, one with
+no active events shown with 0. Built by
+[ADR-0120](adr/0120-lead-oversight-active-events-and-every-coordinator.md) decisions 2 and 3
+(the backend sends the count).**
 
 **No, as built.** The workload list is derived from events, so a coordinator with no active
 events is simply absent. Listing idle coordinators needs a cross-module user lookup that no AC
@@ -118,6 +127,12 @@ asks for.
 view.
 
 ### 1.10 How is the previous coordinator told they lost an event?
+
+**Status: resolved, as built. SCRUM-96's "Notice to the previous coordinator clarification"
+says which notification type carries it is the developer's choice, and reusing "request
+assigned" is acceptable as long as everything the coordinator sees says they were removed from
+the event (recorded in
+[ADR-0120](adr/0120-lead-oversight-active-events-and-every-coordinator.md)'s Consequences).**
 
 By a **`detail` string on the existing `REQUEST_ASSIGNED` notification**, not a new
 `COORDINATOR_UNASSIGNED` kind. This keeps SCRUM-96 migration-free. A Postgres enum can never
@@ -158,6 +173,12 @@ documented behaviour (*"`notes` is cleared only when sent as `null`"*).
 **Cost if wrong:** trivial — the field becomes set-once, or the pattern extends to other fields.
 
 ### 1.14 What does "active event" mean?
+
+**Status: resolved. SCRUM-96 AC2 now defines it: an assigned coordinator and one of six
+statuses, Submitted, Under Review, Awaiting Clarification, Approved, Safety Review and
+Confirmed. Safety Review was added by ADR-0047, and the coordinator by
+[ADR-0120](adr/0120-lead-oversight-active-events-and-every-coordinator.md) decision 1. What
+follows is the call as first made.**
 
 **The five statuses from submission until the event is over**: `submitted`, `under_review`,
 `awaiting_clarification`, `approved`, `confirmed`. Drafts are the organiser's private work;
