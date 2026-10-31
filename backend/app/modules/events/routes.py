@@ -116,7 +116,7 @@ NO_EQUIPMENT_REQUESTS_MESSAGE = "No events have an equipment request yet."
 NO_VENUE_BOOKINGS_MESSAGE = "No events have a venue booking request yet."
 NO_UNASSIGNED_REQUESTS_MESSAGE = "No event requests are waiting to be assigned."
 NO_ACTIVE_REQUESTS_MESSAGE = "There are no active event requests."
-NO_WORKLOAD_MESSAGE = "No coordinator has an active event request."
+NO_WORKLOAD_MESSAGE = "There are no Event Coordinators."
 NO_SAFETY_REVIEW_EVENTS_MESSAGE = "No events are waiting for a safety review."
 
 
@@ -274,15 +274,22 @@ def list_active() -> tuple[Response, int]:
 @bp.get("/coordinators/workload")
 @requires_role(Role.EVENT_COORDINATOR_LEAD)
 def list_coordinator_workload() -> tuple[Response, int]:
-    """Each coordinator with the active events assigned to them (SCRUM-96 AC2).
+    """Every Event Coordinator with the active events assigned to them (SCRUM-96 AC3).
 
-    Only the Event Coordinator Lead may see it (AC3); coordinators are shown by name,
-    never by id.
+    Only the Event Coordinator Lead may see it (AC4); coordinators are shown by name,
+    never by id. ``active_count`` is sent so the web app shows the count, an idle
+    coordinator's 0 included, without counting for itself (ADR-0120).
     """
     listed = []
     for workload in list_requests_for_each_coordinator():
         events = _event_list_row_schema.dump(workload.assigned, many=True)
-        listed.append({"coordinator": workload.coordinator_name, "event_requests": events})
+        listed.append(
+            {
+                "coordinator": workload.coordinator_name,
+                "active_count": len(workload.assigned),
+                "event_requests": events,
+            }
+        )
     return jsonify(_event_list_body(listed, NO_WORKLOAD_MESSAGE, "coordinators")), 200
 
 

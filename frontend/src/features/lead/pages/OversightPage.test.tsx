@@ -70,6 +70,7 @@ describe('SCRUM-96 the Lead oversight page: the workload', () => {
           coordinators: [
             {
               coordinator: 'Zara Lee',
+              active_count: 2,
               event_requests: [
                 listedEvent('EVR-ZZ000002', 'Late Booking', 'under_review'),
                 listedEvent('EVR-ZZ000001', 'Early Booking', 'confirmed'),
@@ -77,6 +78,7 @@ describe('SCRUM-96 the Lead oversight page: the workload', () => {
             },
             {
               coordinator: 'Adam Tan',
+              active_count: 1,
               event_requests: [listedEvent('EVR-AA000001', 'Adam’s Gig')],
             },
           ],
@@ -87,6 +89,8 @@ describe('SCRUM-96 the Lead oversight page: the workload', () => {
 
     const zara = await findWorkload('Zara Lee')
     expect(cardNamesIn('Workload')).toEqual(['Zara Lee', 'Adam Tan'])
+    expect(zara.getByText('2 active events')).toBeInTheDocument()
+    expect((await findWorkload('Adam Tan')).getByText('1 active event')).toBeInTheDocument()
     const rows = zara.getAllByRole('listitem')
     expect(rows.map((row) => row.textContent)).toEqual([
       expect.stringContaining('Late Booking'),
@@ -99,20 +103,43 @@ describe('SCRUM-96 the Lead oversight page: the workload', () => {
     expect(within(rows[1] as HTMLElement).getByText('Confirmed')).toBeInTheDocument()
   })
 
-  it('says a coordinator the backend lists with no events has none', async () => {
+  it('shows a coordinator who holds no active event with the backend’s count of 0 (AC3)', async () => {
     server.use(
       http.get(WORKLOAD_URL, () =>
-        HttpResponse.json({ coordinators: [{ coordinator: 'Idle Ian', event_requests: [] }] }),
+        HttpResponse.json({
+          coordinators: [{ coordinator: 'Idle Ian', active_count: 0, event_requests: [] }],
+        }),
       ),
     )
     renderOversight()
 
     const ian = await findWorkload('Idle Ian')
-    expect(ian.getByText('No active events.')).toBeInTheDocument()
+    expect(ian.getByText('0 active events')).toBeInTheDocument()
     expect(ian.queryByRole('listitem')).not.toBeInTheDocument()
   })
 
-  it('shows the backend’s message when no coordinator holds an active event', async () => {
+  it('shows the count the backend sends, never one it works out from the events (ADR-0120)', async () => {
+    // A count that differs from the list's length, so a page counting for itself shows 1.
+    server.use(
+      http.get(WORKLOAD_URL, () =>
+        HttpResponse.json({
+          coordinators: [
+            {
+              coordinator: 'Zara Lee',
+              active_count: 4,
+              event_requests: [listedEvent('EVR-ZZ000001', 'Early Booking')],
+            },
+          ],
+        }),
+      ),
+    )
+    renderOversight()
+
+    const zara = await findWorkload('Zara Lee')
+    expect(zara.getByText('4 active events')).toBeInTheDocument()
+  })
+
+  it('shows the backend’s message when there is no coordinator to list', async () => {
     server.use(
       http.get(WORKLOAD_URL, () =>
         HttpResponse.json({ coordinators: [], message: 'Nobody is carrying work right now.' }),

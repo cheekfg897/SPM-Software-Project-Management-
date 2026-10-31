@@ -19,7 +19,7 @@ export function useActiveEvents() {
   return useQuery({ queryKey: leadKeys.active(), queryFn: fetchActiveEvents })
 }
 
-/** Each coordinator holding active events, with those events (SCRUM-96 AC3). */
+/** Every Event Coordinator, with their active events and how many (SCRUM-96 AC3). */
 export function useCoordinatorWorkload() {
   return useQuery({ queryKey: leadKeys.workload(), queryFn: fetchCoordinatorWorkload })
 }
