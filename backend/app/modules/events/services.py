@@ -2528,7 +2528,7 @@ def _flag_venue_arrangements(
     for change in changes:
         changed_fields.add(change.field)
     venue_change = venue_services.SignificantChange(
-        timing_changed=not changed_fields.isdisjoint(_TIMING_FIELDS),
+        timing_changed=_changes_timing(changes),
         venue_requirements_changed="venue_requirements" in changed_fields,
         previous_attendance=attendance_before,
         new_attendance=event_request.expected_attendance,
@@ -2590,9 +2590,10 @@ OUTCOMES_REOPENED_BY_TIMING_CHANGE: frozenset[EquipmentLineStatus] = frozenset(
 def _reopen_lines_short_of_their_request(event_request: EventRequest) -> int:
     """Clear the outcome of each line recorded unavailable or partially fulfilled.
 
-    SCRUM-60 AC12: each is back on Technical Support's list with no current outcome,
-    and its earlier outcome stays in the event's history (as SCRUM-37 AC4). Any
-    reservation it has stays, held for its old period (ADR-0114 decision 2).
+    SCRUM-60 AC12: each is back on Technical Support's list with no current outcome.
+    Nothing new is written to the history: the earlier outcome stays on record in the
+    entry written when it was recorded (as SCRUM-37 AC4). Any reservation it has
+    stays, held for its old period (ADR-0114 decision 2).
 
     Returns:
         How many lines it reopened.

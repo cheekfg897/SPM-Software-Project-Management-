@@ -578,9 +578,9 @@ def mark_type_reservations_for_reassessment(
     _mark_for_reassessment(statement, resolve_session(session))
 
 
-def _reservations_to_reassess(event_id: int, session: Session) -> list[EquipmentReservation]:
-    """The event's reservations marked for reassessment, oldest first."""
-    statement = (
+def _marked_reservations_of(event_id: int) -> Select[tuple[EquipmentReservation]]:
+    """The query for the event's reservations marked for reassessment, oldest first."""
+    return (
         select(EquipmentReservation)
         .where(
             EquipmentReservation.event_id == event_id,
@@ -589,18 +589,35 @@ def _reservations_to_reassess(event_id: int, session: Session) -> list[Equipment
         .options(joinedload(EquipmentReservation.equipment_type))
         .order_by(EquipmentReservation.created_at, EquipmentReservation.id)
     )
-    return list(session.scalars(statement))
+
+
+def _reservations_to_reassess(event_id: int, session: Session) -> list[EquipmentReservation]:
+    """The event's reservations marked for reassessment, oldest first."""
+    return list(session.scalars(_marked_reservations_of(event_id)))
+
+
+def _marked_reservations_of_type(
+    event_id: int, equipment_type_id: int
+) -> Select[tuple[EquipmentReservation]]:
+    """The query for the event's marked reservations of one type, oldest first."""
+    return _marked_reservations_of(event_id).where(
+        EquipmentReservation.equipment_type_id == equipment_type_id
+    )
 
 
 def _type_reservations_to_reassess(
     event_id: int, equipment_type_id: int, session: Session
 ) -> list[EquipmentReservation]:
     """The event's reservations of one type marked for reassessment, oldest first."""
-    of_type = []
-    for reservation in _reservations_to_reassess(event_id, session):
-        if reservation.equipment_type_id == equipment_type_id:
-            of_type.append(reservation)
-    return of_type
+    return list(session.scalars(_marked_reservations_of_type(event_id, equipment_type_id)))
+
+
+def _total_quantity(reservations: list[EquipmentReservation]) -> int:
+    """How many units ``reservations`` hold between them."""
+    total = 0
+    for reservation in reservations:
+        total += reservation.quantity
+    return total
 
 
 def _free_for_reassessment(
@@ -650,9 +667,7 @@ def _reassessment_of(
 ) -> ReservationReassessment:
     """The marked ``reservations`` of one type, rechecked for the event's period."""
     equipment_type = reservations[0].equipment_type
-    reserved = 0
-    for reservation in reservations:
-        reserved += reservation.quantity
+    reserved = _total_quantity(reservations)
     available = _free_for_reassessment(equipment_type, need, session)
     to_confirm = _quantity_to_confirm(need, equipment_type, session)
     # Confirming keeps no more than the reservations hold, and refuses to keep more
@@ -730,9 +745,9 @@ def list_reassessments(
     for reservation in _reservations_to_reassess(need.event_id, sess):
         by_type.setdefault(reservation.equipment_type_id, []).append(reservation)
     reassessments = []
-    for equipment_type in list_equipment_types(session=sess):
-        if equipment_type.id in by_type:
-            reassessments.append(_reassessment_of(by_type[equipment_type.id], need, sess))
+    for reservations in by_type.values():
+        reassessments.append(_reassessment_of(reservations, need, sess))
+    reassessments.sort(key=lambda reassessment: reassessment.equipment_type_name)
     return reassessments
 
 
@@ -766,8 +781,8 @@ def has_reservations_to_reassess(
     event_id: int, equipment_type_id: int, *, session: Session | None = None
 ) -> bool:
     """Whether the event has a reservation of this type marked for reassessment."""
-    sess = resolve_session(session)
-    return len(_type_reservations_to_reassess(event_id, equipment_type_id, sess)) > 0
+    of_type = _marked_reservations_of_type(event_id, equipment_type_id)
+    return resolve_session(session).scalars(of_type).first() is not None
 
 
 def settle_reassessment(
@@ -801,10 +816,7 @@ def settle_reassessment(
     sess = resolve_session(session)
     equipment_type = _locked_equipment_type(equipment_type_id, sess)
     reservations = _type_reservations_to_reassess(need.event_id, equipment_type_id, sess)
-    reserved = 0
-    for reservation in reservations:
-        reserved += reservation.quantity
-    keep = min(provided_quantity, reserved)
+    keep = min(provided_quantity, _total_quantity(reservations))
     available = _free_for_reassessment(equipment_type, need, sess)
     if keep > available:
         raise ReservationCannotMoveError(
