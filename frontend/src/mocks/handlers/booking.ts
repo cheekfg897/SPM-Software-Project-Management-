@@ -1124,7 +1124,8 @@ export const bookingHandlers: RequestHandler[] = [
     return HttpResponse.json(arrangement)
   }),
 
-  http.post(CANCEL_ALL_PATH, ({ request, params }) => {
+  // The backend's order: the event, its status, then the body (SCRUM-93 AC6, AC10, ADR-0118).
+  http.post(CANCEL_ALL_PATH, async ({ request, params }) => {
     const { user, refusal } = checkCoordinator(request)
     if (refusal !== null || user === undefined) {
       return refusal
@@ -1133,15 +1134,18 @@ export const bookingHandlers: RequestHandler[] = [
     if (event instanceof Response) {
       return event
     }
-    const active = requestsOf(event).filter(isActive)
-    // The backend commits once, so one it cannot withdraw means none of them is.
-    const stuck = active.find((existing) => !WITHDRAWABLE_STATUSES.includes(existing.status))
-    if (stuck !== undefined) {
-      return withdrawRefusal(stuck)
+    const invalid = cancelFieldErrors(await readBody(request))
+    if (Object.keys(invalid).length > 0) {
+      return validationError(invalid)
     }
 
+    // An approved booking is cancelled, freeing its venue, and the rest are withdrawn.
+    const active = requestsOf(event).filter(isActive)
     for (const arrangement of active) {
-      moveTo(arrangement, 'withdrawn')
+      moveTo(arrangement, arrangement.status === 'approved' ? 'cancelled' : 'withdrawn')
+    }
+    if (active.length > 0) {
+      returnToPlanningAfterCancellation(event)
     }
     return HttpResponse.json(active)
   }),

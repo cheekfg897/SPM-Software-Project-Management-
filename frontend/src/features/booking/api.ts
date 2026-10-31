@@ -266,9 +266,18 @@ export function cancelBooking(
   })
 }
 
-/** Withdraw every arrangement the event still has; answers with the ones it withdrew. */
-export function cancelAllArrangements(reference: string): Promise<BookingRequest[]> {
-  return apiRequest<BookingRequest[]>(BOOKING_PATHS.cancelAll(reference), { method: 'POST' })
+/**
+ * Retire every arrangement the event still has: an approved booking is cancelled with the reason,
+ * any other arrangement withdrawn (SCRUM-93 AC6, ADR-0118). Answers with the ones it retired.
+ */
+export function cancelAllArrangements(
+  reference: string,
+  cancellation: CancelBooking,
+): Promise<BookingRequest[]> {
+  return apiRequest<BookingRequest[]>(BOOKING_PATHS.cancelAll(reference), {
+    method: 'POST',
+    body: cancellation,
+  })
 }
 
 /** What the backend accepts to place a hold or move its expiry (SCRUM-75 AC3, AC4). */
