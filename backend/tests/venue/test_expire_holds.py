@@ -274,6 +274,7 @@ def test_the_warning_is_sent_once_the_hold_is_within_24_hours_of_its_expiry(
     assert len(_notices(NotificationKind.VENUE_HOLD_EXPIRING, db_session)) == int(warned)
 
 
+@pytest.mark.scrum_115
 def test_the_warning_and_the_expiry_notice_go_to_the_assigned_coordinator(
     db_session: Session,
     multi_venue_event: EventRequest,
@@ -359,6 +360,7 @@ def test_the_warning_follows_a_changed_expiry(
     ]
 
 
+@pytest.mark.scrum_115
 def test_the_assigned_coordinator_is_told_when_the_expiry_changes(
     db_session: Session,
     multi_venue_event: EventRequest,

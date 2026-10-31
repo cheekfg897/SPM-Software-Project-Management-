@@ -43,6 +43,9 @@ from tests.venue.conftest import (
 
 pytestmark = pytest.mark.scrum_75
 
+#: The other Event Coordinator ``saved_users`` saves, for an event reassigned to them.
+OTHER_COORDINATOR_ID = 9
+
 #: Every status a hold is refused in: all but the two that are still waiting. Built from
 #: the enum, so a status added later is checked too.
 NOT_HOLDABLE_STATUSES = [
@@ -571,6 +574,26 @@ def test_the_coordinator_is_told_when_a_hold_is_placed_and_when_its_expiry_chang
             multi_venue_event.reference,
             second_expiry.astimezone(SINGAPORE).isoformat(),
         ),
+    ]
+
+
+@pytest.mark.scrum_115
+def test_a_hold_placed_after_a_reassignment_is_told_to_the_current_coordinator(
+    db_session: Session, multi_venue_event: EventRequest, multi_venue_request: VenueBookingRequest
+) -> None:
+    """SCRUM-115 AC3: not to the coordinator who raised the request (regression)."""
+    multi_venue_event.coordinator_id = OTHER_COORDINATOR_ID
+    db_session.commit()
+    expiry = hours_from_now(48)
+
+    place_hold(multi_venue_request.id, expiry, db_session)
+
+    assert [(n.recipient_id, n.kind, n.detail) for n in _hold_notices(db_session)] == [
+        (
+            OTHER_COORDINATOR_ID,
+            NotificationKind.VENUE_HOLD_PLACED,
+            expiry.astimezone(SINGAPORE).isoformat(),
+        )
     ]
 
 
