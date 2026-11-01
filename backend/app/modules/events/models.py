@@ -18,6 +18,7 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -25,6 +26,7 @@ from sqlalchemy import (
     UniqueConstraint,
     false,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -39,6 +41,11 @@ REFERENCE_MAX_LENGTH = 12
 #: Name of the unique constraint on ``reference``. The service looks for it to
 #: tell a reference collision apart from other integrity errors (ADR-0004).
 REFERENCE_UNIQUE_CONSTRAINT = "uq_event_requests_reference"
+
+#: Name of the partial unique index that keeps one Pending change request per event
+#: (SCRUM-56 AC7, ADR-0126). The service looks for it to tell a second Pending
+#: request apart from other integrity errors.
+PENDING_CHANGE_REQUEST_INDEX = "uq_event_change_requests_pending"
 
 
 class EventRequestStatus(str, enum.Enum):
@@ -218,6 +225,21 @@ class EquipmentLineStatus(str, enum.Enum):
     PARTIALLY_FULFILLED = "partially_fulfilled"
     #: None of it is available; the note carries the required reason (SCRUM-48 AC3).
     UNAVAILABLE = "unavailable"
+
+
+class ChangeRequestStatus(str, enum.Enum):
+    """Where an Organiser's change request stands (SCRUM-56 AC4, ADR-0126).
+
+    Raised ``PENDING``. The Organiser may withdraw it while it is Pending, and it is
+    withdrawn for them if the event is cancelled (SCRUM-56 AC8, AC9). ``APPROVED`` and
+    ``REJECTED`` are the coordinator's decision, which only SCRUM-57 sets; they exist
+    from the start so a decided request can already be refused a withdrawal.
+    """
+
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    WITHDRAWN = "withdrawn"
 
 
 class EventRequest(db.Model):  # type: ignore[name-defined]
@@ -442,3 +464,71 @@ class EventEquipmentLine(db.Model):  # type: ignore[name-defined]
         onupdate=func.now(),
         nullable=False,
     )
+
+
+class EventChangeRequest(db.Model):  # type: ignore[name-defined]
+    """An Organiser's request to change their event after submitting it (SCRUM-56).
+
+    Raising one leaves the event as it is (AC3): what should change is held here until
+    the coordinator decides it (SCRUM-57). Each requested field keeps the value it had
+    when the request was raised, so SCRUM-57 can refuse to apply a request the event
+    has since moved away from (ADR-0126).
+    """
+
+    __tablename__ = "event_change_requests"
+    __table_args__ = (
+        # AC7: one Pending request per event. A partial index, so a withdrawn or
+        # decided request doesn't block the next one. SQLite (the unit suite) has
+        # partial indexes too, so it enforces it as Postgres does (as ADR-0035's).
+        Index(
+            PENDING_CHANGE_REQUEST_INDEX,
+            "event_request_id",
+            unique=True,
+            postgresql_where=text("status = 'pending'"),
+            sqlite_where=text("status = 'pending'"),
+        ),
+        CheckConstraint(
+            "status <> 'withdrawn' OR withdrawn_at IS NOT NULL",
+            name="ck_event_change_requests_withdrawn_has_time",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    event_request_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("event_requests.id"), index=True, nullable=False
+    )
+    #: The Organiser who raised it. A database-level foreign key only, like
+    #: ``EventRequest.organiser_id``.
+    requested_by: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+    #: What should change: each requested field and its new value, e.g.
+    #: ``{"expected_attendance": 300}``. Dates and times are ISO strings, as in the
+    #: history's ``details`` (ADR-0025).
+    requested_values: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    #: The value each requested field had when the request was raised, in the same form
+    #: and under the same keys as ``requested_values`` (the SCRUM-57 stale check).
+    previous_values: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    #: Why the change is needed (AC1).
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[ChangeRequestStatus] = mapped_column(
+        Enum(
+            ChangeRequestStatus,
+            name="event_change_request_status",
+            # Store the enum *values* (snake_case), not the member names.
+            values_callable=lambda enum_cls: [m.value for m in enum_cls],
+        ),
+        nullable=False,
+        default=ChangeRequestStatus.PENDING,
+    )
+    #: Set by the service in UTC (ADR-0009), so tests can pin it.
+    raised_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)
+    #: When it was withdrawn; ``None`` unless it is Withdrawn (AC8, AC9).
+    withdrawn_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    #: Why it was withdrawn when the Organiser didn't do it themselves: the event was
+    #: cancelled (AC9). ``None`` for the Organiser's own withdrawal.
+    withdrawal_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging aid
+        return (
+            f"<EventChangeRequest id={self.id} event_request_id={self.event_request_id}"
+            f" status={self.status!r}>"
+        )

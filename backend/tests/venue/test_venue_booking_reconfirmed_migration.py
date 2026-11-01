@@ -71,7 +71,7 @@ def test_it_adds_the_models_new_kinds_and_follows_0048(load_migration: LoadMigra
     assert len(migration.revision) <= 32
 
 
-def test_with_the_values_added_each_type_holds_exactly_the_models_values(
+def test_with_the_values_added_each_type_holds_the_models_values(
     load_migration: LoadMigration,
 ) -> None:
     migration = load_migration(MIGRATION)
@@ -81,7 +81,9 @@ def test_with_the_values_added_each_type_holds_exactly_the_models_values(
     }
     history_kinds = {*migration.PREVIOUS_HISTORY_KIND_VALUES, *migration.ADDED_HISTORY_KIND_VALUES}
 
-    assert notification_kinds == {kind.value for kind in NotificationKind}
+    # Subset, not equality, for the notification kinds: migration 0053 (SCRUM-56) adds
+    # two more. It is still the last to change the history kinds.
+    assert notification_kinds <= {kind.value for kind in NotificationKind}
     assert history_kinds == {kind.value for kind in EventHistoryKind}
 
 

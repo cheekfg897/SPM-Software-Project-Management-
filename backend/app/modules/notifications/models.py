@@ -120,6 +120,13 @@ class NotificationKind(str, enum.Enum):
     #: arrangement, its venue, its period and any reason are the notification's
     #: ``detail`` (SCRUM-59 AC2, AC4, AC11, ADR-0112). Migration 0049.
     VENUE_BOOKING_RECONFIRMED = "venue_booking_reconfirmed"
+    #: Tells the event's assigned coordinator that its Organiser raised a change
+    #: request; the fields and the reason are the notification's ``detail`` (SCRUM-56
+    #: AC5, ADR-0126). Migration 0053.
+    CHANGE_REQUEST_RAISED = "change_request_raised"
+    #: Tells the event's assigned coordinator that the Organiser withdrew their Pending
+    #: change request (SCRUM-56 AC8, ADR-0126). Migration 0053.
+    CHANGE_REQUEST_WITHDRAWN = "change_request_withdrawn"
 
 
 class Notification(db.Model):  # type: ignore[name-defined]
