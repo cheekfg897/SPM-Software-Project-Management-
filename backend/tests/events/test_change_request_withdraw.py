@@ -151,6 +151,7 @@ def test_with_no_coordinator_assigned_the_withdrawal_is_still_saved_and_logged(
     pending: EventChangeRequest,
     saved_event_request: EventRequest,
     save: Callable[..., None],
+    db_session: Session,
     change_requests_of: ChangeRequestsOf,
     detailed_notifications_of: DetailedNotificationsOf,
     caplog: pytest.LogCaptureFixture,
@@ -159,6 +160,8 @@ def test_with_no_coordinator_assigned_the_withdrawal_is_still_saved_and_logged(
     save(saved_event_request)
 
     withdraw_change(ORGANISER_ID, pending.id)
+    # Only what was committed survives this, so the read below proves it was saved.
+    db_session.rollback()
 
     [saved] = change_requests_of(saved_event_request.id)
     assert saved.status is ChangeRequestStatus.WITHDRAWN
