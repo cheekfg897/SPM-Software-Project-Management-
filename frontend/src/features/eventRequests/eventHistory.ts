@@ -91,7 +91,7 @@ function entry(title: string, pairs: [string, string | null][] = []): DescribedE
 }
 
 /** A field's value as the record would show it: a day, a time, both, yes or no, or as written. */
-function shownValue(field: string, value: unknown): string {
+export function shownValue(field: string, value: unknown): string {
   if (value === null || value === undefined) {
     return NOT_SET
   }
@@ -122,9 +122,14 @@ const FIELD_LABELS: Partial<Record<string, string>> = {
   withdrawal_cut_off: 'Withdrawal cut-off',
 }
 
+/** A field's name on screen, e.g. "Expected attendance" for `expected_attendance`. */
+export function fieldLabel(field: string): string {
+  return FIELD_LABELS[field] ?? humanise(field)
+}
+
 function fieldChanged(details: Details): DescribedEntry {
   const field = textIn(details, 'field')
-  const label = field === null ? null : (FIELD_LABELS[field] ?? humanise(field))
+  const label = field === null ? null : fieldLabel(field)
   const title = label === null ? 'A detail changed' : `${label} changed`
   const name = field ?? ''
   return {

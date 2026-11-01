@@ -1,7 +1,7 @@
 import { useRef } from 'react'
 import type { FormEvent } from 'react'
 
-import { Button, ButtonLink, ErrorAlert, TextAreaField, TextField } from '@/components/ui'
+import { Button, ButtonLink, ErrorAlert, TextAreaField } from '@/components/ui'
 import { coordinatorEventPath } from '@/config/routes'
 import { fieldErrorsOf } from '@/lib/api'
 
@@ -13,6 +13,7 @@ import { useFocusFirstError } from '../useFocusFirstError'
 
 import { DescribedEntryView } from './DescribedEntryView'
 import { RecordSection } from './RecordSection'
+import { TimingAndNeedsFields } from './TimingAndNeedsFields'
 
 const SIGNIFICANT_HINT =
   'Changing these is a significant change: the arrangements already made are reassessed.'
@@ -98,59 +99,7 @@ export function EditEventForm({ record }: { record: EventRecord }) {
       <RecordSection title="When, how many and what it needs">
         <div className="space-y-5">
           <p className="text-ink-muted text-sm">{SIGNIFICANT_HINT}</p>
-          <div className="grid gap-5 sm:grid-cols-2">
-            <TextField
-              label="Date"
-              name="proposed_date"
-              type="date"
-              defaultValue={openingValue(record, 'proposed_date')}
-              errors={errors.proposed_date}
-            />
-            <TextField
-              label="End date"
-              name="end_date"
-              type="date"
-              hint="Moves with the date unless you change it too."
-              defaultValue={openingValue(record, 'end_date')}
-              errors={errors.end_date}
-            />
-            <TextField
-              label="Starts"
-              name="start_time"
-              type="time"
-              defaultValue={openingValue(record, 'start_time')}
-              errors={errors.start_time}
-            />
-            <TextField
-              label="Ends"
-              name="end_time"
-              type="time"
-              defaultValue={openingValue(record, 'end_time')}
-              errors={errors.end_time}
-            />
-          </div>
-          <TextField
-            label="Expected attendance"
-            name="expected_attendance"
-            type="number"
-            inputMode="numeric"
-            min={1}
-            step={1}
-            defaultValue={openingValue(record, 'expected_attendance')}
-            errors={errors.expected_attendance}
-          />
-          <TextAreaField
-            label="Venue requirements"
-            name="venue_requirements"
-            defaultValue={openingValue(record, 'venue_requirements')}
-            errors={errors.venue_requirements}
-          />
-          <TextAreaField
-            label="Equipment requirements"
-            name="equipment_requirements"
-            defaultValue={openingValue(record, 'equipment_requirements')}
-            errors={errors.equipment_requirements}
-          />
+          <TimingAndNeedsFields record={record} errors={errors} />
         </div>
       </RecordSection>
       <div className="mt-10">
