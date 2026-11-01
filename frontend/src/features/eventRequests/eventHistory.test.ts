@@ -309,6 +309,25 @@ describe('SCRUM-33 describing the venue arrangements', () => {
     )
   })
 
+  it('gives the alternative Venue Staff suggested with a rejection (SCRUM-70 AC3)', () => {
+    const rejected = {
+      venue_id: 15,
+      reason: 'Closed for repairs.',
+      suggested_venue_id: 33,
+      suggested_starts_at: '2026-11-13T01:00:00+00:00',
+      suggested_ends_at: '2026-11-13T04:00:00+00:00',
+    }
+
+    expect(described('venue_booking_rejected', rejected)).toEqual(
+      plain('Venue booking rejected', [
+        ['Venue ID', '15'],
+        ['Reason', 'Closed for repairs.'],
+        ['Suggested venue ID', '33'],
+        ['Suggested period', '13 Nov, 9:00 am – 12:00 pm'],
+      ]),
+    )
+  })
+
   it('gives each field of an arrangement that changed, from and to', () => {
     const details = {
       venue_booking_request_id: 4,

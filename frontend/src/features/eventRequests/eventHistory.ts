@@ -149,7 +149,8 @@ function decisionRecorded(details: Details): DescribedEntry {
 
 /**
  * e.g. "10 Nov, 9:00 am – 5:00 pm" for a venue's period, from the details' start and end keys:
- * the period asked for, or one a reconfirmation moved a booking from or to (SCRUM-59).
+ * the period asked for, one a reconfirmation moved a booking from or to (SCRUM-59), or one Venue
+ * Staff suggested instead of a rejected request's (SCRUM-70).
  */
 function periodIn(details: Details, startKey: string, endKey: string): string | null {
   const startsAt = textIn(details, startKey)
@@ -280,6 +281,8 @@ const DESCRIBE_KIND: Record<EventHistoryKind, (details: Details) => DescribedEnt
     entry('Venue booking rejected', [
       ['Venue ID', numberIn(details, 'venue_id')],
       ['Reason', textIn(details, 'reason')],
+      ['Suggested venue ID', numberIn(details, 'suggested_venue_id')],
+      ['Suggested period', periodIn(details, 'suggested_starts_at', 'suggested_ends_at')],
     ]),
   venue_booking_reconfirmed: bookingReconfirmed,
   venue_preparation_updated: (details) =>
