@@ -16,7 +16,7 @@ from sqlalchemy.orm import ORMExecuteState, Session
 
 from app.modules.auth.models import User
 from app.modules.auth.permissions import ALL_ROLES, Role
-from app.modules.equipment.models import EquipmentReservation, EquipmentType
+from app.modules.equipment.models import EquipmentReservation, EquipmentType, PreparationStatus
 from app.modules.equipment.services import reserve_equipment
 from app.modules.events import routes
 from app.modules.events.models import (
@@ -57,7 +57,15 @@ from app.modules.notifications.services import (
 )
 from app.modules.venue.models import BookingRequestStatus, Venue, VenueBookingRequest
 from tests.conftest import ReserveAndReview, approve_safety
-from tests.events.cases import DRAFT_REFERENCE, LEAD_ID, AddLine, Arrange, SaveArrangement
+from tests.events.cases import (
+    DRAFT_REFERENCE,
+    LEAD_ID,
+    RESERVED_FROM,
+    RESERVED_TO,
+    AddLine,
+    Arrange,
+    SaveArrangement,
+)
 
 #: What ``on_event_row_lock`` runs while the event's row is being locked (SCRUM-56).
 LockAction = Callable[[Connection], None]
@@ -896,6 +904,29 @@ def projectors_without_a_line(
     save(saved_event_request)
     units = {"equipment_type_id": equipment_type.id, "quantity": 2}
     reserve_equipment(saved_event_request.reference, units, reserved_by=5)
+
+
+@pytest.fixture()
+def reserve(
+    equipment_type: EquipmentType, save: Callable[..., None]
+) -> Callable[[EventRequest], EquipmentReservation]:
+    """Save four projectors for ``event``, reserved by user 5, half of them tested."""
+
+    def _reserve(event: EventRequest) -> EquipmentReservation:
+        reservation = EquipmentReservation(
+            event_id=event.id,
+            equipment_type_id=equipment_type.id,
+            quantity=4,
+            starts_at=RESERVED_FROM,
+            ends_at=RESERVED_TO,
+            reserved_by=5,
+        )
+        reservation.preparation_status = PreparationStatus.IN_PROGRESS
+        reservation.preparation_notes = "Two of four tested."
+        save(reservation)
+        return reservation
+
+    return _reserve
 
 
 @pytest.fixture()

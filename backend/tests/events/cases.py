@@ -43,6 +43,10 @@ class DriverError(Exception):
         self.diag = SimpleNamespace(constraint_name=constraint_name)
 
 
+#: The period the ``reserve`` fixture reserves equipment for (SCRUM-24 AC10).
+RESERVED_FROM = datetime(2026, 11, 1, 1, 0, tzinfo=UTC)
+RESERVED_TO = datetime(2026, 11, 1, 9, 0, tzinfo=UTC)
+
 #: A fixed reference for tests that save a draft (SCRUM-20), so they need not read it
 #: back off the returned object just to look it up again.
 DRAFT_REFERENCE = "EVR-DDDDDDDD"

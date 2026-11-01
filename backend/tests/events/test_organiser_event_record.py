@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 
 from app.modules.auth.models import User
 from app.modules.auth.permissions import Role
-from app.modules.equipment.models import EquipmentReservation, EquipmentType, PreparationStatus
+from app.modules.equipment.models import EquipmentReservation, PreparationStatus
 from app.modules.equipment.services import ReservationAsShown
 from app.modules.events import routes
 from app.modules.events.models import EventHistoryKind, EventRequest, EventRequestStatus
@@ -44,13 +44,19 @@ from app.modules.venue.models import (
 )
 from app.modules.venue.services import ReassessmentForRecord, UnavailabilityForRecord
 from tests.conftest import HOLD_STATUSES, place_hold_on
-from tests.events.cases import AddLine, Arrange, SaveArrangement, arrangement_for_record
+from tests.events.cases import (
+    RESERVED_FROM,
+    RESERVED_TO,
+    AddLine,
+    Arrange,
+    SaveArrangement,
+    arrangement_for_record,
+)
 
 pytestmark = [pytest.mark.scrum_24, pytest.mark.scrum_49]
 
 ORGANISER_ID = 7
 COORDINATOR_ID = 3
-TECHNICAL_SUPPORT_ID = 5
 SAFETY_OFFICER_ID = 11
 REFERENCE = "EVR-AAAAAAAA"
 #: Every status the event can be in, built from the enum so a new status is checked too.
@@ -61,8 +67,6 @@ CHECKLIST = {
 }
 APPROVED_AT = datetime(2026, 10, 23, 4, 30, tzinfo=UTC)
 WITHDRAWN_AT = datetime(2026, 10, 24, 1, 0, tzinfo=UTC)
-RESERVED_FROM = datetime(2026, 11, 1, 1, 0, tzinfo=UTC)
-RESERVED_TO = datetime(2026, 11, 1, 9, 0, tzinfo=UTC)
 #: Every key the organiser's record sends: the request with both notes, the sections
 #: every record shows, and the staff record's sections (ADR-0104).
 RECORD_KEYS = {
@@ -119,29 +123,6 @@ def safety_approved(record_entry: RecordEntry, safety_officer: User) -> None:
         actor_id=SAFETY_OFFICER_ID,
         details={"outcome": "approved", "checklist": CHECKLIST, "reason": "Keep aisles clear."},
     )
-
-
-@pytest.fixture()
-def reserve(
-    equipment_type: EquipmentType, save: Callable[..., None]
-) -> Callable[[EventRequest], EquipmentReservation]:
-    """Save four projectors for ``event``, reserved by user 5, half of them tested."""
-
-    def _reserve(event: EventRequest) -> EquipmentReservation:
-        reservation = EquipmentReservation(
-            event_id=event.id,
-            equipment_type_id=equipment_type.id,
-            quantity=4,
-            starts_at=RESERVED_FROM,
-            ends_at=RESERVED_TO,
-            reserved_by=TECHNICAL_SUPPORT_ID,
-        )
-        reservation.preparation_status = PreparationStatus.IN_PROGRESS
-        reservation.preparation_notes = "Two of four tested."
-        save(reservation)
-        return reservation
-
-    return _reserve
 
 
 @pytest.fixture()
