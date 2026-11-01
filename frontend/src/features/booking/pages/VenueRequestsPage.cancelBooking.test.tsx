@@ -119,7 +119,7 @@ describe('SCRUM-111 cancelling an approved booking on the venue requests page', 
 
   it('shows the backend’s refusal in its own words, and reads the list again', async () => {
     const message =
-      'Only an approved event or one in Safety Review can have a venue booking cancelled; this one is confirmed.'
+      'Only an approved event or one in Safety Review can have its venue arrangements withdrawn, changed or cancelled; this one is confirmed.'
     server.use(
       http.post('/api/venues/events/:reference/booking-requests/:id/cancel', () =>
         errorResponse(409, 'conflict', message),

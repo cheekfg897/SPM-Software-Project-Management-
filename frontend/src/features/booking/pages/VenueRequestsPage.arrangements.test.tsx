@@ -28,7 +28,10 @@ const {
   bookedSideRoom,
   releasedHall,
   expiredGallery,
+  heldStudio,
 } = MOCK_ARRANGEMENTS
+/** Why the coordinator cancels all of the event's venues (ADR-0118). */
+const CANCEL_ALL_REASON = 'The conference moved online.'
 
 type AppView = ReturnType<typeof renderApp>
 
@@ -127,6 +130,24 @@ describe('SCRUM-93 venue arrangements on the venue requests page', () => {
     ])
   })
 
+  it('withdraws an arrangement on hold, so its hold and expiry go with it', async () => {
+    const requests = recordRequests()
+    const view = openEvent(MOCK_BOOKING_EVENTS.held.reference)
+    expect(await item(heldStudio.purpose)).toHaveTextContent('Hold expiry')
+
+    await view.user.click(
+      await screen.findByRole('button', { name: `Withdraw ${heldStudio.purpose}` }),
+    )
+
+    await waitFor(async () => expect(await item(heldStudio.purpose)).toHaveTextContent('Withdrawn'))
+    const withdrawn = await item(heldStudio.purpose)
+    expect(withdrawn).not.toHaveTextContent('Hold expiry')
+    expect(within(withdrawn).queryByRole('button')).not.toBeInTheDocument()
+    expect(pathsPosted(requests)).toEqual([
+      `/api/venues/events/${MOCK_BOOKING_EVENTS.held.reference}/booking-requests/${heldStudio.id}/withdraw`,
+    ])
+  })
+
   it('says which arrangement needs an alternative venue, as the backend flags it', async () => {
     openEvent(MOCK_BOOKING_EVENTS.booked.reference)
 
@@ -146,7 +167,10 @@ describe('SCRUM-93 venue arrangements on the venue requests page', () => {
   })
 
   it('shows the backend’s refusal, such as one naming the event’s status, in the arrangement it was about', async () => {
-    const message = 'Venue arrangements cannot be withdrawn; this event is Confirmed.'
+    // The mock's confirmed event has no arrangements to offer a Withdraw on, so the route is
+    // made to answer as the backend does for one (SCRUM-93 AC10).
+    const message =
+      'Only an approved event or one in Safety Review can have its venue arrangements withdrawn, changed or cancelled; this one is confirmed.'
     server.use(
       http.post('/api/venues/events/:reference/booking-requests/:id/withdraw', () =>
         errorResponse(409, 'conflict', message),
@@ -279,22 +303,23 @@ describe('SCRUM-93 venue arrangements on the venue requests page', () => {
     expect(requests.filter((request) => request.method !== 'GET')).toEqual([])
   })
 
-  it('asks before cancelling all, and withdraws every arrangement once confirmed', async () => {
-    const view = await eventWithKeynote()
-    await typeInto(view, 'Justification', 'Standing room')
-    await raiseThroughForm(view, 'Workshop', MOCK_BOOKING_VENUES.tiny.id)
+  it('asks for a reason before cancelling all, then withdraws every request and cancels every booking', async () => {
     const requests = recordRequests()
+    const view = openEvent(MOCK_BOOKING_EVENTS.booked.reference)
+    await item(bookedHall.purpose)
 
     await view.user.click(view.getByRole('button', { name: 'Cancel all venue requests' }))
     expect(pathsPosted(requests)).toEqual([])
-    await view.user.click(view.getByRole('button', { name: 'Withdraw them all' }))
+    await view.user.type(view.getByLabelText('Reason for cancelling'), CANCEL_ALL_REASON)
+    await view.user.click(view.getByRole('button', { name: 'Cancel them all' }))
 
-    await waitFor(async () => expect(await item('Keynote')).toHaveTextContent('Withdrawn'))
-    expect(await item('Workshop')).toHaveTextContent('Withdrawn')
+    await waitFor(async () => expect(await item(bookedHall.purpose)).toHaveTextContent('Cancelled'))
+    expect(await item(bookedSideRoom.purpose)).toHaveTextContent('Withdrawn')
     expect(pathsPosted(requests)).toEqual([
-      `/api/venues/events/${MOCK_BOOKING_EVENTS.approved.reference}/booking-requests/cancel-all`,
+      `/api/venues/events/${MOCK_BOOKING_EVENTS.booked.reference}/booking-requests/cancel-all`,
     ])
-    expect(screen.queryByRole('button', { name: 'Withdraw them all' })).not.toBeInTheDocument()
+    expect(await bodiesSent(requests, 'POST')).toEqual([{ reason: CANCEL_ALL_REASON }])
+    expect(screen.queryByRole('button', { name: 'Cancel them all' })).not.toBeInTheDocument()
   })
 
   it('keeps every arrangement when the coordinator thinks better of cancelling all', async () => {
@@ -303,46 +328,72 @@ describe('SCRUM-93 venue arrangements on the venue requests page', () => {
     await item(rejectedMain.purpose)
 
     await view.user.click(view.getByRole('button', { name: 'Cancel all venue requests' }))
+    await view.user.type(view.getByLabelText('Reason for cancelling'), CANCEL_ALL_REASON)
     await view.user.click(view.getByRole('button', { name: 'Keep them' }))
 
-    expect(screen.queryByRole('button', { name: 'Withdraw them all' })).not.toBeInTheDocument()
-    expect(view.getByRole('button', { name: 'Cancel all venue requests' })).toBeEnabled()
+    expect(screen.queryByRole('button', { name: 'Cancel them all' })).not.toBeInTheDocument()
     expect(pathsPosted(requests)).toEqual([])
+    await view.user.click(view.getByRole('button', { name: 'Cancel all venue requests' }))
+    expect(view.getByLabelText('Reason for cancelling')).toHaveValue('')
   })
 
-  it('shows the backend’s refusal to cancel all, and every arrangement stays as it was', async () => {
+  it('sends no reason when none is typed, and shows the backend’s message under the box', async () => {
+    const requests = recordRequests()
     const view = openEvent(MOCK_BOOKING_EVENTS.booked.reference)
     await item(bookedHall.purpose)
 
     await view.user.click(view.getByRole('button', { name: 'Cancel all venue requests' }))
-    await view.user.click(view.getByRole('button', { name: 'Withdraw them all' }))
+    await view.user.click(view.getByRole('button', { name: 'Cancel them all' }))
+
+    expect(await view.findByLabelText('Reason for cancelling')).toHaveAccessibleDescription(
+      'A reason is required to cancel a booking.',
+    )
+    expect(await bodiesSent(requests, 'POST')).toEqual([{}])
+    expect(await item(bookedHall.purpose)).toHaveTextContent('Approved')
+  })
+
+  it('shows any other refusal in the backend’s words, and reads the list again', async () => {
+    const message =
+      'Only an approved event or one in Safety Review can have its venue arrangements withdrawn, changed or cancelled; this one is confirmed.'
+    server.use(
+      http.post('/api/venues/events/:reference/booking-requests/cancel-all', () =>
+        errorResponse(409, 'conflict', message),
+      ),
+    )
+    const view = openEvent(MOCK_BOOKING_EVENTS.booked.reference)
+    await item(bookedHall.purpose)
+    await view.user.click(view.getByRole('button', { name: 'Cancel all venue requests' }))
+    await view.user.type(view.getByLabelText('Reason for cancelling'), CANCEL_ALL_REASON)
+    const requests = recordRequests()
+
+    await view.user.click(view.getByRole('button', { name: 'Cancel them all' }))
 
     const section = screen.getByRole('region', { name: 'Cancel all venue requests' })
-    expect(await within(section).findByRole('alert')).toHaveTextContent(
-      'Only a pending, conflicting, rejected or expired arrangement can be withdrawn; this one is approved.',
+    expect(await within(section).findByRole('alert')).toHaveTextContent(message)
+    await waitFor(() =>
+      expect(requests.filter((request) => request.method === 'GET')).not.toEqual([]),
     )
-    expect(await item(bookedSideRoom.purpose)).toHaveTextContent('Rejected')
   })
 
   it('forgets a refusal once the coordinator keeps the arrangements, so asking again starts clean', async () => {
     const view = openEvent(MOCK_BOOKING_EVENTS.booked.reference)
     await item(bookedHall.purpose)
     await view.user.click(view.getByRole('button', { name: 'Cancel all venue requests' }))
-    await view.user.click(view.getByRole('button', { name: 'Withdraw them all' }))
+    await view.user.click(view.getByRole('button', { name: 'Cancel them all' }))
     const section = screen.getByRole('region', { name: 'Cancel all venue requests' })
     await within(section).findByRole('alert')
 
     await view.user.click(view.getByRole('button', { name: 'Keep them' }))
     await view.user.click(view.getByRole('button', { name: 'Cancel all venue requests' }))
 
-    expect(view.getByRole('button', { name: 'Withdraw them all' })).toBeEnabled()
+    expect(view.getByRole('button', { name: 'Cancel them all' })).toBeEnabled()
+    expect(view.getByLabelText('Reason for cancelling')).toHaveValue('')
     expect(
       within(screen.getByRole('region', { name: 'Cancel all venue requests' })).queryByRole(
         'alert',
       ),
     ).not.toBeInTheDocument()
   })
-
   it('offers no cancel-all while the event has no venue requests', async () => {
     openEvent(MOCK_BOOKING_EVENTS.approved.reference)
 

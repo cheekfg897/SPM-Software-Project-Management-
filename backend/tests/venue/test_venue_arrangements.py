@@ -1,7 +1,8 @@
 """Unit tests for SCRUM-93 — several venue arrangements for one event.
 
-An arrangement is a ``VenueBookingRequest``. This file covers retiring one and the
-"active arrangement" seam that SCRUM-75 counts to decide whether an event is
+An arrangement is a ``VenueBookingRequest``. This file covers retiring one, an On Hold
+one releasing its hold as it goes (the Product Owner's decision of 19 Oct, ADR-0118),
+and the "active arrangement" seam that SCRUM-75 counts to decide whether an event is
 multi-venue (AC5, AC6).
 """
 
@@ -15,13 +16,24 @@ from sqlalchemy.orm import Session
 from app.common.errors import ConflictError, NotFoundError
 from app.modules.events.models import EventHistoryEntry, EventHistoryKind, EventRequest
 from app.modules.venue import services
-from app.modules.venue.models import BookingRequestStatus, Venue
+from app.modules.venue.models import (
+    BookingRequestStatus,
+    BookingStatus,
+    Venue,
+    VenueBookingRequest,
+)
 from app.modules.venue.schemas import BookingRequestAsShown
 from tests.venue.conftest import (
+    CANCEL_ALL_BODY,
     COORDINATOR_ID,
     SECOND_PERIOD,
     SavedEvent,
+    bookings,
+    decide,
+    hours_from_now,
+    place_hold,
     raise_booking,
+    reload_request,
     two_arrangements,
     two_venues,
 )
@@ -192,8 +204,41 @@ def test_withdrawing_an_already_withdrawn_arrangement_is_refused(
         _withdraw(event, arrangement.id, db_session)
 
     assert caught.value.message == (
-        "Only a pending, conflicting, rejected or expired arrangement can be withdrawn;"
+        "Only a pending, conflicting, held, rejected or expired arrangement can be withdrawn;"
         " this one is withdrawn."
+    )
+
+
+#: The statuses an arrangement can be withdrawn from, written out (SCRUM-93, ADR-0118).
+WITHDRAWABLE = {
+    BookingRequestStatus.PENDING,
+    BookingRequestStatus.CONFLICTING,
+    BookingRequestStatus.ON_HOLD,
+    BookingRequestStatus.REJECTED,
+    BookingRequestStatus.EXPIRED,
+}
+
+
+@pytest.mark.parametrize(
+    "status",
+    [status for status in BookingRequestStatus if status not in WITHDRAWABLE],
+    ids=lambda status: status.value,
+)
+def test_an_arrangement_in_any_other_status_cannot_be_withdrawn(
+    db_session: Session, venue: Venue, saved_event: SavedEvent, status: BookingRequestStatus
+) -> None:
+    """Built from the enum, so a status added later is refused until it is placed."""
+    event = saved_event()
+    arrangement = raise_booking(venue, event, db_session)
+    arrangement.status = status
+    db_session.commit()
+
+    with pytest.raises(ConflictError) as caught:
+        _withdraw(event, arrangement.id, db_session)
+
+    assert caught.value.message == (
+        "Only a pending, conflicting, held, rejected or expired arrangement can be withdrawn;"
+        f" this one is {status.value}."
     )
 
 
@@ -235,7 +280,7 @@ def test_a_coordinator_who_is_not_assigned_cannot_withdraw(
 
 def _cancel_all(event: EventRequest, session: Session) -> list[BookingRequestAsShown]:
     return services.cancel_all_arrangements(
-        event.reference, coordinator_id=COORDINATOR_ID, session=session
+        event.reference, CANCEL_ALL_BODY, coordinator_id=COORDINATOR_ID, session=session
     )
 
 
@@ -274,7 +319,7 @@ def test_cancelling_all_commits_once_for_the_whole_batch(
 
     monkeypatch.setattr(db_session, "commit", counting_commit)
     services.cancel_all_arrangements(
-        event.reference, coordinator_id=COORDINATOR_ID, session=db_session
+        event.reference, CANCEL_ALL_BODY, coordinator_id=COORDINATOR_ID, session=db_session
     )
     assert len(commits) == 1
 
@@ -335,8 +380,131 @@ def test_cancelling_all_for_an_event_that_is_not_the_callers_changes_nothing(
     history_before = len(_history(db_session))
 
     with pytest.raises(NotFoundError):
-        services.cancel_all_arrangements(event.reference, coordinator_id=99, session=db_session)
+        services.cancel_all_arrangements(
+            event.reference, CANCEL_ALL_BODY, coordinator_id=99, session=db_session
+        )
 
     active = services.list_active_arrangements(event.id, session=db_session)
     assert [arrangement.status for arrangement in active] == [BookingRequestStatus.PENDING] * 2
     assert len(_history(db_session)) == history_before
+
+
+# --------------------------------------------------------------------------
+# Withdrawing an On Hold arrangement releases its hold (Product Owner, 19 Oct)
+# --------------------------------------------------------------------------
+
+
+def _hold(request: VenueBookingRequest, session: Session) -> None:
+    """Put ``request`` On Hold for 48 hours, as Venue Staff would (SCRUM-75)."""
+    place_hold(request.id, hours_from_now(48), session)
+
+
+def test_withdrawing_a_held_arrangement_releases_its_hold(
+    db_session: Session, multi_venue_event: EventRequest, multi_venue_request: VenueBookingRequest
+) -> None:
+    _hold(multi_venue_request, db_session)
+
+    shown = _withdraw(multi_venue_event, multi_venue_request.id, db_session)
+
+    assert shown.request.status is BookingRequestStatus.WITHDRAWN
+    assert shown.request.hold_expires_at is None
+    assert bookings(db_session) == [(multi_venue_request.venue_id, BookingStatus.CANCELLED)]
+
+
+def test_the_hold_is_released_in_the_same_commit_as_the_withdrawal(
+    db_session: Session, multi_venue_event: EventRequest, multi_venue_request: VenueBookingRequest
+) -> None:
+    """Read back after a rollback, so only what was committed counts."""
+    _hold(multi_venue_request, db_session)
+
+    _withdraw(multi_venue_event, multi_venue_request.id, db_session)
+    db_session.rollback()
+
+    withdrawn = reload_request(db_session, multi_venue_request.id)
+    assert withdrawn.status is BookingRequestStatus.WITHDRAWN
+    assert withdrawn.booking is not None
+    assert withdrawn.booking.status is BookingStatus.CANCELLED
+
+
+def test_withdrawing_a_request_leaves_a_booking_for_the_same_slot_alone(
+    db_session: Session, venue: Venue, saved_event: SavedEvent, saved_users: list[object]
+) -> None:
+    """ADR-0118 decision 5: only a hold is freed when an arrangement is withdrawn.
+
+    A second request for an approved slot holds nothing, and looking for its booking by
+    period would find the approved one's.
+    """
+    event = saved_event()
+    booked = raise_booking(venue, event, db_session)
+    decide(booked.id, "approved", db_session)
+    second_ask = raise_booking(venue, event, db_session)
+
+    _withdraw(event, second_ask.id, db_session)
+
+    assert bookings(db_session) == [(venue.id, BookingStatus.CONFIRMED)]
+    assert reload_request(db_session, booked.id).status is BookingRequestStatus.APPROVED
+
+
+def test_withdrawing_a_hold_frees_the_venue_for_another_event(
+    db_session: Session,
+    multi_venue_event: EventRequest,
+    multi_venue_request: VenueBookingRequest,
+    saved_event: SavedEvent,
+) -> None:
+    """Another event's request for the held venue and period can now be approved."""
+    _hold(multi_venue_request, db_session)
+    venue = db_session.get(Venue, multi_venue_request.venue_id)
+    assert venue is not None
+    theirs = raise_booking(venue, saved_event(), db_session)
+
+    _withdraw(multi_venue_event, multi_venue_request.id, db_session)
+    approved = decide(theirs.id, "approved", db_session)
+
+    assert approved.status is BookingRequestStatus.APPROVED
+
+
+def test_withdrawing_a_hold_leaves_the_events_other_arrangement_untouched(
+    db_session: Session, multi_venue_event: EventRequest, multi_venue_request: VenueBookingRequest
+) -> None:
+    _hold(multi_venue_request, db_session)
+
+    _withdraw(multi_venue_event, multi_venue_request.id, db_session)
+
+    active = services.list_active_arrangements(multi_venue_event.id, session=db_session)
+    assert [arrangement.status for arrangement in active] == [BookingRequestStatus.PENDING]
+
+
+@pytest.mark.parametrize(
+    ("job", "hours_ahead"),
+    [
+        pytest.param(services.expire_holds, 49, id="expiry"),
+        pytest.param(services.send_hold_expiry_warnings, 30, id="warning"),
+    ],
+)
+def test_the_hold_jobs_leave_a_withdrawn_hold_alone(
+    db_session: Session,
+    multi_venue_event: EventRequest,
+    multi_venue_request: VenueBookingRequest,
+    job: Callable[..., list[VenueBookingRequest]],
+    hours_ahead: int,
+) -> None:
+    """Run when the hold would have expired, or been warned of (SCRUM-94)."""
+    _hold(multi_venue_request, db_session)
+    _withdraw(multi_venue_event, multi_venue_request.id, db_session)
+
+    touched = job(now=hours_from_now(hours_ahead), session=db_session)
+
+    assert touched == []
+    withdrawn = reload_request(db_session, multi_venue_request.id)
+    assert withdrawn.status is BookingRequestStatus.WITHDRAWN
+
+
+def test_cancelling_all_withdraws_a_held_arrangement_and_releases_its_hold(
+    db_session: Session, multi_venue_event: EventRequest, multi_venue_request: VenueBookingRequest
+) -> None:
+    _hold(multi_venue_request, db_session)
+
+    retired = _cancel_all(multi_venue_event, db_session)
+
+    assert [shown.request.status for shown in retired] == [BookingRequestStatus.WITHDRAWN] * 2
+    assert bookings(db_session) == [(multi_venue_request.venue_id, BookingStatus.CANCELLED)]

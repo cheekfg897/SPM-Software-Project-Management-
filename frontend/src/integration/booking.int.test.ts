@@ -9,15 +9,28 @@ import {
   withdrawArrangement,
 } from '@/features/booking/api'
 import { logIn, register } from '@/features/auth/api'
-import { fetchEventRequestsWithVenueBookings } from '@/features/eventRequests/api'
+import { confirmEvent, fetchEventRequestsWithVenueBookings } from '@/features/eventRequests/api'
 import { ApiError } from '@/lib/api'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
 
-import { staffAccount, uniqueEmail, VALID_PASSWORD } from './backend'
+import { signInAs, staffAccount, uniqueEmail, VALID_PASSWORD } from './backend'
+import {
+  approvedEvent,
+  coordinatorPosts,
+  EVENT_DATE,
+  eventReadyForSafetyReview,
+  LEAD,
+  newVenue,
+  SAFETY_OFFICER,
+  safetyApprovedEvent,
+  VENUE_STAFF,
+} from './plannedEvent'
 
 /** A well-formed reference no database has, so the lookup finds nothing. */
 const UNKNOWN_EVENT_REFERENCE = 'EVR-NOSUCH00'
 const NOT_FOUND_MESSAGE = 'Event request not found.'
+/** A cancel-all body: the reason goes on each approved booking it cancels (ADR-0118). */
+const CANCEL_ALL = { reason: 'The conference moved online.' }
 
 /**
  * Venue Staff are made the same way as the staff account (`flask create-staff-user`), but CI does
@@ -199,7 +212,7 @@ describe('SCRUM-93 changing, withdrawing and cancelling venue arrangements again
     change: () =>
       changeArrangement(UNKNOWN_EVENT_REFERENCE, UNKNOWN_ARRANGEMENT_ID, { purpose: 'Keynote' }),
     withdraw: () => withdrawArrangement(UNKNOWN_EVENT_REFERENCE, UNKNOWN_ARRANGEMENT_ID),
-    'cancel all': () => cancelAllArrangements(UNKNOWN_EVENT_REFERENCE),
+    'cancel all': () => cancelAllArrangements(UNKNOWN_EVENT_REFERENCE, CANCEL_ALL),
   }
 
   it.each(Object.entries(CALLS))('refuses %s without a token (401)', async (_name, call) => {
@@ -256,8 +269,110 @@ describe('SCRUM-93 changing, withdrawing and cancelling venue arrangements again
   it.todo(
     'refuses to withdraw an approved arrangement, naming its status (409; needs a decided request)',
   )
-  it.todo(
-    'refuses withdraw, change and cancel all once the event is Confirmed, naming its status (lands with SCRUM-93 AC10 on the backend)',
+})
+
+describe('SCRUM-93 AC10 venue arrangements change only while the event is planned, against the backend', () => {
+  /** Rejecting an event needs a venue request on it, so a Lead and Venue Staff. */
+  const canReject = LEAD !== null && VENUE_STAFF !== null
+  /** Confirming an event needs the Safety Officer's approval too. */
+  const canConfirm = canReject && SAFETY_OFFICER !== null
+
+  /** An id no database has: the event's status is checked before the arrangement is looked for. */
+  const UNKNOWN_ARRANGEMENT_ID = 99_999_999
+
+  function notInPlanning(status: string): string {
+    return `Only an approved event or one in Safety Review can have its venue arrangements withdrawn, changed or cancelled; this one is ${status}.`
+  }
+
+  /**
+   * Withdraw, change and cancel all, one after another, on an arrangement of `reference`, as
+   * whoever is signed in; answers how the backend refused each.
+   */
+  async function refusalsOfEachAction(reference: string, arrangementId: number) {
+    const calls = [
+      () => withdrawArrangement(reference, arrangementId),
+      () => changeArrangement(reference, arrangementId, { purpose: 'Opening plenary' }),
+      () => cancelAllArrangements(reference, CANCEL_ALL),
+    ]
+    const refusals = []
+    for (const call of calls) {
+      const error = await refusal(call())
+      refusals.push({ status: error.status, code: error.code, message: error.message })
+    }
+    return refusals
+  }
+
+  it.skipIf(!canConfirm)(
+    'lets them through in Safety Review, then refuses all three once the event is Confirmed, naming its status',
+    async () => {
+      const { reference, bookingId } = await safetyApprovedEvent()
+      await signInAs(staffAccount())
+
+      // --- In Safety Review the event is still being planned: the approved booking itself refuses ---
+      expect((await refusal(withdrawArrangement(reference, bookingId))).message).toBe(
+        'Only a pending, conflicting, held, rejected or expired arrangement can be withdrawn; this one is approved.',
+      )
+
+      // --- Confirmed: refused for the event's status, before the arrangement is looked at ---
+      await confirmEvent(reference)
+      const refused = { status: 409, code: 'conflict', message: notInPlanning('confirmed') }
+      expect(await refusalsOfEachAction(reference, bookingId)).toEqual([refused, refused, refused])
+      expect(await refusal(withdrawArrangement(reference, UNKNOWN_ARRANGEMENT_ID))).toMatchObject(
+        refused,
+      )
+      const [booking] = await fetchBookingRequests(reference)
+      expect(booking).toMatchObject({ id: bookingId, status: 'approved' })
+    },
+  )
+
+  it.skipIf(!canReject)('refuses all three on a Rejected event, naming its status', async () => {
+    const { reference } = await approvedEvent()
+    const venueId = await newVenue()
+    await signInAs(staffAccount())
+    const raised = await raiseBookingRequest(reference, {
+      venue_id: venueId,
+      starts_at: `${EVENT_DATE}T09:00:00+08:00`,
+      ends_at: `${EVENT_DATE}T12:00:00+08:00`,
+      purpose: 'Main hall',
+    })
+    await coordinatorPosts(reference, 'reject', { reason: 'The venue fell through.' })
+
+    const refused = { status: 409, code: 'conflict', message: notInPlanning('rejected') }
+    expect(await refusalsOfEachAction(reference, raised.id)).toEqual([refused, refused, refused])
+  })
+})
+
+describe('SCRUM-93 AC6 cancelling all of an event’s arrangements, approved bookings included, against the backend', () => {
+  /** An approved booking needs Venue Staff, and the event a Lead. */
+  const canBook = LEAD !== null && VENUE_STAFF !== null
+
+  it.skipIf(!canBook)(
+    'needs a reason, then cancels the approved booking and withdraws the pending request',
+    async () => {
+      const { reference, bookingId } = await eventReadyForSafetyReview()
+      const venueId = await newVenue()
+      await signInAs(staffAccount())
+      const pending = await raiseBookingRequest(reference, {
+        venue_id: venueId,
+        starts_at: `${EVENT_DATE}T13:00:00+08:00`,
+        ends_at: `${EVENT_DATE}T16:00:00+08:00`,
+        purpose: 'Breakout room',
+      })
+
+      // --- No reason: refused, and nothing changes ---
+      const noReason = await refusal(cancelAllArrangements(reference, {}))
+      expect(noReason).toMatchObject({ status: 400, code: 'validation_error' })
+      expect(noReason.fieldErrors).toEqual({
+        reason: ['A reason is required to cancel a booking.'],
+      })
+
+      // --- With one: the booking is cancelled and the request withdrawn, in period order ---
+      const retired = await cancelAllArrangements(reference, CANCEL_ALL)
+      expect(retired.map((arrangement) => [arrangement.id, arrangement.status])).toEqual([
+        [bookingId, 'cancelled'],
+        [pending.id, 'withdrawn'],
+      ])
+    },
   )
 })
 

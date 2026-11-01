@@ -29,6 +29,7 @@ from app.modules.venue.models import (
     VenueBookingRequest,
 )
 from tests.venue.conftest import (
+    CANCEL_ALL_BODY,
     COORDINATOR_ID,
     SECOND_PERIOD,
     VENUE_STAFF_ID,
@@ -378,7 +379,7 @@ def test_cancelling_all_retires_a_rejected_arrangement_with_the_pending_ones(
     decide(rejected.id, "rejected", db_session, reason="Closed for repairs")
 
     retired = services.cancel_all_arrangements(
-        event.reference, coordinator_id=COORDINATOR_ID, session=db_session
+        event.reference, CANCEL_ALL_BODY, coordinator_id=COORDINATOR_ID, session=db_session
     )
 
     assert [shown.request.id for shown in retired] == [rejected.id, pending.id]
