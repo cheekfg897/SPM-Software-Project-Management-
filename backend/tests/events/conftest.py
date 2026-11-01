@@ -38,6 +38,7 @@ from app.modules.events.services import (
     EventRecord,
     OrganiserEventRecord,
     assign_coordinator_to_request,
+    decide_change_request,
     decide_event_request,
     get_event_record_for_coordinator,
     get_event_record_for_organiser,
@@ -975,6 +976,23 @@ def withdraw_change(
         return withdraw_change_request(actor_id, "EVR-AAAAAAAA", change_request_id)
 
     return _withdraw
+
+
+@pytest.fixture()
+def decide_change(
+    saved_users: list[User], saved_event_request: EventRequest, today: date
+) -> Callable[[int, int, Any], ChangeRequestAsShown]:
+    """Decide a change request of ``EVR-AAAAAAAA`` as ``actor_id`` (SCRUM-57).
+
+    Runs on ``db_session`` with ``saved_users``; the payload is passed on as it is.
+    """
+
+    def _decide(actor_id: int, change_request_id: int, payload: Any) -> ChangeRequestAsShown:
+        return decide_change_request(
+            actor_id, "EVR-AAAAAAAA", change_request_id, payload, today=today
+        )
+
+    return _decide
 
 
 @pytest.fixture()

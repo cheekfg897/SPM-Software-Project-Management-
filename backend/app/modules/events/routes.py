@@ -44,6 +44,7 @@ from app.modules.events.services import (
     assign_coordinator_to_request,
     complete_event_request,
     confirm_event_request,
+    decide_change_request,
     decide_event_request,
     equipment_lines_as_shown,
     get_event_record_for_coordinator,
@@ -763,3 +764,24 @@ def withdraw_change(reference: str, change_request_id: int) -> tuple[Response, i
     """
     withdrawn = withdraw_change_request(g.current_user_id, reference, change_request_id)
     return jsonify(_change_request_schema.dump(withdrawn)), 200
+
+
+# --------------------------------------------------------------------------
+# SCRUM-57 — review and decide a change request
+# --------------------------------------------------------------------------
+
+
+@bp.post("/requests/<reference>/change-requests/<int:change_request_id>/decide")
+@requires_role(Role.EVENT_COORDINATOR)
+def decide_change(reference: str, change_request_id: int) -> tuple[Response, int]:
+    """Approve or reject a Pending change request on the caller's event (SCRUM-57).
+
+    The body is ``{"outcome": "approved" | "rejected", "reason": ...}``; a rejection
+    needs a reason. Only the event's assigned coordinator may; the service answers
+    anyone else with the "not yours" 404. Returns ``200`` with the change request, now
+    Approved or Rejected; one no longer Pending, or a stale approval, is ``409``.
+    """
+    decided = decide_change_request(
+        g.current_user_id, reference, change_request_id, request.get_json(silent=True)
+    )
+    return jsonify(_change_request_schema.dump(decided)), 200

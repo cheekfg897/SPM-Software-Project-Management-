@@ -125,6 +125,12 @@ WINDOW_VIOLATION_IDS = [
 #: A dropped database connection, as a failed notification write raises it (ADR-0015).
 LOST_CONNECTION = OperationalError("INSERT INTO notifications ...", {}, Exception("gone"))
 
+
+def lose_connection(*_: Any, **__: Any) -> None:
+    """Stand in for a notice's write when the connection has dropped."""
+    raise LOST_CONNECTION
+
+
 #: Which notification write is lost once an assignment is saved: the session's
 #: commits in order (the change's own, the coordinator's notice, then the organiser's),
 #: and the kind the warning names (SCRUM-39 AC1, ADR-0015). Losing one notice still

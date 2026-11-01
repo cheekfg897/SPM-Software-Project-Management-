@@ -306,6 +306,7 @@ def test_the_record_shows_every_section_and_no_ids_or_registrants(
             "flagged_arrangement_count": 0,
             "reopened_line_count": 0,
         },
+        "change_requests": [],
     }
 
 
