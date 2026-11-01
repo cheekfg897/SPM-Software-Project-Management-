@@ -168,10 +168,13 @@ def test_every_requestable_field_is_saved_with_its_value_when_raised(
     change_requests_of: ChangeRequestsOf,
     saved_event_request: EventRequest,
     save: Callable[..., None],
+    db_session: Session,
 ) -> None:
     saved_event_request.venue_requirements = "Main hall"
     saved_event_request.equipment_requirements = "Two projectors"
     saved_event_request.programme_notes = "Keynote at 09:30"
+    # With no coordinator there is no notice, whose own commit would hide a missing one.
+    saved_event_request.coordinator_id = None
     save(saved_event_request)
     payload = {
         "proposed_date": "2026-10-20",
@@ -186,6 +189,8 @@ def test_every_requestable_field_is_saved_with_its_value_when_raised(
     }
 
     raise_change(ORGANISER_ID, payload)
+    # Only what was committed survives this, so the read below proves it was saved.
+    db_session.rollback()
 
     [saved] = change_requests_of(saved_event_request.id)
     assert saved.requested_values == {
@@ -371,11 +376,14 @@ def test_with_no_coordinator_assigned_the_request_is_still_raised_and_logged(
     change_requests_of: ChangeRequestsOf,
     detailed_notifications_of: DetailedNotificationsOf,
     caplog: pytest.LogCaptureFixture,
+    db_session: Session,
 ) -> None:
     saved_event_request.coordinator_id = None
     save(saved_event_request)
 
     raise_change(ORGANISER_ID, MORE_ATTENDEES)
+    # Only what was committed survives this, so the read below proves it was saved.
+    db_session.rollback()
 
     assert len(change_requests_of(saved_event_request.id)) == 1
     assert detailed_notifications_of(COORDINATOR_ID) == []
