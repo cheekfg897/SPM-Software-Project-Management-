@@ -26,16 +26,33 @@ Code work is not done until **all** of these hold. Do them in order, and don't t
 the work is finished before the last one:
 
 1. **Tests were written first** and seen failing before the implementation existed.
-2. `ruff check .`, `ruff format .` and
-   `pytest --cov=app --cov-branch --cov-report=term-missing` pass (from `backend/`).
-3. **Full coverage of changed code:** every line and branch you added or changed is covered,
-   and any gap has a `# pragma: no cover - <reason>`. Check the lines with `diff-cover`
-   (below), which CI also runs on every PR; check the branches yourself in the `Missing`
-   column, since `diff-cover` can't see them.
+2. `ruff check .`, `ruff format .`, `pytest -m e2e` and
+   `pytest -m "not e2e" --cov=app --cov-branch --cov-report=term-missing --cov-fail-under=100`
+   pass (from `backend/`).
+3. **Full coverage**, as defined under [What "coverage" means](#what-coverage-means):
+   every line and branch is covered by unit tests, and any gap has a
+   `# pragma: no cover - <reason>` that really holds.
 4. **Self-review:** run the `review-checklist` skill on your own changes. Fix every **must** and
    **should** finding, then re-run step 2.
 5. Report what the self-review found and fixed, anything left open (with why), and every
    coverage gap with its reason.
+
+## What "coverage" means
+
+When this repo says coverage, it means **100% of lines and branches, measured on unit tests
+alone** (ADR-0127). CI fails below that, on every PR.
+
+- **Backend:** everything under `backend/app`, with `pytest -m "not e2e" --cov=app
+  --cov-branch`. The e2e journeys still run, but they don't count towards the figure.
+- **Frontend:** `frontend/src`, less what `vite.config.ts` excludes, with
+  `npm run test:coverage`: lines, branches, functions and statements. The integration tests
+  and Playwright still run, but they don't count either.
+- **A gap needs a reason.** Only `# pragma: no cover - <reason>` or
+  `/* v8 ignore next -- <reason> */` leaves a line out, and only if a unit test really can't
+  reach it. A route or an error handler can always be reached: call it inside
+  `app.test_request_context(...)`.
+- **It's a floor, not a proof.** Coverage shows a line ran, not that a test would notice it
+  breaking. Tests still have to pass the no-decorative-tests rule.
 
 ## Docs to read before working
 
@@ -56,8 +73,9 @@ ruff check .                  # lint (includes security, docstring and timezone 
 ruff format .                 # format; CI runs `ruff format --check .`
 pytest                        # unit tests — Postgres NOT needed, the DB is mocked
 pytest -m scrum_19            # one story's tests
-pytest --cov=app --cov-branch --cov-report=term-missing --cov-report=xml   # CI floor: 90%
-diff-cover coverage.xml --compare-branch=origin/main --fail-under=100     # changed lines: 100% (in a stack, compare with the branch below)
+pytest -m "not e2e" --cov=app --cov-branch --cov-report=term-missing --cov-report=xml --cov-fail-under=100   # CI floor: 100%, unit tests alone
+pytest -m e2e                 # the end-to-end journeys, which don't count towards coverage
+diff-cover coverage.xml --compare-branch=origin/main --fail-under=100     # names the changed lines left uncovered (in a stack, compare with the branch below)
 flask db migrate -m "..."     # autogenerate a migration — then review and rename it
 flask db upgrade && flask db check   # apply, and confirm models match migrations
 flask db heads                # must print exactly one head

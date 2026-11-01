@@ -17,7 +17,7 @@ npm run lint              # ESLint (type-aware); CI fails on any error
 npm run format            # Prettier; CI runs `npm run format:check`
 npm run typecheck         # tsc, strict
 npm test                  # unit + component tests (Vitest, jsdom, MSW)
-npm run test:coverage     # the same, with the coverage floor (90% on every measure)
+npm run test:coverage     # the same, with the coverage floor (100% on every measure)
 npm run test:integration  # against a RUNNING backend: BACKEND_URL=http://localhost:5055 npm run test:integration
 npm run test:e2e          # Playwright, desktop and mobile, against `dev:mock`
 npm run build             # typecheck + production build
@@ -207,9 +207,9 @@ Rules:
   signing in as the staff account in `INTEGRATION_STAFF_EMAIL` / `INTEGRATION_STAFF_PASSWORD`.
   CI makes one for each run; locally, make one with `flask create-staff-user` (README).
 - **e2e tests cover journeys, not every edge case.** Edge cases belong in component tests.
-- **Coverage:** `npm run test:coverage` enforces a 90% floor on lines, branches, functions and
-  statements. Code you add or change should be fully covered. A line that can't be reached in
-  jsdom gets `/* v8 ignore next -- <reason> */` (or `start` / `stop` around a block), and the
+- **Coverage:** `npm run test:coverage` enforces a 100% floor on lines, branches, functions and
+  statements (root `CLAUDE.md`, "What coverage means"; ADR-0127). A line that can't be reached
+  in jsdom gets `/* v8 ignore next -- <reason> */` (or `start` / `stop` around a block), and the
   reason is required (the same rule as the backend's `# pragma: no cover - <reason>`). Keep the
   ignored code thin: put the logic in a pure, tested module and leave only the drawing or
   wiring out (see `features/landing/blackHole/`). Browser-only wiring (`main.tsx`,

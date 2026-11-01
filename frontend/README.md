@@ -28,7 +28,7 @@ Open http://localhost:5173.
 
 ```bash
 npm test                   # unit + component tests
-npm run test:coverage      # with the 90% coverage floor
+npm run test:coverage      # with the 100% coverage floor
 npm run test:e2e           # Playwright, desktop and mobile (first time: npx playwright install chromium)
 BACKEND_URL=http://localhost:5055 npm run test:integration   # against a running backend
 ```

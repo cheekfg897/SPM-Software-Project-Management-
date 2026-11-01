@@ -47,7 +47,7 @@ way.
 |---|---|---|
 | Python 3.12 | Version pinned in `backend/.python-version` | — |
 | ruff | Lint + format + import sort + security (bandit `S`) + docstrings (`D`) | `ruff check .` / `ruff format .` |
-| pytest + pytest-cov | Unit tests, 90% coverage gate in CI | `pytest --cov=app` |
+| pytest + pytest-cov | Unit tests, 100% coverage gate in CI (lines and branches) | `pytest -m "not e2e" --cov=app --cov-branch` |
 | Flask-Migrate (Alembic) | Schema migrations | `flask db ...` |
 | pip-audit | Dependency CVEs (advisory in CI) | `pip-audit -r requirements.txt` |
 
@@ -418,8 +418,8 @@ Write the tests **before** the code they test:
    first if an `ImportError` would hide that). A test that passes before the code exists
    proves nothing.
 3. **Write the least code that makes them pass**, then tidy it up with the tests still green.
-4. **Measure coverage** with branches on:
-   `pytest --cov=app --cov-branch --cov-report=term-missing`.
+4. **Measure coverage** with branches on, unit tests alone:
+   `pytest -m "not e2e" --cov=app --cov-branch --cov-report=term-missing`.
 
 ### No decorative tests
 
@@ -434,20 +434,20 @@ A test earns its place only if it would catch a real break. Every test must:
 - Not just check that a mock returned what the test itself configured it to return.
 - Not exist only to raise the coverage number (trivial getters, framework behaviour).
 
-### Full coverage of changed code
+### Full coverage
 
-Every line **and branch** you add or change is covered by a non-decorative test. CI's 90% is
-the floor for the whole codebase; for new code the bar is 100%.
+Every line **and branch** in `backend/app` is covered by a non-decorative unit test, as
+CLAUDE.md defines it ("What coverage means", ADR-0127). The e2e journeys don't count.
 
-CI enforces the **lines** on every pull request, whatever branch it targets: the *Changed lines
-are fully covered* step runs `diff-cover` against the pull request's own base branch and fails
-below 100%, and the overall and changed-lines figures are posted as a comment on the pull
-request. It can't see branches, so an `if` tested only one way still passes CI; checking the
-changed branches is on you and the reviewer. Run the same check before pushing, comparing with
-your base (`origin/main`, or the branch below yours in a stack):
+CI enforces this on every pull request, whatever branch it targets: the unit test step fails
+below 100% of lines and branches together. The *Changed lines are fully covered* step then
+names the lines the pull request left uncovered, comparing with the pull request's own base
+branch, and the overall and changed-lines figures are posted as a comment on the pull
+request. Run the same checks before pushing, comparing with your base (`origin/main`, or the
+branch below yours in a stack):
 
 ```bash
-pytest --cov=app --cov-branch --cov-report=term-missing --cov-report=xml
+pytest -m "not e2e" --cov=app --cov-branch --cov-report=term-missing --cov-report=xml --cov-fail-under=100
 diff-cover coverage.xml --compare-branch=origin/main --fail-under=100
 ```
 
