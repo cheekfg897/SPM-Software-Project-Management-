@@ -2289,6 +2289,27 @@ def _release_replaced(
     )
 
 
+def _replacement_in(
+    arrangement: VenueBookingRequest,
+    statuses: frozenset[BookingRequestStatus],
+    session: Session | None,
+) -> VenueBookingRequest | None:
+    """The earliest replacement raised for the arrangement that is in ``statuses``.
+
+    ``None`` if it has none (SCRUM-92). For a refusal that waits on a replacement,
+    such as SCRUM-59 AC6's reconfirm.
+    """
+    stmt = (
+        select(VenueBookingRequest)
+        .where(
+            VenueBookingRequest.replaces_request_id == arrangement.id,
+            VenueBookingRequest.status.in_(statuses),
+        )
+        .order_by(VenueBookingRequest.id)
+    )
+    return resolve_session(session).scalars(stmt).first()
+
+
 def _category_labels(arrangement: VenueBookingRequest, session: Session | None) -> str:
     """Each category that ever flagged the arrangement, once, oldest first (AC9).
 
@@ -3336,15 +3357,7 @@ def _refuse_while_replacement_pending(
         ConflictError: 409 — a replacement is Pending, Conflicting or On Hold; the
             message names it.
     """
-    stmt = (
-        select(VenueBookingRequest)
-        .where(
-            VenueBookingRequest.replaces_request_id == arrangement.id,
-            VenueBookingRequest.status.in_(DECIDABLE_REQUEST_STATUSES),
-        )
-        .order_by(VenueBookingRequest.id)
-    )
-    replacement = resolve_session(session).scalars(stmt).first()
+    replacement = _replacement_in(arrangement, DECIDABLE_REQUEST_STATUSES, session)
     if replacement is not None:
         raise ConflictError(REPLACEMENT_PENDING_MESSAGE.format(id=replacement.id))
 
