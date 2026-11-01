@@ -914,29 +914,29 @@ describe("SCRUM-24 booking mock: Venue Staff's list of events", () => {
   })
 })
 
+/** A replacement at the tiny venue for `replaced`'s period, as a coordinator would raise it. */
+function replacementFor(replaced: { id: number; starts_at: string; ends_at: string }) {
+  return validPayload({
+    venue_id: TINY_VENUE.id,
+    expected_occupancy: 5,
+    starts_at: replaced.starts_at,
+    ends_at: replaced.ends_at,
+    replaces_request_id: replaced.id,
+  })
+}
+
+async function decideAsVenueStaff(requestId: unknown, outcome: string) {
+  sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.venueStaff))
+  await apiRequest(`/api/venues/booking-requests/${String(requestId)}/decision`, {
+    method: 'POST',
+    body: { outcome, reason: 'Checked with the venue' },
+  })
+  sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.coordinator))
+}
+
 describe('SCRUM-92 booking mock: raising a replacement for a flagged arrangement', () => {
   const { reviewedAuditorium } = MOCK_ARRANGEMENTS
   const REVIEW_EVENT = MOCK_BOOKING_EVENTS.inSafetyReview
-
-  /** A replacement at the tiny venue for `replaced`'s period, as a coordinator would raise it. */
-  function replacementFor(replaced: { id: number; starts_at: string; ends_at: string }) {
-    return validPayload({
-      venue_id: TINY_VENUE.id,
-      expected_occupancy: 5,
-      starts_at: replaced.starts_at,
-      ends_at: replaced.ends_at,
-      replaces_request_id: replaced.id,
-    })
-  }
-
-  async function decideAsVenueStaff(requestId: unknown, outcome: string) {
-    sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.venueStaff))
-    await apiRequest(`/api/venues/booking-requests/${String(requestId)}/decision`, {
-      method: 'POST',
-      body: { outcome, reason: 'Checked with the venue' },
-    })
-    sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.coordinator))
-  }
 
   /** The booked event's arrangement `id`, as the mock lists it. */
   async function bookedEventArrangement(id: unknown) {
