@@ -2902,8 +2902,9 @@ def tell_venue_staff_of_releases(
 # --------------------------------------------------------------------------
 
 CANCEL_NOT_APPROVED_MESSAGE = "Only an approved booking can be cancelled; this one is {status}."
-#: AC4: a replacement the coordinator can still withdraw holds the cancel back. An On
-#: Hold one can't be withdrawn yet (SCRUM-93), so it doesn't (Product Owner, 1 Nov).
+#: AC4 names these two (Product Owner, 1 Nov). An On Hold replacement doesn't hold the
+#: cancel back: AC4 says so because one couldn't be withdrawn then, and ADR-0118 asks
+#: whether that should change now it can.
 CANCEL_WAITS_FOR_REPLACEMENT_STATUSES = frozenset(
     {BookingRequestStatus.PENDING, BookingRequestStatus.CONFLICTING}
 )
