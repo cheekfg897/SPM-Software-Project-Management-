@@ -55,6 +55,8 @@ const APPROVED_REQUEST: ChangeRequest = {
   withdrawn_at: null,
   withdrawal_note: null,
 }
+/** A request still waiting for the coordinator, which its organiser can withdraw (AC8). */
+const PENDING_REQUEST: ChangeRequest = { ...APPROVED_REQUEST, status: 'pending' }
 /** A request the event's cancellation withdrew (AC9). */
 const WITHDRAWN_ON_CANCEL: ChangeRequest = {
   ...APPROVED_REQUEST,
@@ -164,8 +166,8 @@ describe('SCRUM-56 AC1, AC2, AC4 raising a change request', () => {
     expect(screen.queryByRole('region', { name: REQUEST_A_CHANGE })).not.toBeInTheDocument()
   })
 
-  it('offers the coordinator no form, but shows them the requests', async () => {
-    await serveSummitWith([APPROVED_REQUEST])
+  it('offers the coordinator no form and no withdrawal, but shows them the requests', async () => {
+    await serveSummitWith([PENDING_REQUEST])
     renderApp(coordinatorEventPath(PARTNER_SUMMIT), {
       session: mockSessionFor(MOCK_ACCOUNTS.coordinator),
     })
@@ -173,6 +175,7 @@ describe('SCRUM-56 AC1, AC2, AC4 raising a change request', () => {
     const listed = await findRegion('Change requests')
 
     expect(listed).toHaveTextContent('Drinks after.')
+    expect(within(listed).queryByRole('button', { name: WITHDRAW })).not.toBeInTheDocument()
     expect(screen.queryByRole('region', { name: REQUEST_A_CHANGE })).not.toBeInTheDocument()
   })
 })
@@ -254,7 +257,7 @@ describe('SCRUM-56 AC8, AC9 withdrawing a change request', () => {
   })
 
   it("shows the backend's refusal of a withdrawal", async () => {
-    await serveSummitWith([{ ...APPROVED_REQUEST, status: 'pending' }])
+    await serveSummitWith([PENDING_REQUEST])
     server.use(
       http.post(`/api/events/requests/${PARTNER_SUMMIT}/change-requests/41/withdraw`, () =>
         errorResponse(
