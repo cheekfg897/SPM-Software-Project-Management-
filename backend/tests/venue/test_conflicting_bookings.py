@@ -20,6 +20,7 @@ from app.modules.auth.permissions import Role
 from app.modules.venue import services
 from app.modules.venue.models import Booking, BookingStatus, CalendarEntryKind, Venue, VenueBlock
 from tests.venue.conftest import (
+    BLOCKING_DAY,
     SaveBooking,
     SavedEvent,
     VenueWithBuffers,
@@ -222,6 +223,8 @@ def test_a_new_block_lists_a_conflicting_booking_it_cuts_into(
         "reason": "Repairs",
     }
 
-    _, cut_into = services.block_venue(conflicting_booking.venue_id, payload, session=db_session)
+    _, cut_into = services.block_venue(
+        conflicting_booking.venue_id, payload, session=db_session, today=BLOCKING_DAY
+    )
 
     assert [booking.booking_id for booking in cut_into] == [conflicting_booking.id]
