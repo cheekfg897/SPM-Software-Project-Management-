@@ -224,7 +224,7 @@ line does. Good examples already in the code: why login burns a dummy hash check
 
 - `# TODO:` for known follow-up work; `# TODO(product):` when it needs a customer/PO decision.
 - `# pragma: no cover - <reason>` only for branches that genuinely can't run in unit tests
-  (misconfiguration guards, debugging aids, HTTP-only handlers). Always give the reason.
+  (misconfiguration guards, debugging aids). Always give the reason.
 - `# noqa: <CODE>` needs a nearby comment explaining why the rule doesn't apply.
 
 ## 6. Imports
@@ -454,11 +454,10 @@ diff-cover coverage.xml --compare-branch=origin/main --fail-under=100
 When a line genuinely can't be covered by a unit test, explain why rather than leave it
 silently red:
 
-- Mark it `# pragma: no cover - <reason>` (e.g. `- misconfiguration guard`, `- only reachable
-  through the HTTP layer`). This is the only way to exclude a changed line: `diff-cover`
-  ignores docstrings, so an uncovered line explained only in a docstring fails CI. (Some older
-  code explains HTTP-only gaps in a docstring, as `register_error_handlers` does; add the
-  pragma if you change one of those lines.)
+- Mark it `# pragma: no cover - <reason>` (e.g. `- misconfiguration guard`). This is the only way to exclude
+  a changed line: `diff-cover` ignores docstrings, so an uncovered line explained only in a
+  docstring fails CI. A route or an error handler is not such a line: call it inside
+  `app.test_request_context(...)`.
 - List every such gap, with its reason, in the PR description or the self-review report.
 
 ### The frontend's contract tests
