@@ -1,23 +1,33 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import { http } from 'msw'
 
-import { MOCK_ACCOUNTS, mockSessionFor } from '@/mocks/handlers/auth'
-import { MOCK_ARRANGEMENTS, MOCK_BOOKING_EVENTS } from '@/mocks/handlers/bookingFixtures'
+import { raiseBookingRequest } from '@/features/booking/api'
+import { MOCK_ACCOUNTS, mockSessionFor, mockTokenFor } from '@/mocks/fixtures/accounts'
+import {
+  MOCK_ARRANGEMENTS,
+  MOCK_BOOKING_EVENTS,
+  MOCK_BOOKING_VENUES,
+} from '@/mocks/handlers/bookingFixtures'
 import { errorResponse } from '@/mocks/responses'
 import { server } from '@/mocks/server'
 import { recordRequests } from '@/test/recordRequests'
 import { renderApp } from '@/test/render'
+import { sendRequestsAs } from '@/test/sendRequestsAs'
 
 /**
  * SCRUM-111: the coordinator cancels one approved booking, with a reason, from the event's Venue
  * requests page. The booking's arrangement becomes Cancelled and the event's other ones stay as
- * they were (AC1, AC2); a refusal shows in the backend's words (AC4).
+ * they were (AC1, AC2); a refusal shows in the backend's words (AC4), and one while a replacement
+ * waits for Venue Staff lets the coordinator withdraw it and try again.
  */
 
 const SESSION = { session: mockSessionFor(MOCK_ACCOUNTS.coordinator) }
 const BOOKED_EVENT = MOCK_BOOKING_EVENTS.booked
 const { bookedHall, bookedSideRoom } = MOCK_ARRANGEMENTS
 const REASON = 'The talks moved to the side room.'
+const REPLACEMENT_WAITING =
+  'A replacement for this booking is waiting for Venue Staff. Withdraw it first if the event no' +
+  ' longer needs this venue. Approving it will release this booking anyway.'
 const CANCEL_PATH = `/api/venues/events/${BOOKED_EVENT.reference}/booking-requests/${bookedHall.id}/cancel`
 
 type AppView = ReturnType<typeof renderApp>
@@ -126,6 +136,30 @@ describe('SCRUM-111 cancelling an approved booking on the venue requests page', 
     await waitFor(() =>
       expect(requests.filter((request) => request.method === 'GET')).not.toEqual([]),
     )
+  })
+
+  it('says to withdraw a replacement still waiting first, and cancels once it is withdrawn', async () => {
+    sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.coordinator))
+    await raiseBookingRequest(BOOKED_EVENT.reference, {
+      venue_id: MOCK_BOOKING_VENUES.tiny.id,
+      starts_at: bookedHall.starts_at,
+      ends_at: bookedHall.ends_at,
+      purpose: 'Replacement hall',
+      expected_occupancy: 5,
+      replaces_request_id: bookedHall.id,
+    })
+    const view = openBookedEvent()
+    const form = await openCancelForm(view)
+    await view.user.type(within(form).getByLabelText('Reason for cancelling'), REASON)
+    const cancelButton = within(form).getByRole('button', { name: 'Cancel booking' })
+
+    await view.user.click(cancelButton)
+    expect(await within(form).findByRole('alert')).toHaveTextContent(REPLACEMENT_WAITING)
+    await view.user.click(screen.getByRole('button', { name: 'Withdraw Replacement hall' }))
+    await waitFor(async () => expect(await item('Replacement hall')).toHaveTextContent('Withdrawn'))
+    await view.user.click(cancelButton)
+
+    await waitFor(async () => expect(await item(bookedHall.purpose)).toHaveTextContent('Cancelled'))
   })
 
   it('keeps the booking when the coordinator thinks better of it', async () => {

@@ -1271,6 +1271,9 @@ describe('SCRUM-111 booking mock: cancelling one approved booking', () => {
   const { reviewedAuditorium } = MOCK_ARRANGEMENTS
   const REVIEW_EVENT = MOCK_BOOKING_EVENTS.inSafetyReview
   const NO_REASON = 'A reason is required to cancel a booking.'
+  const REPLACEMENT_WAITING =
+    'A replacement for this booking is waiting for Venue Staff. Withdraw it first if the event' +
+    ' no longer needs this venue. Approving it will release this booking anyway.'
 
   function eventStatusOf(reference: string) {
     return bookingEventByReference(reference)?.status
@@ -1329,16 +1332,9 @@ describe('SCRUM-111 booking mock: cancelling one approved booking', () => {
   })
 
   it('keeps an event in Safety Review while another venue is still active', async () => {
-    await raise(
-      REVIEW_EVENT.reference,
-      validPayload({
-        venue_id: TINY_VENUE.id,
-        expected_occupancy: 5,
-        starts_at: reviewedAuditorium.starts_at,
-        ends_at: reviewedAuditorium.ends_at,
-        replaces_request_id: reviewedAuditorium.id,
-      }),
-    )
+    // A rejected replacement still counts as an active venue, and doesn't hold the cancel back.
+    const rejected = await raise(REVIEW_EVENT.reference, replacementFor(reviewedAuditorium))
+    await decideAsVenueStaff(rejected.id, 'rejected')
 
     await cancelBooking(REVIEW_EVENT.reference, reviewedAuditorium.id, { reason: CANCEL_REASON })
 
@@ -1390,6 +1386,107 @@ describe('SCRUM-111 booking mock: cancelling one approved booking', () => {
     )
 
     expect([error.status, error.fieldErrors]).toEqual([400, { status: ['Unknown field.'] }])
+  })
+
+  /** Raise a Pending replacement for the booked hall, at the tiny venue; returns its id. */
+  async function raiseHallReplacement(): Promise<number> {
+    const raised = await raise(BOOKED_EVENT.reference, replacementFor(bookedHall))
+    return Number(raised.id)
+  }
+
+  /** Raise the replacement, then have the backend's actors put it in each status. */
+  const REPLACEMENT_IN = {
+    pending: raiseHallReplacement,
+    conflicting: async () => {
+      const replacement = await raiseHallReplacement()
+      // An ordinary request at the same venue, overlapping it, approved first (SCRUM-44).
+      const rival = await raise(
+        BOOKED_EVENT.reference,
+        validPayload({
+          venue_id: TINY_VENUE.id,
+          expected_occupancy: 5,
+          starts_at: '2026-11-26T14:00:00+08:00',
+          ends_at: bookedHall.ends_at,
+        }),
+      )
+      await approveAsVenueStaff(rival.id)
+      return replacement
+    },
+    on_hold: async () => {
+      const replacement = await raiseHallReplacement()
+      sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.venueStaff))
+      await apiRequest(`/api/venues/booking-requests/${String(replacement)}/hold`, {
+        method: 'POST',
+        body: { expires_at: '2026-11-20T09:00:00+08:00' },
+      })
+      sendRequestsAs(mockTokenFor(MOCK_ACCOUNTS.coordinator))
+      return replacement
+    },
+    rejected: async () => {
+      const replacement = await raiseHallReplacement()
+      await decideAsVenueStaff(replacement, 'rejected')
+      return replacement
+    },
+    withdrawn: async () => {
+      const replacement = await raiseHallReplacement()
+      await withdraw(BOOKED_EVENT.reference, replacement)
+      return replacement
+    },
+  }
+
+  it.each(['pending', 'conflicting'] as const)(
+    'refuses to cancel while a replacement for the booking is %s, and leaves both as they were',
+    async (status) => {
+      const replacement = await REPLACEMENT_IN[status]()
+
+      const error = await errorOf(
+        cancelBooking(BOOKED_EVENT.reference, bookedHall.id, { reason: CANCEL_REASON }),
+      )
+
+      expect([error.status, error.message]).toEqual([409, REPLACEMENT_WAITING])
+      expect(await statusesOf(BOOKED_EVENT.reference)).toEqual(
+        expect.arrayContaining([`${bookedHall.id} approved`, `${replacement} ${status}`]),
+      )
+    },
+  )
+
+  it.each(['on_hold', 'rejected', 'withdrawn'] as const)(
+    'cancels while a replacement for the booking is %s, and leaves the replacement as it was',
+    async (status) => {
+      const replacement = await REPLACEMENT_IN[status]()
+
+      const cancelled = await cancelBooking(BOOKED_EVENT.reference, bookedHall.id, {
+        reason: CANCEL_REASON,
+      })
+
+      expect(cancelled.status).toBe('cancelled')
+      expect(await statusesOf(BOOKED_EVENT.reference)).toContain(`${replacement} ${status}`)
+    },
+  )
+
+  it('checks for a waiting replacement after the booking’s status and before the reason', async () => {
+    await raise(HELD_EVENT.reference, replacementFor(heldStudio))
+    await raiseHallReplacement()
+
+    const notApproved = await errorOf(
+      cancelBooking(HELD_EVENT.reference, heldStudio.id, { reason: CANCEL_REASON }),
+    )
+    const noReason = await errorOf(cancelBooking(BOOKED_EVENT.reference, bookedHall.id, {}))
+
+    expect(notApproved.message).toBe(
+      'Only an approved booking can be cancelled; this one is on_hold.',
+    )
+    expect([noReason.status, noReason.message]).toEqual([409, REPLACEMENT_WAITING])
+  })
+
+  it('is not held back by a replacement waiting for another booking', async () => {
+    await raise(HELD_EVENT.reference, replacementFor(heldStudio))
+
+    const cancelled = await cancelBooking(BOOKED_EVENT.reference, bookedHall.id, {
+      reason: CANCEL_REASON,
+    })
+
+    expect(cancelled.status).toBe('cancelled')
   })
 
   it('refuses an event that is not being planned, naming its status, before looking for the arrangement', async () => {

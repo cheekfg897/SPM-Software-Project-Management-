@@ -158,6 +158,10 @@ const RETIRED_STATUSES: readonly BookingRequestStatus[] = ['withdrawn', 'release
 const PLANNING_EVENT_STATUSES: readonly MockBookingEvent['status'][] = ['approved', 'safety_review']
 /** The backend's CANCELLATION_REASON_REQUIRED_MESSAGE (venue/schemas.py, SCRUM-111). */
 const CANCELLATION_REASON_REQUIRED_MESSAGE = 'A reason is required to cancel a booking.'
+/** The backend's CANCEL_REPLACEMENT_WAITING_MESSAGE (venue/services.py, SCRUM-111 AC4). */
+const CANCEL_REPLACEMENT_WAITING_MESSAGE =
+  'A replacement for this booking is waiting for Venue Staff. Withdraw it first if the event no' +
+  ' longer needs this venue. Approving it will release this booking anyway.'
 /**
  * As the backend's UNAVAILABILITY_FLAGGABLE_STATUSES: a venue becoming unavailable flags a
  * confirmed booking, a request still waiting for a decision, and one On hold, whose hold is a
@@ -694,7 +698,8 @@ function releaseReplaced(approved: BookingRequest): void {
 
 /**
  * The first replacement raised for the booking that `isWaiting` accepts, if any, as the backend's
- * `_replacement_in`, for a refusal that waits on a replacement, such as SCRUM-59 AC6's reconfirm.
+ * `_replacement_in`: SCRUM-59 AC6's reconfirm and SCRUM-111 AC4's cancel wait on different
+ * statuses.
  */
 function replacementOf(
   booking: BookingRequest,
@@ -703,6 +708,15 @@ function replacementOf(
   return requests.find(
     (existing) => existing.replaces_request_id === booking.id && isWaiting(existing),
   )
+}
+
+/**
+ * As the backend's CANCEL_WAITS_FOR_REPLACEMENT_STATUSES (SCRUM-111 AC4): a replacement the
+ * coordinator can still withdraw holds the cancel back. An On hold one can't be withdrawn yet
+ * (SCRUM-93), so it doesn't.
+ */
+function holdsTheCancelBack(existing: BookingRequest): boolean {
+  return existing.status === 'pending' || existing.status === 'conflicting'
 }
 
 /**
@@ -736,7 +750,8 @@ function notInPlanningRefusal(event: MockBookingEvent) {
 
 /**
  * The backend's refusal to cancel this arrangement, or null (SCRUM-111 AC4): one that isn't
- * approved, then a body without a proper reason, the order the backend checks them in.
+ * approved, then a replacement waiting for Venue Staff, then a body without a proper reason, the
+ * order the backend checks them in.
  */
 function cancelRefusal(arrangement: BookingRequest, body: Record<string, unknown>) {
   if (arrangement.status !== 'approved') {
@@ -745,6 +760,9 @@ function cancelRefusal(arrangement: BookingRequest, body: Record<string, unknown
       'conflict',
       `Only an approved booking can be cancelled; this one is ${arrangement.status}.`,
     )
+  }
+  if (replacementOf(arrangement, holdsTheCancelBack) !== undefined) {
+    return errorResponse(409, 'conflict', CANCEL_REPLACEMENT_WAITING_MESSAGE)
   }
   const invalid = cancelFieldErrors(body)
   return Object.keys(invalid).length > 0 ? validationError(invalid) : null
