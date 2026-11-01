@@ -3,7 +3,8 @@
 AC10: the organiser is told when their request is approved or rejected. Each outcome
 has its own kind and message, and a notification can carry a detail, such as the
 reason for a rejection, which also meets SCRUM-39's AC3 (ADR-0028). Raising them is in
-``tests/events/test_decision_notifications.py``.
+``tests/events/test_decision_notifications.py``. SCRUM-57 AC4 and AC7 add the wording
+of the change request's decision and of the new date or time.
 """
 
 from __future__ import annotations
@@ -30,8 +31,23 @@ REASON = "The venue is too small for the expected attendance."
     [
         ("event_request_approved", "Your event request was approved."),
         ("event_request_rejected", "Your event request was rejected."),
+        pytest.param(
+            "change_request_approved",
+            "Your change request was approved.",
+            marks=pytest.mark.scrum_57,
+        ),
+        pytest.param(
+            "change_request_rejected",
+            "Your change request was rejected.",
+            marks=pytest.mark.scrum_57,
+        ),
+        pytest.param(
+            "event_rescheduled",
+            "An event you registered for has a new date or time.",
+            marks=pytest.mark.scrum_57,
+        ),
     ],
-    ids=["approved", "rejected"],
+    ids=["approved", "rejected", "change-approved", "change-rejected", "rescheduled"],
 )
 def test_the_decision_notifications_say_the_outcome(value: str, message: str) -> None:
     kind = NotificationKind(value)

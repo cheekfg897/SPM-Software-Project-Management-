@@ -232,8 +232,8 @@ class ChangeRequestStatus(str, enum.Enum):
 
     Raised ``PENDING``. The Organiser may withdraw it while it is Pending, and it is
     withdrawn for them if the event is cancelled (SCRUM-56 AC8, AC9). ``APPROVED`` and
-    ``REJECTED`` are the coordinator's decision, which only SCRUM-57 sets; they exist
-    from the start so a decided request can already be refused a withdrawal.
+    ``REJECTED`` are the coordinator's decision (SCRUM-57); they exist from SCRUM-56 so
+    a decided request can already be refused a withdrawal.
     """
 
     PENDING = "pending"
@@ -491,6 +491,17 @@ class EventChangeRequest(db.Model):  # type: ignore[name-defined]
             "status <> 'withdrawn' OR withdrawn_at IS NOT NULL",
             name="ck_event_change_requests_withdrawn_has_time",
         ),
+        # SCRUM-57: a decided request says when and by whom (AC6), and a rejected one
+        # why (AC3).
+        CheckConstraint(
+            "status NOT IN ('approved', 'rejected') OR "
+            "(decided_at IS NOT NULL AND decided_by IS NOT NULL)",
+            name="ck_event_change_requests_decided_has_time",
+        ),
+        CheckConstraint(
+            "status <> 'rejected' OR decision_reason IS NOT NULL",
+            name="ck_event_change_requests_rejected_has_reason",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -526,3 +537,11 @@ class EventChangeRequest(db.Model):  # type: ignore[name-defined]
     #: Why it was withdrawn when the Organiser didn't do it themselves: the event was
     #: cancelled (AC9). ``None`` for the Organiser's own withdrawal.
     withdrawal_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: When the coordinator approved or rejected it; ``None`` until then (SCRUM-57).
+    decided_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    #: The coordinator who decided it. A database-level foreign key only, like
+    #: ``requested_by``.
+    decided_by: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
+    #: Why the coordinator decided as they did: required for a rejection (SCRUM-57 AC3),
+    #: optional for an approval. The Organiser is told it (AC4).
+    decision_reason: Mapped[str | None] = mapped_column(Text, nullable=True)

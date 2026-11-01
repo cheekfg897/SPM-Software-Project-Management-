@@ -934,8 +934,9 @@ def save_change_request(save: Callable[..., None]) -> Callable[..., EventChangeR
     """Save a change request directly, for organiser 7, asking for 300 attendees.
 
     For tests that need one in a given status, or at a pinned time, without raising it
-    through the service (SCRUM-56). A withdrawn one gets a withdrawal time, as the
-    database requires.
+    through the service (SCRUM-56). A withdrawn one gets a withdrawal time, and a
+    decided one a decision time and Coordinator 3 as its decider, a rejected one a
+    reason too, as the database requires (SCRUM-57).
     """
 
     def _save(
@@ -955,6 +956,11 @@ def save_change_request(save: Callable[..., None]) -> Callable[..., EventChangeR
         )
         if status is ChangeRequestStatus.WITHDRAWN:
             change_request.withdrawn_at = raised_at
+        if status in (ChangeRequestStatus.APPROVED, ChangeRequestStatus.REJECTED):
+            change_request.decided_at = raised_at
+            change_request.decided_by = 3
+        if status is ChangeRequestStatus.REJECTED:
+            change_request.decision_reason = "The venue can't hold more."
         save(change_request)
         return change_request
 
