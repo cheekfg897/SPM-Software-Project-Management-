@@ -56,14 +56,13 @@ jobs:
       - name: Type-check
         run: npm run typecheck
 
-      # Fails under the 90% floor set in vite.config.ts.
+      # Fails under the 100% floor set in vite.config.ts (ADR-0127).
       - name: Unit and component tests with coverage
         run: npm run test:coverage
 
-      # The floor above is for the whole app, so a pull request could add an untested
-      # component and still pass it. This holds every line it adds or changes to 100%,
-      # as the backend job does. A line marked `/* v8 ignore next -- <reason> */` is left
-      # out of the report, so it doesn't count against this.
+      # The floor above already fails on any uncovered line. This names the lines a pull
+      # request left uncovered, as the backend job does. A line marked
+      # `/* v8 ignore next -- <reason> */` is left out of the report, so it doesn't count.
       - name: Changed lines are fully covered
         if: github.event_name == 'pull_request'
         run: |

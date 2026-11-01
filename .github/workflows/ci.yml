@@ -188,17 +188,23 @@ jobs:
       # runner's UTC clock already disagrees with Asia/Singapore for most of
       # the day, so this run doubles as the check that nothing depends on the
       # two matching.
+      #
+      # The floor is 100% of lines and branches, on the unit tests alone
+      # (ADR-0127), so the e2e journeys are left out here and run next.
       - name: Run unit tests with coverage
         id: tests
-        run: pytest --cov=app --cov-branch --cov-report=term-missing --cov-report=xml --cov-fail-under=90 --junitxml=junit.xml
+        run: pytest -m "not e2e" --cov=app --cov-branch --cov-report=term-missing --cov-report=xml --cov-fail-under=100 --junitxml=junit.xml
 
-      # The 90% floor above is for the whole codebase, so a pull request can
-      # add a function with no tests at all and still pass it. This holds
-      # every line the pull request adds or changes to 100% (CONVENTIONS.md
-      # §14). A line marked `# pragma: no cover - <reason>` is left out of the
-      # count, which is how a deliberate gap is declared, with its reason.
-      # diff-cover counts lines, not branches: an `if` tested only one way
-      # still passes here, so that part stays with the reviewer (checklist §10).
+      # A coverage miss above shouldn't hide whether the journeys still work.
+      - name: Run the end-to-end journeys
+        if: always() && steps.tests.outcome != 'skipped'
+        run: pytest -m e2e --junitxml=junit-e2e.xml
+
+      # The floor above already fails on any uncovered line. This step stays
+      # to name, in the report below, the lines this pull request left
+      # uncovered, so it also runs when the floor has just failed. A line
+      # marked `# pragma: no cover - <reason>` is left out of the count,
+      # which is how a deliberate gap is declared, with its reason.
       #
       # HEAD on a pull_request run is GitHub's merge of the branch into the
       # pull request's base, so HEAD^1 is that base as it stood when the run
@@ -207,7 +213,7 @@ jobs:
       # diffing against that counted every lower pull request's lines too.
       # The JSON copy is for the headline figure in the coverage report.
       - name: Changed lines are fully covered
-        if: github.event_name == 'pull_request'
+        if: always() && github.event_name == 'pull_request' && steps.tests.outcome != 'skipped'
         run: diff-cover coverage.xml --compare-branch=HEAD^1 --fail-under=100 --format markdown:diff-cover.md,json:diff-cover.json
 
       # One report for the run's summary page and the pull request comment,
@@ -221,7 +227,7 @@ jobs:
           {
             echo "## Backend coverage"
             echo
-            echo "- **Overall:** $(coverage report --format=total)% (floor 90%)"
+            echo "- **Overall:** $(coverage report --format=total)% of lines and branches, unit tests alone (floor 100%)"
             # Only pull requests have it: the changed-lines figure, and any line left uncovered.
             if [ -f diff-cover.json ]; then
               echo "- **Changed lines:** $(jq .total_percent_covered diff-cover.json)% (must be 100%)"
@@ -268,6 +274,7 @@ jobs:
           path: |
             backend/coverage.xml
             backend/junit.xml
+            backend/junit-e2e.xml
             backend/diff-cover.md
 
   audit:
