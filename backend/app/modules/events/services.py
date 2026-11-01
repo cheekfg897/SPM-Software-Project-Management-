@@ -1142,6 +1142,15 @@ def _return_to_approved(event_request: EventRequest) -> None:
         event_request.status = EventRequestStatus.APPROVED
 
 
+def _fields_in_words(fields: Iterable[str]) -> str:
+    """Field names as a notice says them, e.g. ``"start time, expected attendance"``."""
+    field_words = []
+    for field in fields:
+        words = FIELD_NAMES_IN_NOTICES.get(field, field.replace("_", " "))
+        field_words.append(words)
+    return ", ".join(field_words)
+
+
 def _tell_safety_officers_of_change(
     event_request: EventRequest, changed_fields: list[str], session: Session
 ) -> None:
@@ -1152,11 +1161,7 @@ def _tell_safety_officers_of_change(
     e.g. "Changed: start time, expected attendance."; if the change sent the event
     back to Approved, it says so (ADR-0107).
     """
-    field_words = []
-    for field in changed_fields:
-        words = FIELD_NAMES_IN_NOTICES.get(field, field.replace("_", " "))
-        field_words.append(words)
-    detail = f"Changed: {', '.join(field_words)}."
+    detail = f"Changed: {_fields_in_words(changed_fields)}."
     if event_request.status is EventRequestStatus.APPROVED:
         detail = f"{detail} {BACK_IN_PLANNING_DETAIL}"
     _notify_safety_officers(
