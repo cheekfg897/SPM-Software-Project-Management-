@@ -1,4 +1,4 @@
-import { EVENT_REQUEST_STATUS } from '@/config/eventStatus'
+import type { EventRequestStatus } from '@/config/eventStatus'
 import type { PreparationStatus } from '@/config/preparation'
 
 import { eventForStaff } from './equipmentAccess'
@@ -101,16 +101,17 @@ export function reservationsOfEvent(reference: string): MockReservation[] {
 }
 
 /**
- * The event, rejected during planning, gives back its equipment as the backend's
- * release_event_reservations does (SCRUM-49 AC10, ADR-0093): its reservations go, and its
- * status closes its open lines to outcomes and reservations (EQUIPMENT_NOT_NEEDED_STATUSES).
+ * The event, rejected during planning (SCRUM-49 AC10, ADR-0093) or cancelled by its organiser
+ * (SCRUM-61 AC3, ADR-0122), gives back its equipment as the backend's
+ * release_event_reservations does: its reservations go, and `status`, the one it now has,
+ * closes its open lines to outcomes and reservations (EQUIPMENT_NOT_NEEDED_STATUSES).
  */
-export function rejectEventEquipment(reference: string): void {
+export function releaseEventEquipment(reference: string, status: EventRequestStatus): void {
   const event = eventForStaff(reference)
   if (event === undefined) {
     return
   }
-  event.status = EVENT_REQUEST_STATUS.REJECTED
+  event.status = status
   for (const reservation of reservationsOfEvent(reference)) {
     removeReservation(reservation)
   }

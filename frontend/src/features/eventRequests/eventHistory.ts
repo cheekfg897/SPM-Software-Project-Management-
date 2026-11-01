@@ -36,6 +36,7 @@ export const EVENT_HISTORY_KIND = {
   SAFETY_REVIEW_REQUESTED: 'safety_review_requested',
   SAFETY_OUTCOME_RECORDED: 'safety_outcome_recorded',
   EVENT_CONFIRMED: 'event_confirmed',
+  EVENT_CANCELLED: 'event_cancelled',
 } as const
 
 export type EventHistoryKind = (typeof EVENT_HISTORY_KIND)[keyof typeof EVENT_HISTORY_KIND]
@@ -309,6 +310,8 @@ const DESCRIBE_KIND: Record<EventHistoryKind, (details: Details) => DescribedEnt
   safety_review_requested: () => entry('Sent for safety review'),
   safety_outcome_recorded: safetyOutcomeRecorded,
   event_confirmed: () => entry('Event confirmed'),
+  /** An organiser of the event's organisation cancelled it, with a reason (SCRUM-61 AC1). */
+  event_cancelled: (details) => entry('Event cancelled', [['Reason', textIn(details, 'reason')]]),
 }
 
 const KNOWN_KINDS: readonly string[] = Object.values(EVENT_HISTORY_KIND)

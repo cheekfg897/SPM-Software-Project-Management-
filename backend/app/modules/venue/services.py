@@ -1847,11 +1847,13 @@ def _free_venue(arrangement: VenueBookingRequest, session: Session | None) -> No
 
 
 def _withdraw_and_record(
-    arrangement: VenueBookingRequest, coordinator_id: int, session: Session | None
+    arrangement: VenueBookingRequest, actor_id: int, session: Session | None
 ) -> None:
     """Withdraw one arrangement and write its history entry, without committing.
 
     An On Hold arrangement's hold is released with it, in the same transaction.
+    ``actor_id`` is who withdrew it: the coordinator, or the organiser cancelling the
+    event (SCRUM-61).
 
     Raises:
         ConflictError: 409 — the arrangement is not pending, conflicting, On Hold,
@@ -1868,7 +1870,7 @@ def _withdraw_and_record(
     arrangement.status = BookingRequestStatus.WITHDRAWN
     event_services.record_venue_arrangement_withdrawn(
         arrangement.event_id,
-        actor_id=coordinator_id,
+        actor_id=actor_id,
         details={
             "venue_booking_request_id": arrangement.id,
             "venue_id": arrangement.venue_id,
@@ -2852,21 +2854,24 @@ def _arrangement_detail(
 
 
 def release_event_arrangements(
-    event_id: int, *, coordinator_id: int, session: Session | None = None
+    event_id: int, *, actor_id: int, session: Session | None = None
 ) -> list[str]:
     """Free every venue an event still has arranged, without committing (SCRUM-49 AC10).
 
-    For an event rejected during planning, whose venues are released as a cancelled
-    event's are (SCRUM-61 AC2, AC6, ADR-0093). An arrangement that doesn't hold its
+    For an event that won't run: rejected during planning (SCRUM-49, ADR-0093) or
+    cancelled by its organiser (SCRUM-61 AC2, AC6). An arrangement that doesn't hold its
     venue is withdrawn, with its history entry, as the coordinator would withdraw it
     (SCRUM-93). One that holds the venue, Approved or On Hold, is Released and its
     booking or hold cancelled, so the venue is free for that period again. Arrangements
-    already retired are left as they are. The caller commits, with the
-    rejection this is part of.
+    already retired are left as they are. Each one is read again under its row lock
+    first, as the coordinator's own actions read it (ADR-0118), so a decision Venue
+    Staff save meanwhile is seen: an approval is released with its booking, not
+    withdrawn as the Pending it was, and one retired meanwhile is left alone. The caller
+    commits, with the rejection or cancellation this is part of.
 
     Args:
         event_id: The event request's id.
-        coordinator_id: The coordinator rejecting the event, named in each withdrawal.
+        actor_id: Who is rejecting or cancelling the event, named in each withdrawal.
         session: Database session; defaults to ``db.session``.
 
     Returns:
@@ -2875,10 +2880,14 @@ def release_event_arrangements(
         once the caller has committed (ADR-0103). A withdrawn one is not named: it never
         held the venue.
     """
+    sess = resolve_session(session)
     released = []
-    for arrangement in list_active_arrangements(event_id, session=session):
+    for listed in list_active_arrangements(event_id, session=session):
+        arrangement = _arrangement_of_event(event_id, listed.id, sess)
+        if arrangement.status in RETIRED_REQUEST_STATUSES:
+            continue
         if arrangement.status not in VENUE_HOLDING_REQUEST_STATUSES:
-            _withdraw_and_record(arrangement, coordinator_id, session)
+            _withdraw_and_record(arrangement, actor_id, session)
             continue
         _release_and_free_venue(arrangement, session)
         released.append(_arrangement_detail(RELEASED_DETAIL, arrangement, session))
@@ -2895,6 +2904,20 @@ def tell_venue_staff_of_releases(
     :func:`release_event_arrangements`, sent once the rejection is saved.
     """
     _tell_venue_staff(event, details, NotificationKind.VENUE_BOOKING_RELEASED, session)
+
+
+def tell_venue_staff_of_cancellation_releases(
+    event: EventForBooking, details: list[str], *, session: Session | None = None
+) -> None:
+    """Tell every Venue Staff user about each booking or hold a cancellation released.
+
+    SCRUM-61 AC8 (ADR-0122): as :func:`tell_venue_staff_of_releases` does for a
+    rejection, with the ``venue_booking_released_by_cancellation`` kind, whose message
+    says the event was cancelled. Sent once the cancellation is saved.
+    """
+    _tell_venue_staff(
+        event, details, NotificationKind.VENUE_BOOKING_RELEASED_BY_CANCELLATION, session
+    )
 
 
 # --------------------------------------------------------------------------

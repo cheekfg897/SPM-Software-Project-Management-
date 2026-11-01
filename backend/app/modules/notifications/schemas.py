@@ -87,6 +87,10 @@ MESSAGE_BY_KIND: dict[NotificationKind, str] = {
     NotificationKind.SAFETY_REVIEW_VENUE_CANCELLED: (
         "A venue was dropped from an event in Safety Review."
     ),
+    NotificationKind.EVENT_CANCELLED: "This event has been cancelled by its organiser.",
+    NotificationKind.VENUE_BOOKING_RELEASED_BY_CANCELLATION: (
+        "A venue booking or hold was released because its event was cancelled."
+    ),
 }
 
 #: Where a notification links to: the event's page, found by its reference

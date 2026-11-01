@@ -181,6 +181,10 @@ class EventHistoryKind(str, enum.Enum):
     #: ``venue_id``, the period (``starts_at``, ``ends_at``) and the ``reason``, and
     #: ``actor_id`` is the coordinator (SCRUM-111 AC5, ADR-0117). Migration 0051.
     VENUE_BOOKING_CANCELLED = "venue_booking_cancelled"
+    #: An Event Organiser of the event's client organisation cancelled it; ``details``
+    #: holds the ``reason``, and ``actor_id`` is the organiser (SCRUM-61 AC1,
+    #: ADR-0122). Migration 0052.
+    EVENT_CANCELLED = "event_cancelled"
 
 
 class SafetyOutcome(str, enum.Enum):

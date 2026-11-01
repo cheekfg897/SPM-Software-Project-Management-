@@ -7,7 +7,7 @@ from datetime import UTC, date, datetime, time, timedelta, timezone
 from typing import Any
 
 import pytest
-from sqlalchemy import event as sqlalchemy_event, select
+from sqlalchemy import event as sqlalchemy_event, select, update
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Session
 
@@ -217,6 +217,24 @@ def locked_venue_reads(session: Session, action: Callable[[], object]) -> list[s
 def locked_request_reads(session: Session, action: Callable[[], object]) -> list[str]:
     """The reads of booking requests under ``FOR UPDATE`` that ``action`` sends."""
     return _locked_reads(session, "venue_booking_requests", action)
+
+
+def set_status_underneath(
+    arrangement: VenueBookingRequest, status: BookingRequestStatus, session: Session
+) -> None:
+    """Set the row's status in the database, leaving the session's copy as it was.
+
+    As a decision committed while the caller's request was in flight would leave it
+    (ADR-0118): only a locked read sees the new status. The copy is loaded first, so it
+    holds the old status even if a commit had expired it.
+    """
+    session.refresh(arrangement)
+    session.execute(
+        update(VenueBookingRequest)
+        .where(VenueBookingRequest.id == arrangement.id)
+        .values(status=status)
+        .execution_options(synchronize_session=False)
+    )
 
 
 #: The date a block's "not ended before today" rule is measured against (SCRUM-34).

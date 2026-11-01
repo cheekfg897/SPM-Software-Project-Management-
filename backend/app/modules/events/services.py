@@ -53,6 +53,7 @@ from app.modules.events.models import (
 from app.modules.events.schemas import (
     AMENDABLE_FIELDS,
     AssignCoordinatorSchema,
+    CancelEventSchema,
     DecideEventRequestSchema,
     EditEquipmentLineSchema,
     EditEventRequestSchema,
@@ -5599,7 +5600,8 @@ def confirm_event_request(
 #: Planning runs from the coordinator's approval to confirmation: the event is Approved
 #: while its venues and equipment are arranged, then in Safety Review (ADR-0047). A
 #: request still awaiting its first decision is rejected through SCRUM-31's decision,
-#: and a confirmed event is past planning: it would be cancelled (SCRUM-61).
+#: and a confirmed event is past planning: only its organiser can call it off, by
+#: cancelling it (SCRUM-61, ADR-0122).
 PLANNING_STATUSES: frozenset[EventRequestStatus] = frozenset(
     {EventRequestStatus.APPROVED, EventRequestStatus.SAFETY_REVIEW}
 )
@@ -5615,14 +5617,14 @@ class EventRejectionNotAllowedError(AppError):
     error_code = "rejection_not_allowed"
 
 
-def _release_arrangements(event_id: int, coordinator_id: int, session: Session) -> list[str]:
+def _release_arrangements(event_id: int, actor_id: int, session: Session) -> list[str]:
     """Free the venues and equipment of an event that won't run, without committing.
 
     Its venue arrangements are withdrawn or released, bookings and holds included, and
-    its reserved equipment goes back to stock (SCRUM-49 AC10). Written for a rejection
-    during planning; SCRUM-61's cancellation releases the same things, "as for a
-    cancelled event", so it is meant to share this. Open equipment requests close with
-    the event's status (``EQUIPMENT_NOT_NEEDED_STATUSES``), not here.
+    its reserved equipment goes back to stock: for a rejection during planning (SCRUM-49
+    AC10) and a cancellation (SCRUM-61 AC2, AC3, AC6) alike. ``actor_id`` is who
+    rejected or cancelled it. Open equipment requests close with the event's status
+    (``EQUIPMENT_NOT_NEEDED_STATUSES``), not here.
 
     Returns:
         What Venue Staff are to be told about each booking or hold released (ADR-0103).
@@ -5630,7 +5632,7 @@ def _release_arrangements(event_id: int, coordinator_id: int, session: Session) 
     from app.modules.venue import services as venue_services  # circular at import time
 
     released = venue_services.release_event_arrangements(
-        event_id, coordinator_id=coordinator_id, session=session
+        event_id, actor_id=actor_id, session=session
     )
     equipment_services.release_event_reservations(event_id, session=session)
     return released
@@ -5815,3 +5817,131 @@ def tell_safety_officers_of_cancelled_booking(
     _notify_safety_officers(
         event_request, NotificationKind.SAFETY_REVIEW_VENUE_CANCELLED, sess, detail=detail
     )
+
+
+# --------------------------------------------------------------------------
+# SCRUM-61 — the Event Organiser cancels their event
+# --------------------------------------------------------------------------
+
+#: Where the organiser may cancel their event (SCRUM-61 AC1): from submission to
+#: confirmation. A draft hasn't been submitted, and a Completed, Cancelled or Rejected
+#: event is over.
+CANCELLABLE_STATUSES: frozenset[EventRequestStatus] = frozenset(
+    {
+        EventRequestStatus.SUBMITTED,
+        EventRequestStatus.UNDER_REVIEW,
+        EventRequestStatus.AWAITING_CLARIFICATION,
+        EventRequestStatus.APPROVED,
+        EventRequestStatus.SAFETY_REVIEW,
+        EventRequestStatus.CONFIRMED,
+    }
+)
+#: The refusal for any other status, naming it (ADR-0122).
+NOT_CANCELLABLE_MESSAGE = (
+    "Only an event between Submitted and Confirmed can be cancelled; this one is {status}."
+)
+
+
+class EventCancellationNotAllowedError(AppError):
+    """The event isn't between Submitted and Confirmed, so can't be cancelled (409)."""
+
+    status_code = 409
+    error_code = "cancellation_not_allowed"
+
+
+def _event_request_cancellable_by(
+    organiser_id: int | str, reference: str, session: Session
+) -> EventRequest:
+    """The organiser's organisation's event, if it may be cancelled now (SCRUM-61 AC1).
+
+    Raises:
+        OrganiserWithoutOrganisationError: 403 — the organiser has no organisation.
+        NotFoundError: 404 — no such event in the organiser's organisation.
+        EventCancellationNotAllowedError: 409 — the event isn't between Submitted and
+            Confirmed; the message names its status.
+    """
+    event_request = get_event_request_for_organiser(organiser_id, reference, session=session)
+    if event_request.status not in CANCELLABLE_STATUSES:
+        raise EventCancellationNotAllowedError(
+            NOT_CANCELLABLE_MESSAGE.format(status=event_request.status.value)
+        )
+    return event_request
+
+
+def _notify_registered_attendees(event_request: EventRequest, session: Session) -> None:
+    """Tell every Attendee holding a place that the event is cancelled (SCRUM-61 AC4).
+
+    With no ``detail``: the organiser's reason was written for the coordinator
+    (ADR-0122). Their registrations are left as they are; the event's status says it
+    is off (ADR-0109).
+    """
+    # Imported here because the registration module imports this one for event facts.
+    from app.modules.registration.services import list_registered_attendee_ids
+
+    attendee_ids = list_registered_attendee_ids(event_request.id, session=session)
+    _raise_notifications(attendee_ids, event_request, NotificationKind.EVENT_CANCELLED, session)
+
+
+def cancel_event_request(
+    organiser_id: int | str,
+    reference: str,
+    payload: Mapping[str, Any] | None,
+    *,
+    session: Session | None = None,
+) -> EventRequest:
+    """Cancel an event at its organiser's request, with a reason (SCRUM-61 AC1).
+
+    Any organiser of the event's client organisation may, as any of them may answer a
+    clarification (ADR-0029), from Submitted to Confirmed. It takes effect straight
+    away: the organiser has the right to cancel, so nobody approves it (Product Owner,
+    29 Oct). The ``cancelled`` status and an ``event_cancelled`` history entry with the
+    organiser and the reason are saved in one commit with the release of everything
+    arranged for the event, as for a rejection during planning (ADR-0093): its venue
+    arrangements withdrawn or released, bookings and holds included (AC2, AC6), and its
+    reserved equipment returned (AC3). Its open equipment requests close with the
+    status (AC7). Then the assigned coordinator is told, with the reason (AC1), every
+    registered Attendee, without it (AC4), and every Venue Staff user about each
+    booking or hold released (AC8); a notice that can't be saved loses only itself
+    (ADR-0015). The checks run in this order: the organiser's organisation, the
+    reference, the status, then the payload. See ADR-0122.
+
+    Args:
+        organiser_id: The caller's user id, taken from their token.
+        reference: The ``EVR-…`` reference; case and surrounding spaces are ignored.
+        payload: Decoded JSON body: ``reason``.
+        session: Database session; defaults to ``db.session``.
+
+    Returns:
+        The request, now ``cancelled``.
+
+    Raises:
+        OrganiserWithoutOrganisationError: 403 — the organiser has no organisation.
+        NotFoundError: 404 — no such event in the organiser's organisation.
+        EventCancellationNotAllowedError: 409 — the event isn't between Submitted and
+            Confirmed.
+        ValidationError: 400 — no reason, or a field the body may not carry.
+    """
+    from app.modules.venue import services as venue_services  # circular at import time
+
+    sess = resolve_session(session)
+    event_request = _event_request_cancellable_by(organiser_id, reference, sess)
+    reason = load_or_raise(CancelEventSchema(), payload)["reason"]
+
+    event_request.status = EventRequestStatus.CANCELLED
+    record_event_history(
+        event_request,
+        EventHistoryKind.EVENT_CANCELLED,
+        actor_id=int(organiser_id),
+        details={"reason": reason},
+        session=sess,
+    )
+    released = _release_arrangements(event_request.id, int(organiser_id), sess)
+    sess.commit()
+    _notify_assigned_coordinator(
+        event_request, NotificationKind.EVENT_CANCELLED, sess, detail=reason
+    )
+    _notify_registered_attendees(event_request, sess)
+    venue_services.tell_venue_staff_of_cancellation_releases(
+        _for_booking(event_request), released, session=sess
+    )
+    return event_request

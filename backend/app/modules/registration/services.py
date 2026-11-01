@@ -1,7 +1,8 @@
 """Business logic for the registration module (SCRUM-52).
 
 These functions are the module's public API: routes call them, tests call them
-directly, and the events module calls :func:`count_registered`.
+directly, and the events module calls :func:`count_registered` and
+:func:`list_registered_attendee_ids`.
 
 Facts about events come from :mod:`app.modules.events.services`, never from the events
 table (module boundary). Every function takes an optional ``session`` so unit tests can
@@ -212,6 +213,23 @@ def count_registered(event_id: int, *, session: Session | None = None) -> int:
         Registration.status == RegistrationStatus.REGISTERED,
     )
     return resolve_session(session).scalar(stmt)
+
+
+def list_registered_attendee_ids(event_id: int, *, session: Session | None = None) -> list[int]:
+    """The Attendees holding a place at an event, oldest registration first.
+
+    The events module calls this to tell each of them when the event is cancelled
+    (SCRUM-61 AC4, ADR-0122). An Attendee who withdrew holds no place, so is left out.
+    """
+    stmt = (
+        select(Registration.attendee_id)
+        .where(
+            Registration.event_request_id == event_id,
+            Registration.status == RegistrationStatus.REGISTERED,
+        )
+        .order_by(Registration.registered_at, Registration.id)
+    )
+    return list(resolve_session(session).scalars(stmt))
 
 
 def _registered_counts(event_ids: list[int], session: Session) -> dict[int, int]:

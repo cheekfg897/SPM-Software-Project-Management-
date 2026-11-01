@@ -289,6 +289,22 @@ export function assignedOrRefusal(request: Request, reference: unknown) {
   return { coordinator: found.caller, stored }
 }
 
+/**
+ * The caller and one of their organisation's requests, if they are an organiser who may see it;
+ * otherwise the refusal, as the backend's organiser actions give it (SCRUM-7, ADR-0012).
+ */
+export function visibleOrRefusal(request: Request, reference: unknown) {
+  const caller = organiserOrRefusal(request)
+  if ('refusal' in caller) {
+    return { refusal: caller.refusal }
+  }
+  const stored = visibleRequest(caller.organiser.id, caller.organisationId, reference)
+  if (stored === undefined) {
+    return { refusal: errorResponse(404, 'not_found', NOT_FOUND_MESSAGE) }
+  }
+  return { organiser: caller.organiser, stored }
+}
+
 /** The body, if it is a JSON object; anything else is refused before its fields are read. */
 export async function objectBodyOrRefusal(request: Request) {
   const body: unknown = await request.json().catch(() => null)
@@ -551,15 +567,11 @@ export const eventRequestHandlers: RequestHandler[] = [
   }),
 
   http.post(`${MY_REQUESTS_PATH}/:reference/resubmit`, async ({ request, params }) => {
-    const caller = organiserOrRefusal(request)
-    if ('refusal' in caller) {
-      return caller.refusal
+    const found = visibleOrRefusal(request, params.reference)
+    if ('refusal' in found) {
+      return found.refusal
     }
-    const { organiser, organisationId } = caller
-    const stored = visibleRequest(organiser.id, organisationId, params.reference)
-    if (stored === undefined) {
-      return errorResponse(404, 'not_found', NOT_FOUND_MESSAGE)
-    }
+    const { organiser, stored } = found
     if (stored.request.status !== EVENT_REQUEST_STATUS.AWAITING_CLARIFICATION) {
       return errorResponse(
         409,
