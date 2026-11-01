@@ -5,7 +5,8 @@ free for that period again. AC2: the event's other bookings are untouched; an Ap
 event stays Approved; an event in Safety Review goes back to Approved if the Safety
 Officer had passed it (the pass no longer counts) or if the booking was its last active
 venue (SCRUM-97 AC3), and otherwise stays, and every Safety Officer is told. AC3: every
-Venue Staff user is told. AC4: the refusals. AC5: the history entry. ADR-0117 records
+Venue Staff user is told. AC4: the refusals, one while a replacement for the booking is
+Pending or Conflicting (not On Hold). AC5: the history entry. ADR-0117 records
 what the ACs leave open: the Safety Officers are told when the event goes back too, and
 the coordinator is told nothing. Runs against ``db_session``, so the queries really
 run.
@@ -14,6 +15,7 @@ run.
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import datetime, timedelta
 from typing import Any
 
 import pytest
@@ -33,7 +35,12 @@ from app.modules.notifications.services import (
     list_notifications_for_recipient,
 )
 from app.modules.venue import services
-from app.modules.venue.models import BookingRequestStatus, BookingStatus, Venue
+from app.modules.venue.models import (
+    BookingRequestStatus,
+    BookingStatus,
+    Venue,
+    VenueBookingRequest,
+)
 from app.modules.venue.schemas import BookingRequestAsShown
 from tests.venue.conftest import (
     COORDINATOR_ID,
@@ -50,6 +57,7 @@ from tests.venue.conftest import (
     history_entries,
     locked_request_reads,
     period,
+    place_hold,
     raise_booking,
     reload_event,
     reload_request,
@@ -72,6 +80,19 @@ REFUSED_EVENT_STATUSES = [
 NOT_APPROVED_STATUSES = [
     status for status in BookingRequestStatus if status is not BookingRequestStatus.APPROVED
 ]
+#: AC4: a replacement in these statuses holds the cancel back until the coordinator
+#: withdraws it.
+WAITING_REPLACEMENT_STATUSES = [BookingRequestStatus.PENDING, BookingRequestStatus.CONFLICTING]
+#: Every other status a replacement can be in, On Hold among them (it can't be withdrawn
+#: yet, SCRUM-93). Built from the enum, so a status added later is let through unless it
+#: is added above.
+NOT_WAITING_REPLACEMENT_STATUSES = [
+    status for status in BookingRequestStatus if status not in WAITING_REPLACEMENT_STATUSES
+]
+REPLACEMENT_WAITING_MESSAGE = (
+    "A replacement for this booking is waiting for Venue Staff. Withdraw it first if the"
+    " event no longer needs this venue. Approving it will release this booking anyway."
+)
 
 
 def _cancel(
@@ -100,6 +121,25 @@ def _status_of(session: Session, arrangement_id: int) -> BookingRequestStatus:
 
 def _history_kinds(session: Session, event: EventRequest) -> list[EventHistoryKind]:
     return [entry.kind for entry in history_entries(session, event.id)]
+
+
+def _replacement_for(
+    replaced_id: int, event: EventRequest, venue: Venue, session: Session
+) -> VenueBookingRequest:
+    """A Pending replacement at ``venue`` for the arrangement, once a change flags it.
+
+    Flagged by a change to the venue requirements, as SCRUM-92 requires.
+    """
+    edit_event(session, event, {"venue_requirements": "A stage for the band."})
+    return raise_booking(venue, event, session, replaces_request_id=replaced_id)
+
+
+def _into_status(
+    arrangement: VenueBookingRequest, status: BookingRequestStatus, session: Session
+) -> None:
+    """Write ``status`` straight onto the arrangement, as later steps would leave it."""
+    arrangement.status = status
+    session.commit()
 
 
 @pytest.fixture()
@@ -339,8 +379,7 @@ def test_an_arrangement_that_is_not_approved_is_refused_naming_its_status(
     db_session: Session, event: EventRequest, venue: Venue, status: BookingRequestStatus
 ) -> None:
     arrangement = raise_booking(venue, event, db_session)
-    arrangement.status = status
-    db_session.commit()
+    _into_status(arrangement, status, db_session)
 
     with pytest.raises(ConflictError) as refused:
         _cancel(event, arrangement.id, db_session)
@@ -412,6 +451,119 @@ def test_the_arrangement_is_read_under_a_row_lock(
 
 
 # --------------------------------------------------------------------------
+# AC4 — refused while a replacement for the booking waits for Venue Staff
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("status", WAITING_REPLACEMENT_STATUSES, ids=lambda status: status.value)
+def test_a_replacement_waiting_for_venue_staff_holds_the_cancellation_back(
+    db_session: Session,
+    event: EventRequest,
+    booked: int,
+    second_venue: Venue,
+    status: BookingRequestStatus,
+) -> None:
+    """The coordinator withdraws it first; the system doesn't (ADR-0117 decision 6)."""
+    replacement = _replacement_for(booked, event, second_venue, db_session)
+    _into_status(replacement, status, db_session)
+
+    with pytest.raises(ConflictError) as refused:
+        _cancel(event, booked, db_session)
+
+    assert refused.value.message == REPLACEMENT_WAITING_MESSAGE
+    _assert_nothing_changed(db_session, event, booked)
+    assert _status_of(db_session, replacement.id) is status
+
+
+def test_a_waiting_replacement_holds_it_back_in_safety_review_too_and_the_event_stays(
+    db_session: Session, event: EventRequest, booked: int, second_venue: Venue
+) -> None:
+    """There it counts as an active venue, so AC2's last-venue rule wouldn't fire."""
+    _replacement_for(booked, event, second_venue, db_session)
+    _into(event, EventRequestStatus.SAFETY_REVIEW, db_session)
+
+    with pytest.raises(ConflictError) as refused:
+        _cancel(event, booked, db_session)
+
+    assert refused.value.message == REPLACEMENT_WAITING_MESSAGE
+    _assert_nothing_changed(db_session, event, booked)
+    assert reload_event(db_session, event.id).status is EventRequestStatus.SAFETY_REVIEW
+
+
+@pytest.mark.parametrize(
+    "status", NOT_WAITING_REPLACEMENT_STATUSES, ids=lambda status: status.value
+)
+def test_a_replacement_in_any_other_status_does_not_hold_it_back(
+    db_session: Session,
+    event: EventRequest,
+    booked: int,
+    second_venue: Venue,
+    status: BookingRequestStatus,
+) -> None:
+    """On Hold included: it can't be withdrawn yet (SCRUM-93), so it can't block."""
+    replacement = _replacement_for(booked, event, second_venue, db_session)
+    _into_status(replacement, status, db_session)
+
+    _cancel(event, booked, db_session)
+
+    assert _status_of(db_session, booked) is BookingRequestStatus.CANCELLED
+    assert _status_of(db_session, replacement.id) is status
+
+
+def test_once_the_replacement_is_withdrawn_the_booking_can_be_cancelled(
+    db_session: Session, event: EventRequest, booked: int, second_venue: Venue
+) -> None:
+    replacement = _replacement_for(booked, event, second_venue, db_session)
+    with pytest.raises(ConflictError):
+        _cancel(event, booked, db_session)
+
+    services.withdraw_arrangement(
+        event.reference, replacement.id, coordinator_id=COORDINATOR_ID, session=db_session
+    )
+    _cancel(event, booked, db_session)
+
+    assert _status_of(db_session, booked) is BookingRequestStatus.CANCELLED
+
+
+def test_another_bookings_waiting_replacement_does_not_hold_this_one_back(
+    db_session: Session, event: EventRequest, booked: int, also_booked: int, second_venue: Venue
+) -> None:
+    replacement = _replacement_for(booked, event, second_venue, db_session)
+
+    _cancel(event, also_booked, db_session)
+
+    assert _status_of(db_session, also_booked) is BookingRequestStatus.CANCELLED
+    assert _status_of(db_session, replacement.id) is BookingRequestStatus.PENDING
+
+
+def test_a_booking_that_is_not_approved_is_refused_as_such_before_its_replacement(
+    db_session: Session, event: EventRequest, booked: int, second_venue: Venue
+) -> None:
+    """ADR-0117 decision 5: the booking's own status is checked first."""
+    _replacement_for(booked, event, second_venue, db_session)
+    _into_status(reload_request(db_session, booked), BookingRequestStatus.REJECTED, db_session)
+
+    with pytest.raises(ConflictError) as refused:
+        _cancel(event, booked, db_session)
+
+    assert (
+        refused.value.message == "Only an approved booking can be cancelled; this one is rejected."
+    )
+
+
+def test_a_waiting_replacement_is_reported_before_a_missing_reason(
+    db_session: Session, event: EventRequest, booked: int, second_venue: Venue
+) -> None:
+    """ADR-0117 decision 5: no point asking for a reason the cancel can't use yet."""
+    _replacement_for(booked, event, second_venue, db_session)
+
+    with pytest.raises(ConflictError) as refused:
+        _cancel(event, booked, db_session, payload={})
+
+    assert refused.value.message == REPLACEMENT_WAITING_MESSAGE
+
+
+# --------------------------------------------------------------------------
 # ADR-0117 decision 6 — a flagged booking, and a replacement raised for it
 # --------------------------------------------------------------------------
 
@@ -430,15 +582,22 @@ def test_a_flagged_booking_is_cancelled_keeping_its_flags_as_the_record(
     assert reload_request(db_session, booked).is_flagged_after_change is False
 
 
-def test_a_replacement_approved_after_its_original_was_cancelled_leaves_it_cancelled(
-    db_session: Session, event: EventRequest, venue: Venue, booked: int, second_venue: Venue
+def test_an_on_hold_replacement_approved_after_its_original_was_cancelled_leaves_it_cancelled(
+    db_session: Session,
+    event: EventRequest,
+    venue: Venue,
+    booked: int,
+    second_venue: Venue,
+    pin_now: Callable[[datetime], None],
 ) -> None:
-    """The replacement stays approvable and adds its venue back.
+    """An On Hold replacement doesn't block the cancel (AC4), so it can be approved.
 
-    The coordinator may withdraw it instead (default to review, ADR-0117 decision 6).
+    Its final approval adds its venue back and leaves the original Cancelled, not
+    Released (ADR-0117 decision 6).
     """
-    edit_event(db_session, event, {"venue_requirements": "A stage for the band."})
-    replacement = raise_booking(second_venue, event, db_session, replaces_request_id=booked)
+    replacement = _replacement_for(booked, event, second_venue, db_session)
+    pin_now(at(9, day=1) - timedelta(days=7))
+    place_hold(replacement.id, at(8, day=1), db_session)
     _cancel(event, booked, db_session)
 
     decide(replacement.id, "approved", db_session)
