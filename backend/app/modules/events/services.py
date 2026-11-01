@@ -1325,6 +1325,38 @@ def _event_request_assigned_to(
     return event_request
 
 
+def _lock_event_row(event_request: EventRequest, session: Session) -> EventRequest:
+    """``event_request`` read again ``FOR UPDATE``, its row locked until the commit.
+
+    Raising, withdrawing and deciding a change request, and the event's own decisions,
+    take turns this way, so a check made after the lock can't be undone by another of
+    them committing at the same moment: whichever arrives first wins, and the second
+    sees the new state (SCRUM-57 technical note, ADR-0126, ADR-0127).
+    ``populate_existing`` makes the locked read replace the copy the session already
+    holds, as the Lead's assignment does (ADR-0120).
+    """
+    locked = (
+        select(EventRequest)
+        .where(EventRequest.id == event_request.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    return session.scalars(locked).one()
+
+
+def _event_request_assigned_locked(
+    coordinator_id: int | str, reference: str, session: Session
+) -> EventRequest:
+    """The request, if ``coordinator_id`` is its coordinator, with its row locked.
+
+    Raises:
+        NotFoundError: 404 — no such request among the coordinator's own, or it is
+            still a draft (SCRUM-20, ADR-0024).
+    """
+    event_request = _event_request_assigned_to(coordinator_id, reference, session)
+    return _lock_event_row(event_request, session)
+
+
 @dataclass(frozen=True)
 class EventForBooking:
     """What a venue booking request needs to know about its event (SCRUM-42).
@@ -3799,6 +3831,20 @@ CLARIFICATION_OUTSTANDING_MESSAGE = (
 )
 
 
+#: SCRUM-57 AC9: the event's decisions wait for the Organiser's change request, as an
+#: approval waits for a clarification's answer (SCRUM-32 AC3).
+CHANGE_REQUEST_PENDING_MESSAGE = (
+    "The organiser has a change request waiting for your decision. Decide the change request first."
+)
+
+
+class ChangeRequestPendingError(AppError):
+    """The event has a Pending change request to decide first (409, SCRUM-57 AC9)."""
+
+    status_code = 409
+    error_code = "change_request_pending"
+
+
 class RequestNotReviewableError(AppError):
     """The request isn't submitted, so it can't be moved to under review (409)."""
 
@@ -3896,6 +3942,25 @@ def _was_rejected_during_planning(event_request: EventRequest, session: Session)
     return False
 
 
+def _check_no_pending_change_request(event_request: EventRequest, session: Session) -> None:
+    """Refuse a decision on the event while a change request is Pending (SCRUM-57 AC9).
+
+    Approving or rejecting it (SCRUM-31), rejecting it during planning or confirming it
+    (SCRUM-49) waits until the coordinator has decided the request, or the Organiser has
+    withdrawn it. Call it once the event's row is locked, so a request raised while the
+    caller waited is seen (ADR-0127).
+
+    Raises:
+        ChangeRequestPendingError: 409 — the event has a Pending change request.
+    """
+    stmt = select(EventChangeRequest.id).where(
+        EventChangeRequest.event_request_id == event_request.id,
+        EventChangeRequest.status == ChangeRequestStatus.PENDING,
+    )
+    if session.scalar(stmt) is not None:
+        raise ChangeRequestPendingError(CHANGE_REQUEST_PENDING_MESSAGE)
+
+
 def _event_request_decidable_by(
     coordinator_id: int | str, reference: str, session: Session
 ) -> EventRequest:
@@ -3903,7 +3968,8 @@ def _event_request_decidable_by(
 
     A decided request may be decided again only until arrangements exist for it; its
     first decision is never blocked. One rejected during planning may never be decided
-    again (SCRUM-49 AC12, ADR-0106).
+    again (SCRUM-49 AC12, ADR-0106), and none is decided while the Organiser's change
+    request is Pending (SCRUM-57 AC9). The event's row is locked first (ADR-0127).
 
     Raises:
         NotFoundError: 404 — no such request among the coordinator's own; a draft is
@@ -3911,8 +3977,9 @@ def _event_request_decidable_by(
         RequestNotDecidableError: 409 — the request's status doesn't allow a decision.
         DecisionLockedError: 409 — it was rejected during planning, or it is decided
             and has arrangements.
+        ChangeRequestPendingError: 409 — it has a Pending change request.
     """
-    event_request = _event_request_assigned_to(coordinator_id, reference, session)
+    event_request = _event_request_assigned_locked(coordinator_id, reference, session)
     if event_request.status not in DECIDABLE_STATUSES:
         raise RequestNotDecidableError(NOT_DECIDABLE_MESSAGE)
     is_rejected = event_request.status is EventRequestStatus.REJECTED
@@ -3920,6 +3987,7 @@ def _event_request_decidable_by(
         raise DecisionLockedError(PLANNING_REJECTION_FINAL_MESSAGE)
     if event_request.status in DECIDED_STATUSES and _has_arrangements(event_request, session):
         raise DecisionLockedError(DECISION_LOCKED_MESSAGE)
+    _check_no_pending_change_request(event_request, session)
     return event_request
 
 
@@ -4016,8 +4084,10 @@ def decide_event_request(
     the history and the latest is current (AC8). Once saved, the organiser who
     submitted the request is notified, with the reason (AC10); a failure there is
     logged, not raised (ADR-0015). A request awaiting clarification may be rejected
-    but not approved (SCRUM-32 AC3, ADR-0029). The checks run in this order: the
-    reference, the coordinator, the status, the lock, the payload, then the
+    but not approved (SCRUM-32 AC3, ADR-0029), and none is decided while the
+    Organiser's change request is Pending (SCRUM-57 AC9). The event's row is locked
+    first (ADR-0127). The checks run in this order: the reference, the coordinator, the
+    status, the decision lock, the Pending change request, the payload, then the
     outstanding clarification.
 
     Args:
@@ -4041,6 +4111,7 @@ def decide_event_request(
             decision.
         ClarificationOutstandingError: 409 — an approval while a clarification
             request is outstanding.
+        ChangeRequestPendingError: 409 — the event has a Pending change request.
     """
     sess = resolve_session(session)
     event_request = _event_request_decidable_by(coordinator_id, reference, sess)
@@ -5653,7 +5724,8 @@ def confirm_event_request(
     request an outcome; an event with no equipment requests passes that check (AC2).
     The ``confirmed`` status and an ``event_confirmed`` history entry naming the
     coordinator are saved in one commit. The organiser who submitted the request is
-    told afterwards (AC12, ADR-0015).
+    told afterwards (AC12, ADR-0015). The event's row is locked first, and it isn't
+    confirmed while the Organiser's change request is Pending (SCRUM-57 AC9, ADR-0127).
 
     Args:
         coordinator_id: The caller's user id, taken from their token.
@@ -5668,11 +5740,13 @@ def confirm_event_request(
         EventConfirmationNotAllowedError: 409 — the event isn't in Safety Review, or
             an approval is missing; ``details`` names each gap under ``safety_check``,
             ``venue_arrangements`` and ``equipment``.
+        ChangeRequestPendingError: 409 — the event has a Pending change request.
     """
     sess = resolve_session(session)
-    event_request = _event_request_assigned_to(coordinator_id, reference, sess)
+    event_request = _event_request_assigned_locked(coordinator_id, reference, sess)
     if event_request.status is not EventRequestStatus.SAFETY_REVIEW:
         raise EventConfirmationNotAllowedError(NOT_IN_SAFETY_REVIEW_FOR_CONFIRMATION_MESSAGE)
+    _check_no_pending_change_request(event_request, sess)
 
     held_back = {}
     if not has_safety_approval(event_request.id, session=sess):
@@ -5759,8 +5833,10 @@ def reject_event_during_planning(
     a cancelled event (SCRUM-61, ADR-0093); its open equipment requests close with the
     status (SCRUM-48 AC8). The organiser who submitted the request is told afterwards,
     with the reason, and every Venue Staff user about each booking or hold released
-    (ADR-0015, ADR-0103). The checks run in this order: the reference, the
-    coordinator, the status, then the payload.
+    (ADR-0015, ADR-0103). The event's row is locked first, and it isn't rejected while
+    the Organiser's change request is Pending (SCRUM-57 AC9, ADR-0127). The checks run
+    in this order: the reference, the coordinator, the status, the Pending change
+    request, then the payload.
 
     Args:
         coordinator_id: The caller's user id, taken from their token.
@@ -5776,11 +5852,13 @@ def reject_event_during_planning(
         EventRejectionNotAllowedError: 409 — the event isn't Approved or in Safety
             Review.
         ValidationError: 400 — no reason, or a field the body may not carry.
+        ChangeRequestPendingError: 409 — the event has a Pending change request.
     """
     sess = resolve_session(session)
-    event_request = _event_request_assigned_to(coordinator_id, reference, sess)
+    event_request = _event_request_assigned_locked(coordinator_id, reference, sess)
     if event_request.status not in PLANNING_STATUSES:
         raise EventRejectionNotAllowedError(NOT_IN_PLANNING_FOR_REJECTION_MESSAGE)
+    _check_no_pending_change_request(event_request, sess)
     rejection = load_or_raise(RejectEventSchema(), payload)
 
     from app.modules.venue import services as venue_services  # circular at import time
@@ -5862,11 +5940,9 @@ def _own_event_locked(organiser_id: int | str, reference: str, session: Session)
     Looked up as the Organiser's record is, so another organisation's event is the
     same 404 as an unknown reference (ADR-0012), and an Organiser with no organisation
     is refused (ADR-0020). A colleague can see the event, so they are told it isn't
-    theirs rather than that it doesn't exist (AC6). The row is then read again
-    ``FOR UPDATE``: raising and withdrawing take turns with each other and with the
-    event's own decisions, so a check made below can't be undone by another action
-    committing at the same moment. ``populate_existing`` makes the locked read replace
-    the copy the session already holds, as the Lead's assignment does (ADR-0120).
+    theirs rather than that it doesn't exist (AC6). The row is then locked
+    (:func:`_lock_event_row`): raising and withdrawing take turns with each other and
+    with the event's own decisions.
 
     Raises:
         OrganiserWithoutOrganisationError: 403 — the organiser has no organisation.
@@ -5876,13 +5952,7 @@ def _own_event_locked(organiser_id: int | str, reference: str, session: Session)
     event_request = get_event_request_for_organiser(organiser_id, reference, session=session)
     if event_request.organiser_id != int(organiser_id):
         raise NotEventOrganiserError(NOT_THE_EVENTS_ORGANISER_MESSAGE)
-    locked = (
-        select(EventRequest)
-        .where(EventRequest.id == event_request.id)
-        .with_for_update()
-        .execution_options(populate_existing=True)
-    )
-    return session.scalars(locked).one()
+    return _lock_event_row(event_request, session)
 
 
 def _check_change_can_be_requested(event_request: EventRequest) -> None:

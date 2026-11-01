@@ -201,11 +201,10 @@ def test_every_decision_stays_in_the_history_with_its_reason_coordinator_and_tim
 
 
 def test_the_status_and_the_decision_are_saved_in_one_commit(
-    mock_session: MagicMock, make_event_request: Callable[..., EventRequest]
+    mock_session: MagicMock, decidable_by_mock_session: EventRequest
 ) -> None:
     """At the first commit, the status has moved and the entry is already added."""
-    event_request = make_event_request(coordinator_id=COORDINATOR_ID)
-    mock_session.scalar.return_value = event_request
+    event_request = decidable_by_mock_session
     seen_at_commit: list[tuple[EventRequestStatus, list[tuple[Any, ...]]]] = []
 
     def note_what_is_saved() -> None:

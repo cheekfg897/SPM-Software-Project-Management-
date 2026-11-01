@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator
 from datetime import UTC, date, datetime, time, timezone
+from itertools import chain, repeat
 from types import ModuleType
 from typing import Any
 from unittest.mock import MagicMock
@@ -558,6 +559,22 @@ def reassign(
         return reassign_coordinator(LEAD_ID, "EVR-AAAAAAAA", payload)
 
     return _reassign
+
+
+@pytest.fixture()
+def decidable_by_mock_session(
+    mock_session: MagicMock, make_event_request: Callable[..., EventRequest]
+) -> EventRequest:
+    """Make ``mock_session`` find ``EVR-AAAAAAAA``, coordinator 3's, ready to decide.
+
+    The request by its reference, then locked; every later lookup finds nothing, so
+    it has no Pending change request (SCRUM-57 AC9) or outstanding clarification.
+    Returns the request.
+    """
+    event_request = make_event_request(coordinator_id=3)
+    mock_session.scalar.side_effect = chain([event_request], repeat(None))
+    mock_session.scalars.return_value.one.return_value = event_request
+    return event_request
 
 
 @pytest.fixture()
