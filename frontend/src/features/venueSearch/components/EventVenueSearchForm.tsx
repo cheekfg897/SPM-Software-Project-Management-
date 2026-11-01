@@ -6,7 +6,8 @@ import { VenueSearchForm } from './VenueSearchForm'
 /**
  * The search form opened from an event (SCRUM-90): the event is read from the backend, as its
  * coordinator sees it, and its details fill the form. If it can't be read, the backend's message
- * shows above an empty form, which still searches.
+ * shows above an empty form, which still searches. Once the event has arrived, a later read that
+ * fails (coming back to the tab) keeps the filled form, so nothing the coordinator typed is lost.
  */
 export function EventVenueSearchForm({ reference }: { reference: string }) {
   const record = useEventRequest(reference)
@@ -18,13 +19,13 @@ export function EventVenueSearchForm({ reference }: { reference: string }) {
       </p>
     )
   }
-  if (record.isError) {
-    return (
-      <div className="space-y-5">
-        <ErrorAlert error={record.error} />
-        <VenueSearchForm />
-      </div>
-    )
+  if (record.data !== undefined) {
+    return <VenueSearchForm event={record.data} />
   }
-  return <VenueSearchForm event={record.data} />
+  return (
+    <div className="space-y-5">
+      <ErrorAlert error={record.error} />
+      <VenueSearchForm />
+    </div>
+  )
 }
