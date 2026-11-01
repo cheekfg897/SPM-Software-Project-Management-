@@ -2296,8 +2296,9 @@ def _replacement_in(
 ) -> VenueBookingRequest | None:
     """The earliest replacement raised for the arrangement that is in ``statuses``.
 
-    ``None`` if it has none (SCRUM-92). For a refusal that waits on a replacement,
-    such as SCRUM-59 AC6's reconfirm.
+    ``None`` if it has none (SCRUM-92). For the refusals that wait on a replacement:
+    SCRUM-59 AC6's reconfirm and SCRUM-111 AC4's cancel, which wait on different
+    statuses.
     """
     stmt = (
         select(VenueBookingRequest)
@@ -2892,6 +2893,15 @@ def tell_venue_staff_of_releases(
 # --------------------------------------------------------------------------
 
 CANCEL_NOT_APPROVED_MESSAGE = "Only an approved booking can be cancelled; this one is {status}."
+#: AC4: a replacement the coordinator can still withdraw holds the cancel back. An On
+#: Hold one can't be withdrawn yet (SCRUM-93), so it doesn't (Product Owner, 1 Nov).
+CANCEL_WAITS_FOR_REPLACEMENT_STATUSES = frozenset(
+    {BookingRequestStatus.PENDING, BookingRequestStatus.CONFLICTING}
+)
+CANCEL_REPLACEMENT_WAITING_MESSAGE = (
+    "A replacement for this booking is waiting for Venue Staff. Withdraw it first if the"
+    " event no longer needs this venue. Approving it will release this booking anyway."
+)
 #: What Venue Staff and the Safety Officers are told about the booking (AC2, AC3,
 #: ADR-0117): the arrangement, its venue and its period, in business time.
 CANCELLED_DETAIL = "Venue arrangement {id} at {venue}, {starts} to {ends}, was cancelled."
@@ -2918,6 +2928,22 @@ def _locked_arrangement_of_event(
     return arrangement
 
 
+def _refuse_cancel_while_replacement_waits(
+    arrangement: VenueBookingRequest, session: Session | None
+) -> None:
+    """Refuse to cancel while a replacement for the booking waits for Venue Staff (AC4).
+
+    The coordinator withdraws it first; the system doesn't (Replacement clarification,
+    ADR-0117 decision 6).
+
+    Raises:
+        ConflictError: 409 — a replacement is Pending or Conflicting.
+    """
+    replacement = _replacement_in(arrangement, CANCEL_WAITS_FOR_REPLACEMENT_STATUSES, session)
+    if replacement is not None:
+        raise ConflictError(CANCEL_REPLACEMENT_WAITING_MESSAGE)
+
+
 def cancel_approved_booking(
     reference: str,
     arrangement_id: int,
@@ -2939,13 +2965,15 @@ def cancel_approved_booking(
     an event that was in Safety Review, every Safety Officer (AC2); a notice that can't
     be saved loses only itself (ADR-0015). The coordinator is told nothing: they did
     it. The checks run in this order: the reference and the coordinator, the event's
-    status, the arrangement, its status, then the payload (AC4). See ADR-0117.
+    status, the arrangement, its status, a replacement waiting for Venue Staff, then
+    the payload (AC4). See ADR-0117.
 
     Raises:
         NotFoundError: 404 — no such event among the coordinator's own, or no such
             arrangement on it.
         ConflictError: 409 — the event isn't Approved or in Safety Review, or the
-            arrangement isn't approved; the message names the status.
+            arrangement isn't approved (the message names the status), or a
+            replacement for it is Pending or Conflicting.
         ValidationError: 400 — no reason, or a field the body may not carry.
     """
     from app.modules.events import services as event_services  # circular at import time
@@ -2957,6 +2985,7 @@ def cancel_approved_booking(
     arrangement = _locked_arrangement_of_event(event.id, arrangement_id, sess)
     if arrangement.status is not BookingRequestStatus.APPROVED:
         raise ConflictError(CANCEL_NOT_APPROVED_MESSAGE.format(status=arrangement.status.value))
+    _refuse_cancel_while_replacement_waits(arrangement, session)
     cancellation = load_or_raise(CancelBookingSchema(), payload)
 
     _free_venue(arrangement, session)
