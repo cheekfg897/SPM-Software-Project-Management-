@@ -23,6 +23,7 @@ from app.modules.venue.models import (
     Venue,
     VenueBookingRequest,
 )
+from tests.events.cases import RETIRED_ARRANGEMENT_STATUSES
 from tests.venue.conftest import (
     COORDINATOR_ID,
     SavedEvent,
@@ -44,8 +45,6 @@ WITHDRAWN_STATUSES = [
     BookingRequestStatus.REJECTED,
     BookingRequestStatus.EXPIRED,
 ]
-#: Arrangements already out of the event's venues, which are left as they are.
-RETIRED_STATUSES = [BookingRequestStatus.WITHDRAWN, BookingRequestStatus.RELEASED]
 
 
 def _release(event: EventRequest, session: Session) -> list[str]:
@@ -216,7 +215,7 @@ def test_a_released_hold_is_named_and_the_withdrawn_request_beside_it_is_not(
 
 
 @pytest.mark.parametrize(
-    "status", [*WITHDRAWN_STATUSES, *RETIRED_STATUSES], ids=lambda status: status.value
+    "status", [*WITHDRAWN_STATUSES, *RETIRED_ARRANGEMENT_STATUSES], ids=lambda status: status.value
 )
 def test_an_arrangement_withdrawn_or_already_retired_is_not_named(
     db_session: Session, event: EventRequest, venue: Venue, status: BookingRequestStatus
@@ -240,7 +239,7 @@ def test_another_events_booking_is_not_named(
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("status", RETIRED_STATUSES, ids=lambda status: status.value)
+@pytest.mark.parametrize("status", RETIRED_ARRANGEMENT_STATUSES, ids=lambda status: status.value)
 def test_an_arrangement_already_retired_is_left_as_it_is(
     db_session: Session, event: EventRequest, venue: Venue, status: BookingRequestStatus
 ) -> None:

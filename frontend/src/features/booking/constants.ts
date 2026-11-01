@@ -10,13 +10,19 @@ export const STATUS_LABELS: Record<BookingRequestStatus, string> = {
   withdrawn: 'Withdrawn',
   expired: 'Expired',
   released: 'Released',
+  cancelled: 'Cancelled',
 }
 
 /**
- * Statuses of an arrangement that is retired: withdrawn by the coordinator, or released when an
- * approved replacement took over (SCRUM-92). It stays on record with nothing left to do.
+ * Statuses of an arrangement that is retired: withdrawn by the coordinator, released when an
+ * approved replacement took over (SCRUM-92), or cancelled by the coordinator after it was approved
+ * (SCRUM-111). It stays on record with nothing left to do.
  */
-export const RETIRED_STATUSES: readonly BookingRequestStatus[] = ['withdrawn', 'released']
+export const RETIRED_STATUSES: readonly BookingRequestStatus[] = [
+  'withdrawn',
+  'released',
+  'cancelled',
+]
 
 /** How each kind of flag a significant change raises reads on screen (SCRUM-33 AC6, ADR-0094). */
 export const REASSESSMENT_KIND_LABELS: Record<ReassessmentFlag['kind'], string> = {

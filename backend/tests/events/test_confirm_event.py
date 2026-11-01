@@ -42,7 +42,7 @@ from app.modules.events.services import (
 from app.modules.notifications.schemas import NotificationSchema
 from app.modules.notifications.services import NotificationKind, list_notifications_for_recipient
 from app.modules.venue.models import Booking, BookingRequestStatus, BookingStatus, Venue
-from tests.events.cases import LOST_CONNECTION, AddLine, Arrange
+from tests.events.cases import LOST_CONNECTION, RETIRED_ARRANGEMENT_STATUSES, AddLine, Arrange
 
 pytestmark = pytest.mark.scrum_49
 
@@ -169,10 +169,12 @@ def test_an_event_with_no_equipment_requests_is_confirmed(
     assert _confirm(db_session).status is EventRequestStatus.CONFIRMED
 
 
-def test_a_withdrawn_arrangement_does_not_hold_the_event_back(
-    db_session: Session, ready_event: EventRequest, arrange: Arrange
+@pytest.mark.parametrize("retired", RETIRED_ARRANGEMENT_STATUSES, ids=lambda status: status.value)
+def test_a_retired_arrangement_does_not_hold_the_event_back(
+    db_session: Session, ready_event: EventRequest, arrange: Arrange, retired: BookingRequestStatus
 ) -> None:
-    arrange(BookingRequestStatus.WITHDRAWN)
+    """AC5: a withdrawn or cancelled (SCRUM-111) arrangement is ignored."""
+    arrange(retired)
 
     assert _confirm(db_session).status is EventRequestStatus.CONFIRMED
 

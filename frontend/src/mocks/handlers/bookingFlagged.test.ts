@@ -316,6 +316,28 @@ describe('SCRUM-59 booking mock: reconfirming a flagged booking', () => {
     ])
   })
 
+  // As the backend's _refuse_while_replacement_pending: On Hold still waits for Venue Staff's
+  // final approval, so it holds a reconfirm back (ADR-0112 decision 8), unlike a cancel.
+  it('waits while a replacement for the booking is On Hold, too', async () => {
+    const replacement = await raiseAsCoordinator(MOVED_EVENT.reference, {
+      venue_id: MOCK_BOOKING_VENUES.roomy.id,
+      ...onTheNewDay('13:00', '14:00'),
+      purpose: 'Replacement hall',
+      replaces_request_id: HALL.id,
+    })
+    await apiRequest(`/api/venues/booking-requests/${String(replacement.id)}/hold`, {
+      method: 'POST',
+      body: { expires_at: '2026-11-10T09:00:00+08:00' },
+    })
+
+    const error = await errorOf(reconfirm(HALL.id, onTheNewDay('09:00', '12:00')))
+
+    expect([error.status, error.message]).toEqual([
+      409,
+      `Cannot reconfirm: replacement request #${String(replacement.id)} for this booking is still waiting for a decision.`,
+    ])
+  })
+
   it('refuses an unknown booking (404), one not flagged and one needing another venue (409)', async () => {
     const unknown = await errorOf(reconfirm(404, onTheNewDay('09:00', '12:00')))
     const notFlagged = await errorOf(
