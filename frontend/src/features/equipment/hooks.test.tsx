@@ -153,6 +153,19 @@ describe('SCRUM-37 equipment line hooks', () => {
     await waitFor(() => expect(linesReads(requests)).toBe(2))
   })
 
+  it('reads the lines again once someone signed out signs in, after they were refused', async () => {
+    const requests = recordRequests()
+    const { result, store } = renderHookWithProviders(useLineHooks)
+    await waitFor(() => expect(result.current.lines.isError).toBe(true))
+
+    act(() => {
+      store.dispatch(signedIn(COORDINATOR))
+    })
+
+    await waitFor(() => expect(result.current.lines.data?.equipment_lines).toHaveLength(2))
+    expect(linesReads(requests)).toBe(2)
+  })
+
   type LineHooks = ReturnType<typeof useLineHooks>
 
   // A second Projector line is a conflict, no line can ask for none, and there is no line 999.
