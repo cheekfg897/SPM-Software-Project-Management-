@@ -1095,6 +1095,20 @@ function replacementFor(replaced: { id: number; starts_at: string; ends_at: stri
   })
 }
 
+describe('SCRUM-93 booking mock: cancelling all while a replacement waits for Venue Staff', () => {
+  // As the backend's test_a_booking_and_the_replacement_waiting_for_it_are_both_retired:
+  // SCRUM-111 AC4's refusal belongs to cancelling one booking, not to cancel-all (ADR-0118).
+  it('cancels the approved booking and withdraws its pending replacement', async () => {
+    const replacement = await raise(BOOKED_EVENT.reference, replacementFor(bookedHall))
+
+    const cancelled = await cancelAll(BOOKED_EVENT.reference)
+
+    const statusById = new Map(cancelled.map((one) => [one.id, one.status]))
+    expect(statusById.get(bookedHall.id)).toBe('cancelled')
+    expect(statusById.get(replacement.id)).toBe('withdrawn')
+  })
+})
+
 describe('SCRUM-92 booking mock: raising a replacement for a flagged arrangement', () => {
   const { reviewedAuditorium } = MOCK_ARRANGEMENTS
   const REVIEW_EVENT = MOCK_BOOKING_EVENTS.inSafetyReview
