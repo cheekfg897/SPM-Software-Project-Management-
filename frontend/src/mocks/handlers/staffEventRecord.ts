@@ -14,6 +14,7 @@ import { MOCK_ACCOUNTS } from '../fixtures/accounts'
 import { errorResponse } from '../responses'
 
 import { everyArrangementForRecord } from './booking'
+import { changeRequestsOf } from './changeRequestStore'
 import { reservationsForRecord } from './equipmentReservations'
 import { equipmentLinesForRecord, shortfallOf } from './equipmentLines'
 import { internalNotesOf } from './eventEdits'
@@ -184,6 +185,7 @@ function recordOf(base: StaffRecordBase): StaffEventRecord {
     equipment_lines: [...equipmentLinesForRecord(reference), ...safetyLinesOf(safetyEvent)],
     equipment_reservations: reservationsForRecord(reference),
     safety_outcome: safetyEvent?.outcome ?? null,
+    change_requests: changeRequestsOf(reference),
   }
 }
 

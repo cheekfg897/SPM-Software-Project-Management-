@@ -45,6 +45,7 @@ const NOT_FOUND = { status: 404, code: 'not_found', message: 'Event request not 
 /** Every key the record has: the request's, both notes, and each section. No registrants. */
 const RECORD_KEYS = [
   'accessibility_needs',
+  'change_requests',
   'clarifications',
   'coordinator',
   'created_at',

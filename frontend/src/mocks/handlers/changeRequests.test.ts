@@ -77,6 +77,9 @@ describe('SCRUM-56 mock of raising a change request', () => {
       raised_at: MOCK_NOW,
       withdrawn_at: null,
       withdrawal_note: null,
+      decided_by: null,
+      decided_at: null,
+      decision_reason: null,
     })
   })
 

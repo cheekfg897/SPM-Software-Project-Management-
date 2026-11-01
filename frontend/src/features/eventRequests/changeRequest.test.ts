@@ -1,4 +1,4 @@
-import { describeRequestedChange, requestedChange } from './changeRequest'
+import { describeAgainstNow, describeRequestedChange, requestedChange } from './changeRequest'
 import { formWith, RECORD } from './test/recordForm'
 
 /**
@@ -90,5 +90,35 @@ describe('SCRUM-56 AC4 a requested change in words', () => {
       label: 'Expected attendance',
       value: '250 → 300',
     })
+  })
+})
+
+describe('SCRUM-57 AC1 a requested change beside what the event holds now', () => {
+  it("shows the event's value now, not the one when the request was raised", () => {
+    const change = { field: 'expected_attendance', previous_value: 200, requested_value: 300 }
+
+    expect(describeAgainstNow(change, { ...RECORD, expected_attendance: 250 })).toEqual({
+      label: 'Expected attendance',
+      value: '250 now → 300',
+    })
+  })
+
+  it('shows a field the event holds nothing for as not set', () => {
+    const change = {
+      field: 'venue_requirements',
+      previous_value: null,
+      requested_value: 'Two rooms',
+    }
+
+    expect(describeAgainstNow(change, { ...RECORD, venue_requirements: null })).toEqual({
+      label: 'Venue requirements',
+      value: 'Not set now → Two rooms',
+    })
+  })
+
+  it('shows a field a change request cannot ask for as not set now', () => {
+    const change = { field: 'name', previous_value: 'Old', requested_value: 'New' }
+
+    expect(describeAgainstNow(change, RECORD).value).toBe('Not set now → New')
   })
 })

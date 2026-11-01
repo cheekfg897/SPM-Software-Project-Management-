@@ -6,6 +6,7 @@ import {
   answerClarification,
   completeEvent,
   confirmEvent,
+  decideChangeRequest,
   decideEventRequest,
   editEventRequest,
   eventHistoryKey,
@@ -213,6 +214,20 @@ export function useWithdrawChangeRequest(reference: string) {
   const refresh = useRefreshEventRequests()
   return useMutation({
     mutationFn: (changeRequestId: number) => withdrawChangeRequest(reference, changeRequestId),
+    onSettled: refresh,
+  })
+}
+
+/**
+ * Approve or reject one of the event's Pending change requests (SCRUM-57). Afterwards, decided or
+ * refused, the record and its history are read again: an approval changed the event, and a
+ * refusal may mean the organiser withdrew the request or an edit overtook it (AC5, AC8).
+ */
+export function useDecideChangeRequest(reference: string, changeRequestId: number) {
+  const refresh = useRefreshEventRequests()
+  return useMutation({
+    mutationFn: (decision: DecisionChoice) =>
+      decideChangeRequest(reference, changeRequestId, decision),
     onSettled: refresh,
   })
 }

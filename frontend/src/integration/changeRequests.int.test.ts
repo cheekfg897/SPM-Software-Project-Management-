@@ -25,6 +25,9 @@ const ALREADY_PENDING_MESSAGE =
 /** Every field the frontend's ChangeRequest type reads, and nothing more (no internal ids). */
 const CHANGE_REQUEST_FIELDS = [
   'changes',
+  'decided_at',
+  'decided_by',
+  'decision_reason',
   'id',
   'raised_at',
   'raised_by',

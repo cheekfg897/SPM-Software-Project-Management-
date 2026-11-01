@@ -140,7 +140,8 @@ export interface RequestedChange {
 /**
  * An organiser's change request as the event's record shows it (SCRUM-56 AC4, ADR-0126). The
  * withdrawal and its note are null unless it was withdrawn, and the note unless the event's
- * cancellation withdrew it (AC9).
+ * cancellation withdrew it (AC9). Who decided it, when and why are null until the coordinator
+ * approves or rejects it, and the reason may stay null on an approval (SCRUM-57 AC6, ADR-0127).
  */
 export interface ChangeRequest {
   id: number
@@ -153,6 +154,10 @@ export interface ChangeRequest {
   raised_at: string
   withdrawn_at: string | null
   withdrawal_note: string | null
+  /** Null once their account is gone, as for `raised_by`. */
+  decided_by: string | null
+  decided_at: string | null
+  decision_reason: string | null
 }
 
 /**
@@ -463,6 +468,21 @@ export function withdrawChangeRequest(
 }
 
 /**
+ * Approve or reject a Pending change request on the coordinator's event (SCRUM-57). Approving
+ * applies the change to the event; rejecting needs a reason and changes nothing (AC2, AC3).
+ */
+export function decideChangeRequest(
+  reference: string,
+  changeRequestId: number,
+  decision: DecisionChoice,
+): Promise<ChangeRequest> {
+  return apiRequest<ChangeRequest>(
+    `${changeRequestsPath(reference)}/${String(changeRequestId)}/decide`,
+    { method: 'POST', body: decision },
+  )
+}
+
+/**
  * Send an approved event to the Safety Officer; there is no body. A refusal's `details` name
  * each venue or equipment gap holding it back (SCRUM-97, ADR-0047).
  */
@@ -613,7 +633,9 @@ export interface SafetyCheckOutcome {
  * their preparation, and its current safety outcome (null until there is one). No registrants.
  */
 export interface StaffEventRecord
-  extends EventRequest, Pick<EventRecord, 'coordinator' | 'decision' | 'clarifications'> {
+  extends
+    EventRequest,
+    Pick<EventRecord, 'coordinator' | 'decision' | 'clarifications' | 'change_requests'> {
   programme_notes: string | null
   internal_planning_notes: string | null
   /** Every arrangement, in any status (AC9, ADR-0105). */

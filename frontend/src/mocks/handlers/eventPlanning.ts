@@ -11,6 +11,7 @@ import { errorResponse, validationError } from '../responses'
 
 import { releaseEventArrangements } from './booking'
 import { MOCK_NOW } from './catalogueFixtures'
+import { pendingChangeRequestRefusal } from './changeRequestStore'
 import { rejectEventEquipment } from './equipmentReservations'
 import { NOTHING_PLANNED } from './eventPlanningFixtures'
 import type { MockArrangement, MockArrangementStatus, MockPlanning } from './eventPlanningFixtures'
@@ -309,6 +310,10 @@ export const eventPlanningHandlers: RequestHandler[] = [
     if (stored.request.status !== EVENT_REQUEST_STATUS.SAFETY_REVIEW) {
       return errorResponse(409, 'confirmation_not_allowed', NOT_IN_SAFETY_REVIEW_MESSAGE)
     }
+    const pending = pendingChangeRequestRefusal(stored.request.reference)
+    if (pending !== null) {
+      return pending
+    }
     const planning = planningOf(stored)
     const heldBack: FieldErrors = {}
     if (!planning.isSafetyApproved) {
@@ -361,6 +366,10 @@ export const eventPlanningHandlers: RequestHandler[] = [
     const { coordinator, stored } = found
     if (!PLANNING_STATUSES.includes(stored.request.status)) {
       return errorResponse(409, 'rejection_not_allowed', NOT_IN_PLANNING_FOR_REJECTION_MESSAGE)
+    }
+    const pending = pendingChangeRequestRefusal(stored.request.reference)
+    if (pending !== null) {
+      return pending
     }
     const payload = await objectBodyOrRefusal(request)
     if ('refusal' in payload) {

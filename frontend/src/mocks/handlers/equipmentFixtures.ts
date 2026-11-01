@@ -128,7 +128,9 @@ function eventsInEveryStatus(): MockEvent[] {
 
 /**
  * Events that exist. The open one is the mock coordinator's and approved; nobody is assigned the
- * closed one, which is over; the third is another coordinator's.
+ * closed one, which is over; the third is another coordinator's. The Partner Summit is the mock
+ * organiser's event that Chloe coordinates, so she can read what is reserved for it while she
+ * decides a change request (SCRUM-57 AC1).
  */
 export const MOCK_EVENTS: readonly MockEvent[] = [
   {
@@ -153,6 +155,12 @@ export const MOCK_EVENTS: readonly MockEvent[] = [
     reference: MOCK_MOVED_EVENT_REFERENCE,
     name: 'Leadership Offsite',
     status: EVENT_REQUEST_STATUS.APPROVED,
+    coordinator_id: MOCK_ACCOUNTS.coordinator.id,
+  },
+  {
+    reference: 'EVR-7K2M9QXA',
+    name: 'Partner Summit',
+    status: EVENT_REQUEST_STATUS.UNDER_REVIEW,
     coordinator_id: MOCK_ACCOUNTS.coordinator.id,
   },
   ...eventsInEveryStatus(),
@@ -217,7 +225,7 @@ function linesOnStatusEvents(): MockEquipmentLine[] {
  * for what its organiser sees of them (SCRUM-37 AC5, SCRUM-48 AC5, ADR-0104): six of ten
  * projectors, with technical notes, an outcome note and a reviewer, microphones not reviewed yet,
  * and a lectern provided in full with an outcome note (optional for a fulfilled line, SCRUM-48
- * AC2). The organiser sees all of it. That event isn't one the equipment pages open.
+ * AC2). The organiser sees all of it.
  */
 const PARTNER_SUMMIT_LINES: readonly MockEquipmentLine[] = [
   {

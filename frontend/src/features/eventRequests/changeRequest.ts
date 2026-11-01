@@ -38,6 +38,19 @@ const REQUESTABLE_FIELDS = [
   'programme_notes',
 ] as const
 
+type RequestableField = (typeof REQUESTABLE_FIELDS)[number]
+
+/**
+ * What a record carries to show its change requests: the event's reference, the requests, what
+ * each field a request can ask for holds now, and the venue arrangements the coordinator reviews
+ * them against. The organiser's, the coordinator's and the staff record all do (SCRUM-56 AC4,
+ * SCRUM-57 AC1, AC6).
+ */
+export type ChangeableRecord = Pick<
+  EventRecord,
+  'reference' | 'change_requests' | 'venue_arrangements' | RequestableField
+>
+
 export const CHANGE_REQUEST_STATUS_LABEL: Record<ChangeRequestStatus, string> = {
   pending: 'Pending',
   approved: 'Approved',
@@ -53,10 +66,26 @@ export function requestedChange(form: FormData, record: EventRecord): ChangeRequ
   }
 }
 
+function isRequestable(field: string): field is RequestableField {
+  return (REQUESTABLE_FIELDS as readonly string[]).includes(field)
+}
+
 /** One requested change as the record shows it, e.g. "Start time": "9:00 am → 10:30 am". */
 export function describeRequestedChange(change: RequestedChange): Fact {
   const { field } = change
   const from = shownValue(field, change.previous_value)
   const to = shownValue(field, change.requested_value)
   return { label: fieldLabel(field), value: `${from} → ${to}` }
+}
+
+/**
+ * One requested change beside what the event holds now, for the coordinator deciding it, e.g.
+ * "Start time": "9:00 am now → 10:30 am" (SCRUM-57 AC1). A later edit may have moved the value
+ * since the request was raised; approving is then the backend's to refuse (AC8).
+ */
+export function describeAgainstNow(change: RequestedChange, record: ChangeableRecord): Fact {
+  const { field } = change
+  const now = isRequestable(field) ? record[field] : null
+  const to = shownValue(field, change.requested_value)
+  return { label: fieldLabel(field), value: `${shownValue(field, now)} now → ${to}` }
 }
