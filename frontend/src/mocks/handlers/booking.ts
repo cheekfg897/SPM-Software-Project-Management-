@@ -693,6 +693,19 @@ function releaseReplaced(approved: BookingRequest): void {
 }
 
 /**
+ * The first replacement raised for the booking that `isWaiting` accepts, if any, as the backend's
+ * `_replacement_in`, for a refusal that waits on a replacement, such as SCRUM-59 AC6's reconfirm.
+ */
+function replacementOf(
+  booking: BookingRequest,
+  isWaiting: (existing: BookingRequest) => boolean,
+): BookingRequest | undefined {
+  return requests.find(
+    (existing) => existing.replaces_request_id === booking.id && isWaiting(existing),
+  )
+}
+
+/**
  * CancelBookingSchema's messages: a field it doesn't declare, and a reason that is missing, null,
  * not text or blank (SCRUM-111 AC4).
  */
@@ -848,13 +861,6 @@ function flaggedOrRefusal(requestId: unknown): BookingRequest | Response {
   return booking
 }
 
-/** A replacement for the booking still waiting for a decision (AC6), if there is one. */
-function waitingReplacementOf(booking: BookingRequest): BookingRequest | undefined {
-  return requests.find(
-    (existing) => existing.replaces_request_id === booking.id && isDecidable(existing),
-  )
-}
-
 /**
  * Why the moved booking can't be reconfirmed for `moved`'s period, or null (AC2, AC3, AC4, AC6):
  * the backend's order, from a replacement waiting to the event's other arrangements at the venue.
@@ -862,7 +868,8 @@ function waitingReplacementOf(booking: BookingRequest): BookingRequest | undefin
  * approval.
  */
 function reconfirmRefusal(booking: BookingRequest, moved: BookingRequest, reason: string | null) {
-  const replacement = waitingReplacementOf(booking)
+  // A replacement still waiting for a decision, On hold included (AC6).
+  const replacement = replacementOf(booking, isDecidable)
   if (replacement !== undefined) {
     return errorResponse(
       409,
