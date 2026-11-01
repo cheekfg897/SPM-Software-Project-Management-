@@ -35,7 +35,12 @@ describe('SCRUM-90 venue search filters filled in from an event', () => {
   it('takes the end date of an event that ends on a later day (AC2)', () => {
     const overnight = { ...EVENT, end_date: '2026-11-13', end_time: '01:00:00' }
 
-    expect(filtersFromEvent(overnight)).toMatchObject({ end_date: '2026-11-13', end: '01:00' })
+    // The search starts on the day the event starts, not the day it ends.
+    expect(filtersFromEvent(overnight)).toMatchObject({
+      date: '2026-11-12',
+      end_date: '2026-11-13',
+      end: '01:00',
+    })
   })
 
   it('leaves layout, facilities, accessibility and location empty, whatever the event wrote (AC3)', () => {
