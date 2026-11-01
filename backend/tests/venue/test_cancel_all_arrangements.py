@@ -41,6 +41,7 @@ from tests.venue.conftest import (
     approve_safety,
     approved_arrangement,
     bookings,
+    edit_event,
     history_entries,
     raise_booking,
     reload_event,
@@ -195,6 +196,28 @@ def test_nothing_is_saved_when_a_step_fails_part_way(
         BookingRequestStatus.PENDING,
     ]
     assert [status for _, status in bookings(db_session)] == [BookingStatus.CONFIRMED]
+
+
+def test_a_booking_and_the_replacement_waiting_for_it_are_both_retired(
+    db_session: Session, event: EventRequest, booked: int, second_venue: Venue
+) -> None:
+    """SCRUM-111 AC4's refusal is cancelling one booking's, not cancel-all's.
+
+    The booking is listed, and cancelled, before its Pending replacement, which is
+    withdrawn after it (ADR-0117 decision 6).
+    """
+    edit_event(db_session, event, {"venue_requirements": "A stage for the band."})
+    replacement = raise_booking(
+        second_venue, event, db_session, replaces_request_id=booked, **SECOND_PERIOD
+    )
+    replacement_id = replacement.id
+
+    retired = _cancel_all(event, db_session)
+
+    assert [(shown.request.id, shown.request.status) for shown in retired] == [
+        (booked, BookingRequestStatus.CANCELLED),
+        (replacement_id, BookingRequestStatus.WITHDRAWN),
+    ]
 
 
 # --------------------------------------------------------------------------
