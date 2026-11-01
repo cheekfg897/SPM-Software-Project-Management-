@@ -86,6 +86,7 @@ RECORD_KEYS = {
     "coordinator",
     "decision",
     "clarifications",
+    "change_requests",
     "venue_arrangements",
     "equipment_lines",
     "equipment_reservations",

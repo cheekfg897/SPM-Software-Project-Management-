@@ -16,6 +16,7 @@ from app.common.decorators import requires_role
 from app.modules.auth.permissions import INTERNAL_ROLES, Role
 from app.modules.events.schemas import (
     EVENT_LIST_FIELDS,
+    ChangeRequestSchema,
     ClarificationSchema,
     CoordinatorContactSchema,
     DecisionSchema,
@@ -59,6 +60,7 @@ from app.modules.events.services import (
     list_events_awaiting_safety_review,
     list_requests_for_each_coordinator,
     list_unassigned_requests,
+    raise_change_request,
     reassign_coordinator,
     record_equipment_outcome,
     record_safety_outcome,
@@ -75,6 +77,7 @@ from app.modules.events.services import (
     update_equipment_line,
     update_event_request,
     update_registration_settings,
+    withdraw_change_request,
 )
 
 bp = Blueprint("events", __name__, url_prefix="/api/events")
@@ -83,6 +86,7 @@ _event_request_schema = EventRequestSchema()
 _coordinator_contact_schema = CoordinatorContactSchema()
 _decision_schema = DecisionSchema()
 _clarification_schema = ClarificationSchema(many=True)
+_change_request_schema = ChangeRequestSchema()
 _event_request_detail_schema = EventRequestDetailSchema()
 _equipment_line_schema = EquipmentLineSchema()
 _equipment_line_with_outcome_schema = EquipmentLineWithOutcomeSchema()
@@ -146,12 +150,14 @@ def _shown_or_none(schema: Schema, value: object | None) -> dict[str, Any] | Non
 def _event_record_body(record: EventRecord) -> dict[str, Any]:
     """A request's record as the API shows it.
 
-    The request, its coordinator, its decision and its clarification exchange.
+    The request, its coordinator, its decision, its clarification exchange and its
+    change requests (SCRUM-56 AC4).
     """
     body = _event_request_detail_schema.dump(record.event_request)
     body["coordinator"] = _shown_or_none(_coordinator_contact_schema, record.coordinator)
     body["decision"] = _shown_or_none(_decision_schema, record.decision)
     body["clarifications"] = _clarification_schema.dump(record.clarifications)
+    body["change_requests"] = _change_request_schema.dump(record.change_requests, many=True)
     return body
 
 
@@ -727,3 +733,33 @@ def reject_request(reference: str) -> tuple[Response, int]:
         g.current_user_id, reference, request.get_json(silent=True)
     )
     return jsonify(_event_request_schema.dump(event_request)), 200
+
+
+# --------------------------------------------------------------------------
+# SCRUM-56 — request a change after submitting an event
+# --------------------------------------------------------------------------
+
+
+@bp.post("/requests/<reference>/change-requests")
+@requires_role(Role.EVENT_ORGANISER)
+def raise_change(reference: str) -> tuple[Response, int]:
+    """Ask for a change to the caller's own event after submitting it (SCRUM-56).
+
+    The body is ``{"reason": ..., <any requestable field>: <its new value>}``. Only the
+    event's own Organiser may; the service refuses a colleague with ``403`` and another
+    organisation's event with ``404``. Returns ``201`` with the change request, Pending.
+    """
+    raised = raise_change_request(g.current_user_id, reference, request.get_json(silent=True))
+    return jsonify(_change_request_schema.dump(raised)), 201
+
+
+@bp.post("/requests/<reference>/change-requests/<int:change_request_id>/withdraw")
+@requires_role(Role.EVENT_ORGANISER)
+def withdraw_change(reference: str, change_request_id: int) -> tuple[Response, int]:
+    """Withdraw the caller's Pending change request on their own event (SCRUM-56 AC8).
+
+    Takes no body. Returns ``200`` with the change request, now Withdrawn; one no
+    longer Pending is refused with ``409``.
+    """
+    withdrawn = withdraw_change_request(g.current_user_id, reference, change_request_id)
+    return jsonify(_change_request_schema.dump(withdrawn)), 200

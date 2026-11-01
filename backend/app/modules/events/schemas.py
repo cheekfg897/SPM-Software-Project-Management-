@@ -40,6 +40,7 @@ from app.common.fields import BusinessDateTime, PositiveId, PositiveQuantity, Wh
 from app.common.validation import not_blank
 from app.modules.events.models import (
     NAME_MAX_LENGTH,
+    ChangeRequestStatus,
     DecisionOutcome,
     EquipmentLineStatus,
     EventHistoryKind,
@@ -397,6 +398,77 @@ class ResubmitEventRequestSchema(_EditedTimingSchema, SaveDraftSchema):
         return data
 
 
+#: The event's details an Organiser may ask to change, in the order a change request
+#: lists them: its date, start and end time, expected attendance, venue and equipment
+#: requirements and programme information (SCRUM-56 AC2, ADR-0126). ``end_date`` is
+#: part of "the date": an event can run past midnight (ADR-0002).
+REQUESTABLE_FIELDS = (
+    "proposed_date",
+    "end_date",
+    "start_time",
+    "end_time",
+    "expected_attendance",
+    "venue_requirements",
+    "equipment_requirements",
+    "programme_notes",
+)
+
+#: Free-text fields among :data:`REQUESTABLE_FIELDS`. A blank one asks for it to be
+#: cleared, as on an edit.
+REQUESTABLE_TEXT_FIELDS = ("venue_requirements", "equipment_requirements", "programme_notes")
+
+CHANGE_REASON_REQUIRED_MESSAGE = "Say why the change is needed."
+
+
+def _change_reason_given(value: str) -> None:
+    if not value.strip():
+        raise MarshmallowValidationError(CHANGE_REASON_REQUIRED_MESSAGE)
+
+
+class RaiseChangeRequestSchema(_EditedTimingSchema):
+    """Payload for ``POST .../<reference>/change-requests`` (SCRUM-56 AC1, AC2).
+
+    ``reason`` says why the change is needed: required, not ``null``, not blank, and
+    trimmed. Alongside it, any of :data:`REQUESTABLE_FIELDS` with its new value, each
+    checked as the coordinator's edit checks it: the timing and size rules come from
+    :class:`_EditedTimingSchema`, against the event's saved values where a field is left
+    out (ADR-0025). Any other field, ``status`` included, is rejected as unknown:
+    cancelling isn't a change request (SCRUM-61). Whether anything should change at all
+    is the service's check, since it compares with the saved values (ADR-0126).
+
+    Args:
+        event_request: The event the change is asked for (see
+            :class:`_EditedTimingSchema`).
+        today: The date "in the past" is measured against. Defaults to today in the
+            business timezone; tests pass a fixed date.
+    """
+
+    venue_requirements = _editable_text()
+    equipment_requirements = _editable_text()
+    programme_notes = _editable_text()
+    reason = fields.String(
+        required=True,
+        validate=_change_reason_given,
+        error_messages={
+            "required": CHANGE_REASON_REQUIRED_MESSAGE,
+            "null": CHANGE_REASON_REQUIRED_MESSAGE,
+        },
+    )
+
+    class Meta:
+        """Lists every field, so the requested ones load in the order of the list."""
+
+        fields = (*REQUESTABLE_FIELDS, "reason")
+
+    @post_load
+    def _normalise(self, data: dict[str, Any], **_: Any) -> dict[str, Any]:
+        data["reason"] = data["reason"].strip()
+        for key in REQUESTABLE_TEXT_FIELDS:
+            if key in data:
+                data[key] = _blank_as_none(data[key])
+        return data
+
+
 class EventRequestSchema(Schema):
     """Public representation of an event request (AC5).
 
@@ -487,6 +559,37 @@ class ClarificationSchema(Schema):
     response = fields.String(dump_only=True, allow_none=True)
     answered_by = fields.String(dump_only=True, allow_none=True)
     answered_at = BusinessDateTime(dump_only=True, allow_none=True)
+
+
+class RequestedChangeSchema(Schema):
+    """One field a change request asks to change (SCRUM-56 AC2, ADR-0126).
+
+    Values are in the history's JSON form: a date or time as its ISO string
+    (ADR-0025). ``previous_value`` is what the field held when the request was raised.
+    """
+
+    field = fields.String(dump_only=True)
+    previous_value = fields.Raw(dump_only=True, allow_none=True)
+    requested_value = fields.Raw(dump_only=True, allow_none=True)
+
+
+class ChangeRequestSchema(Schema):
+    """An Organiser's change request as the event record shows it (SCRUM-56 AC4).
+
+    ``id`` identifies it for withdrawing it (AC8), as an equipment line's does. The
+    Organiser who raised it is shown by name, never by id; times are in business time
+    (ADR-0009). ``withdrawn_at`` and ``withdrawal_note`` are ``null`` unless it was
+    withdrawn, and the note unless the event's cancellation withdrew it (AC9).
+    """
+
+    id = fields.Integer(dump_only=True)
+    status = fields.Enum(ChangeRequestStatus, by_value=True, dump_only=True)
+    changes = fields.Nested(RequestedChangeSchema, many=True, dump_only=True)
+    reason = fields.String(dump_only=True)
+    raised_by = fields.String(dump_only=True, allow_none=True)
+    raised_at = BusinessDateTime(dump_only=True)
+    withdrawn_at = BusinessDateTime(dump_only=True, allow_none=True)
+    withdrawal_note = fields.String(dump_only=True, allow_none=True)
 
 
 #: What the equipment list says about its event: when it is, so Technical Support know
