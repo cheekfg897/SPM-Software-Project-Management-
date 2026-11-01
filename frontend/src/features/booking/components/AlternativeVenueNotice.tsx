@@ -4,8 +4,9 @@ import { ButtonLink } from '@/components/ui'
 import { unavailabilityText } from '@/config/unavailabilityCategories'
 
 import type { BookingRequest } from '../api'
-import { REASSESSMENT_KIND_LABELS } from '../constants'
 import { findAnotherVenuePath } from '../replacement'
+
+import { ChangeFlagReasons } from './ChangeFlagReasons'
 
 interface AlternativeVenueNoticeProps {
   reference: string
@@ -43,14 +44,7 @@ export function AlternativeVenueNotice({ reference, arrangement }: AlternativeVe
         </ul>
       )}
       {arrangement.flagged_after_change && (
-        <ul aria-label="Why a change to the event flagged it" className="text-ink space-y-1">
-          {/* By place: two changes may give the same reason. */}
-          {arrangement.reassessment_flags.map((flag, index) => (
-            <li key={index}>
-              {REASSESSMENT_KIND_LABELS[flag.kind]}: {flag.reason}
-            </li>
-          ))}
-        </ul>
+        <ChangeFlagReasons flags={arrangement.reassessment_flags} />
       )}
       <ButtonLink
         to={findAnotherVenuePath(reference, arrangement)}

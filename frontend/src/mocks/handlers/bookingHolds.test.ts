@@ -12,7 +12,7 @@ import { refusalOf } from '@/test/refusalOf'
 
 import { MOCK_ACCOUNTS } from '../fixtures/accounts'
 
-import { MOCK_BOOKING_EVENTS } from './bookingFixtures'
+import { MOCK_ARRANGEMENTS, MOCK_BOOKING_EVENTS } from './bookingFixtures'
 import { accountsOfEveryRoleBut, signInAs } from './test/eventRequestCalls'
 
 /**
@@ -90,6 +90,8 @@ describe('SCRUM-75 booking mock: placing a hold', () => {
     })
     const queue = await fetchPendingBookingRequests()
     expect(queue.map((waiting) => [waiting.id, waiting.status, waiting.hold_expires_at])).toEqual([
+      // The moved event's workshop room, flagged after a change but still waiting (SCRUM-59).
+      [MOCK_ARRANGEMENTS.movedWorkshop.id, 'pending', null],
       [BREAKOUT_ROOM, 'on_hold', BEFORE_THE_WORKSHOP],
       [HELD_STUDIO, 'on_hold', '2026-11-21T09:00:00+08:00'],
       [MAIN_HALL, 'pending', null],

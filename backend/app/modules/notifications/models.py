@@ -115,6 +115,11 @@ class NotificationKind(str, enum.Enum):
     #: venues and the category are the notification's ``detail`` (SCRUM-92 AC9,
     #: ADR-0108). Migration 0047.
     REPLACEMENT_VENUE_APPROVED = "replacement_venue_approved"
+    #: Tells the event's assigned coordinator that Venue Staff reconfirmed one of its
+    #: arrangements after a change, or moved an undecided request to the new period; the
+    #: arrangement, its venue, its period and any reason are the notification's
+    #: ``detail`` (SCRUM-59 AC2, AC4, AC11, ADR-0112). Migration 0049.
+    VENUE_BOOKING_RECONFIRMED = "venue_booking_reconfirmed"
 
 
 class Notification(db.Model):  # type: ignore[name-defined]

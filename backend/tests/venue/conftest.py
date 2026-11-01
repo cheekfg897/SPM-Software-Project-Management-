@@ -12,6 +12,7 @@ from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Session
 
 from app.common.clock import app_timezone, local_today
+from app.modules.events import services as event_services
 from app.modules.events.models import (
     EventHistoryEntry,
     EventHistoryKind,
@@ -143,11 +144,11 @@ def change_expiry(request_id: int, expires_at: datetime, session: Session) -> Ve
     return shown.request
 
 
-def locked_venue_reads(session: Session, action: Callable[[], object]) -> list[str]:
-    """The reads of ``venues`` under ``FOR UPDATE`` that ``action`` sends (ADR-0045).
+def _locked_reads(session: Session, table: str, action: Callable[[], object]) -> list[str]:
+    """The reads of ``table`` under ``FOR UPDATE`` that ``action`` sends.
 
     SQLite ignores ``FOR UPDATE``, so each statement is compiled as Postgres would get
-    it; that shows the venue is read under a lock, not that two callers really queue.
+    it; that shows the row is read under a lock, not that two callers really queue.
     """
     sent: list[str] = []
 
@@ -159,7 +160,17 @@ def locked_venue_reads(session: Session, action: Callable[[], object]) -> list[s
         action()
     finally:
         sqlalchemy_event.remove(session.get_bind(), "before_execute", _record)
-    return [sql for sql in sent if "FROM venues" in sql and "FOR UPDATE" in sql]
+    return [sql for sql in sent if f"FROM {table}" in sql and "FOR UPDATE" in sql]
+
+
+def locked_venue_reads(session: Session, action: Callable[[], object]) -> list[str]:
+    """The reads of ``venues`` under ``FOR UPDATE`` that ``action`` sends (ADR-0045)."""
+    return _locked_reads(session, "venues", action)
+
+
+def locked_request_reads(session: Session, action: Callable[[], object]) -> list[str]:
+    """The reads of booking requests under ``FOR UPDATE`` that ``action`` sends."""
+    return _locked_reads(session, "venue_booking_requests", action)
 
 
 #: The date a block's "not ended before today" rule is measured against (SCRUM-34).
@@ -466,3 +477,50 @@ def pin_now(monkeypatch: pytest.MonkeyPatch) -> Callable[[datetime], None]:
         monkeypatch.setattr(services, "_utc_now", lambda: moment)
 
     return _pin
+
+
+# --------------------------------------------------------------------------
+# SCRUM-59 — Venue Staff reconfirm or reject a booking flagged after a change
+# --------------------------------------------------------------------------
+
+#: The day SCRUM-59's tests edit the event, for the edit's "not in the past" rule.
+EDIT_DAY = date(2026, 10, 1)
+
+
+def edit_event(session: Session, event: EventRequest, payload: dict[str, Any]) -> None:
+    """Edit ``event`` as its coordinator (SCRUM-33), which flags its arrangements."""
+    event_services.update_event_request(
+        COORDINATOR_ID, event.reference, payload, session=session, today=EDIT_DAY
+    )
+
+
+def flags_on(session: Session, request_id: int) -> list[tuple[str, str]]:
+    """The arrangement's reassessment flags as (kind, reason), oldest first."""
+    rows = []
+    for flag in reload_request(session, request_id).reassessment_flags:
+        rows.append((flag.kind.value, flag.reason))
+    return rows
+
+
+def approved_arrangement(
+    venue: Venue, event: EventRequest, session: Session, **overrides: Any
+) -> int:
+    """Raise a request for ``event`` at ``venue`` and approve it; return its id."""
+    request = raise_booking(venue, event, session, **overrides)
+    return decide(request.id, "approved", session).id
+
+
+@pytest.fixture()
+def auditorium(make_venue: Callable[..., Venue], save: Callable[..., None]) -> Venue:
+    """A saved venue that holds 100."""
+    saved = make_venue(name="Auditorium", capacity=100)
+    save(saved)
+    return saved
+
+
+@pytest.fixture()
+def breakout_room(make_venue: Callable[..., Venue], save: Callable[..., None]) -> Venue:
+    """A saved venue that holds 40."""
+    saved = make_venue(name="Breakout room", capacity=40)
+    save(saved)
+    return saved

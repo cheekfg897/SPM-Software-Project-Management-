@@ -75,10 +75,11 @@ def test_the_migrations_values_are_the_models_values(load_migration: LoadMigrati
         *migration.PREVIOUS_REQUEST_STATUS_VALUES,
         *migration.ADDED_REQUEST_STATUS_VALUES,
     } == _model_values(BookingRequestStatus)
+    # Subset, not equality: a later migration (0049 SCRUM-59) adds a further kind.
     assert {
         *migration.PREVIOUS_HISTORY_KIND_VALUES,
         *migration.ADDED_HISTORY_KIND_VALUES,
-    } == _model_values(EventHistoryKind)
+    } <= _model_values(EventHistoryKind)
     # Subset, not equality: a later migration (0041 SCRUM-50) adds a further kind.
     assert {
         *migration.PREVIOUS_NOTIFICATION_KIND_VALUES,

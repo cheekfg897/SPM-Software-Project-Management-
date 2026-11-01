@@ -25,6 +25,7 @@ export const EVENT_HISTORY_KIND = {
   VENUE_BOOKING_REQUESTED: 'venue_booking_requested',
   VENUE_BOOKING_APPROVED: 'venue_booking_approved',
   VENUE_BOOKING_REJECTED: 'venue_booking_rejected',
+  VENUE_BOOKING_RECONFIRMED: 'venue_booking_reconfirmed',
   VENUE_PREPARATION_UPDATED: 'venue_preparation_updated',
   EQUIPMENT_RESERVED: 'equipment_reserved',
   VENUE_ARRANGEMENT_CHANGED: 'venue_arrangement_changed',
@@ -141,14 +142,37 @@ function decisionRecorded(details: Details): DescribedEntry {
   return entry(title, [['Reason', textIn(details, 'reason')]])
 }
 
-/** e.g. "10 Nov, 9:00 am – 5:00 pm" for the period a venue is asked for. */
-function bookingWindow(details: Details): string | null {
-  const startsAt = textIn(details, 'starts_at')
-  const endsAt = textIn(details, 'ends_at')
+/**
+ * e.g. "10 Nov, 9:00 am – 5:00 pm" for a venue's period, from the details' start and end keys:
+ * the period asked for, or one a reconfirmation moved a booking from or to (SCRUM-59).
+ */
+function periodIn(details: Details, startKey: string, endKey: string): string | null {
+  const startsAt = textIn(details, startKey)
+  const endsAt = textIn(details, endKey)
   if (startsAt === null || endsAt === null) {
     return null
   }
   return `${formatShortDate(startsAt)}, ${formatTimeRange(startsAt, endsAt)}`
+}
+
+/** e.g. "80 → 120": a reconfirmed booking's expected occupancy before and after (SCRUM-59 AC10). */
+function occupancyChange(details: Details): string | null {
+  const before = numberIn(details, 'previous_expected_occupancy')
+  const after = numberIn(details, 'expected_occupancy')
+  if (before === null || after === null) {
+    return null
+  }
+  return `${before} → ${after}`
+}
+
+function bookingReconfirmed(details: Details): DescribedEntry {
+  return entry('Venue booking reconfirmed', [
+    ['Venue ID', numberIn(details, 'venue_id')],
+    ['Before', periodIn(details, 'previous_starts_at', 'previous_ends_at')],
+    ['After', periodIn(details, 'starts_at', 'ends_at')],
+    ['Expected occupancy', occupancyChange(details)],
+    ['Reason', textIn(details, 'reason')],
+  ])
 }
 
 /** Each field of an arrangement that changed, e.g. ["Expected occupancy", "80 → 120"]. */
@@ -240,7 +264,7 @@ const DESCRIBE_KIND: Record<EventHistoryKind, (details: Details) => DescribedEnt
   venue_booking_requested: (details) =>
     entry('Venue booking requested', [
       ['Venue ID', numberIn(details, 'venue_id')],
-      ['When', bookingWindow(details)],
+      ['When', periodIn(details, 'starts_at', 'ends_at')],
     ]),
   venue_booking_approved: (details) =>
     entry('Venue booking approved', [
@@ -252,6 +276,7 @@ const DESCRIBE_KIND: Record<EventHistoryKind, (details: Details) => DescribedEnt
       ['Venue ID', numberIn(details, 'venue_id')],
       ['Reason', textIn(details, 'reason')],
     ]),
+  venue_booking_reconfirmed: bookingReconfirmed,
   venue_preparation_updated: (details) =>
     entry('Venue preparation updated', [
       ['Venue ID', numberIn(details, 'venue_id')],

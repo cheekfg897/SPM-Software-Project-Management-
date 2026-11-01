@@ -1517,6 +1517,132 @@ def record_venue_hold_expired(
     )
 
 
+def record_venue_booking_reconfirmed(
+    event_id: int,
+    *,
+    actor_id: int,
+    details: dict[str, Any],
+    session: Session | None = None,
+) -> EventHistoryEntry:
+    """Add the history entry for a reconfirmed booking, without committing (SCRUM-59).
+
+    The entry rides in the caller's transaction, so it is saved with the reconfirmation
+    it records or not at all (ADR-0018). It also marks when the arrangement's period was
+    last set (:func:`get_event_when_arranged`).
+    """
+    event_request = resolve_session(session).get(EventRequest, event_id)
+    return record_event_history(
+        event_request,
+        EventHistoryKind.VENUE_BOOKING_RECONFIRMED,
+        actor_id=actor_id,
+        details=details,
+        session=session,
+    )
+
+
+#: The history kinds that set an arrangement's period: raising it (SCRUM-42) and
+#: reconfirming it (SCRUM-59). Approving it books the period it already had.
+_PERIOD_SETTING_KINDS = frozenset(
+    {EventHistoryKind.VENUE_BOOKING_REQUESTED, EventHistoryKind.VENUE_BOOKING_RECONFIRMED}
+)
+
+
+@dataclass(frozen=True)
+class EventWhenArranged:
+    """The event as it stood when an arrangement's period was last set (SCRUM-59).
+
+    What a reconfirmation measures the change against (ADR-0112): how far the event's
+    start has moved since, and whether its date or times changed at all (AC2), and
+    whether the arrangement held the whole audience (AC10).
+    """
+
+    #: The event's start and end, in UTC.
+    starts_at: datetime
+    ends_at: datetime
+    expected_attendance: int
+
+
+def _entries_since_period_set(
+    event_request: EventRequest, arrangement_id: int, session: Session
+) -> list[EventHistoryEntry]:
+    """The event's history entries written after the arrangement's period was last set.
+
+    In the order they were written. Every entry when there is no record of the
+    arrangement being raised or reconfirmed, as for one saved before SCRUM-42 wrote
+    history.
+    """
+    stmt = (
+        select(EventHistoryEntry)
+        .where(EventHistoryEntry.event_request_id == event_request.id)
+        .order_by(EventHistoryEntry.id)
+    )
+    entries = list(session.scalars(stmt))
+    since_set = entries
+    for position, entry in enumerate(entries):
+        if entry.kind not in _PERIOD_SETTING_KINDS:
+            continue
+        if entry.details["venue_booking_request_id"] == arrangement_id:
+            since_set = entries[position + 1 :]
+    return since_set
+
+
+def _values_before_edits(entries: list[EventHistoryEntry]) -> dict[str, Any]:
+    """Each field the edits in ``entries`` changed, with its value before the first one.
+
+    As the history stores it (ADR-0025): a date or time as its ISO string, a number as
+    itself. A field no edit changed is left out.
+    """
+    before: dict[str, Any] = {}
+    for entry in entries:
+        if entry.kind is not EventHistoryKind.FIELD_CHANGED:
+            continue
+        field = entry.details["field"]
+        if field not in before:
+            before[field] = entry.details["previous_value"]
+    return before
+
+
+def get_event_when_arranged(
+    event_id: int, arrangement_id: int, *, session: Session | None = None
+) -> EventWhenArranged:
+    """The event's start, end and attendance when the arrangement's period was last set.
+
+    SCRUM-59 AC2 and AC10, ADR-0112: raised, or last reconfirmed. Each field is read
+    back from the first edit to it since then, which recorded its value from before;
+    a field no edit has touched since is as it is now.
+
+    Args:
+        event_id: The event the arrangement belongs to.
+        arrangement_id: The venue arrangement (booking request) being reconfirmed.
+        session: Database session; defaults to ``db.session``.
+    """
+    sess = resolve_session(session)
+    event_request = sess.get(EventRequest, event_id)
+    before = _values_before_edits(_entries_since_period_set(event_request, arrangement_id, sess))
+
+    proposed_date = event_request.proposed_date
+    if "proposed_date" in before:
+        proposed_date = date.fromisoformat(before["proposed_date"])
+    start_time = event_request.start_time
+    if "start_time" in before:
+        start_time = time.fromisoformat(before["start_time"])
+    end_date = event_request.end_date
+    if "end_date" in before:
+        end_date = date.fromisoformat(before["end_date"])
+    end_time = event_request.end_time
+    if "end_time" in before:
+        end_time = time.fromisoformat(before["end_time"])
+    expected_attendance = event_request.expected_attendance
+    if "expected_attendance" in before:
+        expected_attendance = before["expected_attendance"]
+
+    return EventWhenArranged(
+        starts_at=as_utc(datetime.combine(proposed_date, start_time)),
+        ends_at=as_utc(datetime.combine(end_date, end_time)),
+        expected_attendance=expected_attendance,
+    )
+
+
 def _event_request_with_editable_equipment(
     coordinator_id: int | str, reference: str, session: Session
 ) -> EventRequest:
