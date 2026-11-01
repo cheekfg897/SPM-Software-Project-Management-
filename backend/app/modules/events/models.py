@@ -526,9 +526,3 @@ class EventChangeRequest(db.Model):  # type: ignore[name-defined]
     #: Why it was withdrawn when the Organiser didn't do it themselves: the event was
     #: cancelled (AC9). ``None`` for the Organiser's own withdrawal.
     withdrawal_note: Mapped[str | None] = mapped_column(Text, nullable=True)
-
-    def __repr__(self) -> str:  # pragma: no cover - debugging aid
-        return (
-            f"<EventChangeRequest id={self.id} event_request_id={self.event_request_id}"
-            f" status={self.status!r}>"
-        )
