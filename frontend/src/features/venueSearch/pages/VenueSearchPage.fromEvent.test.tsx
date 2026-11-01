@@ -1,6 +1,9 @@
-import { screen } from '@testing-library/react'
+import { act, screen, waitForElementToBeRemoved } from '@testing-library/react'
+import { focusManager } from '@tanstack/react-query'
+import { http, HttpResponse } from 'msw'
 
 import { MOCK_ACCOUNTS, mockSessionFor } from '@/mocks/fixtures/accounts'
+import { server } from '@/mocks/server'
 import { recordRequests } from '@/test/recordRequests'
 import { renderApp } from '@/test/render'
 
@@ -37,6 +40,35 @@ describe('SCRUM-90 venue search opened from an event', () => {
     renderApp(PARTNER_SUMMIT, COORDINATOR)
 
     expect(await screen.findByRole('status')).toHaveTextContent('Loading the event')
+    await waitForElementToBeRemoved(() => screen.queryByRole('status'))
+    expect(await eventNote('Partner Summit')).toBeInTheDocument()
+  })
+
+  it("keeps the filled form, the note and the coordinator's changes when reading the event again fails", async () => {
+    const view = await openFromPartnerSummit()
+    await typeInto(view, 'Minimum capacity', '300')
+    server.use(
+      http.get('/api/events/requests/:reference', () =>
+        HttpResponse.json(
+          { error: 'internal_error', message: 'Try again later.' },
+          { status: 500 },
+        ),
+      ),
+    )
+    const requests = recordRequests()
+
+    // Coming back to the tab reads the event again, as TanStack Query does by default.
+    act(() => {
+      focusManager.setFocused(false)
+      focusManager.setFocused(true)
+    })
+
+    const eventReads = () =>
+      requests.filter((request) => request.url.endsWith('/api/events/requests/EVR-7K2M9QXA'))
+    await vi.waitFor(() => expect(eventReads()).toHaveLength(1))
+    expect(await eventNote('Partner Summit')).toBeInTheDocument()
+    expect(screen.getByLabelText('Minimum capacity')).toHaveValue(300)
+    expect(screen.getByLabelText('Date')).toHaveValue('2026-11-12')
   })
 
   it("fills in the period and minimum capacity from the event's details (AC1, AC2)", async () => {
