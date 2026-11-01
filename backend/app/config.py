@@ -25,7 +25,7 @@ def _build_database_uri() -> str:
     ``.env`` file configures both containers and the local backend.
     """
     explicit = os.getenv("DATABASE_URL")
-    if explicit:  # pragma: no cover - environment-dependent branch (used by CI/compose)
+    if explicit:
         return explicit
 
     user = os.getenv("POSTGRES_USER", "connectsphere")
