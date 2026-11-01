@@ -38,10 +38,17 @@ export function openingValue(record: EventRecord, field: ShownField): string {
   return TIME_FIELDS.includes(field) ? toTimeInputValue(typed) : typed
 }
 
-/** The fields the coordinator changed on `record`, as the backend wants them. */
-export function changedFields(form: FormData, record: EventRecord): EventEditChanges {
+/**
+ * Of `fields`, the ones whose typed value differs from what `record` holds, as the backend wants
+ * them: the attendance as a number, and an emptied field as null.
+ */
+export function differingFields(
+  form: FormData,
+  record: EventRecord,
+  fields: readonly ShownField[],
+): EventEditChanges {
   const changes: EventEditChanges = {}
-  for (const field of SHOWN_FIELDS) {
+  for (const field of fields) {
     const typed = formText(form, field)
     if (typed === openingValue(record, field)) {
       continue
@@ -52,6 +59,12 @@ export function changedFields(form: FormData, record: EventRecord): EventEditCha
       changes[field] = typed === '' ? null : typed
     }
   }
+  return changes
+}
+
+/** The fields the coordinator changed on `record`, as the backend wants them. */
+export function changedFields(form: FormData, record: EventRecord): EventEditChanges {
+  const changes = differingFields(form, record, SHOWN_FIELDS)
   // The record never shows these notes, so the field opens empty: only what is typed is sent.
   const internalNotes = formText(form, 'internal_planning_notes')
   if (internalNotes !== '') {
