@@ -94,21 +94,13 @@ class ConflictError(AppError):
     error_code = "conflict"
 
 
-def error_response(
-    status_code: int,
-    error_code: str,
-    message: str,
-    details: dict[str, Any] | None = None,
-) -> tuple[Response, int]:
+def error_response(status_code: int, error_code: str, message: str) -> tuple[Response, int]:
     """Build a response in the standard error shape.
 
     Used by the handlers below and by the JWT callbacks so that token errors
     raised inside Flask-JWT-Extended look identical to our own errors.
     """
-    body: dict[str, Any] = {"error": error_code, "message": message}
-    if details:
-        body["details"] = details
-    return jsonify(body), status_code
+    return jsonify({"error": error_code, "message": message}), status_code
 
 
 def invalid_token_response(*_callback_args: Any) -> tuple[Response, int]:
