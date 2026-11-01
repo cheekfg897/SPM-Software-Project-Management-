@@ -8,9 +8,11 @@ import { selectSessionUser, useAppSelector } from '@/store'
 
 import { isRecordEquipmentLine } from '../api'
 import type { EventRecord } from '../api'
+import { CHANGE_REQUESTABLE_STATUSES } from '../changeRequest'
 import { useAnswerClarification } from '../hooks'
 
 import { AboutTheEvent } from './AboutTheEvent'
+import { ChangeRequestList } from './ChangeRequestList'
 import { ClarificationList } from './ClarificationList'
 import { CoordinatorDetails } from './CoordinatorDetails'
 import { DecisionDetails } from './DecisionDetails'
@@ -23,6 +25,7 @@ import { RecordActions } from './RecordActions'
 import { RecordHeading } from './RecordHeading'
 import { RecordSection } from './RecordSection'
 import { RegistrantsSection } from './RegistrantsSection'
+import { RequestChangeForm } from './RequestChangeForm'
 import { ReviewActions } from './ReviewActions'
 import { SafetyOutcomeDetails } from './SafetyOutcomeDetails'
 import { VenueArrangementList } from './VenueArrangementList'
@@ -69,14 +72,17 @@ function CoordinatorLinks({ reference }: { reference: string }) {
  * also gets links on and the review actions, and an organiser answers an open question here
  * (SCRUM-31, SCRUM-32, ADR-0060). The organiser is sent everything else on the record too, at
  * every stage: the planning notes, every venue arrangement, the equipment with its outcomes and
- * reservations, and the safety check (SCRUM-24 AC10, ADR-0104).
+ * reservations, and the safety check (SCRUM-24 AC10, ADR-0104). Both see the organiser's change
+ * requests, and the organiser raises and withdraws them here (SCRUM-56, ADR-0126).
  */
 export function EventRecordView({ record }: { record: EventRecord }) {
   const viewer = useAppSelector(selectSessionUser)
   const isCoordinator = viewer?.role === ROLE.EVENT_COORDINATOR
+  const isOrganiser = viewer?.role === ROLE.EVENT_ORGANISER
   const isAnswerNeeded =
-    viewer?.role === ROLE.EVENT_ORGANISER &&
-    record.status === EVENT_REQUEST_STATUS.AWAITING_CLARIFICATION
+    isOrganiser && record.status === EVENT_REQUEST_STATUS.AWAITING_CLARIFICATION
+  // Offered only in the statuses the backend takes a change request in (SCRUM-56 AC1, AC6).
+  const isChangeRequestable = isOrganiser && CHANGE_REQUESTABLE_STATUSES.includes(record.status)
   // Only the organiser's record names each line's equipment and sends the rest of the record:
   // everything on it, at every stage (ADR-0104). The coordinator works on the lines and the
   // safety check from their own pages instead, and sees the venues listed here (ADR-0105).
@@ -128,6 +134,16 @@ export function EventRecordView({ record }: { record: EventRecord }) {
       {record.safety_outcome !== undefined && (
         <RecordSection title="Safety check">
           <SafetyOutcomeDetails outcome={record.safety_outcome} />
+        </RecordSection>
+      )}
+      {record.change_requests.length > 0 && (
+        <RecordSection title="Change requests">
+          <ChangeRequestList reference={record.reference} changeRequests={record.change_requests} />
+        </RecordSection>
+      )}
+      {isChangeRequestable && (
+        <RecordSection title="Request a change">
+          <RequestChangeForm record={record} />
         </RecordSection>
       )}
       {isCoordinator && <EditDetailsSection record={record} />}

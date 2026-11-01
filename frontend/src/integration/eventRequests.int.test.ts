@@ -58,7 +58,13 @@ const EVENT_REQUEST_FIELDS = [
 ]
 
 /** What the frontend's EventRecord type reads on top of the request (ADR-0056). */
-const RECORD_FIELDS = ['clarifications', 'coordinator', 'decision', 'programme_notes']
+const RECORD_FIELDS = [
+  'change_requests',
+  'clarifications',
+  'coordinator',
+  'decision',
+  'programme_notes',
+]
 
 /** A date `days` from now, as the backend reads dates ("2026-11-20"). */
 function daysFromNow(days: number): string {
@@ -348,6 +354,7 @@ describe('SCRUM-24 AC9, AC10 an event record against the backend', () => {
       coordinator: null,
       decision: null,
       clarifications: [],
+      change_requests: [],
       programme_notes: null,
     })
     for (const field of [...EVENT_REQUEST_FIELDS, ...RECORD_FIELDS]) {

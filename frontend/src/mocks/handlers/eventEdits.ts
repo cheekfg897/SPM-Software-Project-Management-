@@ -73,7 +73,7 @@ const EDITABLE_FIELDS = [
   'venue_requirements',
   'equipment_requirements',
 ] as const
-type EditableField = (typeof EDITABLE_FIELDS)[number]
+export type EditableField = (typeof EDITABLE_FIELDS)[number]
 /** Fields that can't be emptied: when and how big the event is. */
 const NOT_NULL_FIELDS: readonly string[] = [
   'proposed_date',
@@ -96,7 +96,7 @@ const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/
 /** A time with an offset, which the backend reads and then refuses (ADR-0002). */
 const TIME_WITH_OFFSET_PATTERN = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?(Z|[+-]\d{2}:\d{2})$/
 
-type Values = Partial<Record<EditableField, string | number | null>>
+export type Values = Partial<Record<EditableField, string | number | null>>
 
 /** Internal planning notes by reference; none until an edit sets them. Reset per test. */
 let internalNotes: Record<string, string | null> = {}
@@ -151,7 +151,7 @@ function valueError(name: EditableField, value: unknown): string | undefined {
 }
 
 /** Each field's own rules: unknown fields, types, nulls, the attendance and the past date. */
-function fieldErrors(body: Record<string, unknown>): FieldErrors {
+export function fieldErrors(body: Record<string, unknown>): FieldErrors {
   const errors: FieldErrors = {}
   for (const [name, value] of Object.entries(body)) {
     const error = isEditableField(name) ? valueError(name, value) : 'Unknown field.'
@@ -167,10 +167,16 @@ function fieldErrors(body: Record<string, unknown>): FieldErrors {
   return errors
 }
 
-/** What the backend saves from the body: text trimmed, blank as null, times with seconds. */
-function loadedValues(body: Record<string, unknown>): Values {
+/**
+ * What the backend saves of `fields` from the body, in their order: text trimmed, blank as null,
+ * times with seconds.
+ */
+export function loadedValues(
+  body: Record<string, unknown>,
+  fields: readonly EditableField[],
+): Values {
   const values: Values = {}
-  for (const field of EDITABLE_FIELDS) {
+  for (const field of fields) {
     const value = body[field]
     if (!(field in body) || value === undefined) {
       continue
@@ -187,7 +193,7 @@ function loadedValues(body: Record<string, unknown>): Values {
 }
 
 /** A date moved on its own takes the end date with it, keeping the event's length. */
-function withEndDate(values: Values, request: EventRequest): Values {
+export function withEndDate(values: Values, request: EventRequest): Values {
   if (!('proposed_date' in values) || 'end_date' in values) {
     return values
   }
@@ -197,7 +203,7 @@ function withEndDate(values: Values, request: EventRequest): Values {
 }
 
 /** The window rule on the values the event would have (ADR-0002), or null when it holds. */
-function windowErrors(values: Values, request: EventRequest): FieldErrors | null {
+export function windowErrors(values: Values, request: EventRequest): FieldErrors | null {
   const proposedDate = String(values.proposed_date ?? request.proposed_date)
   const endDate = String(values.end_date ?? request.end_date)
   if (endDate < proposedDate) {
@@ -211,7 +217,8 @@ function windowErrors(values: Values, request: EventRequest): FieldErrors | null
   return null
 }
 
-function currentValue(stored: MockEventRequest, field: EditableField) {
+/** What the event holds for `field` now. */
+export function currentValue(stored: MockEventRequest, field: EditableField) {
   if (field === 'programme_notes') {
     return stored.record.programme_notes
   }
@@ -432,7 +439,7 @@ export const eventEditHandlers: RequestHandler[] = [
     if (Object.keys(errors).length > 0) {
       return validationError(errors)
     }
-    const values = withEndDate(loadedValues(body), stored.request)
+    const values = withEndDate(loadedValues(body, EDITABLE_FIELDS), stored.request)
     const refused = windowErrors(values, stored.request)
     if (refused !== null) {
       return validationError(refused)

@@ -14,6 +14,7 @@ import { errorResponse, notAllowed, notAuthenticated, validationError } from '..
 import { accountForRequest } from './auth'
 import { everyArrangementForRecord, hasActiveArrangement } from './booking'
 import { MOCK_NOW } from './catalogueFixtures'
+import { changeRequestsOf } from './changeRequestStore'
 import { reservationsForRecord } from './equipmentReservations'
 import { recordLinesOf } from './equipmentLines'
 import { internalNotesOf } from './eventEdits'
@@ -230,9 +231,10 @@ function ownDraftOrRefusal(organiser: MockAccount, organisationId: number, refer
 /**
  * A request's record as the backend shows it to `viewerRole`: the coordinator by name and email,
  * no ids, the equipment lines as that role sees them (ADR-0098), every venue arrangement (SCRUM-93
- * AC5, ADR-0105) and the current safety check (SCRUM-99 AC4, ADR-0113). The organiser's holds
- * everything else on the record too, whatever the event's status (SCRUM-24 AC10, ADR-0104): the
- * planning notes and the reservations, each read from the mock that keeps it.
+ * AC5, ADR-0105), the current safety check (SCRUM-99 AC4, ADR-0113) and the organiser's change
+ * requests (SCRUM-56 AC4). The organiser's holds everything else on the record too, whatever the
+ * event's status (SCRUM-24 AC10, ADR-0104): the planning notes and the reservations, each read
+ * from the mock that keeps it.
  */
 function recordOf(stored: MockEventRequest, viewerRole: Role) {
   const { coordinator } = stored
@@ -246,6 +248,7 @@ function recordOf(stored: MockEventRequest, viewerRole: Role) {
     equipment_lines: recordLinesOf(reference, viewerRole),
     venue_arrangements: everyArrangementForRecord(reference),
     safety_outcome: currentSafetyCheckOf(reference),
+    change_requests: changeRequestsOf(reference),
   }
   if (viewerRole !== ROLE.EVENT_ORGANISER) {
     return record
