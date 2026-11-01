@@ -83,9 +83,9 @@ NOT_APPROVED_STATUSES = [
 #: AC4: a replacement in these statuses holds the cancel back until the coordinator
 #: withdraws it.
 WAITING_REPLACEMENT_STATUSES = [BookingRequestStatus.PENDING, BookingRequestStatus.CONFLICTING]
-#: Every other status a replacement can be in, On Hold among them (it can't be withdrawn
-#: yet, SCRUM-93). Built from the enum, so a status added later is let through unless it
-#: is added above.
+#: Every other status a replacement can be in, On Hold among them (AC4 as written, see
+#: ADR-0118 "Revisit when"). Built from the enum, so a status added later is let through
+#: unless it is added above.
 NOT_WAITING_REPLACEMENT_STATUSES = [
     status for status in BookingRequestStatus if status not in WAITING_REPLACEMENT_STATUSES
 ]
@@ -500,7 +500,7 @@ def test_a_replacement_in_any_other_status_does_not_hold_it_back(
     second_venue: Venue,
     status: BookingRequestStatus,
 ) -> None:
-    """On Hold included: it can't be withdrawn yet (SCRUM-93), so it can't block."""
+    """On Hold included, as AC4 says (ADR-0118 "Revisit when")."""
     replacement = _replacement_for(booked, event, second_venue, db_session)
     _into_status(replacement, status, db_session)
 

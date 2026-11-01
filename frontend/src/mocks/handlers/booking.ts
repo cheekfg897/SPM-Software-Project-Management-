@@ -727,9 +727,8 @@ function replacementOf(
 }
 
 /**
- * As the backend's CANCEL_WAITS_FOR_REPLACEMENT_STATUSES (SCRUM-111 AC4): a replacement the
- * coordinator can still withdraw holds the cancel back. An On hold one can't be withdrawn yet
- * (SCRUM-93), so it doesn't.
+ * As the backend's CANCEL_WAITS_FOR_REPLACEMENT_STATUSES (SCRUM-111 AC4): Pending and Conflicting
+ * replacements hold the cancel back. An On hold one doesn't (ADR-0118 "Revisit when").
  */
 function holdsTheCancelBack(existing: BookingRequest): boolean {
   return existing.status === 'pending' || existing.status === 'conflicting'
