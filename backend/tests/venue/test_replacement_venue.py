@@ -10,6 +10,8 @@ its safety check, approving the replacement withdraws that approval, and an even
 Safety Review goes back to Approved to be sent again. AC9, AC10 (Product Owner, 26 Oct):
 when a replacement is approved for an event a venue sent back from Confirmed, the
 Organiser who submitted it is told, naming the event, both venues and the category.
+SCRUM-62 AC6: so is each Attendee who still holds a place at the event, naming the event
+and both venues (ADR-0125).
 
 The services run against ``db_session``. The flagged arrangement is at the Auditorium,
 09:00 to 12:00 on 1 November 2026; the replacement is at the Breakout room.
@@ -37,6 +39,7 @@ from app.modules.events.models import (
 from app.modules.notifications.models import Notification
 from app.modules.notifications.schemas import NotificationSchema
 from app.modules.notifications.services import NotificationKind
+from app.modules.registration.models import Registration, RegistrationStatus
 from app.modules.venue import services
 from app.modules.venue.models import (
     BookingRequestStatus,
@@ -78,6 +81,15 @@ ORGANISER_ID = 7
 ORGANISER_TOLD = (
     "Auditorium became unavailable for Partner Summit ({category}), and Breakout room has"
     " been approved in its place. The event still needs Safety Review and confirmation."
+)
+#: Two Attendees: one holds a place, the other withdrew (SCRUM-62 AC6).
+ATTENDEE = 21
+WITHDRAWN_ATTENDEE = 22
+#: What a registered Attendee is told: the event and both venues, and nothing of the
+#: event's planning (SCRUM-62 AC6, ADR-0125).
+ATTENDEE_TOLD = (
+    "Auditorium is no longer available for Partner Summit. Breakout room has been approved"
+    " in its place."
 )
 #: AC6: the planning stage, and Safety Review, which a flag leaves an event in (AC3).
 MAY_REPLACE = {EventRequestStatus.APPROVED, EventRequestStatus.SAFETY_REVIEW}
@@ -774,6 +786,86 @@ def test_approving_an_ordinary_request_tells_the_organiser_nothing(
     db_session: Session, sent_back: Flagged
 ) -> None:
     """A second venue for the event replaces nothing (AC9 is about AC7)."""
+    request = raise_booking(sent_back.other, sent_back.event, db_session)
+
+    decide(request.id, "approved", db_session)
+
+    assert _replacement_notices(db_session) == []
+
+
+# --------------------------------------------------------------------------
+# SCRUM-62 AC6 — the event's registered Attendees hear of the approved replacement
+# --------------------------------------------------------------------------
+
+
+def _hold_places(session: Session, event: EventRequest) -> None:
+    """``ATTENDEE`` holds a place at the event; ``WITHDRAWN_ATTENDEE`` gave one up."""
+    held = Registration(
+        event_request_id=event.id,
+        attendee_id=ATTENDEE,
+        status=RegistrationStatus.REGISTERED,
+        registered_at=at(8),
+    )
+    given_back = Registration(
+        event_request_id=event.id,
+        attendee_id=WITHDRAWN_ATTENDEE,
+        status=RegistrationStatus.WITHDRAWN,
+        registered_at=at(8),
+        withdrawn_at=at(9),
+    )
+    session.add_all([held, given_back])
+    session.commit()
+
+
+@pytest.mark.scrum_62
+def test_the_registered_attendees_are_told_after_the_organiser(
+    db_session: Session, sent_back: Flagged
+) -> None:
+    """Only a place still held counts: who withdrew isn't going (SCRUM-62 AC6)."""
+    _hold_places(db_session, sent_back.event)
+    replacement = _replace(sent_back, db_session)
+
+    decide(replacement.id, "approved", db_session)
+
+    assert _replacement_notices(db_session) == [
+        (ORGANISER_ID, sent_back.event.id, ORGANISER_TOLD.format(category="maintenance")),
+        (ATTENDEE, sent_back.event.id, ATTENDEE_TOLD),
+    ]
+
+
+@pytest.mark.scrum_62
+def test_attendees_are_told_even_when_the_venue_did_not_send_the_event_back(
+    db_session: Session, flagged: Flagged
+) -> None:
+    """Approved when the block came: a change had sent it back, places held (ADR-0087).
+
+    Its Attendees still go somewhere else, so they are told (ADR-0125).
+    """
+    _hold_places(db_session, flagged.event)
+    replacement = _replace(flagged, db_session)
+
+    decide(replacement.id, "approved", db_session)
+
+    assert _replacement_notices(db_session) == [(ATTENDEE, flagged.event.id, ATTENDEE_TOLD)]
+
+
+@pytest.mark.scrum_62
+def test_a_rejected_replacement_tells_the_attendees_nothing(
+    db_session: Session, sent_back: Flagged
+) -> None:
+    _hold_places(db_session, sent_back.event)
+    replacement = _replace(sent_back, db_session)
+
+    decide(replacement.id, "rejected", db_session, reason="Booked out.")
+
+    assert _replacement_notices(db_session) == []
+
+
+@pytest.mark.scrum_62
+def test_approving_an_ordinary_request_tells_the_attendees_nothing(
+    db_session: Session, sent_back: Flagged
+) -> None:
+    _hold_places(db_session, sent_back.event)
     request = raise_booking(sent_back.other, sent_back.event, db_session)
 
     decide(request.id, "approved", db_session)

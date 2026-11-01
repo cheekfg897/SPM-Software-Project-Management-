@@ -47,16 +47,6 @@ EVENT_NOT_FOUND = "Event not found."
 
 
 @pytest.fixture()
-def register(db_session: Session, now: datetime) -> Register:
-    """Register an attendee for an event at ``now``."""
-
-    def _register(attendee_id: int | str, event_id: int) -> Registration:
-        return register_for_event(attendee_id, event_id, session=db_session, now=now)
-
-    return _register
-
-
-@pytest.fixture()
 def registrations_of(db_session: Session) -> RegistrationsOf:
     """Who holds a place at an event, and their status, read back from the database."""
 

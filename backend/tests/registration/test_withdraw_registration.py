@@ -64,26 +64,6 @@ WITHDRAW_KWARGS = {"event_id": 41}
 
 
 @pytest.fixture()
-def register(db_session: Session, now: datetime) -> Act:
-    """Register an attendee for an event at ``now``."""
-
-    def _register(attendee_id: int, event_id: int) -> Registration:
-        return register_for_event(attendee_id, event_id, session=db_session, now=now)
-
-    return _register
-
-
-@pytest.fixture()
-def withdraw(db_session: Session, now: datetime) -> Act:
-    """Withdraw an attendee's registration for an event at ``now``."""
-
-    def _withdraw(attendee_id: int, event_id: int) -> Registration:
-        return withdraw_registration(attendee_id, event_id, session=db_session, now=now)
-
-    return _withdraw
-
-
-@pytest.fixture()
 def rows_of(db_session: Session) -> RowsOf:
     """Every registration row for an event, and its status, as committed.
 

@@ -11,16 +11,20 @@ production the default ``db.session`` is used.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.common.database import resolve_session
 from app.common.errors import NotFoundError
 from app.modules.notifications.models import Notification, NotificationKind
+
+logger = logging.getLogger("connectsphere.notifications")
 
 
 @dataclass(frozen=True)
@@ -81,6 +85,36 @@ def notify_users(
     sess.add_all(notifications)
     sess.commit()
     return notifications
+
+
+def notify_users_after_commit(
+    recipient_ids: Iterable[int],
+    event: EventSummary,
+    kind: NotificationKind,
+    *,
+    session: Session | None = None,
+    detail: str | None = None,
+) -> None:
+    """Raise :func:`notify_users` notices about a change already committed (ADR-0015).
+
+    If they can't be saved, only they are lost and a warning is logged: what they
+    announce is already saved, and failing the reply would invite the caller to do it
+    again. The events and venue modules still keep their own copies of this, each
+    with its own log line; moving them here is a follow-up (ADR-0125).
+
+    Args:
+        recipient_ids: User ids to notify.
+        event: The event the notices are about.
+        kind: What happened to it.
+        session: Database session; defaults to ``db.session``.
+        detail: More about what happened; ``None`` for kinds that carry none.
+    """
+    sess = resolve_session(session)
+    try:
+        notify_users(recipient_ids, event, kind, session=sess, detail=detail)
+    except SQLAlchemyError:
+        sess.rollback()
+        logger.warning("notification_failed reference=%s kind=%s", event.reference, kind.value)
 
 
 def list_notifications_for_recipient(

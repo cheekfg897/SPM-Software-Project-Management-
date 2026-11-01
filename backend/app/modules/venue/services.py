@@ -2300,16 +2300,20 @@ def _category_labels(arrangement: VenueBookingRequest, session: Session | None) 
     return ", ".join(labels)
 
 
-def _tell_organiser_of_replacement(approved: VenueBookingRequest, session: Session | None) -> None:
-    """Tell the organiser a replacement venue was approved, after the commit (AC9).
+def _tell_of_replacement(approved: VenueBookingRequest, session: Session | None) -> None:
+    """Tell the organiser and the Attendees a replacement venue was approved (AC9).
 
-    Only for a replacement of an arrangement whose venue became unavailable; one
-    flagged only after a change is SCRUM-33's. That includes a venue available again
-    before the replacement was approved: the original is released all the same, so the
-    organiser hears of it (ADR-0111). The events module tells the organiser only if a
-    venue sent the event back from Confirmed (ADR-0108).
+    After the commit. Only for a replacement of an arrangement whose venue became
+    unavailable; one flagged only after a change is SCRUM-33's. That includes a venue
+    available again before the replacement was approved: the original is released all
+    the same, so the organiser hears of it (ADR-0111). The events module tells the
+    organiser only if a venue sent the event back from Confirmed (ADR-0108); the
+    registration module tells every Attendee holding a place (SCRUM-62 AC6, ADR-0125).
     """
     from app.modules.events import services as event_services  # circular at import time
+    from app.modules.registration import (  # circular at import time
+        services as registration_services,
+    )
 
     if approved.replaces_request_id is None:
         return
@@ -2318,11 +2322,19 @@ def _tell_organiser_of_replacement(approved: VenueBookingRequest, session: Sessi
     categories = _category_labels(replaced, session)
     if not categories:
         return
+    unavailable_venue = sess.get(Venue, replaced.venue_id).name
+    replacement_venue = sess.get(Venue, approved.venue_id).name
     event_services.notify_organiser_replacement_approved(
         approved.event_id,
-        unavailable_venue=sess.get(Venue, replaced.venue_id).name,
-        replacement_venue=sess.get(Venue, approved.venue_id).name,
+        unavailable_venue=unavailable_venue,
+        replacement_venue=replacement_venue,
         category=categories,
+        session=session,
+    )
+    registration_services.notify_attendees_of_replacement_venue(
+        approved.event_id,
+        unavailable_venue=unavailable_venue,
+        replacement_venue=replacement_venue,
         session=session,
     )
 
@@ -2434,7 +2446,7 @@ def decide_booking_request(
         session=session,
     )
     if decision is BookingDecision.APPROVED:
-        _tell_organiser_of_replacement(request, session)
+        _tell_of_replacement(request, session)
     return show_booking_request(request, event)
 
 
