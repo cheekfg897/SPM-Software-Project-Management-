@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from datetime import UTC, date, datetime, time, timezone
 from types import ModuleType
 from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import Connection, event, select
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import ORMExecuteState, Session
 
 from app.modules.auth.models import User
 from app.modules.auth.permissions import ALL_ROLES, Role
@@ -19,7 +20,9 @@ from app.modules.equipment.models import EquipmentReservation, EquipmentType
 from app.modules.equipment.services import reserve_equipment
 from app.modules.events import routes
 from app.modules.events.models import (
+    ChangeRequestStatus,
     EquipmentLineStatus,
+    EventChangeRequest,
     EventEquipmentLine,
     EventHistoryEntry,
     EventHistoryKind,
@@ -27,6 +30,7 @@ from app.modules.events.models import (
     EventRequestStatus,
 )
 from app.modules.events.services import (
+    ChangeRequestAsShown,
     CoordinatorContact,
     EquipmentLineAsShown,
     EventEdit,
@@ -36,6 +40,7 @@ from app.modules.events.services import (
     decide_event_request,
     get_event_record_for_coordinator,
     get_event_record_for_organiser,
+    raise_change_request,
     reassign_coordinator,
     record_event_history,
     request_clarification,
@@ -44,6 +49,7 @@ from app.modules.events.services import (
     start_event_request_review,
     submit_event_request,
     update_event_request,
+    withdraw_change_request,
 )
 from app.modules.notifications.services import (
     NotificationKind,
@@ -52,6 +58,9 @@ from app.modules.notifications.services import (
 from app.modules.venue.models import BookingRequestStatus, Venue, VenueBookingRequest
 from tests.conftest import ReserveAndReview, approve_safety
 from tests.events.cases import DRAFT_REFERENCE, LEAD_ID, AddLine, Arrange, SaveArrangement
+
+#: What ``on_event_row_lock`` runs while the event's row is being locked (SCRUM-56).
+LockAction = Callable[[Connection], None]
 
 #: Every role but the Lead, so a role added later is refused unless a test says not.
 NON_LEAD_ROLES = sorted(ALL_ROLES - {Role.EVENT_COORDINATOR_LEAD}, key=lambda role: role.value)
@@ -887,3 +896,109 @@ def projectors_without_a_line(
     save(saved_event_request)
     units = {"equipment_type_id": equipment_type.id, "quantity": 2}
     reserve_equipment(saved_event_request.reference, units, reserved_by=5)
+
+
+@pytest.fixture()
+def raise_change(
+    saved_users: list[User], saved_event_request: EventRequest, today: date
+) -> Callable[[int, Any], ChangeRequestAsShown]:
+    """Raise a change request on ``EVR-AAAAAAAA`` as ``actor_id`` (SCRUM-56).
+
+    Runs on ``db_session`` with ``saved_users``; the event is left in
+    whatever status the test gives it, and the payload is passed on as it is.
+    """
+
+    def _raise(actor_id: int, payload: Any) -> ChangeRequestAsShown:
+        return raise_change_request(actor_id, "EVR-AAAAAAAA", payload, today=today)
+
+    return _raise
+
+
+@pytest.fixture()
+def withdraw_change(
+    saved_users: list[User], saved_event_request: EventRequest
+) -> Callable[[int, int], ChangeRequestAsShown]:
+    """Withdraw a change request of ``EVR-AAAAAAAA`` as ``actor_id`` (SCRUM-56 AC8).
+
+    Runs on ``db_session`` with ``saved_users``.
+    """
+
+    def _withdraw(actor_id: int, change_request_id: int) -> ChangeRequestAsShown:
+        return withdraw_change_request(actor_id, "EVR-AAAAAAAA", change_request_id)
+
+    return _withdraw
+
+
+@pytest.fixture()
+def save_change_request(save: Callable[..., None]) -> Callable[..., EventChangeRequest]:
+    """Save a change request directly, for organiser 7, asking for 300 attendees.
+
+    For tests that need one in a given status, or at a pinned time, without raising it
+    through the service (SCRUM-56). A withdrawn one gets a withdrawal time, as the
+    database requires.
+    """
+
+    def _save(
+        event_request: EventRequest,
+        status: ChangeRequestStatus = ChangeRequestStatus.PENDING,
+        *,
+        raised_at: datetime = datetime(2026, 9, 15, 1, 0, tzinfo=timezone.utc),
+    ) -> EventChangeRequest:
+        change_request = EventChangeRequest(
+            event_request_id=event_request.id,
+            requested_by=7,
+            requested_values={"expected_attendance": 300},
+            previous_values={"expected_attendance": 250},
+            reason="More partners are coming.",
+            status=status,
+            raised_at=raised_at,
+        )
+        if status is ChangeRequestStatus.WITHDRAWN:
+            change_request.withdrawn_at = raised_at
+        save(change_request)
+        return change_request
+
+    return _save
+
+
+@pytest.fixture()
+def change_requests_of(db_session: Session) -> Callable[[int], list[EventChangeRequest]]:
+    """An event's saved change requests, oldest first, read back from the database."""
+
+    def _change_requests_of(event_request_id: int) -> list[EventChangeRequest]:
+        db_session.expire_all()
+        stmt = (
+            select(EventChangeRequest)
+            .where(EventChangeRequest.event_request_id == event_request_id)
+            .order_by(EventChangeRequest.id)
+        )
+        return list(db_session.scalars(stmt))
+
+    return _change_requests_of
+
+
+@pytest.fixture()
+def on_event_row_lock(db_session: Session) -> Iterator[Callable[[LockAction], None]]:
+    """Run an action on the database the moment an event request's row is locked.
+
+    Returns a function that queues the action. It stands in for another user whose
+    change committed while this one waited for the lock (SCRUM-56, ADR-0126). SQLite
+    has no row locks, so one request can't be made to wait for another here; what the
+    tests check is what Postgres relies on: the event is selected ``FOR UPDATE`` (as
+    Postgres would receive it), and the row read under the lock replaces the copy the
+    session already holds. Each queued action runs once.
+    """
+    queued: list[LockAction] = []
+
+    def _on_execute(state: ORMExecuteState) -> None:
+        sql = str(state.statement.compile(dialect=postgresql.dialect()))
+        if "FROM event_requests" not in sql or "FOR UPDATE" not in sql:
+            return
+        connection = state.session.connection()
+        while queued:
+            queued.pop(0)(connection)
+
+    session = db_session()
+    event.listen(session, "do_orm_execute", _on_execute)
+    yield queued.append
+    event.remove(session, "do_orm_execute", _on_execute)
