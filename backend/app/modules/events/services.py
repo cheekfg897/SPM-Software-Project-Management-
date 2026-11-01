@@ -2829,6 +2829,79 @@ def reassess_equipment_after_timing_change(
         _return_to_approved(event_request)
 
 
+@dataclass(frozen=True)
+class AppliedChange:
+    """A change applied to an event, and who to tell once it is saved (ADR-0129)."""
+
+    changes: list[FieldChange]
+    #: What Venue Staff are to be told about each arrangement flagged.
+    venue_notices: list[str]
+    was_in_safety_review: bool
+
+
+def _significant_fields(changes: list[FieldChange]) -> list[str]:
+    """The fields among ``changes`` marked significant (SCRUM-33 AC2), in order."""
+    return [change.field for change in changes if change.significant]
+
+
+def _apply_and_reassess(
+    event_request: EventRequest,
+    actor_id: int,
+    data: Mapping[str, Any],
+    *,
+    session: Session,
+) -> AppliedChange:
+    """Apply ``data`` and reassess whatever that unsettles, without committing.
+
+    For both ways an event's details change: the coordinator's direct edit (SCRUM-33)
+    and an approved change request (SCRUM-58), so the two can't drift apart (ADR-0129).
+    The criteria cited are SCRUM-33's. Each change is written to the history as
+    ``actor_id``'s (AC2, AC4). A significant change withdraws a safety approval, naming
+    the significant fields (AC7, :func:`withdraw_safety_approval`), which sends a
+    Confirmed event back to Approved (ADR-0087). Only the venue arrangements the change
+    affects are flagged, each reassessed on its own (AC6, ADR-0094), and in Safety
+    Review a flag sends the event back to Approved (AC9, ADR-0107). A date or time
+    change hands the equipment back to Technical Support
+    (:func:`reassess_equipment_after_timing_change`). All of it rides in the caller's
+    commit, so a saved change never leaves an arrangement unflagged.
+    """
+    attendance_before = event_request.expected_attendance
+    was_in_safety_review = event_request.status is EventRequestStatus.SAFETY_REVIEW
+    changes = _record_field_changes(
+        event_request, actor_id, data, session=session, now=datetime.now(timezone.utc)
+    )
+    significant_fields = _significant_fields(changes)
+    if significant_fields:
+        withdraw_safety_approval(
+            event_request.id,
+            actor_id=actor_id,
+            details={"significant_fields": significant_fields},
+            session=session,
+        )
+    venue_notices = _flag_venue_arrangements(event_request, changes, attendance_before, session)
+    if venue_notices:
+        _return_to_approved(event_request)
+    if _changes_timing(changes):
+        reassess_equipment_after_timing_change(event_request.id, session=session)
+    return AppliedChange(changes, venue_notices, was_in_safety_review)
+
+
+def _tell_of_applied_change(
+    event_request: EventRequest, applied: AppliedChange, session: Session
+) -> None:
+    """Tell whoever a saved change concerns, each notice after its commit (ADR-0015).
+
+    Technical Support, when it could affect their equipment (SCRUM-33 AC2); Venue Staff,
+    about each arrangement flagged (AC6); and every Safety Officer, naming the fields
+    changed, when it is significant and the event was in Safety Review (AC9).
+    """
+    _reassess_arrangements(event_request, applied.changes, session)
+    _tell_venue_staff_of_flags(event_request, applied.venue_notices, session)
+    if applied.was_in_safety_review and _significant_fields(applied.changes):
+        changed_fields = [change.field for change in applied.changes]
+        _tell_safety_officers_of_change(event_request, changed_fields, session)
+
+
 def update_event_request(
     coordinator_id: int | str,
     reference: str,
@@ -2877,38 +2950,13 @@ def update_event_request(
     sess = resolve_session(session)
     event_request = _event_request_editable_by(coordinator_id, reference, sess)
     data = load_or_raise(EditEventRequestSchema(event_request, today=today), payload)
-    attendance_before = event_request.expected_attendance
-    in_safety_review = event_request.status is EventRequestStatus.SAFETY_REVIEW
-    changes = _record_field_changes(
-        event_request,
-        int(coordinator_id),
-        data,
-        session=sess,
-        now=datetime.now(timezone.utc),
-    )
-    if not changes:
+    applied = _apply_and_reassess(event_request, int(coordinator_id), data, session=sess)
+    if not applied.changes:
         return EventEdit(event_request, [])
 
-    significant_fields = [change.field for change in changes if change.significant]
-    if significant_fields:
-        withdraw_safety_approval(
-            event_request.id,
-            actor_id=int(coordinator_id),
-            details={"significant_fields": significant_fields},
-            session=sess,
-        )
-    venue_notices = _flag_venue_arrangements(event_request, changes, attendance_before, sess)
-    if venue_notices:
-        _return_to_approved(event_request)
-    if _changes_timing(changes):
-        reassess_equipment_after_timing_change(event_request.id, session=sess)
     sess.commit()
-    _reassess_arrangements(event_request, changes, sess)
-    _tell_venue_staff_of_flags(event_request, venue_notices, sess)
-    if significant_fields and in_safety_review:
-        changed_fields = [change.field for change in changes]
-        _tell_safety_officers_of_change(event_request, changed_fields, sess)
-    return EventEdit(event_request, changes)
+    _tell_of_applied_change(event_request, applied, sess)
+    return EventEdit(event_request, applied.changes)
 
 
 @dataclass(frozen=True)
