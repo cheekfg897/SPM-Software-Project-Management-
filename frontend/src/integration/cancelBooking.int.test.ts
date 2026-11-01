@@ -2,10 +2,13 @@ import {
   cancelBooking,
   decideBookingRequest,
   fetchBookingRequests,
+  placeBookingHold,
   raiseBookingRequest,
+  withdrawArrangement,
 } from '@/features/booking/api'
 import {
   confirmEvent,
+  editEventRequest,
   fetchEventHistory,
   fetchEventRequest,
   sendToSafetyReview,
@@ -34,7 +37,8 @@ import {
  * booking with a reason (ADR-0117). Its arrangement becomes `cancelled` and the event's others
  * stay (AC1, AC2); an event in Safety Review goes back to `approved` when its pass no longer counts
  * or its last venue went, and otherwise stays, with every Safety Officer told (AC2); Venue Staff
- * are told (AC3); the refusals say which (AC4); the history keeps the reason (AC5).
+ * are told (AC3); the refusals say which (AC4), one while a replacement for the booking waits for
+ * Venue Staff, though not while it is On Hold; the history keeps the reason (AC5).
  *
  * The refusals that need no event of the coordinator's run with the staff account and a new
  * attendee. The rest need a Lead, Venue Staff and a Safety Officer (INTEGRATION_LEAD_*,
@@ -46,6 +50,9 @@ const UNKNOWN_EVENT_REFERENCE = 'EVR-NOSUCH00'
 const UNKNOWN_ARRANGEMENT_ID = 99_999_999
 const REASON = 'The breakout sessions moved into the main hall.'
 const BACK_IN_PLANNING = ' It is back in planning until it can be sent to Safety Review again.'
+const REPLACEMENT_WAITING =
+  'A replacement for this booking is waiting for Venue Staff. Withdraw it first if the event no' +
+  ' longer needs this venue. Approving it will release this booking anyway.'
 
 const canBook = LEAD !== null && VENUE_STAFF !== null
 const canReview = canBook && SAFETY_OFFICER !== null
@@ -69,6 +76,25 @@ async function secondApprovedBooking(reference: string): Promise<number> {
   await signInAs(required(VENUE_STAFF))
   await decideBookingRequest(raised.id, { outcome: 'approved' })
   return raised.id
+}
+
+/**
+ * As the staff account, change the event's venue requirements, which flags its booking (SCRUM-33
+ * AC6), and raise a replacement for it at a new venue for the same period (SCRUM-92). Returns the
+ * replacement's id; it is Pending.
+ */
+async function replacementFor(reference: string, bookingId: number): Promise<number> {
+  const venueId = await newVenue()
+  await signInAs(staffAccount())
+  await editEventRequest(reference, { venue_requirements: 'A stage for the band.' })
+  const replacement = await raiseBookingRequest(reference, {
+    venue_id: venueId,
+    starts_at: `${EVENT_DATE}T09:00:00+08:00`,
+    ends_at: `${EVENT_DATE}T12:00:00+08:00`,
+    purpose: 'Integration replacement',
+    replaces_request_id: bookingId,
+  })
+  return replacement.id
 }
 
 /** As the staff account, cancel the booking with the reason. */
@@ -188,6 +214,35 @@ describe('SCRUM-111 cancelling one approved venue booking against the backend', 
       })
     },
   )
+
+  it.skipIf(!canBook)(
+    'refuses while a replacement for the booking is pending (409), and cancels once the coordinator withdraws it',
+    async () => {
+      const { reference, bookingId } = await eventReadyForSafetyReview()
+      const replacementId = await replacementFor(reference, bookingId)
+
+      const error = await refusal(cancelBooking(reference, bookingId, { reason: REASON }))
+      await withdrawArrangement(reference, replacementId)
+      const cancelled = await cancelBooking(reference, bookingId, { reason: REASON })
+
+      expect(error).toMatchObject({ status: 409, code: 'conflict', message: REPLACEMENT_WAITING })
+      expect(cancelled).toMatchObject({ id: bookingId, status: 'cancelled' })
+    },
+  )
+
+  it.skipIf(!canBook)('cancels while the replacement is On Hold', async () => {
+    const { reference, bookingId } = await eventReadyForSafetyReview()
+    const replacementId = await replacementFor(reference, bookingId)
+    await signInAs(required(VENUE_STAFF))
+    await placeBookingHold(replacementId, { expires_at: `${EVENT_DATE}T08:00:00+08:00` })
+
+    const cancelled = await cancelAsCoordinator(reference, bookingId)
+    // Leave no hold in Venue Staff's queue, which other files read whole.
+    await signInAs(required(VENUE_STAFF))
+    await decideBookingRequest(replacementId, { outcome: 'rejected', reason: REASON })
+
+    expect(cancelled).toMatchObject({ id: bookingId, status: 'cancelled' })
+  })
 
   it.skipIf(!canBook)('answers 404 for another event’s booking', async () => {
     const { reference } = await approvedEvent()
