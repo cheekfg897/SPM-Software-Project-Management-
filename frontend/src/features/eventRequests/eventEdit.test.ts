@@ -1,57 +1,11 @@
-import type { EventRecord } from './api'
 import { changedFields } from './eventEdit'
+import { formWith, RECORD } from './test/recordForm'
 
 /**
  * SCRUM-33 AC1, AC2: what the coordinator's edit form sends. Only what differs from the record
  * goes, so a date moved on its own lets the backend move the end date with it, and a field left
  * as it was is never sent (ADR-0025, ADR-0079).
  */
-
-const RECORD: EventRecord = {
-  reference: 'EVR-7K2M9QXA',
-  status: 'under_review',
-  name: 'Partner Summit',
-  purpose: 'Meet our partners.',
-  description: null,
-  proposed_date: '2026-11-12',
-  end_date: '2026-11-12',
-  start_time: '09:00:00',
-  end_time: '17:00:00',
-  expected_attendance: 250,
-  venue_requirements: 'A main hall for 250.',
-  accessibility_needs: null,
-  equipment_requirements: null,
-  registration_required: false,
-  created_at: '2026-10-06T02:00:00+00:00',
-  programme_notes: 'Keynote at 9:30.',
-  coordinator: null,
-  decision: null,
-  clarifications: [],
-  equipment_lines: [],
-}
-
-/** The form as it opens on RECORD, with `typed` changed. */
-function formWith(typed: Record<string, string> = {}): FormData {
-  const values: Record<string, string> = {
-    description: '',
-    programme_notes: 'Keynote at 9:30.',
-    accessibility_needs: '',
-    internal_planning_notes: '',
-    proposed_date: '2026-11-12',
-    end_date: '2026-11-12',
-    start_time: '09:00',
-    end_time: '17:00',
-    expected_attendance: '250',
-    venue_requirements: 'A main hall for 250.',
-    equipment_requirements: '',
-    ...typed,
-  }
-  const form = new FormData()
-  for (const [name, value] of Object.entries(values)) {
-    form.set(name, value)
-  }
-  return form
-}
 
 describe('SCRUM-33 what the edit form sends', () => {
   it('sends nothing when nothing was changed', () => {

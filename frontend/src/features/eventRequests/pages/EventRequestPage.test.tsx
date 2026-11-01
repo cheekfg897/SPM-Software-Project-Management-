@@ -85,6 +85,7 @@ const EVERYTHING_RECORDED: EventRecord = {
   coordinator: null,
   decision: null,
   clarifications: [],
+  change_requests: [],
   equipment_lines: [
     {
       equipment_type_name: 'Projector',

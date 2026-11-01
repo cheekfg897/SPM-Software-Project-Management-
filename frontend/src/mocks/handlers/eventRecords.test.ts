@@ -51,7 +51,10 @@ const REQUEST_KEYS = [
   'registration_required',
   'created_at',
 ]
-/** The sections the organiser's and the coordinator's record both send (SCRUM-93 AC5). */
+/**
+ * The sections the organiser's and the coordinator's record both send (SCRUM-93 AC5), the
+ * change requests included (SCRUM-56 AC4).
+ */
 const EVERY_RECORD_KEY = [
   'programme_notes',
   'coordinator',
@@ -60,6 +63,7 @@ const EVERY_RECORD_KEY = [
   'equipment_lines',
   'venue_arrangements',
   'safety_outcome',
+  'change_requests',
 ]
 /**
  * What only the organiser's record sends: everything else on it (SCRUM-24 AC10, ADR-0104), but the

@@ -124,6 +124,37 @@ export interface RecordVenueArrangement
   venue_accessibility_features: string[]
 }
 
+/** Where a change request stands: approved and rejected are the coordinator's (SCRUM-57). */
+export type ChangeRequestStatus = 'pending' | 'approved' | 'rejected' | 'withdrawn'
+
+/**
+ * One field a change request asks to change: its value when the request was raised and the one
+ * asked for, in the history's form ("2026-11-20", "10:00:00", a number, text or null).
+ */
+export interface RequestedChange {
+  field: string
+  previous_value: string | number | null
+  requested_value: string | number | null
+}
+
+/**
+ * An organiser's change request as the event's record shows it (SCRUM-56 AC4, ADR-0126). The
+ * withdrawal and its note are null unless it was withdrawn, and the note unless the event's
+ * cancellation withdrew it (AC9).
+ */
+export interface ChangeRequest {
+  id: number
+  status: ChangeRequestStatus
+  changes: RequestedChange[]
+  reason: string
+  /** Null once their account is gone. */
+  raised_by: string | null
+  /** ISO date-times with an offset. */
+  raised_at: string
+  withdrawn_at: string | null
+  withdrawal_note: string | null
+}
+
 /**
  * An event request's record: the request, the coordinator's note the organiser may see, who
  * the coordinator is (null until one is assigned), the decision (null until one is made), the
@@ -139,6 +170,8 @@ export interface EventRecord extends EventRequest {
   decision: Decision | null
   clarifications: Clarification[]
   equipment_lines: (RecordEquipmentLine | SavedEquipmentLine)[]
+  /** Every change request the organiser raised on it, oldest first (SCRUM-56 AC4). */
+  change_requests: ChangeRequest[]
   /** Only on the organiser's record (ADR-0104). */
   internal_planning_notes?: string | null
   /** Every arrangement, in any status (SCRUM-93 AC5, ADR-0104, ADR-0105). */
@@ -379,6 +412,54 @@ export function answerClarification(reference: string, response: string): Promis
     method: 'POST',
     body: { response },
   })
+}
+
+/**
+ * What the organiser asks to change on a submitted event, and why (SCRUM-56 AC2). Only the fields
+ * sent are asked for, as the coordinator's edit sends them: dates "2026-11-20", times "19:00",
+ * business time, and a requirement or the programme notes sent as null to clear it.
+ */
+export interface ChangeRequestDetails extends Pick<
+  EventEditChanges,
+  | 'proposed_date'
+  | 'end_date'
+  | 'start_time'
+  | 'end_time'
+  | 'expected_attendance'
+  | 'venue_requirements'
+  | 'equipment_requirements'
+  | 'programme_notes'
+> {
+  reason: string
+}
+
+function changeRequestsPath(reference: string): string {
+  return `${requestPath(reference)}/change-requests`
+}
+
+/**
+ * Ask for a change to the organiser's own submitted event (SCRUM-56). The event stays as it is;
+ * the request is answered Pending, and the backend tells the coordinator (AC3, AC5).
+ */
+export function raiseChangeRequest(
+  reference: string,
+  details: ChangeRequestDetails,
+): Promise<ChangeRequest> {
+  return apiRequest<ChangeRequest>(changeRequestsPath(reference), {
+    method: 'POST',
+    body: details,
+  })
+}
+
+/** Withdraw the organiser's own Pending change request; there is no body (SCRUM-56 AC8). */
+export function withdrawChangeRequest(
+  reference: string,
+  changeRequestId: number,
+): Promise<ChangeRequest> {
+  return apiRequest<ChangeRequest>(
+    `${changeRequestsPath(reference)}/${String(changeRequestId)}/withdraw`,
+    { method: 'POST' },
+  )
 }
 
 /**

@@ -3,6 +3,8 @@ import type { RequestHandler } from 'msw'
 import { authHandlers, resetMockAccounts } from './auth'
 import { bookingHandlers, resetMockBooking } from './booking'
 import { catalogueHandlers, resetMockCatalogue } from './catalogue'
+import { changeRequestHandlers } from './changeRequests'
+import { resetMockChangeRequests } from './changeRequestStore'
 import { eventRequestHandlers, resetMockEventRequests } from './eventRequests'
 import { eventEditHandlers, resetMockEventEdits } from './eventEdits'
 import { eventRecordSectionHandlers, resetMockEventHistory } from './eventRecordSections'
@@ -31,6 +33,7 @@ export const handlers: RequestHandler[] = [
   ...eventRecordSectionHandlers,
   ...staffEventRecordHandlers,
   ...eventEditHandlers,
+  ...changeRequestHandlers,
   ...notificationHandlers,
   ...bookingHandlers,
   ...equipmentHandlers,
@@ -52,6 +55,7 @@ export function resetMockBackend(): void {
   resetMockEventRequests()
   resetMockEventHistory()
   resetMockEventEdits()
+  resetMockChangeRequests()
   resetMockNotifications()
   resetMockBooking()
   resetMockEquipment()

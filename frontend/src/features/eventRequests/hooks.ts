@@ -18,6 +18,7 @@ import {
   fetchMyEventRequests,
   fetchRegistrants,
   fetchStaffEventRecord,
+  raiseChangeRequest,
   registrantsKey,
   rejectEvent,
   requestClarification,
@@ -29,10 +30,12 @@ import {
   submitEventRequest,
   updateDraftEventRequest,
   updateRegistrationSettings,
+  withdrawChangeRequest,
   WITH_EQUIPMENT_KEY,
   WITH_VENUE_BOOKINGS_KEY,
 } from './api'
 import type {
+  ChangeRequestDetails,
   DecisionChoice,
   EventEditChanges,
   EventRequestDetails,
@@ -186,6 +189,30 @@ export function useUpdateRegistration(reference: string) {
   const refresh = useRefreshEventRequests()
   return useMutation({
     mutationFn: (changes: RegistrationChanges) => updateRegistrationSettings(reference, changes),
+    onSettled: refresh,
+  })
+}
+
+/**
+ * Ask for a change to the organiser's own event (SCRUM-56). Afterwards, raised or refused, the
+ * record is read again: a refusal may mean another request is now waiting (AC7).
+ */
+export function useRaiseChangeRequest(reference: string) {
+  const refresh = useRefreshEventRequests()
+  return useMutation({
+    mutationFn: (details: ChangeRequestDetails) => raiseChangeRequest(reference, details),
+    onSettled: refresh,
+  })
+}
+
+/**
+ * Withdraw one of the organiser's Pending change requests (SCRUM-56 AC8). Afterwards, withdrawn
+ * or refused, the record is read again: a refusal may mean the coordinator has decided it.
+ */
+export function useWithdrawChangeRequest(reference: string) {
+  const refresh = useRefreshEventRequests()
+  return useMutation({
+    mutationFn: (changeRequestId: number) => withdrawChangeRequest(reference, changeRequestId),
     onSettled: refresh,
   })
 }
