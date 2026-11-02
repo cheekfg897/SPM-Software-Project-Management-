@@ -434,6 +434,27 @@ def test_a_booking_still_asking_is_marked_and_one_turned_down_is_not(
     assert flags_on(db_session, turned_down.id) == []
 
 
+def test_an_approved_date_change_leaves_a_booking_on_hold_unmarked_and_unannounced(
+    db_session: Session,
+    breakout_room: Venue,
+    event: EventRequest,
+    main_id: int,
+) -> None:
+    """Saved straight as On Hold: a real hold needs an expiry before this past event."""
+    # On Hold isn't reassessed here: that is SCRUM-109, not in Sprint 4 (ADR-0129).
+    held = raise_booking(breakout_room, event, db_session, expected_occupancy=30, **SECOND_PERIOD)
+    held.status = BookingRequestStatus.ON_HOLD
+    db_session.commit()
+
+    _approve_change(db_session, event, {"proposed_date": "2026-11-08"})
+
+    assert flags_on(db_session, held.id) == []
+    assert reload_request(db_session, held.id).status is BookingRequestStatus.ON_HOLD
+    assert _venue_staff_notices() == [
+        (event.id, f"Venue arrangement {main_id} at Auditorium: {TIMING_REASON}")
+    ]
+
+
 # --------------------------------------------------------------------------
 # AC2 — a booking an earlier rise outgrew is still judged on the next one
 # --------------------------------------------------------------------------
