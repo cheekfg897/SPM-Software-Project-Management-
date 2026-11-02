@@ -111,11 +111,11 @@ NOT_SIGNIFICANT = {"programme_notes": "A panel is added."}
 MOVE_START = {"start_time": "10:00"}
 
 
-def _rise_reason(new: int) -> str:
-    """Why the Auditorium, booked for all 80, needs reconfirming for ``new`` people."""
+def _rise_reason(new: int, *, previous: int = 80, occupancy: int = 80) -> str:
+    """Why a booking, by default the Auditorium for all 80, needs reconfirming."""
     return (
-        f"The event's expected attendance rose from 80 to {new},"
-        " above this arrangement's expected occupancy of 80."
+        f"The event's expected attendance rose from {previous} to {new},"
+        f" above this arrangement's expected occupancy of {occupancy}."
     )
 
 
@@ -149,6 +149,9 @@ def _approve_change(session: Session, event: EventRequest, change: dict[str, Any
     """Raise ``change`` as the Organiser and approve it as the coordinator."""
     change_request_id = _raise_change(session, event, change)
     _decide_change(session, event, change_request_id, {"outcome": "approved"})
+
+
+ApplyChange = Callable[[Session, EventRequest, dict[str, Any]], None]
 
 
 def _notices_to(user_id: int, kind: NotificationKind) -> list[tuple[int, str | None]]:
@@ -221,6 +224,17 @@ def breakout_id(db_session: Session, breakout_room: Venue, event: EventRequest) 
     return approved_arrangement(
         breakout_room, event, db_session, expected_occupancy=30, **SECOND_PERIOD
     )
+
+
+@pytest.fixture(
+    params=[
+        pytest.param(_approve_change, id="approved-change"),
+        pytest.param(edit_event, id="direct-edit"),
+    ]
+)
+def apply_change(request: pytest.FixtureRequest) -> ApplyChange:
+    """Each way an event's details change: they share one reassessment (ADR-0129)."""
+    return request.param
 
 
 @pytest.fixture()
@@ -418,6 +432,162 @@ def test_a_booking_still_asking_is_marked_and_one_turned_down_is_not(
 
     assert flags_on(db_session, pending.id) == [TIMING_FLAG]
     assert flags_on(db_session, turned_down.id) == []
+
+
+# --------------------------------------------------------------------------
+# AC2 — a booking an earlier rise outgrew is still judged on the next one
+# --------------------------------------------------------------------------
+
+
+def test_a_second_rise_above_capacity_marks_the_booking_no_longer_suitable(
+    db_session: Session, event: EventRequest, main_id: int, apply_change: ApplyChange
+) -> None:
+    """Left at 80 with 90 expected, it still counts as holding everyone (SCRUM-59)."""
+    apply_change(db_session, event, {"expected_attendance": 90})
+
+    apply_change(db_session, event, {"expected_attendance": 150})
+
+    assert flags_on(db_session, main_id) == [(RECONFIRM, _rise_reason(90)), CAPACITY_FLAG]
+    assert _venue_staff_notices() == [
+        (event.id, f"Venue arrangement {main_id} at Auditorium: {CAPACITY_REASON}"),
+        (event.id, f"Venue arrangement {main_id} at Auditorium: {_rise_reason(90)}"),
+    ]
+
+
+def test_the_mark_from_a_second_rise_is_committed_even_when_every_notice_fails(
+    db_session: Session,
+    event: EventRequest,
+    main_id: int,
+    apply_change: ApplyChange,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The notices commit too, so with them gone only the change's commit is left."""
+    _lose_every_notice(monkeypatch)
+    apply_change(db_session, event, {"expected_attendance": 90})
+
+    apply_change(db_session, event, {"expected_attendance": 150})
+    db_session.rollback()
+
+    assert flags_on(db_session, main_id) == [(RECONFIRM, _rise_reason(90)), CAPACITY_FLAG]
+
+
+def test_a_second_rise_within_capacity_asks_for_reconfirmation_again_with_its_own_reason(
+    db_session: Session, event: EventRequest, main_id: int, apply_change: ApplyChange
+) -> None:
+    """ADR-0094 decision 6: each later change adds its own row."""
+    apply_change(db_session, event, {"expected_attendance": 90})
+
+    apply_change(db_session, event, {"expected_attendance": 95})
+
+    assert flags_on(db_session, main_id) == [
+        (RECONFIRM, _rise_reason(90)),
+        (RECONFIRM, _rise_reason(95, previous=90)),
+    ]
+
+
+def test_a_smaller_room_stays_untouched_by_the_same_rises(
+    db_session: Session, event: EventRequest, breakout_id: int, apply_change: ApplyChange
+) -> None:
+    apply_change(db_session, event, {"expected_attendance": 90})
+
+    apply_change(db_session, event, {"expected_attendance": 150})
+
+    assert flags_on(db_session, breakout_id) == []
+    assert _venue_staff_notices() == []
+
+
+def test_a_timing_mark_doesnt_make_a_smaller_room_count_as_holding_everyone(
+    db_session: Session,
+    event: EventRequest,
+    main_id: int,
+    breakout_id: int,
+    apply_change: ApplyChange,
+) -> None:
+    apply_change(db_session, event, {"start_time": "09:05"})
+    apply_change(db_session, event, {"expected_attendance": 90})
+
+    apply_change(db_session, event, {"expected_attendance": 150})
+
+    assert flags_on(db_session, breakout_id) == [TIMING_FLAG]
+    assert flags_on(db_session, main_id) == [
+        TIMING_FLAG,
+        (RECONFIRM, _rise_reason(90)),
+        CAPACITY_FLAG,
+    ]
+
+
+def test_a_fall_after_a_rise_adds_no_mark(
+    db_session: Session, event: EventRequest, main_id: int, apply_change: ApplyChange
+) -> None:
+    """85 is still above the 80 booked, but the story's table leaves a fall alone."""
+    apply_change(db_session, event, {"expected_attendance": 90})
+
+    apply_change(db_session, event, {"expected_attendance": 85})
+
+    assert flags_on(db_session, main_id) == [(RECONFIRM, _rise_reason(90))]
+    assert _venue_staff_notices() == [
+        (event.id, f"Venue arrangement {main_id} at Auditorium: {_rise_reason(90)}")
+    ]
+
+
+@pytest.mark.parametrize(
+    ("change", "added"),
+    [
+        pytest.param(MOVE_START, [TIMING_FLAG], id="date-or-time"),
+        pytest.param(NOT_SIGNIFICANT, [], id="not-significant"),
+    ],
+)
+def test_a_change_that_leaves_the_attendance_alone_after_a_rise_adds_no_attendance_mark(
+    db_session: Session,
+    event: EventRequest,
+    main_id: int,
+    apply_change: ApplyChange,
+    change: dict[str, Any],
+    added: list[tuple[str, str]],
+) -> None:
+    apply_change(db_session, event, {"expected_attendance": 90})
+
+    apply_change(db_session, event, change)
+
+    assert flags_on(db_session, main_id) == [(RECONFIRM, _rise_reason(90)), *added]
+
+
+@pytest.mark.parametrize(
+    ("attendance", "flags"),
+    [
+        pytest.param(95, [(RECONFIRM, _rise_reason(95, previous=90, occupancy=90))], id="rises"),
+        pytest.param(150, [CAPACITY_FLAG], id="above-capacity"),
+        pytest.param(85, [], id="falls"),
+    ],
+)
+def test_once_venue_staff_reconfirm_the_booking_the_normal_rule_applies_again(
+    db_session: Session,
+    event: EventRequest,
+    main_id: int,
+    apply_change: ApplyChange,
+    attendance: int,
+    flags: list[tuple[str, str]],
+) -> None:
+    apply_change(db_session, event, {"expected_attendance": 90})
+    _reconfirm_as_listed(db_session, main_id)
+    assert reload_request(db_session, main_id).expected_occupancy == 90
+
+    apply_change(db_session, event, {"expected_attendance": attendance})
+
+    assert flags_on(db_session, main_id) == flags
+
+
+def test_a_smaller_room_the_attendance_fell_below_is_judged_on_the_next_rise(
+    db_session: Session, event: EventRequest, breakout_id: int, apply_change: ApplyChange
+) -> None:
+    """Deliberate (ADR-0094): with 25 expected, a room for 30 holds everyone."""
+    apply_change(db_session, event, {"expected_attendance": 25})
+
+    apply_change(db_session, event, {"expected_attendance": 50})
+
+    assert flags_on(db_session, breakout_id) == [
+        (UNSUITABLE, "Expected attendance of 50 exceeds the venue's capacity of 40.")
+    ]
 
 
 # --------------------------------------------------------------------------

@@ -2896,21 +2896,48 @@ def _outgrown(occupancy: int, attendance_before: int, attendance_now: int) -> bo
     return held_everyone and attendance_now > occupancy
 
 
+def _outgrown_by_change(
+    arrangement: VenueBookingRequest, change: SignificantChange, session: Session | None
+) -> bool:
+    """Whether ``change`` leaves the audience above an arrangement meant to hold it.
+
+    One that held everyone just before the change is judged by :func:`_outgrown`. So is
+    one that held everyone when its period was last set: a booking left at 80 with 90
+    expected still counts as holding everyone until Venue Staff raise it, or a later
+    rise wouldn't flag it (SCRUM-58 AC2, SCRUM-59's occupancy clarification, ADR-0129).
+    Only a rise can do this, so a fall to 85 or a change of time leaves it be (AC5).
+    """
+    from app.modules.events import services as event_services  # circular at import time
+
+    occupancy = arrangement.expected_occupancy
+    if _outgrown(occupancy, change.previous_attendance, change.new_attendance):
+        return True
+    if change.new_attendance <= change.previous_attendance:
+        return False
+    when_arranged = event_services.get_event_when_arranged(
+        arrangement.event_id, arrangement.id, session=session
+    )
+    return _outgrown(occupancy, when_arranged.expected_attendance, change.new_attendance)
+
+
 def _attendance_flag(
-    arrangement: VenueBookingRequest, venue: Venue, change: SignificantChange
+    arrangement: VenueBookingRequest,
+    venue: Venue,
+    change: SignificantChange,
+    session: Session | None,
 ) -> ReassessmentFlag | None:
     """The flag an attendance change leaves on ``arrangement``, if any (ADR-0094).
 
-    Each arrangement is judged by its own occupancy (SCRUM-58 AC5). One whose occupancy
-    covered the whole audience before the change holds everyone, so it must hold the new
-    attendance too. A smaller one, such as a breakout room, is not judged against the
-    event's attendance at all (SCRUM-93 AC3). An arrangement whose occupancy still
-    covers the new attendance is untouched. One that doesn't is no longer suitable when
-    the venue can't hold the new attendance, naming capacity (SCRUM-58 AC2); otherwise
-    Venue Staff reconfirm it for the larger audience.
+    Each arrangement is judged by its own occupancy (SCRUM-58 AC5). One meant to hold
+    the whole audience (:func:`_outgrown_by_change`) must hold the new attendance too. A
+    smaller one, such as a breakout room, is not judged against the event's attendance
+    at all (SCRUM-93 AC3). An arrangement whose occupancy still covers the new
+    attendance is untouched. One that doesn't is no longer suitable when the venue can't
+    hold the new attendance, naming capacity (SCRUM-58 AC2); otherwise Venue Staff
+    reconfirm it for the larger audience.
     """
     occupancy = arrangement.expected_occupancy
-    if not _outgrown(occupancy, change.previous_attendance, change.new_attendance):
+    if not _outgrown_by_change(arrangement, change, session):
         return None
 
     shortfall = _capacity_shortfall(venue, change.new_attendance)
@@ -2925,7 +2952,10 @@ def _attendance_flag(
 
 
 def _reassessment_flags_for(
-    arrangement: VenueBookingRequest, venue: Venue, change: SignificantChange
+    arrangement: VenueBookingRequest,
+    venue: Venue,
+    change: SignificantChange,
+    session: Session | None,
 ) -> list[ReassessmentFlag]:
     """Each reason ``change`` gives to flag ``arrangement``; empty when it has none.
 
@@ -2947,7 +2977,7 @@ def _reassessment_flags_for(
                 reason=VENUE_REQUIREMENTS_CHANGED_REASON,
             )
         )
-    attendance_flag = _attendance_flag(arrangement, venue, change)
+    attendance_flag = _attendance_flag(arrangement, venue, change, session)
     if attendance_flag is not None:
         flags.append(attendance_flag)
     return flags
@@ -2994,7 +3024,7 @@ def flag_arrangements_after_change(
     details = []
     for arrangement in _live_arrangements_of(event_id, session):
         venue = get_venue(arrangement.venue_id, session=session)
-        flags = _reassessment_flags_for(arrangement, venue, change)
+        flags = _reassessment_flags_for(arrangement, venue, change, session)
         if not flags:
             continue
         arrangement.reassessment_flags.extend(flags)
