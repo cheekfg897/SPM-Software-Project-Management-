@@ -100,6 +100,15 @@ export interface BookingDecision {
   outcome: 'approved' | 'rejected'
   /** Required by the backend to reject; left out of the body when not given. */
   reason?: string
+  /**
+   * An alternative Venue Staff may suggest when rejecting (SCRUM-70): another venue, another
+   * period, or both. Each is left out of the body when not given; the backend refuses one sent
+   * with an approval, an inactive venue, and half a period.
+   */
+  suggested_venue_id?: number
+  /** ISO date-times with an offset, in business time. */
+  suggested_starts_at?: string
+  suggested_ends_at?: string
 }
 
 /** A booking request with the details of its event, as Venue Staff and coordinators see it. */
@@ -116,6 +125,13 @@ export interface BookingRequest {
   status: BookingRequestStatus
   /** Why Venue Staff decided as they did; required to reject (SCRUM-43). */
   decision_reason: string | null
+  /**
+   * The alternative Venue Staff suggested when they rejected it, in business time; each is null
+   * when it wasn't suggested (SCRUM-70).
+   */
+  suggested_venue_id: number | null
+  suggested_starts_at: string | null
+  suggested_ends_at: string | null
   /** Venue Staff's progress in preparing the venue, and their notes (SCRUM-84). */
   preparation_status: PreparationStatus
   preparation_notes: string | null

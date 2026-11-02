@@ -3,6 +3,7 @@ import { EmptyState } from '@/components/ui'
 import { LAYOUT_OPTIONS } from '@/config/roomLayouts'
 import { unavailabilityText } from '@/config/unavailabilityCategories'
 import { REASSESSMENT_KIND_LABELS, STATUS_LABELS } from '@/features/booking/constants'
+import { suggestionText } from '@/features/booking/suggestion'
 import { formatDateTime, formatShortDate, formatTimeRange } from '@/lib/formatDate'
 
 import type { RecordVenueArrangement } from '../api'
@@ -50,13 +51,18 @@ function ArrangementFlag({ heading, reasons }: { heading: string; reasons: strin
 
 /**
  * What the venue offers (as the Safety Officer reviews it, SCRUM-97), what the coordinator asked
- * for, Venue Staff's reason, any hold's expiry and each flag with its reason (SCRUM-24 AC9,
- * AC10, SCRUM-93 AC5).
+ * for, Venue Staff's reason and any alternative they suggested (SCRUM-70 AC3), any hold's expiry
+ * and each flag with its reason (SCRUM-24 AC9, AC10, SCRUM-93 AC5).
  */
 function ArrangementDetails({ arrangement }: { arrangement: RecordVenueArrangement }) {
   const hold = holdText(arrangement)
   const reassessments = arrangement.reassessment_flags.map(
     (flag) => `${REASSESSMENT_KIND_LABELS[flag.kind]}: ${flag.reason}`,
+  )
+  const suggestion = suggestionText(
+    arrangement.suggested_venue_name,
+    arrangement.suggested_starts_at,
+    arrangement.suggested_ends_at,
   )
   return (
     <>
@@ -73,6 +79,9 @@ function ArrangementDetails({ arrangement }: { arrangement: RecordVenueArrangeme
       )}
       {arrangement.decision_reason !== null && (
         <p className="text-ink-muted text-sm">Venue Staff: {arrangement.decision_reason}</p>
+      )}
+      {suggestion !== null && (
+        <p className="text-ink-muted text-sm">Suggested instead: {suggestion}</p>
       )}
       {hold !== null && <p className="text-flare text-sm font-medium">{hold}</p>}
       {arrangement.needs_alternative_venue && (

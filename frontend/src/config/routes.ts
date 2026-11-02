@@ -111,6 +111,18 @@ export function replacementRequestPath(
   return `${venueRequestsPath(reference)}?${params.toString()}`
 }
 
+/** The search parameter naming a rejected request whose suggested alternative the form starts from. */
+export const SUGGESTION_PARAM = 'suggestion'
+
+/**
+ * The event's venue requests, its request form started from the alternative Venue Staff suggested
+ * when they rejected one (SCRUM-70 AC4).
+ */
+export function suggestionRequestPath(reference: string, rejectedId: number): string {
+  const params = new URLSearchParams({ [SUGGESTION_PARAM]: String(rejectedId) })
+  return `${venueRequestsPath(reference)}?${params.toString()}`
+}
+
 /** The equipment page for one event, by its EVR- reference. */
 export function eventEquipmentPath(reference: string): string {
   return withReference(ROUTES.EVENT_EQUIPMENT, reference)

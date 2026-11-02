@@ -483,6 +483,15 @@ class VenueBookingRequest(db.Model):  # type: ignore[name-defined]
             postgresql_where=text("status IN ('pending', 'conflicting', 'on_hold')"),
             sqlite_where=text("status IN ('pending', 'conflicting', 'on_hold')"),
         ),
+        # SCRUM-70: a suggested period is whole or absent, and ends after it starts.
+        CheckConstraint(
+            "(suggested_starts_at IS NULL) = (suggested_ends_at IS NULL)",
+            name="ck_venue_booking_requests_suggestion_period_whole",
+        ),
+        CheckConstraint(
+            "suggested_ends_at > suggested_starts_at",
+            name="ck_venue_booking_requests_suggestion_ends_after_start",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -503,6 +512,14 @@ class VenueBookingRequest(db.Model):  # type: ignore[name-defined]
     #: Why Venue Staff decided as they did; required to reject (SCRUM-43 AC6). Who
     #: decided and when are in the event's history entry, as for raising a request.
     decision_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: The alternative Venue Staff suggested when they rejected the request: another
+    #: venue, another period, or both (SCRUM-70 AC1). Advice only: it holds nothing
+    #: (AC5), and a new request raised from it is a request of its own.
+    suggested_venue_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("venues.id"), nullable=True
+    )
+    suggested_starts_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    suggested_ends_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
     status: Mapped[BookingRequestStatus] = mapped_column(
         Enum(
             BookingRequestStatus,

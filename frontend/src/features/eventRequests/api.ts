@@ -111,6 +111,8 @@ export interface RecordVenueArrangement
       | 'justification'
       | 'status'
       | 'decision_reason'
+      | 'suggested_starts_at'
+      | 'suggested_ends_at'
       | 'hold_expires_at'
       | 'needs_alternative_venue'
       | 'unavailability'
@@ -122,6 +124,8 @@ export interface RecordVenueArrangement
   venue_capacity: number
   venue_facilities: string[]
   venue_accessibility_features: string[]
+  /** The venue Venue Staff suggested instead, by name; null when none was (SCRUM-70). */
+  suggested_venue_name: string | null
 }
 
 /** Where a change request stands: approved and rejected are the coordinator's (SCRUM-57). */

@@ -8,7 +8,7 @@ import { toBusinessTimeIso } from '@/lib/businessTime'
 import { toDateTimeInputValue } from '@/lib/formatDate'
 
 import type { BookingRequest, RaiseBookingRequest } from '../api'
-import { useRaiseBookingRequest, useReplacementRequest } from '../hooks'
+import { useRaiseBookingRequest, useReplacementRequest, useSuggestedRequest } from '../hooks'
 import { keepsItsPeriod } from '../replacement'
 import type { ReplacementRequest } from '../replacement'
 
@@ -16,7 +16,10 @@ const PERIOD_HINT = 'In Singapore time.'
 /** While a replacement keeps the flagged booking's date and times (SCRUM-92 AC6, ADR-0108). */
 const LOCKED_PERIOD_HINT = 'Fixed to the booking it replaces. In Singapore time.'
 
-/** What the form starts with: empty, or a replacement's venue and its flagged arrangement's needs. */
+/**
+ * What the form starts with: empty, a replacement's venue and its flagged arrangement's needs, or
+ * a rejected request's suggested alternative and its needs.
+ */
 type FormDefaults = Partial<
   Record<
     'venue_id' | 'starts_at' | 'ends_at' | 'purpose' | 'expected_occupancy' | 'required_layout',
@@ -47,78 +50,125 @@ function requestFrom(form: FormData): RaiseBookingRequest {
   return request
 }
 
+/** What an earlier arrangement asked for: its purpose, occupancy and layout. */
+function needsOf(arrangement: BookingRequest): FormDefaults {
+  return {
+    purpose: arrangement.purpose,
+    expected_occupancy: String(arrangement.expected_occupancy),
+    required_layout: arrangement.required_layout ?? '',
+  }
+}
+
 /**
- * A replacement starts from the venue chosen and the flagged arrangement's period, purpose,
- * occupancy and layout, for the coordinator to check before sending.
+ * A replacement starts from the venue chosen and the flagged arrangement's period and needs
+ * (SCRUM-92 AC6). A request from a suggestion starts from the venue and period Venue Staff
+ * suggested, or the rejected request's own where they suggested none, and its needs (SCRUM-70
+ * AC4). Either way the coordinator checks it before sending.
  */
 function defaultsFor(
   replacement: ReplacementRequest | null,
   replaced: BookingRequest | undefined,
+  suggestedIn: BookingRequest | undefined,
 ): FormDefaults {
-  if (replacement === null) {
-    return {}
-  }
-  if (replaced === undefined) {
+  if (replacement !== null && replaced === undefined) {
     return { venue_id: replacement.venueId }
   }
-  return {
-    venue_id: replacement.venueId,
-    starts_at: toDateTimeInputValue(replaced.starts_at),
-    ends_at: toDateTimeInputValue(replaced.ends_at),
-    purpose: replaced.purpose,
-    expected_occupancy: String(replaced.expected_occupancy),
-    required_layout: replaced.required_layout ?? '',
+  if (replacement !== null && replaced !== undefined) {
+    return {
+      venue_id: replacement.venueId,
+      starts_at: toDateTimeInputValue(replaced.starts_at),
+      ends_at: toDateTimeInputValue(replaced.ends_at),
+      ...needsOf(replaced),
+    }
   }
+  if (suggestedIn !== undefined) {
+    return {
+      venue_id: String(suggestedIn.suggested_venue_id ?? suggestedIn.venue_id),
+      starts_at: toDateTimeInputValue(suggestedIn.suggested_starts_at ?? suggestedIn.starts_at),
+      ends_at: toDateTimeInputValue(suggestedIn.suggested_ends_at ?? suggestedIn.ends_at),
+      ...needsOf(suggestedIn),
+    }
+  }
+  return {}
 }
 
-interface ReplacementNoteProps {
-  /** The flagged arrangement's name: its purpose, or its id when the list doesn't hold it. */
-  name: string
-  /** The backend's messages about the arrangement named, e.g. that it isn't flagged. */
-  errors: string[] | undefined
+interface StartingPointNoteProps {
+  /** What the form started from. */
+  message: string
+  /** The backend's messages about it, e.g. that the arrangement replaced isn't flagged. */
+  errors?: string[] | undefined
+  stopLabel: string
   onStop: () => void
 }
 
-/** Says the request replaces a flagged arrangement, with the backend's word on that link. */
-function ReplacementNote({ name, errors = [], onStop }: ReplacementNoteProps) {
+/** Says what the form started from, with the backend's word on it and a way to start afresh. */
+function StartingPointNote({ message, errors = [], stopLabel, onStop }: StartingPointNoteProps) {
   return (
     <div className="border-line bg-surface-raised space-y-2 rounded-xl border p-4 text-sm">
-      <p className="text-ink">
-        Replacing {name}, whose venue is unavailable. Approving this request releases it.
-      </p>
+      <p className="text-ink">{message}</p>
       {errors.length > 0 && (
         <ul className="text-danger space-y-0.5">
-          {errors.map((message) => (
-            <li key={message}>{message}</li>
+          {errors.map((error) => (
+            <li key={error}>{error}</li>
           ))}
         </ul>
       )}
       <Button variant="ghost" onClick={onStop}>
-        Stop replacing
+        {stopLabel}
       </Button>
     </div>
   )
 }
 
+function replacingMessage(replacement: ReplacementRequest, replaced: BookingRequest | undefined) {
+  const name = replaced?.purpose ?? `arrangement ${replacement.arrangementId}`
+  return `Replacing ${name}, whose venue is unavailable. Approving this request releases it.`
+}
+
+function suggestionMessage(suggestedIn: BookingRequest) {
+  return (
+    `Starting from Venue Staff's suggestion for ${suggestedIn.purpose}. Change anything before ` +
+    'you send it; the rejected request stays until you withdraw it.'
+  )
+}
+
+/** The arrangement the request replaces, if any: the one the URL names, or a rejected replacement's. */
+function replacesIdFor(
+  replacement: ReplacementRequest | null,
+  suggestedIn: BookingRequest | undefined,
+): number | null {
+  if (replacement !== null) {
+    return replacement.arrangementId
+  }
+  return suggestedIn?.replaces_request_id ?? null
+}
+
 /**
  * Raise a venue request for the event, or a replacement for a flagged arrangement when the page
  * URL names one (SCRUM-92 AC6), which keeps the date and times of a booking whose venue is
- * unavailable (ADR-0108). The list beside it is read again once the backend answers.
+ * unavailable (ADR-0108), or a request started from the alternative Venue Staff suggested for a
+ * rejected one (SCRUM-70 AC4), which the coordinator may change, except a rejected replacement's
+ * fixed period. The list beside it is read again
+ * once the backend answers.
  */
 export function BookingRequestForm({ reference }: { reference: string }) {
   const raise = useRaiseBookingRequest(reference)
   const { replacement, replaced, stopReplacing } = useReplacementRequest(reference)
+  const suggestion = useSuggestedRequest(reference)
+  const { suggestedIn, stopUsingSuggestion } = suggestion
   const fieldErrors = fieldErrorsOf(raise.error)
-  const defaults = defaultsFor(replacement, replaced)
-  const periodLocked = keepsItsPeriod(replaced)
+  const defaults = defaultsFor(replacement, replaced, suggestedIn)
+  // A replacement keeps its period, whether raised afresh or from a rejected one's suggestion.
+  const periodLocked = keepsItsPeriod(replaced ?? suggestion.replaced)
   const periodHint = periodLocked ? LOCKED_PERIOD_HINT : PERIOD_HINT
+  const replacesId = replacesIdFor(replacement, suggestedIn)
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const form = event.currentTarget
     const request = requestFrom(new FormData(form))
-    if (replacement !== null) {
-      request.replaces_request_id = replacement.arrangementId
+    if (replacesId !== null) {
+      request.replaces_request_id = replacesId
     }
     raise.mutate(request, {
       onSuccess: () => {
@@ -126,18 +176,30 @@ export function BookingRequestForm({ reference }: { reference: string }) {
         if (replacement !== null) {
           stopReplacing()
         }
+        if (suggestedIn !== undefined) {
+          stopUsingSuggestion()
+        }
       },
     })
   }
 
   return (
-    // Drawn again when the replacement or its arrangement changes, so it starts from them.
+    // Drawn again when what it starts from changes, so it starts from that.
     <form key={JSON.stringify(defaults)} onSubmit={handleSubmit} className="space-y-5">
       {replacement !== null && (
-        <ReplacementNote
-          name={replaced?.purpose ?? `arrangement ${replacement.arrangementId}`}
+        <StartingPointNote
+          message={replacingMessage(replacement, replaced)}
           errors={fieldErrors.replaces_request_id}
+          stopLabel="Stop replacing"
           onStop={stopReplacing}
+        />
+      )}
+      {replacement === null && suggestedIn !== undefined && (
+        <StartingPointNote
+          message={suggestionMessage(suggestedIn)}
+          errors={fieldErrors.replaces_request_id}
+          stopLabel="Stop using the suggestion"
+          onStop={stopUsingSuggestion}
         />
       )}
       <ErrorAlert error={raise.error} />

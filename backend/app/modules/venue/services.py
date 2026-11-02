@@ -1686,6 +1686,11 @@ class ArrangementForRecord:
     status: BookingRequestStatus
     #: Venue Staff's reason for their decision, if they gave one (SCRUM-43).
     decision_reason: str | None
+    #: The alternative suggested with a rejection, beside its reason (SCRUM-70 AC3):
+    #: the venue by name, and the period. Each is ``None`` when it wasn't suggested.
+    suggested_venue_name: str | None
+    suggested_starts_at: datetime | None
+    suggested_ends_at: datetime | None
     #: When an On Hold arrangement's hold expires, or an Expired one's did (SCRUM-93).
     hold_expires_at: datetime | None
     #: Flagged "Needs Alternative Venue": its venue became unavailable (SCRUM-92).
@@ -1720,6 +1725,9 @@ def _arrangement_for_record(
         reassessment_flags.append(
             ReassessmentForRecord(kind=reassessment.kind, reason=reassessment.reason)
         )
+    suggested_venue_name = None
+    if arrangement.suggested_venue_id is not None:
+        suggested_venue_name = get_venue(arrangement.suggested_venue_id, session=session).name
     return ArrangementForRecord(
         venue_name=venue.name,
         venue_location=venue.location,
@@ -1734,6 +1742,9 @@ def _arrangement_for_record(
         justification=arrangement.justification,
         status=arrangement.status,
         decision_reason=arrangement.decision_reason,
+        suggested_venue_name=suggested_venue_name,
+        suggested_starts_at=arrangement.suggested_starts_at,
+        suggested_ends_at=arrangement.suggested_ends_at,
         hold_expires_at=arrangement.hold_expires_at,
         needs_alternative_venue=arrangement.needs_alternative_venue,
         unavailability=unavailability,
@@ -2330,6 +2341,118 @@ def _tell_organiser_of_replacement(approved: VenueBookingRequest, session: Sessi
     )
 
 
+#: SCRUM-70 AC1: a suggestion is advice for a request Venue Staff turn down.
+SUGGESTION_ONLY_WHEN_REJECTING_MESSAGE = (
+    "An alternative can only be suggested when rejecting a request."
+)
+#: SCRUM-70 AC2: an unknown venue is refused the same way, as no active venue.
+SUGGESTED_VENUE_NOT_ACTIVE_MESSAGE = "The suggested venue must be an active venue."
+#: SCRUM-70 AC1: a replacement for a venue that became unavailable keeps the flagged
+#: booking's period (SCRUM-92 AC6, ADR-0108), so another period is no alternative.
+SUGGESTED_PERIOD_LOCKED_MESSAGE = (
+    "A replacement keeps the period of the booking it replaces, so only another venue can"
+    " be suggested."
+)
+#: The payload fields that make up a suggestion, in the order they are reported.
+SUGGESTION_FIELDS = ("suggested_venue_id", "suggested_starts_at", "suggested_ends_at")
+SUGGESTED_PERIOD_FIELDS = ("suggested_starts_at", "suggested_ends_at")
+
+
+def _suggestion_refused(fields: Iterable[str], message: str) -> ValidationError:
+    """A 400 giving ``message`` on each of ``fields``."""
+    details = {}
+    for field in fields:
+        details[field] = [message]
+    return ValidationError("Invalid request.", details=details)
+
+
+def _keeps_its_period(request: VenueBookingRequest, session: Session | None) -> bool:
+    """Whether the request replaces a booking whose venue became unavailable.
+
+    Such a replacement is for the flagged booking's own period (SCRUM-92 AC6,
+    ADR-0108). One flagged only after a change to the event may move (ADR-0100).
+    """
+    if request.replaces_request_id is None:
+        return False
+    replaced = resolve_session(session).get(VenueBookingRequest, request.replaces_request_id)
+    # ``replaces_request_id`` is a foreign key, so the replaced arrangement is always
+    # there; ``is not None`` is only for the type checker, which can't know that.
+    return replaced is not None and replaced.needs_alternative_venue
+
+
+def _check_suggestion(
+    request: VenueBookingRequest, data: Mapping[str, Any], session: Session | None
+) -> None:
+    """Refuse a suggestion the decision can't carry (SCRUM-70 AC1, AC2).
+
+    Only a rejection carries one. The venue must be active; the period is not checked
+    against the venue, its hours or its bookings until a request is raised for it.
+
+    Raises:
+        ValidationError: 400 — on each suggestion field sent with an approval; on
+            ``suggested_venue_id`` for a venue that is unknown or inactive; on the
+            period's fields for a replacement that must keep its period.
+    """
+    given = [field for field in SUGGESTION_FIELDS if data[field] is not None]
+    if not given:
+        return
+    if data["outcome"] is not BookingDecision.REJECTED:
+        raise _suggestion_refused(given, SUGGESTION_ONLY_WHEN_REJECTING_MESSAGE)
+    venue_id = data["suggested_venue_id"]
+    if venue_id is not None:
+        venue = resolve_session(session).get(Venue, venue_id)
+        if venue is None or not venue.is_active:
+            raise _suggestion_refused(["suggested_venue_id"], SUGGESTED_VENUE_NOT_ACTIVE_MESSAGE)
+    if data["suggested_starts_at"] is not None and _keeps_its_period(request, session):
+        raise _suggestion_refused(SUGGESTED_PERIOD_FIELDS, SUGGESTED_PERIOD_LOCKED_MESSAGE)
+
+
+def _suggestion_details(request: VenueBookingRequest) -> dict[str, Any]:
+    """The suggestion as the decision's history entry records it, times in UTC (AC3).
+
+    Only what was suggested, so a decision without one records what it did before.
+    The database keeps the period whole, so its two ends are set together.
+    """
+    details: dict[str, Any] = {}
+    if request.suggested_venue_id is not None:
+        details["suggested_venue_id"] = request.suggested_venue_id
+    starts_at = request.suggested_starts_at
+    ends_at = request.suggested_ends_at
+    if starts_at is not None and ends_at is not None:
+        details["suggested_starts_at"] = as_utc(starts_at).isoformat()
+        details["suggested_ends_at"] = as_utc(ends_at).isoformat()
+    return details
+
+
+#: How the rejection notice names a suggestion, then the reason (SCRUM-70 AC6). The
+#: reason comes last because it is Venue Staff's own words, punctuated or not.
+SUGGESTION_DETAIL = "Suggested instead: {venue} {period}. Reason: {reason}"
+SAME_VENUE = "the same venue"
+SAME_PERIOD = "for the same period"
+
+
+def _decision_detail(request: VenueBookingRequest, session: Session | None) -> str | None:
+    """What the coordinator's notice says about the decision (SCRUM-43 AC6).
+
+    The reason, after any suggestion, so the one rejection notice carries both
+    (SCRUM-70 AC6): the venue by name and the period in business time, for example
+    ``"Suggested instead: Breakout room from 2026-11-03 14:00 to 2026-11-03 17:00.
+    Reason: The hall is being repainted."``.
+    """
+    venue_id = request.suggested_venue_id
+    starts_at = request.suggested_starts_at
+    ends_at = request.suggested_ends_at
+    if venue_id is None and starts_at is None:
+        return request.decision_reason
+    venue = SAME_VENUE
+    if venue_id is not None:
+        venue = get_venue(venue_id, session=session).name
+    period = SAME_PERIOD
+    if starts_at is not None and ends_at is not None:
+        period = f"from {_notice_time(starts_at)} to {_notice_time(ends_at)}"
+    return SUGGESTION_DETAIL.format(venue=venue, period=period, reason=request.decision_reason)
+
+
 def _save_decision(
     request: VenueBookingRequest,
     decision: BookingDecision,
@@ -2360,6 +2483,7 @@ def _save_decision(
             "booking_id": booking.id if booking is not None else None,
             "reason": request.decision_reason,
             "replaces_request_id": request.replaces_request_id,
+            **_suggestion_details(request),
         },
         session=session,
     )
@@ -2394,9 +2518,15 @@ def decide_booking_request(
     event's safety approval, in the same commit (SCRUM-92 AC7, AC10, ADR-0053). For an
     event a venue sent back from Confirmed, the organiser is then told (AC9, ADR-0108).
 
+    A rejection may suggest another venue, another period, or both (SCRUM-70 AC1,
+    ADR-0123). The suggestion is kept on the request and in the history entry, books
+    nothing, and the coordinator's one rejection notice names it (AC5, AC6).
+
     Args:
         request_id: The request's own id, as the queue lists it.
-        payload: Decoded JSON body: ``outcome`` and an optional ``reason``.
+        payload: Decoded JSON body: ``outcome``, an optional ``reason``, and an
+            optional suggestion: ``suggested_venue_id``, ``suggested_starts_at`` and
+            ``suggested_ends_at``.
         decided_by: The deciding Venue Staff user's id, taken from their token.
         session: Database session; defaults to ``db.session``.
 
@@ -2407,7 +2537,9 @@ def decide_booking_request(
         NotFoundError: 404 — no such request.
         ConflictError: 409 — the request was decided already, approving it clashes with
             a booking or live hold (the body names it), or its hold has expired.
-        ValidationError: 400 — payload invalid, or a rejection without a reason.
+        ValidationError: 400 — payload invalid, a rejection without a reason, or a
+            suggestion with an approval, of a venue that is not active, or of another
+            period for a replacement that keeps its period.
     """
     request = _request_to_decide(request_id, session)
     data = load_or_raise(DecideBookingRequestSchema(), payload)
@@ -2417,6 +2549,7 @@ def decide_booking_request(
         raise ValidationError(
             "Invalid request.", details={"reason": [REJECTION_REASON_REQUIRED_MESSAGE]}
         )
+    _check_suggestion(request, data, session)
 
     event = _event_of(request, session)
     booking = None
@@ -2428,12 +2561,15 @@ def decide_booking_request(
         # Rejecting a hold releases the venue at once (SCRUM-75 AC7).
         request.booking.status = BookingStatus.CANCELLED
     request.decision_reason = reason
+    request.suggested_venue_id = data["suggested_venue_id"]
+    request.suggested_starts_at = data["suggested_starts_at"]
+    request.suggested_ends_at = data["suggested_ends_at"]
     _save_decision(request, decision, booking, decided_by=decided_by, session=session)
     _notify_about_booking(
         [event.coordinator_id],
         event,
         _NOTIFICATION_BY_DECISION[decision],
-        detail=reason,
+        detail=_decision_detail(request, session),
         session=session,
     )
     if decision is BookingDecision.APPROVED:

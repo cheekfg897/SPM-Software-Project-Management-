@@ -10,6 +10,7 @@ import { AlternativeVenueNotice } from './AlternativeVenueNotice'
 import { ArrangementActions } from './ArrangementActions'
 import { BookingRequestDetails } from './BookingRequestDetails'
 import { CancelAllArrangements } from './CancelAllArrangements'
+import { SuggestedAlternative } from './SuggestedAlternative'
 
 interface BookingRequestListProps {
   reference: string
@@ -55,6 +56,7 @@ function BookingRequestItem({ reference, request, replaces }: BookingRequestItem
       {request.decision_reason !== null && (
         <p className="text-ink-muted">Reason: {request.decision_reason}</p>
       )}
+      <SuggestedAlternative reference={reference} request={request} />
       {/* Venue Staff prepare a booking once it is approved (SCRUM-84). */}
       {request.status === 'approved' && <PreparationSummary preparation={request} />}
       {needsAnotherVenue(request) && (

@@ -30,6 +30,7 @@ import type {
   RejectFlaggedBooking,
 } from './api'
 import { readReplacementRequest } from './replacement'
+import { readSuggestionId } from './suggestion'
 
 /**
  * What to run after a change to the event's requests: their list is read again, so it shows
@@ -62,23 +63,46 @@ export function useBookingRequests(reference: string) {
   })
 }
 
+/** The event's request with this id, once the event's list holds it; undefined for no id. */
+function useListedRequest(reference: string, id: number | null): BookingRequest | undefined {
+  const requests = useBookingRequests(reference)
+  if (id === null) {
+    return undefined
+  }
+  return requests.data?.find((arrangement) => arrangement.id === id)
+}
+
 /**
  * The replacement the request form is raising, from the page URL, with the flagged arrangement
  * it replaces when the event's list holds it (SCRUM-92 AC6). Stopping drops it from the URL.
  */
 export function useReplacementRequest(reference: string) {
   const [searchParams, setSearchParams] = useSearchParams()
-  const requests = useBookingRequests(reference)
   const replacement = readReplacementRequest(searchParams)
-  let replaced: BookingRequest | undefined
-  if (replacement !== null) {
-    replaced = requests.data?.find((arrangement) => arrangement.id === replacement.arrangementId)
-  }
+  const replaced = useListedRequest(reference, replacement?.arrangementId ?? null)
 
   return {
     replacement,
     replaced,
     stopReplacing: () => setSearchParams(new URLSearchParams()),
+  }
+}
+
+/**
+ * The rejected request whose suggested alternative the request form starts from, from the page
+ * URL, when the event's list holds it (SCRUM-70 AC4), and, if that request was a replacement,
+ * the arrangement it replaces, which may fix its period (SCRUM-92 AC6). Stopping drops it from
+ * the URL.
+ */
+export function useSuggestedRequest(reference: string) {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const suggestedIn = useListedRequest(reference, readSuggestionId(searchParams))
+  const replaced = useListedRequest(reference, suggestedIn?.replaces_request_id ?? null)
+
+  return {
+    suggestedIn,
+    replaced,
+    stopUsingSuggestion: () => setSearchParams(new URLSearchParams()),
   }
 }
 
