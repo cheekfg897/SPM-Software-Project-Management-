@@ -18,9 +18,10 @@ Don't review by hand what CI already checks. Confirm these are green (or run the
 - [ ] **Lint**: `ruff check .` — style, imports, docstrings present, bandit security rules,
       no `date.today()` / naive `datetime.now()`
 - [ ] **Format**: `ruff format --check .`
-- [ ] **Tests + coverage**: `pytest --cov=app` passes and coverage ≥ 90% overall
+- [ ] **Tests + coverage**: `pytest -m "not e2e" --cov=app --cov-branch --cov-fail-under=100`
+      passes (lines and branches, unit tests alone, ADR-0127), and so does `pytest -m e2e`
 - [ ] **Changed lines covered**: the *Changed lines are fully covered* step (`diff-cover`)
-      passes. It checks lines only; changed branches are checked by hand in section 10.
+      passes. It names lines only; a missed branch shows in the `Missing` column.
 - [ ] **Migrations**: one Alembic head; `flask db check` clean; downgrade → upgrade replays
 - [ ] **App boots**: `/health` smoke test passes
 - [ ] **Frontend** (from `frontend/`): `npm run lint`, `npm run format:check`, `npm run typecheck`,
@@ -274,9 +275,8 @@ finding, not a nit.
 - [ ] Config-driven defaults are tested with an unusual value, not by comparing the config key
       with itself.
 - [ ] When an AC fixes the wording of a message, the test asserts that exact text.
-- [ ] **Full coverage of changed code:** CI's `diff-cover` step holds the lines; check the
-      branches by hand. `pytest --cov=app --cov-branch --cov-report=term-missing` shows no
-      `a->b` miss in the changed code, or each gap has a `# pragma: no cover - <reason>`.
+- [ ] **Full coverage:** CI's floor holds every line and branch, on unit tests alone. Each
+      new `# pragma: no cover - <reason>` gives a reason that really holds.
 - [ ] Test names describe the behaviour in a sentence.
 - [ ] Deterministic: no real clock, no real randomness, no sleeps, no dependence on test order.
 - [ ] Side effects that matter are asserted (`add`, `commit`, `rollback` calls).

@@ -4,9 +4,9 @@ Routes stay thin: decode JSON, call a service, serialise the result. All
 validation and business rules live in ``schemas.py`` / ``services.py``; all
 error responses come from the handlers in :mod:`app.common.errors`.
 
-Testing note: the unit suite exercises services and decorators directly rather
-than these route bodies. Registering, logging in and the auth decorators are
-also driven over HTTP by the end-to-end journey in ``tests/e2e`` (ADR-0031).
+Testing note: the unit suite calls these route bodies inside a request context.
+Registering, logging in and the auth decorators are also driven over HTTP by the
+end-to-end journey in ``tests/e2e`` (ADR-0031).
 """
 
 from __future__ import annotations

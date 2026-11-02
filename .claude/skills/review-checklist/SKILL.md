@@ -72,7 +72,8 @@ Run the checks for each part of the repo the change touches. A change can touch 
 ```bash
 ruff check .
 ruff format --check .
-pytest --cov=app --cov-branch --cov-report=term-missing --cov-report=xml --cov-fail-under=90
+pytest -m "not e2e" --cov=app --cov-branch --cov-report=term-missing --cov-report=xml --cov-fail-under=100
+pytest -m e2e
 diff-cover coverage.xml --compare-branch=origin/main --fail-under=100
 ```
 

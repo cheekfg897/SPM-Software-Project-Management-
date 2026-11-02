@@ -256,7 +256,7 @@ The suite is unit tests only, and **Postgres does not need to be running**. Most
 
 ```bash
 cd backend
-pytest --cov=app --cov-report=term-missing
+pytest -m "not e2e" --cov=app --cov-branch --cov-report=term-missing
 ```
 
 Run a single story's tests via its marker:
