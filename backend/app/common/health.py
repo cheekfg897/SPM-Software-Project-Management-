@@ -4,10 +4,9 @@ Answers two questions in one call: is the app serving requests, and can it
 reach its database. Deployment probes, a docker-compose healthcheck and the
 smoke-test step in CI all read it.
 
-That CI step is what covers this route. The unit suite deliberately has no
-Flask test client and mocks the database session (see ``tests/conftest.py``),
-so a route whose whole job is to touch a real database is verified by hitting
-the running app in the pipeline instead.
+That CI step proves the running app answers on a real database, but it only
+ever sees a working one. ``tests/common/test_health.py`` checks both answers,
+including the ``503`` an outage must give.
 
 The body is a status document rather than the ``app.common.errors`` envelope:
 probes read the status code, and this endpoint sits outside the ``/api``
