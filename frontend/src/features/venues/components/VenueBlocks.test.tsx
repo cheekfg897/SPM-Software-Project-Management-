@@ -51,6 +51,28 @@ describe('SCRUM-34 blocking a venue (AC1)', () => {
     expect(blocks[0]).toHaveTextContent('10 Nov, 5:30 pm – 10 Nov, 8:00 pm')
   })
 
+  it('shows a category it has no words for as the backend sent it', async () => {
+    server.use(
+      http.get('/api/venues/1/blocks', () =>
+        HttpResponse.json([
+          {
+            id: 77,
+            venue_id: 1,
+            start_time: '2026-11-10T17:30:00+08:00',
+            end_time: '2026-11-10T20:00:00+08:00',
+            category: 'flood_damage',
+            reason: 'Basement pump failed',
+          },
+        ]),
+      ),
+    )
+    renderApp(MARINA_PAGE, { session: VENUE_STAFF })
+
+    const list = within(await screen.findByRole('list', { name: 'Blocks' }))
+
+    expect(list.getByRole('listitem')).toHaveTextContent('flood_damage')
+  })
+
   it('sends the times as typed, in business time, and the block then shows in the list and the calendar', async () => {
     const requests = recordRequests()
     const { user } = renderApp(MARINA_PAGE, { session: VENUE_STAFF })
