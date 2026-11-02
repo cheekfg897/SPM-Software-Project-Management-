@@ -127,10 +127,9 @@ def test_an_approved_timing_change_reopens_a_line_short_of_its_request(
         pytest.param(
             EventRequestStatus.SAFETY_REVIEW, EventRequestStatus.APPROVED, id="safety-review"
         ),
-        pytest.param(EventRequestStatus.CONFIRMED, EventRequestStatus.CONFIRMED, id="confirmed"),
     ],
 )
-def test_an_approved_timing_change_sends_back_only_an_event_in_safety_review(
+def test_an_approved_timing_change_sends_back_an_event_in_safety_review(
     decide_requested: DecideRequested,
     set_status: Callable[[EventRequestStatus], None],
     reload_event_request: ReloadEventRequest,
@@ -138,7 +137,7 @@ def test_an_approved_timing_change_sends_back_only_an_event_in_safety_review(
     status: EventRequestStatus,
     status_after: EventRequestStatus,
 ) -> None:
-    """SCRUM-33 AC9, as after an edit (ADR-0107); a Confirmed event stays Confirmed."""
+    """SCRUM-33 AC9, as after an edit (ADR-0107). SCRUM-58 AC7 covers Confirmed."""
     set_status(status)
 
     decide_requested(MOVE_START, APPROVE)

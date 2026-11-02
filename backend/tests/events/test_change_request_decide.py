@@ -257,8 +257,8 @@ def test_approving_applies_the_change_in_every_status_one_can_be_raised_in(
 ) -> None:
     """A Confirmed event can't be edited directly, but an approved change applies to it.
 
-    The event stays in its status: what a change does to its arrangements, and so to
-    its status, is SCRUM-58's.
+    With no arrangements and no safety approval here, nothing sends the event back:
+    SCRUM-58's tests cover what a change does when it has them.
     """
     set_status(status)
     raised = raise_change(ORGANISER_ID, {"expected_attendance": 300, "reason": REASON})

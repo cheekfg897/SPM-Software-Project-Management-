@@ -6351,18 +6351,16 @@ def _apply_change_request(
     *,
     session: Session,
     today: date | None,
-) -> list[FieldChange]:
+) -> AppliedChange:
     """Apply what ``change_request`` asks for, without committing (AC2, AC8).
 
     The event must not be over, and no requested field may have moved since the request
     was raised. The requested values are then checked as an edit checks them, against
     the event as it is now, so an approval never saves an event that ends before it
-    starts or is in the past (ADR-0127). Each change is set on the event and written to
-    its history as the coordinator's ``field_changed`` entry, as a direct edit is
-    (ADR-0025). A date or time change hands the equipment back to Technical Support,
-    as a direct edit does (:func:`reassess_equipment_after_timing_change`). An
-    equipment requirements change edits the free text only; the equipment lines stay
-    the coordinator's (SCRUM-37, ADR-0128).
+    starts or is in the past (ADR-0127). Each change is applied and reassessed exactly
+    as a direct edit is (:func:`_apply_and_reassess`, SCRUM-58, ADR-0129). An equipment
+    requirements change edits the free text only; the equipment lines stay the
+    coordinator's (SCRUM-37, ADR-0128).
 
     Raises:
         ChangeRequestNotAllowedError: 409 — the event is completed, cancelled or
@@ -6374,12 +6372,7 @@ def _apply_change_request(
     _check_not_stale(event_request, change_request)
     schema = EditEventRequestSchema(event_request, today=today)
     data = load_or_raise(schema, change_request.requested_values)
-    changes = _record_field_changes(
-        event_request, coordinator_id, data, session=session, now=datetime.now(timezone.utc)
-    )
-    if _changes_timing(changes):
-        reassess_equipment_after_timing_change(event_request.id, session=session)
-    return changes
+    return _apply_and_reassess(event_request, coordinator_id, data, session=session)
 
 
 def _record_decision(
@@ -6436,11 +6429,13 @@ def decide_change_request(
     and before-approval notes); it is refused, and the request left Pending, if a
     requested field has moved since the request was raised (AC8). Rejecting leaves the
     event and its arrangements as they are (AC3). Either way the request closes as
-    Approved or Rejected, with who decided it, when and why (AC6). An approved date or
-    time change hands the equipment back to Technical Support in the same commit, and
-    they are told of an approved change as after a direct edit (SCRUM-60, ADR-0114).
-    Once saved, the Organiser is told the decision and any reason (AC4), and when an
-    approved change moves the date or time, so is every Attendee holding a place (AC7).
+    Approved or Rejected, with who decided it, when and why (AC6). An approved change
+    reassesses what it unsettles in the same commit, as a direct edit does: it withdraws
+    a safety approval, which sends a Confirmed event back to Approved, flags the venue
+    bookings it affects, and hands the equipment back (SCRUM-58, SCRUM-60, ADR-0129).
+    Once saved, the Organiser is told the decision and any reason (AC4), whoever the
+    change concerns is told as after a direct edit, and when an approved change moves
+    the date or time, so is every Attendee holding a place (AC7).
 
     The event's row is locked first, so of two decisions, or a decision and a
     withdrawal, the first wins and the second is refused (AC5, technical note). The
@@ -6477,14 +6472,11 @@ def decide_change_request(
     _check_still_pending(change_request)
     decision = load_or_raise(DecideChangeRequestSchema(), payload)
 
-    changes = []
+    applied = None
     if decision["outcome"] is DecisionOutcome.APPROVED:
-        changes = _apply_change_request(
+        applied = _apply_change_request(
             event_request, change_request, int(coordinator_id), session=sess, today=today
         )
-        # TODO: SCRUM-58 reassesses each of the event's venue bookings against
-        # ``changes`` here, before the commit, as update_event_request does with
-        # _flag_venue_arrangements and withdraw_safety_approval.
     _record_decision(change_request, int(coordinator_id), decision)
     sess.commit()
 
@@ -6495,8 +6487,9 @@ def decide_change_request(
         sess,
         detail=decision["reason"],
     )
-    _reassess_arrangements(event_request, changes, sess)
-    if _changes_timing(changes):
-        _tell_attendees_of_new_period(event_request, sess)
+    if applied is not None:
+        _tell_of_applied_change(event_request, applied, sess)
+        if _changes_timing(applied.changes):
+            _tell_attendees_of_new_period(event_request, sess)
     [shown] = _change_requests_as_shown([change_request], sess)
     return shown
