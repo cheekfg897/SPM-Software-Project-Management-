@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 
 import { coordinatorEventPath, organiserRequestPath, staffEventPath } from '@/config/routes'
@@ -9,25 +9,28 @@ import {
   fetchEventRequest,
   raiseChangeRequest,
 } from '@/features/eventRequests/api'
-import type { RecordVenueArrangement } from '@/features/eventRequests/api'
+import type { RecordVenueArrangement, RequestedChange } from '@/features/eventRequests/api'
 import type { EquipmentReservation } from '@/features/equipment/api'
+import { raiseBookingRequest } from '@/features/booking/api'
 import { MOCK_ACCOUNTS, mockSessionFor, mockTokenFor } from '@/mocks/fixtures/accounts'
 import type { MockAccount } from '@/mocks/fixtures/accounts'
 import { everyArrangementForRecord } from '@/mocks/handlers/booking'
+import { addChangeRequest } from '@/mocks/handlers/changeRequestStore'
 import { errorResponse } from '@/mocks/responses'
 import { server } from '@/mocks/server'
 import { recordRequests } from '@/test/recordRequests'
 import { renderApp } from '@/test/render'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
 
-import { findRegion } from '../test/recordPage'
+import { findRegion, statusShownFor } from '../test/recordPage'
 
 /**
  * SCRUM-57: the event's coordinator reviews the organiser's Pending change request on the event
  * page, beside what the event holds now, its venue arrangements and its reserved equipment
  * (AC1), and approves or rejects it with a reason (AC2, AC3). The decision shows on every record
  * (AC6). Every refusal is the backend's, shown as it comes: a request a later edit overtook
- * (AC8), and the event's own decision while a request is Pending (AC9). The mock in
+ * (AC8), and the event's own decision while a request is Pending (AC9). An approved change shows
+ * what it unsettled (SCRUM-58). The mock in
  * src/mocks/handlers/changeRequests.ts keeps the requests. Omar wrote EVR-7K2M9QXA "Partner
  * Summit" (under review, coordinated by Chloe: 12 Nov, 9:00 am to 5:00 pm, 250 expected). The
  * mock's "now" is 5 Oct, 12:00 pm.
@@ -36,6 +39,10 @@ import { findRegion } from '../test/recordPage'
 const PARTNER_SUMMIT = 'EVR-7K2M9QXA'
 /** The Harbour Gala: its mock arrangements are a dinner, a reception and a withdrawn overflow. */
 const HARBOUR_GALA = 'EVR-BOOK0112'
+/** Chloe's: approved, and Confirmed; each from 9:00 am to 5:00 pm, 80 expected. */
+const CAREERS_FAIR = 'EVR-BOOK0101'
+const TOWN_HALL = 'EVR-BOOK0102'
+const FLAGGED = 'Flagged for re-review'
 const CHLOE = MOCK_ACCOUNTS.coordinator
 const REASON = 'The keynote speaker lands later.'
 const DECIDE = 'Decide the change request'
@@ -243,6 +250,76 @@ describe('SCRUM-57 AC2, AC3, AC6 deciding a change request', () => {
     const listed = await findRegion('Change requests')
     expect(within(listed).getByText('Pending')).toBeInTheDocument()
     expect(within(listed).queryByRole('button')).not.toBeInTheDocument()
+  })
+})
+
+describe('SCRUM-58 what approving a change does to the page', () => {
+  /** A Pending change on Chloe's event, then her page and its decision panel. */
+  async function openWithPending(reference: string, change: RequestedChange) {
+    addChangeRequest(reference, {
+      status: 'pending',
+      changes: [change],
+      reason: REASON,
+      raised_by: 'An Organiser',
+      raised_at: '2026-10-05T12:00:00+08:00',
+      withdrawn_at: null,
+      withdrawal_note: null,
+      decided_by: null,
+      decided_at: null,
+      decision_reason: null,
+    })
+    const { user } = openAs(CHLOE, coordinatorEventPath(reference))
+    return { user, panel: within(await findRegion(DECIDE)) }
+  }
+
+  it('shows the booking flagged, with why, once a new time is approved (AC1)', async () => {
+    sendRequestsAs(mockTokenFor(CHLOE))
+    await raiseBookingRequest(CAREERS_FAIR, {
+      venue_id: 1,
+      purpose: 'Hall',
+      starts_at: '2026-11-10T09:00:00+08:00',
+      ends_at: '2026-11-10T12:00:00+08:00',
+    })
+    const { user, panel } = await openWithPending(CAREERS_FAIR, {
+      field: 'start_time',
+      previous_value: '09:00:00',
+      requested_value: '10:00:00',
+    })
+    expect(screen.queryByRole('list', { name: FLAGGED })).not.toBeInTheDocument()
+
+    await user.click(panel.getByRole('button', { name: 'Approve' }))
+
+    expect(await screen.findByRole('list', { name: FLAGGED })).toHaveTextContent(
+      "The event's date or time changed.",
+    )
+  })
+
+  it('shows a Confirmed event back in Approved once a significant change is approved (AC7)', async () => {
+    const { user, panel } = await openWithPending(TOWN_HALL, {
+      field: 'expected_attendance',
+      previous_value: 80,
+      requested_value: 60,
+    })
+    expect(statusShownFor(TOWN_HALL)).toBe('Confirmed')
+
+    await user.click(panel.getByRole('button', { name: 'Approve' }))
+
+    await waitFor(() => {
+      expect(statusShownFor(TOWN_HALL)).toBe('Approved')
+    })
+  })
+
+  it('keeps a Confirmed event Confirmed once a change to anything else is approved (AC7)', async () => {
+    const { user, panel } = await openWithPending(TOWN_HALL, {
+      field: 'programme_notes',
+      previous_value: null,
+      requested_value: 'A panel is added.',
+    })
+
+    await user.click(panel.getByRole('button', { name: 'Approve' }))
+
+    await within(await findRegion('Change requests')).findByText('Approved')
+    expect(statusShownFor(TOWN_HALL)).toBe('Confirmed')
   })
 })
 

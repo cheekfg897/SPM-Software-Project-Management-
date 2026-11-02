@@ -1,14 +1,25 @@
+import { fetchBookingRequests } from '@/features/booking/api'
 import {
+  confirmEvent,
   decideChangeRequest,
   editEventRequest,
+  fetchEventHistory,
   fetchEventRequest,
   raiseChangeRequest,
+  sendToSafetyReview,
 } from '@/features/eventRequests/api'
 import { apiRequest } from '@/lib/api'
 import { sendRequestsAs } from '@/test/sendRequestsAs'
 
 import { refusal, signInAs, staffAccount } from './backend'
-import { approvedEvent, LEAD } from './plannedEvent'
+import {
+  approvedEvent,
+  eventReadyForSafetyReview,
+  LEAD,
+  SAFETY_OFFICER,
+  safetyApprovedEvent,
+  VENUE_STAFF,
+} from './plannedEvent'
 import type { PlannedEvent } from './plannedEvent'
 
 /**
@@ -16,8 +27,10 @@ import type { PlannedEvent } from './plannedEvent'
  * request, which applies it to the event, or rejects it with a reason, which leaves the event as
  * it was; the record shows who decided it, when and why. A request a later edit overtook, one
  * already decided, and the event's own decision while one is Pending are refused with the codes
- * and messages the page shows. The events come from plannedEvent.ts: approved by the staff
- * account, 09:00 to 17:00, 120 expected. They need the Lead's account to be assigned.
+ * and messages the page shows. An approved change reassesses the venue bookings and any safety
+ * approval, as an edit does (SCRUM-58, ADR-0129). The events come from plannedEvent.ts: approved
+ * by the staff account, 09:00 to 17:00, 120 expected. They need the Lead's account to be assigned,
+ * and those with a booking or a safety check the Venue Staff's and the Safety Officer's.
  */
 
 const REASON = 'Our keynote speaker lands at 9:30.'
@@ -37,6 +50,8 @@ const CHANGE_REQUEST_FIELDS = [
   'withdrawn_at',
 ]
 const hasLead = LEAD !== null
+const needsVenueStaff = !hasLead || VENUE_STAFF === null
+const needsSafetyOfficer = needsVenueStaff || SAFETY_OFFICER === null
 
 /** The organiser asks for a later start on their approved event; the coordinator is then signed in. */
 async function raisedOn(event: PlannedEvent): Promise<number> {
@@ -71,6 +86,53 @@ describe('SCRUM-57 deciding a change request against the backend', () => {
       const record = await fetchEventRequest(event.reference)
       expect(record).toMatchObject({ start_time: '10:00:00', expected_attendance: 150 })
       expect(record.change_requests).toEqual([approved])
+    },
+  )
+
+  it.skipIf(needsVenueStaff)(
+    'flags the booking an approved change affects, and holds the event back (SCRUM-58 AC1, AC3)',
+    async () => {
+      const event = await eventReadyForSafetyReview()
+      const id = await raisedOn(event)
+
+      await decideChangeRequest(event.reference, id, { outcome: 'approved' })
+
+      const [booking] = await fetchBookingRequests(event.reference)
+      expect(booking).toMatchObject({
+        id: event.bookingId,
+        status: 'approved',
+        flagged_after_change: true,
+        reassessment_flags: [
+          { kind: 'requires_reconfirmation', reason: "The event's date or time changed." },
+          {
+            kind: 'requires_reconfirmation',
+            reason:
+              "The event's expected attendance rose from 120 to 150, above this arrangement's " +
+              'expected occupancy of 120.',
+          },
+        ],
+      })
+      const held = await refusal(sendToSafetyReview(event.reference))
+      expect(held).toMatchObject({ status: 409, code: 'safety_review_not_allowed' })
+      expect(held.fieldErrors.venue_arrangements).toHaveLength(2)
+    },
+  )
+
+  it.skipIf(needsSafetyOfficer)(
+    'sends a Confirmed event back to Approved, with its approval withdrawn (SCRUM-58 AC6, AC7)',
+    async () => {
+      const event = await safetyApprovedEvent()
+      await signInAs(staffAccount())
+      await confirmEvent(event.reference)
+      const id = await raisedOn(event)
+
+      await decideChangeRequest(event.reference, id, { outcome: 'approved' })
+
+      const record = await fetchEventRequest(event.reference)
+      expect(record.status).toBe('approved')
+      const { history } = await fetchEventHistory(event.reference)
+      const kinds = history.map((entry) => entry.kind)
+      expect(kinds).toContain('safety_approval_withdrawn')
     },
   )
 

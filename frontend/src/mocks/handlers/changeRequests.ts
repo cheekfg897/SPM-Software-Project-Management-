@@ -45,8 +45,9 @@ import type { LoadedDecision } from './eventReviewRules'
  * ADR-0127), checked in the backend's order: the coordinator and reference (404), the request
  * (404), still Pending (409), the body (400, a reason to reject), then for an approval the
  * event's status (409), a field moved since the request was raised (409) and the values' own
- * rules (400). Approving applies the values as the coordinator's edit; the bookings and
- * equipment it may affect, and the notices, are the backend's alone.
+ * rules (400). Approving applies the values as the coordinator's edit does, flagging the bookings
+ * it affects and withdrawing a safety approval (SCRUM-58, ADR-0129); the equipment it may affect,
+ * and the notices, are the backend's alone.
  */
 
 const REQUESTS_PATH = '/api/events/requests'

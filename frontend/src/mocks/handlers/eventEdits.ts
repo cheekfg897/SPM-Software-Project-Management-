@@ -268,10 +268,14 @@ function historyOf(changes: FieldChange[], actorName: string): EventHistoryEntry
 }
 
 /**
- * Whether the Safety Officer's approval stands (`has_safety_approval`), as the event's planning
- * says. A Confirmed event, which always has one, can't be edited (AC8), so it never gets here.
+ * Whether the Safety Officer's approval stands (`has_safety_approval`). A Confirmed event always
+ * has one, and an approved change request reaches it (SCRUM-58 AC7); otherwise the event's
+ * planning says.
  */
 function hasSafetyApproval(stored: MockEventRequest): boolean {
+  if (stored.request.status === EVENT_REQUEST_STATUS.CONFIRMED) {
+    return true
+  }
   return stored.planning?.isSafetyApproved ?? false
 }
 
@@ -424,13 +428,25 @@ function editRefusal(status: EventRequestStatus): Response | null {
 }
 
 /**
- * Save `values` on the event as the coordinator named: each one that differs from what is saved
- * is set and written to the history as their field_changed entry, as an edit does. Answers what
- * changed. An approved change request applies its values this way (SCRUM-57 AC2).
+ * Save `values` on the event as the coordinator named, and reassess what that unsettles, as the
+ * backend's `_apply_and_reassess` does for an edit and an approved change request alike (SCRUM-57
+ * AC2, SCRUM-58, ADR-0129): each value that differs is set and written to the history as their
+ * field_changed entry, each arrangement it affects is flagged, a safety approval is withdrawn, and
+ * in Safety Review a flag sends the event back to Approved. Answers what changed.
  */
 export function applyAs(coordinatorName: string, stored: MockEventRequest, values: Values) {
+  const attendanceBefore = Number(stored.request.expected_attendance)
   const changes = applyChanges(stored, values)
-  addToHistory(stored.request.reference, historyOf(changes, coordinatorName))
+  const change = significantChangeOf(changes, attendanceBefore, stored)
+  const flaggedAny = flagPlannedArrangements(stored, change)
+  flagArrangementsAfterChange(stored.request.reference, change)
+  addToHistory(stored.request.reference, [
+    ...historyOf(changes, coordinatorName),
+    ...withdrawnSafetyApproval(stored, changes, coordinatorName),
+  ])
+  if (flaggedAny) {
+    returnToApproved(stored)
+  }
   return changes
 }
 
@@ -456,18 +472,7 @@ export const eventEditHandlers: RequestHandler[] = [
       return validationError(refused)
     }
 
-    const attendanceBefore = Number(stored.request.expected_attendance)
-    const changes = applyChanges(stored, values)
-    const change = significantChangeOf(changes, attendanceBefore, stored)
-    const flaggedAny = flagPlannedArrangements(stored, change)
-    flagArrangementsAfterChange(stored.request.reference, change)
-    addToHistory(stored.request.reference, [
-      ...historyOf(changes, coordinator.full_name),
-      ...withdrawnSafetyApproval(stored, changes, coordinator.full_name),
-    ])
-    if (flaggedAny) {
-      returnToApproved(stored)
-    }
+    const changes = applyAs(coordinator.full_name, stored, values)
     return HttpResponse.json({
       ...stored.request,
       programme_notes: stored.record.programme_notes,
