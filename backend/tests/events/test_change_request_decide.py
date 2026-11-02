@@ -245,9 +245,13 @@ def test_approving_records_each_change_in_the_history_as_the_coordinator(
 
 
 @pytest.mark.parametrize(
-    "status", sorted(CHANGE_REQUESTABLE_STATUSES, key=lambda status: status.value)
+    "status",
+    sorted(
+        CHANGE_REQUESTABLE_STATUSES - {EventRequestStatus.CONFIRMED},
+        key=lambda status: status.value,
+    ),
 )
-def test_approving_applies_the_change_in_every_status_one_can_be_raised_in(
+def test_approving_applies_the_change_in_every_status_before_confirmation(
     decide_change: DecideChange,
     raise_change: RaiseChange,
     set_status: Callable[[EventRequestStatus], None],
@@ -255,11 +259,7 @@ def test_approving_applies_the_change_in_every_status_one_can_be_raised_in(
     saved_event_request: EventRequest,
     status: EventRequestStatus,
 ) -> None:
-    """A Confirmed event can't be edited directly, but an approved change applies to it.
-
-    With no arrangements and no safety approval here, nothing sends the event back:
-    SCRUM-58's tests cover what a change does when it has them.
-    """
+    """With no arrangements or safety approval here, nothing sends the event back."""
     set_status(status)
     raised = raise_change(ORGANISER_ID, {"expected_attendance": 300, "reason": REASON})
 
@@ -267,6 +267,27 @@ def test_approving_applies_the_change_in_every_status_one_can_be_raised_in(
 
     saved = reload_event_request(saved_event_request.id)
     assert (saved.status, saved.expected_attendance) == (status, 300)
+
+
+def test_approving_applies_the_change_to_a_confirmed_event_and_sends_it_back(
+    decide_change: DecideChange,
+    raise_change: RaiseChange,
+    approved_for_safety: Callable[[EventRequestStatus], EventRequest],
+    reload_event_request: ReloadEventRequest,
+    saved_event_request: EventRequest,
+) -> None:
+    """A Confirmed event can't be edited directly, but an approved change applies to it.
+
+    It always holds a safety approval, which a significant change withdraws (SCRUM-58
+    AC7).
+    """
+    approved_for_safety(EventRequestStatus.CONFIRMED)
+    raised = raise_change(ORGANISER_ID, {"expected_attendance": 300, "reason": REASON})
+
+    decide_change(COORDINATOR_ID, raised.id, APPROVE)
+
+    saved = reload_event_request(saved_event_request.id)
+    assert (saved.status, saved.expected_attendance) == (EventRequestStatus.APPROVED, 300)
 
 
 def test_an_approved_equipment_requirements_change_edits_the_text_not_the_lines(
