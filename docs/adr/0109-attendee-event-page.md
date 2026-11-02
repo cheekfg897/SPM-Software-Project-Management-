@@ -63,5 +63,5 @@ On 26 Oct the Product Owner reworded two criteria. AC7: "An Attendee sees every 
 
 ## Revisit when
 - SCRUM-61 cancels events, or SCRUM-62 notifies Attendees: their notices link here already, and SCRUM-62 makes the "You will be notified" line true.
-- Change requests (SCRUM-56 to SCRUM-58) send a Confirmed event to another status: decide whether it is "being reviewed" too.
+- ~~Change requests (SCRUM-56 to SCRUM-58) send a Confirmed event to another status: decide whether it is "being reviewed" too.~~ They send it to Approved, which decision 12 already counts ([ADR-0129](0129-reassess-venue-bookings-after-an-approved-change-request.md)).
 - The catalogue's `venue` is filled (ADR-0032): it could reuse `list_booked_venues`.

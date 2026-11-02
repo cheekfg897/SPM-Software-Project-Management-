@@ -118,7 +118,7 @@ two Alembic heads.
 | SCRUM-62 AC2 overlaps SCRUM-57 AC7: both tell Attendees of a date or time change, and 62 also names a venue change. Remove the overlap (deleted, not struck: decision 12) and decide where the venue part lives (review item 3-05) | Cluster 3 owners |
 | Finish SCRUM-32's 17 Oct rework: the coordinator records the response, and remove the Organiser's `/resubmit` | Seth |
 | New ADR for SCRUM-110, superseding ADR-0101 decision 1 | SCRUM-110 owner |
-| ADR-0094 decision 11 should cite SCRUM-58 AC7 | SCRUM-58 owner |
+| ADR-0094 decision 11 should cite SCRUM-58 AC7 | Done with SCRUM-58 |
 | Point the docstring in `tests/e2e/test_registration_journey.py` at SCRUM-58 and 61 | Done in PR #156 |
 
 ## Still open

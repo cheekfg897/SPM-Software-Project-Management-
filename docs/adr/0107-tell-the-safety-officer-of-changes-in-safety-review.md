@@ -43,4 +43,4 @@ What `main` did in Safety Review:
 - The team reads "a venue arrangement that is not Approved" as its status alone, so a flagged arrangement doesn't send the event back (decision 4).
 - The team wants any unsettled arrangement, not only one this change unsettled, to send the event back (decision 4).
 - A Safety Officer is assigned to an event: tell only them (decision 1).
-- SCRUM-58 builds change requests: an approved change request in Safety Review should tell the officer the same way.
+- ~~SCRUM-58 builds change requests: an approved change request in Safety Review should tell the officer the same way.~~ Done by [ADR-0129](0129-reassess-venue-bookings-after-an-approved-change-request.md).
