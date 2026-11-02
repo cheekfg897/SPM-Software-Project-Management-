@@ -77,7 +77,7 @@ LIVE_STATUSES = [
     BookingRequestStatus.APPROVED,
 ]
 #: Every other status, built from the enum so a status added later is checked too. On
-#: Hold is among them until the SCRUM-75 follow-up flags it (ADR-0094 decision 2).
+#: Hold is among them until SCRUM-109 flags it (ADR-0129 decision 10).
 UNFLAGGED_STATUSES = [status for status in BookingRequestStatus if status not in LIVE_STATUSES]
 
 
