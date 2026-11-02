@@ -21,6 +21,8 @@ export interface MockArrangement {
   expectedOccupancy: number
   venueCapacity: number
   reassessmentFlags: readonly ReassessmentFlag[]
+  /** The attendance before the first change since it was arranged; unset until one comes. */
+  attendanceWhenArranged?: number
 }
 
 /** A hall booked for all of an event's 150 guests, in a venue for 200; nothing flagged yet. */

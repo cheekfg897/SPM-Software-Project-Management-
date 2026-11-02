@@ -595,9 +595,14 @@ export function flagArrangementsAfterChange(reference: string, change: Significa
       return existing
     }
     // The backend reads every change since the period was set back from the history (SCRUM-59).
-    drifts.set(existing.id, driftAfter(drifts.get(existing.id), change))
+    const drift = driftAfter(drifts.get(existing.id), change)
+    drifts.set(existing.id, drift)
     const venueCapacity = venues.find((venue) => venue.id === existing.venue_id)?.capacity ?? 0
-    const size = { expectedOccupancy: existing.expected_occupancy, venueCapacity }
+    const size = {
+      expectedOccupancy: existing.expected_occupancy,
+      venueCapacity,
+      attendanceWhenArranged: drift.attendanceBefore,
+    }
     const flags = reassessmentFlagsFor(size, change)
     if (flags.length === 0) {
       return existing

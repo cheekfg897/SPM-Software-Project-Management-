@@ -389,11 +389,16 @@ function flagPlannedArrangements(stored: MockEventRequest, change: SignificantCh
     if (!FLAGGABLE_STATUSES.includes(arrangement.status)) {
       return arrangement
     }
-    const flags = reassessmentFlagsFor(arrangement, change)
+    const attendanceWhenArranged = arrangement.attendanceWhenArranged ?? change.previousAttendance
+    const flags = reassessmentFlagsFor({ ...arrangement, attendanceWhenArranged }, change)
     if (flags.length > 0) {
       flaggedAny = true
     }
-    return { ...arrangement, reassessmentFlags: [...arrangement.reassessmentFlags, ...flags] }
+    return {
+      ...arrangement,
+      attendanceWhenArranged,
+      reassessmentFlags: [...arrangement.reassessmentFlags, ...flags],
+    }
   })
   stored.planning = { ...stored.planning, arrangements }
   return flaggedAny

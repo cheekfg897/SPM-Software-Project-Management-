@@ -118,6 +118,23 @@ describe('SCRUM-57 deciding a change request against the backend', () => {
     },
   )
 
+  it.skipIf(needsVenueStaff)(
+    'marks a booking an earlier rise outgrew when the attendance passes capacity (SCRUM-58 AC2)',
+    async () => {
+      const event = await eventReadyForSafetyReview()
+      const id = await raisedOn(event)
+      await decideChangeRequest(event.reference, id, { outcome: 'approved' })
+
+      await editEventRequest(event.reference, { expected_attendance: 350 })
+
+      const [booking] = await fetchBookingRequests(event.reference)
+      expect(booking?.reassessment_flags.at(-1)).toEqual({
+        kind: 'no_longer_suitable',
+        reason: "Expected attendance of 350 exceeds the venue's capacity of 300.",
+      })
+    },
+  )
+
   it.skipIf(needsSafetyOfficer)(
     'sends a Confirmed event back to Approved, with its approval withdrawn (SCRUM-58 AC6, AC7)',
     async () => {

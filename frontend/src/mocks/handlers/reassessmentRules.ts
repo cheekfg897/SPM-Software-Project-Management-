@@ -33,6 +33,8 @@ export interface SignificantChange {
 export interface ArrangementSize {
   expectedOccupancy: number
   venueCapacity: number
+  /** The attendance when its period was last set (`get_event_when_arranged`, ADR-0129). */
+  attendanceWhenArranged: number
 }
 
 /**
@@ -44,12 +46,28 @@ export function isOutgrown(occupancy: number, attendanceBefore: number, attendan
 }
 
 /**
- * The flag an attendance change leaves, if any (`_attendance_flag`): only an arrangement that held
- * everyone before the change and is now outgrown. It is no longer suitable when its venue can't
- * hold the new attendance, and otherwise needs reconfirming for the larger audience.
+ * Whether `change` leaves the audience above an arrangement meant to hold it (`_outgrown_by_change`):
+ * one that held everyone just before the change, or, when the attendance rose, when its period was
+ * last set (SCRUM-58 AC2, ADR-0129).
+ */
+function isOutgrownByChange(size: ArrangementSize, change: SignificantChange) {
+  const occupancy = size.expectedOccupancy
+  if (isOutgrown(occupancy, change.previousAttendance, change.newAttendance)) {
+    return true
+  }
+  if (change.newAttendance <= change.previousAttendance) {
+    return false
+  }
+  return isOutgrown(occupancy, size.attendanceWhenArranged, change.newAttendance)
+}
+
+/**
+ * The flag an attendance change leaves, if any (`_attendance_flag`): only an arrangement meant to
+ * hold everyone that is now outgrown. It is no longer suitable when its venue can't hold the new
+ * attendance, and otherwise needs reconfirming for the larger audience.
  */
 function attendanceFlag(size: ArrangementSize, change: SignificantChange): ReassessmentFlag | null {
-  if (!isOutgrown(size.expectedOccupancy, change.previousAttendance, change.newAttendance)) {
+  if (!isOutgrownByChange(size, change)) {
     return null
   }
   if (change.newAttendance > size.venueCapacity) {
