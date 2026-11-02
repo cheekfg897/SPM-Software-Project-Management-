@@ -14,7 +14,7 @@ import { errorResponse, notAllowed, notAuthenticated, validationError } from '..
 import { accountForRequest } from './auth'
 import { everyArrangementForRecord, hasActiveArrangement } from './booking'
 import { MOCK_NOW } from './catalogueFixtures'
-import { changeRequestsOf } from './changeRequestStore'
+import { changeRequestsOf, pendingChangeRequestRefusal } from './changeRequestStore'
 import { reservationsForRecord } from './equipmentReservations'
 import { recordLinesOf } from './equipmentLines'
 import { internalNotesOf } from './eventEdits'
@@ -493,7 +493,8 @@ export const eventRequestHandlers: RequestHandler[] = [
       return found.refusal
     }
     const { coordinator, stored } = found
-    const undecidable = undecidableRefusal(stored)
+    const undecidable =
+      undecidableRefusal(stored) ?? pendingChangeRequestRefusal(stored.request.reference)
     if (undecidable !== null) {
       return undecidable
     }

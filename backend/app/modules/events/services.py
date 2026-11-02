@@ -56,6 +56,7 @@ from app.modules.events.models import (
 from app.modules.events.schemas import (
     AMENDABLE_FIELDS,
     AssignCoordinatorSchema,
+    DecideChangeRequestSchema,
     DecideEventRequestSchema,
     EditEquipmentLineSchema,
     EditEventRequestSchema,
@@ -229,6 +230,11 @@ class ChangeRequestAsShown:
     #: When it was withdrawn, and why if the Organiser didn't do it (AC8, AC9).
     withdrawn_at: datetime | None
     withdrawal_note: str | None
+    #: The deciding coordinator's full name, when, and why (SCRUM-57 AC6); ``None``
+    #: until it is decided, and the name once their account is gone.
+    decided_by: str | None = None
+    decided_at: datetime | None = None
+    decision_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -837,16 +843,22 @@ def _change_requests_as_shown(
 ) -> tuple[ChangeRequestAsShown, ...]:
     """``change_requests`` as the record shows them, in the order given (SCRUM-56 AC4).
 
-    The raising Organisers' names are looked up in one query, now, so a removed user
-    shows as ``None`` (as a clarification's do).
+    The names of the Organisers who raised them and the coordinators who decided them
+    (SCRUM-57 AC6) are looked up in one query, now, so a removed user shows as ``None``
+    (as a clarification's do).
     """
-    raiser_ids = set()
+    user_ids = set()
     for change_request in change_requests:
-        raiser_ids.add(change_request.requested_by)
-    names = get_user_full_names(raiser_ids, session=session)
+        user_ids.add(change_request.requested_by)
+        if change_request.decided_by is not None:
+            user_ids.add(change_request.decided_by)
+    names = get_user_full_names(user_ids, session=session)
 
     shown = []
     for change_request in change_requests:
+        decided_by = None
+        if change_request.decided_by is not None:
+            decided_by = names.get(change_request.decided_by)
         shown.append(
             ChangeRequestAsShown(
                 id=change_request.id,
@@ -857,6 +869,9 @@ def _change_requests_as_shown(
                 raised_at=change_request.raised_at,
                 withdrawn_at=change_request.withdrawn_at,
                 withdrawal_note=change_request.withdrawal_note,
+                decided_by=decided_by,
+                decided_at=change_request.decided_at,
+                decision_reason=change_request.decision_reason,
             )
         )
     return tuple(shown)
@@ -1323,6 +1338,38 @@ def _event_request_assigned_to(
     event_request = _event_request_for_staff(reference, session)
     _check_assigned_to(coordinator_id, event_request)
     return event_request
+
+
+def _lock_event_row(event_request: EventRequest, session: Session) -> EventRequest:
+    """``event_request`` read again ``FOR UPDATE``, its row locked until the commit.
+
+    Raising, withdrawing and deciding a change request, and the event's own decisions,
+    take turns this way, so a check made after the lock can't be undone by another of
+    them committing at the same moment: whichever arrives first wins, and the second
+    sees the new state (SCRUM-57 technical note, ADR-0126, ADR-0127).
+    ``populate_existing`` makes the locked read replace the copy the session already
+    holds, as the Lead's assignment does (ADR-0120).
+    """
+    locked = (
+        select(EventRequest)
+        .where(EventRequest.id == event_request.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    return session.scalars(locked).one()
+
+
+def _event_request_assigned_locked(
+    coordinator_id: int | str, reference: str, session: Session
+) -> EventRequest:
+    """The request, if ``coordinator_id`` is its coordinator, with its row locked.
+
+    Raises:
+        NotFoundError: 404 — no such request among the coordinator's own, or it is
+            still a draft (SCRUM-20, ADR-0024).
+    """
+    event_request = _event_request_assigned_to(coordinator_id, reference, session)
+    return _lock_event_row(event_request, session)
 
 
 @dataclass(frozen=True)
@@ -3799,6 +3846,20 @@ CLARIFICATION_OUTSTANDING_MESSAGE = (
 )
 
 
+#: SCRUM-57 AC9: the event's decisions wait for the Organiser's change request, as an
+#: approval waits for a clarification's answer (SCRUM-32 AC3).
+CHANGE_REQUEST_PENDING_MESSAGE = (
+    "The organiser has a change request waiting for your decision. Decide the change request first."
+)
+
+
+class ChangeRequestPendingError(AppError):
+    """The event has a Pending change request to decide first (409, SCRUM-57 AC9)."""
+
+    status_code = 409
+    error_code = "change_request_pending"
+
+
 class RequestNotReviewableError(AppError):
     """The request isn't submitted, so it can't be moved to under review (409)."""
 
@@ -3896,6 +3957,25 @@ def _was_rejected_during_planning(event_request: EventRequest, session: Session)
     return False
 
 
+def _check_no_pending_change_request(event_request: EventRequest, session: Session) -> None:
+    """Refuse a decision on the event while a change request is Pending (SCRUM-57 AC9).
+
+    Approving or rejecting it (SCRUM-31), rejecting it during planning or confirming it
+    (SCRUM-49) waits until the coordinator has decided the request, or the Organiser has
+    withdrawn it. Call it once the event's row is locked, so a request raised while the
+    caller waited is seen (ADR-0127).
+
+    Raises:
+        ChangeRequestPendingError: 409 — the event has a Pending change request.
+    """
+    stmt = select(EventChangeRequest.id).where(
+        EventChangeRequest.event_request_id == event_request.id,
+        EventChangeRequest.status == ChangeRequestStatus.PENDING,
+    )
+    if session.scalar(stmt) is not None:
+        raise ChangeRequestPendingError(CHANGE_REQUEST_PENDING_MESSAGE)
+
+
 def _event_request_decidable_by(
     coordinator_id: int | str, reference: str, session: Session
 ) -> EventRequest:
@@ -3903,7 +3983,8 @@ def _event_request_decidable_by(
 
     A decided request may be decided again only until arrangements exist for it; its
     first decision is never blocked. One rejected during planning may never be decided
-    again (SCRUM-49 AC12, ADR-0106).
+    again (SCRUM-49 AC12, ADR-0106), and none is decided while the Organiser's change
+    request is Pending (SCRUM-57 AC9). The event's row is locked first (ADR-0127).
 
     Raises:
         NotFoundError: 404 — no such request among the coordinator's own; a draft is
@@ -3911,8 +3992,9 @@ def _event_request_decidable_by(
         RequestNotDecidableError: 409 — the request's status doesn't allow a decision.
         DecisionLockedError: 409 — it was rejected during planning, or it is decided
             and has arrangements.
+        ChangeRequestPendingError: 409 — it has a Pending change request.
     """
-    event_request = _event_request_assigned_to(coordinator_id, reference, session)
+    event_request = _event_request_assigned_locked(coordinator_id, reference, session)
     if event_request.status not in DECIDABLE_STATUSES:
         raise RequestNotDecidableError(NOT_DECIDABLE_MESSAGE)
     is_rejected = event_request.status is EventRequestStatus.REJECTED
@@ -3920,6 +4002,7 @@ def _event_request_decidable_by(
         raise DecisionLockedError(PLANNING_REJECTION_FINAL_MESSAGE)
     if event_request.status in DECIDED_STATUSES and _has_arrangements(event_request, session):
         raise DecisionLockedError(DECISION_LOCKED_MESSAGE)
+    _check_no_pending_change_request(event_request, session)
     return event_request
 
 
@@ -4016,8 +4099,10 @@ def decide_event_request(
     the history and the latest is current (AC8). Once saved, the organiser who
     submitted the request is notified, with the reason (AC10); a failure there is
     logged, not raised (ADR-0015). A request awaiting clarification may be rejected
-    but not approved (SCRUM-32 AC3, ADR-0029). The checks run in this order: the
-    reference, the coordinator, the status, the lock, the payload, then the
+    but not approved (SCRUM-32 AC3, ADR-0029), and none is decided while the
+    Organiser's change request is Pending (SCRUM-57 AC9). The event's row is locked
+    first (ADR-0127). The checks run in this order: the reference, the coordinator, the
+    status, the decision lock, the Pending change request, the payload, then the
     outstanding clarification.
 
     Args:
@@ -4041,6 +4126,7 @@ def decide_event_request(
             decision.
         ClarificationOutstandingError: 409 — an approval while a clarification
             request is outstanding.
+        ChangeRequestPendingError: 409 — the event has a Pending change request.
     """
     sess = resolve_session(session)
     event_request = _event_request_decidable_by(coordinator_id, reference, sess)
@@ -5653,7 +5739,8 @@ def confirm_event_request(
     request an outcome; an event with no equipment requests passes that check (AC2).
     The ``confirmed`` status and an ``event_confirmed`` history entry naming the
     coordinator are saved in one commit. The organiser who submitted the request is
-    told afterwards (AC12, ADR-0015).
+    told afterwards (AC12, ADR-0015). The event's row is locked first, and it isn't
+    confirmed while the Organiser's change request is Pending (SCRUM-57 AC9, ADR-0127).
 
     Args:
         coordinator_id: The caller's user id, taken from their token.
@@ -5668,11 +5755,13 @@ def confirm_event_request(
         EventConfirmationNotAllowedError: 409 — the event isn't in Safety Review, or
             an approval is missing; ``details`` names each gap under ``safety_check``,
             ``venue_arrangements`` and ``equipment``.
+        ChangeRequestPendingError: 409 — the event has a Pending change request.
     """
     sess = resolve_session(session)
-    event_request = _event_request_assigned_to(coordinator_id, reference, sess)
+    event_request = _event_request_assigned_locked(coordinator_id, reference, sess)
     if event_request.status is not EventRequestStatus.SAFETY_REVIEW:
         raise EventConfirmationNotAllowedError(NOT_IN_SAFETY_REVIEW_FOR_CONFIRMATION_MESSAGE)
+    _check_no_pending_change_request(event_request, sess)
 
     held_back = {}
     if not has_safety_approval(event_request.id, session=sess):
@@ -5759,8 +5848,10 @@ def reject_event_during_planning(
     a cancelled event (SCRUM-61, ADR-0093); its open equipment requests close with the
     status (SCRUM-48 AC8). The organiser who submitted the request is told afterwards,
     with the reason, and every Venue Staff user about each booking or hold released
-    (ADR-0015, ADR-0103). The checks run in this order: the reference, the
-    coordinator, the status, then the payload.
+    (ADR-0015, ADR-0103). The event's row is locked first, and it isn't rejected while
+    the Organiser's change request is Pending (SCRUM-57 AC9, ADR-0127). The checks run
+    in this order: the reference, the coordinator, the status, the Pending change
+    request, then the payload.
 
     Args:
         coordinator_id: The caller's user id, taken from their token.
@@ -5776,11 +5867,13 @@ def reject_event_during_planning(
         EventRejectionNotAllowedError: 409 — the event isn't Approved or in Safety
             Review.
         ValidationError: 400 — no reason, or a field the body may not carry.
+        ChangeRequestPendingError: 409 — the event has a Pending change request.
     """
     sess = resolve_session(session)
-    event_request = _event_request_assigned_to(coordinator_id, reference, sess)
+    event_request = _event_request_assigned_locked(coordinator_id, reference, sess)
     if event_request.status not in PLANNING_STATUSES:
         raise EventRejectionNotAllowedError(NOT_IN_PLANNING_FOR_REJECTION_MESSAGE)
+    _check_no_pending_change_request(event_request, sess)
     rejection = load_or_raise(RejectEventSchema(), payload)
 
     from app.modules.venue import services as venue_services  # circular at import time
@@ -5862,11 +5955,9 @@ def _own_event_locked(organiser_id: int | str, reference: str, session: Session)
     Looked up as the Organiser's record is, so another organisation's event is the
     same 404 as an unknown reference (ADR-0012), and an Organiser with no organisation
     is refused (ADR-0020). A colleague can see the event, so they are told it isn't
-    theirs rather than that it doesn't exist (AC6). The row is then read again
-    ``FOR UPDATE``: raising and withdrawing take turns with each other and with the
-    event's own decisions, so a check made below can't be undone by another action
-    committing at the same moment. ``populate_existing`` makes the locked read replace
-    the copy the session already holds, as the Lead's assignment does (ADR-0120).
+    theirs rather than that it doesn't exist (AC6). The row is then locked
+    (:func:`_lock_event_row`): raising and withdrawing take turns with each other and
+    with the event's own decisions.
 
     Raises:
         OrganiserWithoutOrganisationError: 403 — the organiser has no organisation.
@@ -5876,13 +5967,7 @@ def _own_event_locked(organiser_id: int | str, reference: str, session: Session)
     event_request = get_event_request_for_organiser(organiser_id, reference, session=session)
     if event_request.organiser_id != int(organiser_id):
         raise NotEventOrganiserError(NOT_THE_EVENTS_ORGANISER_MESSAGE)
-    locked = (
-        select(EventRequest)
-        .where(EventRequest.id == event_request.id)
-        .with_for_update()
-        .execution_options(populate_existing=True)
-    )
-    return session.scalars(locked).one()
+    return _lock_event_row(event_request, session)
 
 
 def _check_change_can_be_requested(event_request: EventRequest) -> None:
@@ -6104,3 +6189,266 @@ def withdraw_pending_change_request_on_cancel(
     if pending is None:
         return
     _mark_withdrawn(pending, CANCELLED_WITHDRAWAL_NOTE)
+
+
+# --------------------------------------------------------------------------
+# SCRUM-57 — review and decide a change request
+# --------------------------------------------------------------------------
+
+CHANGE_REQUEST_NOT_DECIDABLE_MESSAGE = (
+    "Only a pending change request can be decided; this one is {status}."
+)
+#: An event that is over ran, or won't run, as it was (ADR-0127).
+CHANGE_NOT_APPLICABLE_MESSAGE = (
+    "A change can't be applied to a {status} event. Reject the change request instead."
+)
+#: AC8: the message names each field that has moved, with its value then and now.
+STALE_CHANGE_REQUEST_MESSAGE = (
+    "This change request can't be approved because the event has changed since it was "
+    "raised. {fields} Reject it, and the organiser can raise a new one."
+)
+STALE_FIELD_MESSAGE = "{field}: {then} when the change was requested, {now} now."
+#: How a field with no value is named in a message.
+BLANK_VALUE = "blank"
+#: What each registered Attendee is told of an approved change of date or time (AC7).
+EVENT_RESCHEDULED_DETAIL = "{event} now runs from {starts} to {ends}."
+#: The change request's status for each of the coordinator's outcomes (AC6).
+CHANGE_REQUEST_STATUS_BY_OUTCOME: dict[DecisionOutcome, ChangeRequestStatus] = {
+    DecisionOutcome.APPROVED: ChangeRequestStatus.APPROVED,
+    DecisionOutcome.REJECTED: ChangeRequestStatus.REJECTED,
+}
+#: What the Organiser is told for each outcome (AC4).
+CHANGE_DECISION_NOTIFICATION_KINDS: dict[DecisionOutcome, NotificationKind] = {
+    DecisionOutcome.APPROVED: NotificationKind.CHANGE_REQUEST_APPROVED,
+    DecisionOutcome.REJECTED: NotificationKind.CHANGE_REQUEST_REJECTED,
+}
+
+
+class ChangeRequestStaleError(AppError):
+    """A field the request changes has moved since it was raised (409, SCRUM-57 AC8)."""
+
+    status_code = 409
+    error_code = "change_request_stale"
+
+
+def _check_still_pending(change_request: EventChangeRequest) -> None:
+    """Refuse a request already decided or withdrawn, naming its status (AC5).
+
+    Raises:
+        ChangeRequestNotPendingError: 409 — it is no longer Pending.
+    """
+    if change_request.status is not ChangeRequestStatus.PENDING:
+        status = change_request.status.value
+        raise ChangeRequestNotPendingError(
+            CHANGE_REQUEST_NOT_DECIDABLE_MESSAGE.format(status=status)
+        )
+
+
+def _check_change_can_be_applied(event_request: EventRequest) -> None:
+    """Refuse to apply a change to an event that is over (ADR-0127).
+
+    A change applies in every status one can be raised in, a Confirmed event included,
+    though it can't be edited directly (SCRUM-57's Confirmed event note).
+
+    Raises:
+        ChangeRequestNotAllowedError: 409 — the event is completed, cancelled or
+            rejected.
+    """
+    if event_request.status not in CHANGE_REQUESTABLE_STATUSES:
+        message = CHANGE_NOT_APPLICABLE_MESSAGE.format(status=event_request.status.value)
+        raise ChangeRequestNotAllowedError(message)
+
+
+def _value_in_words(field: str, value: HistoryValue) -> str:
+    """A field's value as a message says it: a time to the minute, nothing as blank."""
+    if value is None:
+        return BLANK_VALUE
+    if field in ("start_time", "end_time"):
+        return time.fromisoformat(str(value)).strftime("%H:%M")
+    return str(value)
+
+
+def _check_not_stale(event_request: EventRequest, change_request: EventChangeRequest) -> None:
+    """Refuse a request whose fields have moved since it was raised (AC8, ADR-0127).
+
+    Each requested field's value now is compared with the one kept when the request was
+    raised, so an approval never overwrites a later edit. A field changed and changed
+    back is not stale.
+
+    Raises:
+        ChangeRequestStaleError: 409 — naming each such field, in the request's order,
+            with its value then and now.
+    """
+    stale_fields = []
+    for field, value_then in change_request.previous_values.items():
+        value_now = _as_history_value(getattr(event_request, field))
+        if value_now == value_then:
+            continue
+        stale_fields.append(
+            STALE_FIELD_MESSAGE.format(
+                field=_fields_in_words([field]).capitalize(),
+                then=_value_in_words(field, value_then),
+                now=_value_in_words(field, value_now),
+            )
+        )
+    if stale_fields:
+        message = STALE_CHANGE_REQUEST_MESSAGE.format(fields=" ".join(stale_fields))
+        raise ChangeRequestStaleError(message)
+
+
+def _apply_change_request(
+    event_request: EventRequest,
+    change_request: EventChangeRequest,
+    coordinator_id: int,
+    *,
+    session: Session,
+    today: date | None,
+) -> list[FieldChange]:
+    """Apply what ``change_request`` asks for, without committing (AC2, AC8).
+
+    The event must not be over, and no requested field may have moved since the request
+    was raised. The requested values are then checked as an edit checks them, against
+    the event as it is now, so an approval never saves an event that ends before it
+    starts or is in the past (ADR-0127). Each change is set on the event and written to
+    its history as the coordinator's ``field_changed`` entry, as a direct edit is
+    (ADR-0025). A date or time change hands the equipment back to Technical Support,
+    as a direct edit does (:func:`reassess_equipment_after_timing_change`). An
+    equipment requirements change edits the free text only; the equipment lines stay
+    the coordinator's (SCRUM-37, ADR-0128).
+
+    Raises:
+        ChangeRequestNotAllowedError: 409 — the event is completed, cancelled or
+            rejected.
+        ChangeRequestStaleError: 409 — a requested field has moved since.
+        ValidationError: 400 — a requested value no longer fits the event.
+    """
+    _check_change_can_be_applied(event_request)
+    _check_not_stale(event_request, change_request)
+    schema = EditEventRequestSchema(event_request, today=today)
+    data = load_or_raise(schema, change_request.requested_values)
+    changes = _record_field_changes(
+        event_request, coordinator_id, data, session=session, now=datetime.now(timezone.utc)
+    )
+    if _changes_timing(changes):
+        reassess_equipment_after_timing_change(event_request.id, session=session)
+    return changes
+
+
+def _record_decision(
+    change_request: EventChangeRequest, coordinator_id: int, decision: Mapping[str, Any]
+) -> None:
+    """Close ``change_request`` with the coordinator's decision, without committing."""
+    change_request.status = CHANGE_REQUEST_STATUS_BY_OUTCOME[decision["outcome"]]
+    change_request.decided_at = datetime.now(timezone.utc)
+    change_request.decided_by = coordinator_id
+    change_request.decision_reason = decision["reason"]
+
+
+def _period_in_words(event_request: EventRequest) -> str:
+    """The event's period as a notice says it, in business time (ADR-0002)."""
+    starts = f"{event_request.proposed_date.isoformat()} {event_request.start_time:%H:%M}"
+    ends = f"{event_request.end_date.isoformat()} {event_request.end_time:%H:%M}"
+    return EVENT_RESCHEDULED_DETAIL.format(event=event_request.name, starts=starts, ends=ends)
+
+
+def _tell_attendees_of_new_period(event_request: EventRequest, session: Session) -> None:
+    """Tell everyone holding a place at the event its new date or time (AC7).
+
+    After the decision's own commit (ADR-0015). Who holds a place is the registration
+    module's to say (module boundary); an Attendee who withdrew isn't told.
+    """
+    # Imported here because the registration module imports this one for event facts.
+    from app.modules.registration.services import list_registered_attendee_ids
+
+    attendee_ids = list_registered_attendee_ids(event_request.id, session=session)
+    _raise_notifications(
+        attendee_ids,
+        event_request,
+        NotificationKind.EVENT_RESCHEDULED,
+        session,
+        detail=_period_in_words(event_request),
+    )
+
+
+def decide_change_request(
+    coordinator_id: int | str,
+    reference: str,
+    change_request_id: int,
+    payload: Mapping[str, Any] | None,
+    *,
+    session: Session | None = None,
+    today: date | None = None,
+) -> ChangeRequestAsShown:
+    """Approve or reject a Pending change request on the caller's event (SCRUM-57).
+
+    Only the event's assigned coordinator may (ADR-0127). The body is ``outcome``,
+    ``approved`` or ``rejected``, and a ``reason``, required to reject (AC3). Approving
+    applies the requested values, each one written to the event's history as the
+    coordinator's change (AC2), in every status a change can be raised in (the Confirmed
+    and before-approval notes); it is refused, and the request left Pending, if a
+    requested field has moved since the request was raised (AC8). Rejecting leaves the
+    event and its arrangements as they are (AC3). Either way the request closes as
+    Approved or Rejected, with who decided it, when and why (AC6). An approved date or
+    time change hands the equipment back to Technical Support in the same commit, and
+    they are told of an approved change as after a direct edit (SCRUM-60, ADR-0114).
+    Once saved, the Organiser is told the decision and any reason (AC4), and when an
+    approved change moves the date or time, so is every Attendee holding a place (AC7).
+
+    The event's row is locked first, so of two decisions, or a decision and a
+    withdrawal, the first wins and the second is refused (AC5, technical note). The
+    checks run in this order: the reference, the coordinator, the change request, its
+    status, the payload, then for an approval the event's status, the stale check and
+    the requested values.
+
+    Args:
+        coordinator_id: The caller's user id, taken from their token.
+        reference: The event's ``EVR-…`` reference; case and surrounding spaces are
+            ignored.
+        change_request_id: The change request's id, as the record shows it.
+        payload: Decoded JSON body: ``outcome`` and ``reason``.
+        session: Database session; defaults to ``db.session``.
+        today: Reference date for the "not in the past" rule; defaults to today in the
+            business timezone.
+
+    Returns:
+        The change request, now Approved or Rejected, as the record shows it.
+
+    Raises:
+        NotFoundError: 404 — no such event among the coordinator's own, or no such
+            change request on it.
+        ChangeRequestNotPendingError: 409 — it was already decided or withdrawn.
+        ValidationError: 400 — the payload is invalid, a rejection has no reason, or a
+            requested value no longer fits the event.
+        ChangeRequestNotAllowedError: 409 — approving a change to an event that is
+            completed, cancelled or rejected.
+        ChangeRequestStaleError: 409 — approving a request a field has moved away from.
+    """
+    sess = resolve_session(session)
+    event_request = _event_request_assigned_locked(coordinator_id, reference, sess)
+    change_request = _change_request_of_event(event_request, change_request_id, sess)
+    _check_still_pending(change_request)
+    decision = load_or_raise(DecideChangeRequestSchema(), payload)
+
+    changes = []
+    if decision["outcome"] is DecisionOutcome.APPROVED:
+        changes = _apply_change_request(
+            event_request, change_request, int(coordinator_id), session=sess, today=today
+        )
+        # TODO: SCRUM-58 reassesses each of the event's venue bookings against
+        # ``changes`` here, before the commit, as update_event_request does with
+        # _flag_venue_arrangements and withdraw_safety_approval.
+    _record_decision(change_request, int(coordinator_id), decision)
+    sess.commit()
+
+    _raise_notifications(
+        [event_request.organiser_id],
+        event_request,
+        CHANGE_DECISION_NOTIFICATION_KINDS[decision["outcome"]],
+        sess,
+        detail=decision["reason"],
+    )
+    _reassess_arrangements(event_request, changes, sess)
+    if _changes_timing(changes):
+        _tell_attendees_of_new_period(event_request, sess)
+    [shown] = _change_requests_as_shown([change_request], sess)
+    return shown

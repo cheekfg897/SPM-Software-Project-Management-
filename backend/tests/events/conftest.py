@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator
 from datetime import UTC, date, datetime, time, timezone
+from itertools import chain, repeat
 from types import ModuleType
 from typing import Any
 from unittest.mock import MagicMock
@@ -16,7 +17,7 @@ from sqlalchemy.orm import ORMExecuteState, Session
 
 from app.modules.auth.models import User
 from app.modules.auth.permissions import ALL_ROLES, Role
-from app.modules.equipment.models import EquipmentReservation, EquipmentType
+from app.modules.equipment.models import EquipmentReservation, EquipmentType, PreparationStatus
 from app.modules.equipment.services import reserve_equipment
 from app.modules.events import routes
 from app.modules.events.models import (
@@ -37,6 +38,7 @@ from app.modules.events.services import (
     EventRecord,
     OrganiserEventRecord,
     assign_coordinator_to_request,
+    decide_change_request,
     decide_event_request,
     get_event_record_for_coordinator,
     get_event_record_for_organiser,
@@ -57,7 +59,15 @@ from app.modules.notifications.services import (
 )
 from app.modules.venue.models import BookingRequestStatus, Venue, VenueBookingRequest
 from tests.conftest import ReserveAndReview, approve_safety
-from tests.events.cases import DRAFT_REFERENCE, LEAD_ID, AddLine, Arrange, SaveArrangement
+from tests.events.cases import (
+    DRAFT_REFERENCE,
+    LEAD_ID,
+    RESERVED_FROM,
+    RESERVED_TO,
+    AddLine,
+    Arrange,
+    SaveArrangement,
+)
 
 #: What ``on_event_row_lock`` runs while the event's row is being locked (SCRUM-56).
 LockAction = Callable[[Connection], None]
@@ -553,6 +563,22 @@ def reassign(
 
 
 @pytest.fixture()
+def decidable_by_mock_session(
+    mock_session: MagicMock, make_event_request: Callable[..., EventRequest]
+) -> EventRequest:
+    """Make ``mock_session`` find ``EVR-AAAAAAAA``, coordinator 3's, ready to decide.
+
+    The request by its reference, then locked; every later lookup finds nothing, so
+    it has no Pending change request (SCRUM-57 AC9) or outstanding clarification.
+    Returns the request.
+    """
+    event_request = make_event_request(coordinator_id=3)
+    mock_session.scalar.side_effect = chain([event_request], repeat(None))
+    mock_session.scalars.return_value.one.return_value = event_request
+    return event_request
+
+
+@pytest.fixture()
 def reassignment_lookups(
     mock_session: MagicMock,
     make_event_request: Callable[..., EventRequest],
@@ -899,6 +925,29 @@ def projectors_without_a_line(
 
 
 @pytest.fixture()
+def reserve(
+    equipment_type: EquipmentType, save: Callable[..., None]
+) -> Callable[[EventRequest], EquipmentReservation]:
+    """Save four projectors for ``event``, reserved by user 5, half of them tested."""
+
+    def _reserve(event: EventRequest) -> EquipmentReservation:
+        reservation = EquipmentReservation(
+            event_id=event.id,
+            equipment_type_id=equipment_type.id,
+            quantity=4,
+            starts_at=RESERVED_FROM,
+            ends_at=RESERVED_TO,
+            reserved_by=5,
+        )
+        reservation.preparation_status = PreparationStatus.IN_PROGRESS
+        reservation.preparation_notes = "Two of four tested."
+        save(reservation)
+        return reservation
+
+    return _reserve
+
+
+@pytest.fixture()
 def raise_change(
     saved_users: list[User], saved_event_request: EventRequest, today: date
 ) -> Callable[[int, Any], ChangeRequestAsShown]:
@@ -930,12 +979,30 @@ def withdraw_change(
 
 
 @pytest.fixture()
+def decide_change(
+    saved_users: list[User], saved_event_request: EventRequest, today: date
+) -> Callable[[int, int, Any], ChangeRequestAsShown]:
+    """Decide a change request of ``EVR-AAAAAAAA`` as ``actor_id`` (SCRUM-57).
+
+    Runs on ``db_session`` with ``saved_users``; the payload is passed on as it is.
+    """
+
+    def _decide(actor_id: int, change_request_id: int, payload: Any) -> ChangeRequestAsShown:
+        return decide_change_request(
+            actor_id, "EVR-AAAAAAAA", change_request_id, payload, today=today
+        )
+
+    return _decide
+
+
+@pytest.fixture()
 def save_change_request(save: Callable[..., None]) -> Callable[..., EventChangeRequest]:
     """Save a change request directly, for organiser 7, asking for 300 attendees.
 
     For tests that need one in a given status, or at a pinned time, without raising it
-    through the service (SCRUM-56). A withdrawn one gets a withdrawal time, as the
-    database requires.
+    through the service (SCRUM-56). A withdrawn one gets a withdrawal time, and a
+    decided one a decision time and Coordinator 3 as its decider, a rejected one a
+    reason too, as the database requires (SCRUM-57).
     """
 
     def _save(
@@ -955,6 +1022,11 @@ def save_change_request(save: Callable[..., None]) -> Callable[..., EventChangeR
         )
         if status is ChangeRequestStatus.WITHDRAWN:
             change_request.withdrawn_at = raised_at
+        if status in (ChangeRequestStatus.APPROVED, ChangeRequestStatus.REJECTED):
+            change_request.decided_at = raised_at
+            change_request.decided_by = 3
+        if status is ChangeRequestStatus.REJECTED:
+            change_request.decision_reason = "The venue can't hold more."
         save(change_request)
         return change_request
 

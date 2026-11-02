@@ -73,7 +73,8 @@ function CoordinatorLinks({ reference }: { reference: string }) {
  * (SCRUM-31, SCRUM-32, ADR-0060). The organiser is sent everything else on the record too, at
  * every stage: the planning notes, every venue arrangement, the equipment with its outcomes and
  * reservations, and the safety check (SCRUM-24 AC10, ADR-0104). Both see the organiser's change
- * requests, and the organiser raises and withdraws them here (SCRUM-56, ADR-0126).
+ * requests, the organiser raises and withdraws them here (SCRUM-56, ADR-0126), and the
+ * coordinator decides them here (SCRUM-57, ADR-0127).
  */
 export function EventRecordView({ record }: { record: EventRecord }) {
   const viewer = useAppSelector(selectSessionUser)
@@ -138,7 +139,7 @@ export function EventRecordView({ record }: { record: EventRecord }) {
       )}
       {record.change_requests.length > 0 && (
         <RecordSection title="Change requests">
-          <ChangeRequestList reference={record.reference} changeRequests={record.change_requests} />
+          <ChangeRequestList record={record} />
         </RecordSection>
       )}
       {isChangeRequestable && (

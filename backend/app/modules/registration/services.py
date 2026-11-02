@@ -214,6 +214,23 @@ def count_registered(event_id: int, *, session: Session | None = None) -> int:
     return resolve_session(session).scalar(stmt)
 
 
+def list_registered_attendee_ids(event_id: int, *, session: Session | None = None) -> list[int]:
+    """The Attendees holding a place at the event, in the order they registered.
+
+    The events module calls this to tell them of an approved change of date or time
+    (SCRUM-57 AC7). An Attendee who withdrew holds no place.
+    """
+    stmt = (
+        select(Registration.attendee_id)
+        .where(
+            Registration.event_request_id == event_id,
+            Registration.status == RegistrationStatus.REGISTERED,
+        )
+        .order_by(Registration.id)
+    )
+    return list(resolve_session(session).scalars(stmt))
+
+
 def _registered_counts(event_ids: list[int], session: Session) -> dict[int, int]:
     """How many places are taken at each event; an event nobody joined is absent."""
     stmt = (

@@ -263,7 +263,9 @@ def test_a_request_decided_while_waiting_for_the_lock_is_not_withdrawn(
     approved = (
         update(EventChangeRequest)
         .where(EventChangeRequest.id == change_request_id)
-        .values(status=ChangeRequestStatus.APPROVED)
+        .values(
+            status=ChangeRequestStatus.APPROVED, decided_at=RAISED_AT, decided_by=COORDINATOR_ID
+        )
     )
     on_event_row_lock(lambda connection: connection.execute(approved))
 

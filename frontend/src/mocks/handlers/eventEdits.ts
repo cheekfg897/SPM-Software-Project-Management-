@@ -423,6 +423,17 @@ function editRefusal(status: EventRequestStatus): Response | null {
   return errorResponse(409, 'request_not_editable', NOT_EDITABLE_MESSAGE)
 }
 
+/**
+ * Save `values` on the event as the coordinator named: each one that differs from what is saved
+ * is set and written to the history as their field_changed entry, as an edit does. Answers what
+ * changed. An approved change request applies its values this way (SCRUM-57 AC2).
+ */
+export function applyAs(coordinatorName: string, stored: MockEventRequest, values: Values) {
+  const changes = applyChanges(stored, values)
+  addToHistory(stored.request.reference, historyOf(changes, coordinatorName))
+  return changes
+}
+
 export const eventEditHandlers: RequestHandler[] = [
   http.patch(`${REQUESTS_PATH}/:reference`, async ({ request, params }) => {
     const found = assignedOrRefusal(request, params.reference)

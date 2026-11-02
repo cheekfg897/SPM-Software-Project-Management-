@@ -57,6 +57,9 @@ SHOWN_BODY = {
     "raised_at": "2026-09-15T09:00:00+08:00",
     "withdrawn_at": None,
     "withdrawal_note": None,
+    "decided_by": None,
+    "decided_at": None,
+    "decision_reason": None,
 }
 
 

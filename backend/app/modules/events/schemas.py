@@ -580,6 +580,8 @@ class ChangeRequestSchema(Schema):
     Organiser who raised it is shown by name, never by id; times are in business time
     (ADR-0009). ``withdrawn_at`` and ``withdrawal_note`` are ``null`` unless it was
     withdrawn, and the note unless the event's cancellation withdrew it (AC9).
+    ``decided_by`` (by name), ``decided_at`` and ``decision_reason`` are ``null`` until
+    the coordinator decides it (SCRUM-57 AC6).
     """
 
     id = fields.Integer(dump_only=True)
@@ -590,6 +592,9 @@ class ChangeRequestSchema(Schema):
     raised_at = BusinessDateTime(dump_only=True)
     withdrawn_at = BusinessDateTime(dump_only=True, allow_none=True)
     withdrawal_note = fields.String(dump_only=True, allow_none=True)
+    decided_by = fields.String(dump_only=True, allow_none=True)
+    decided_at = BusinessDateTime(dump_only=True, allow_none=True)
+    decision_reason = fields.String(dump_only=True, allow_none=True)
 
 
 #: What the equipment list says about its event: when it is, so Technical Support know
@@ -657,6 +662,25 @@ class DecideEventRequestSchema(Schema):
         if data["reason"] is not None:
             data["reason"] = data["reason"].strip()
         return data
+
+
+CHANGE_REJECTION_REASON_REQUIRED_MESSAGE = "Say why the change request is rejected."
+
+
+class DecideChangeRequestSchema(DecideEventRequestSchema):
+    """Payload for ``POST .../change-requests/<id>/decide`` (SCRUM-57 AC2, AC3).
+
+    The same body as the event's own decision: ``outcome``, ``approved`` or
+    ``rejected``, and a ``reason``, trimmed and not blank if sent. Rejecting needs one
+    (AC3); approving may give one, and the Organiser is told it either way (AC4).
+    """
+
+    @validates_schema
+    def _rejection_has_a_reason(self, data: dict[str, Any], **_: Any) -> None:
+        if data["outcome"] is DecisionOutcome.REJECTED and data["reason"] is None:
+            raise MarshmallowValidationError(
+                CHANGE_REJECTION_REASON_REQUIRED_MESSAGE, field_name="reason"
+            )
 
 
 PLANNING_REJECTION_REASON_REQUIRED_MESSAGE = "A reason is required to reject the event."
@@ -1130,10 +1154,10 @@ class RecordEquipmentLineSchema(SafetyReviewEquipmentSchema):
 class StaffEventRecordSectionsSchema(Schema):
     """Every section of the read-only staff record beside the request (ADR-0095).
 
-    Dumped from ``StaffEventRecord``. The coordinator, decision and clarifications are
-    shown as on the organiser's and coordinator's record; the equipment requests by name
-    with Technical Support's outcome and who reviewed them (SCRUM-48 AC5, ADR-0105).
-    No registrants (SCRUM-55).
+    Dumped from ``StaffEventRecord``. The coordinator, decision, clarifications and
+    change requests (SCRUM-57 AC6) are shown as on the organiser's and coordinator's
+    record; the equipment requests by name with Technical Support's outcome and who
+    reviewed them (SCRUM-48 AC5, ADR-0105). No registrants (SCRUM-55).
     """
 
     coordinator = fields.Nested(
@@ -1144,6 +1168,9 @@ class StaffEventRecordSectionsSchema(Schema):
     )
     clarifications = fields.Nested(
         ClarificationSchema, attribute="record.clarifications", many=True, dump_only=True
+    )
+    change_requests = fields.Nested(
+        ChangeRequestSchema, attribute="record.change_requests", many=True, dump_only=True
     )
     venue_arrangements = fields.Nested(RecordVenueArrangementSchema, many=True, dump_only=True)
     equipment_lines = fields.Nested(RecordEquipmentLineSchema, many=True, dump_only=True)

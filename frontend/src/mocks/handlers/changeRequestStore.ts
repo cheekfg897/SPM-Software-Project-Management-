@@ -1,5 +1,7 @@
 import type { ChangeRequest } from '@/features/eventRequests/api'
 
+import { errorResponse } from '../responses'
+
 /**
  * Each event's change requests as they stand, oldest first (SCRUM-56, ADR-0126): what the
  * change request routes keep (changeRequests.ts) and the event's record shows
@@ -29,6 +31,21 @@ export function addChangeRequest(
   const kept = { ...changeRequest, id: lastId }
   storedChangeRequests[reference] = [...changeRequestsOf(reference), kept]
   return kept
+}
+
+const PENDING_MESSAGE =
+  'The organiser has a change request waiting for your decision. Decide the change request first.'
+
+/**
+ * SCRUM-57 AC9: the refusal of the event's own decision (approving or rejecting it, rejecting it
+ * during planning, confirming it) while it has a Pending change request, or null when it has none.
+ */
+export function pendingChangeRequestRefusal(reference: string) {
+  const isPending = changeRequestsOf(reference).some((each) => each.status === 'pending')
+  if (!isPending) {
+    return null
+  }
+  return errorResponse(409, 'change_request_pending', PENDING_MESSAGE)
 }
 
 /** Put `changed` in place of the event's request with its id. */

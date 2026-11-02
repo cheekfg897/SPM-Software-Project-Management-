@@ -83,6 +83,9 @@ WITHDRAWN_BODY = {
     "raised_at": "2026-09-14T09:00:00+08:00",
     "withdrawn_at": "2026-09-16T10:30:00+08:00",
     "withdrawal_note": "Withdrawn because the event was cancelled.",
+    "decided_by": None,
+    "decided_at": None,
+    "decision_reason": None,
 }
 PENDING_BODY = {
     "id": 2,
@@ -96,6 +99,9 @@ PENDING_BODY = {
     "raised_at": "2026-09-15T09:00:00+08:00",
     "withdrawn_at": None,
     "withdrawal_note": None,
+    "decided_by": None,
+    "decided_at": None,
+    "decision_reason": None,
 }
 
 

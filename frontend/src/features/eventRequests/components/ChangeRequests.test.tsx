@@ -54,6 +54,9 @@ const APPROVED_REQUEST: ChangeRequest = {
   raised_at: '2026-10-02T10:00:00+08:00',
   withdrawn_at: null,
   withdrawal_note: null,
+  decided_by: 'Chloe Lim',
+  decided_at: '2026-10-03T10:00:00+08:00',
+  decision_reason: null,
 }
 /** A request still waiting for the coordinator, which its organiser can withdraw (AC8). */
 const PENDING_REQUEST: ChangeRequest = { ...APPROVED_REQUEST, status: 'pending' }
@@ -64,6 +67,8 @@ const WITHDRAWN_ON_CANCEL: ChangeRequest = {
   status: 'withdrawn',
   withdrawn_at: '2026-10-04T15:00:00+08:00',
   withdrawal_note: 'Withdrawn because the event was cancelled.',
+  decided_by: null,
+  decided_at: null,
 }
 
 function openAsOmar(reference: string) {

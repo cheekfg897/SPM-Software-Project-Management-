@@ -7,6 +7,7 @@ import { selectSessionUser, useAppSelector } from '@/store'
 import type { StaffEventRecord } from '../api'
 
 import { AboutTheEvent } from './AboutTheEvent'
+import { ChangeRequestList } from './ChangeRequestList'
 import { ClarificationList } from './ClarificationList'
 import { CoordinatorDetails } from './CoordinatorDetails'
 import { DecisionDetails } from './DecisionDetails'
@@ -22,7 +23,8 @@ import { VenueArrangementList } from './VenueArrangementList'
  * Any submitted event's record, read-only, for Venue Staff, Technical Support, the Safety Officer
  * and the Event Coordinator Lead (SCRUM-24 AC9, AC10; ADR-0095): its details and notes, its
  * coordinator, decision and clarifications, its venue arrangements and equipment with their
- * preparation (SCRUM-84 AC2, SCRUM-85 AC2), its safety outcome and its history (SCRUM-33 AC5).
+ * preparation (SCRUM-84 AC2, SCRUM-85 AC2), its safety outcome, the organiser's change requests
+ * with any decision (SCRUM-57 AC6, ADR-0127) and its history (SCRUM-33 AC5).
  * Nothing on it changes the event, and it has no registrants (SCRUM-55). Technical Support also
  * get a link to the event's Equipment page, where they reserve and prepare its equipment.
  */
@@ -76,6 +78,11 @@ export function StaffEventRecordView({ record }: { record: StaffEventRecord }) {
       <RecordSection title="Safety check">
         <SafetyOutcomeDetails outcome={record.safety_outcome} />
       </RecordSection>
+      {record.change_requests.length > 0 && (
+        <RecordSection title="Change requests">
+          <ChangeRequestList record={record} />
+        </RecordSection>
+      )}
       <EventHistorySection reference={record.reference} />
     </PageContainer>
   )

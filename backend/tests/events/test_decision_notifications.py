@@ -105,11 +105,10 @@ def test_a_refused_decision_notifies_nobody(decide: Decide, db_session: Session)
 
 def test_a_failed_notification_write_still_returns_the_decided_request(
     mock_session: MagicMock,
-    make_event_request: Callable[..., EventRequest],
+    decidable_by_mock_session: EventRequest,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """The decision is committed first; failing its reply would invite a retry."""
-    mock_session.scalar.return_value = make_event_request(coordinator_id=COORDINATOR_ID)
     lost_connection = OperationalError("INSERT INTO notifications ...", {}, Exception("gone"))
     mock_session.commit.side_effect = [None, lost_connection]
 
